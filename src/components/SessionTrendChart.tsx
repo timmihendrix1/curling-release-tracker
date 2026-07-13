@@ -28,7 +28,7 @@ export default function SessionTrendChart({
   const chartData = [...sessions]
     .reverse()
     .map((session, index) => {
-      const analysis = analyzeShots(session.shots, session.targetTime);
+      const analysis = analyzeShots(session.shots);
 
       return {
         sessionNumber: index + 1,

@@ -1,6 +1,7 @@
 "use client";
 
 import type { Shot } from "../types";
+import { formatSigned } from "../lib/timeInput";
 
 import {
   LineChart,
@@ -8,22 +9,75 @@ import {
   XAxis,
   YAxis,
   Tooltip,
+  Legend,
   ResponsiveContainer,
-  ReferenceLine,
 } from "recharts";
 
 type ReleaseTrendChartProps = {
   shots: Shot[];
-  targetTime: number;
 };
+
+type ChartPoint = {
+  shotNumber: number;
+  releaseTime: number;
+  targetTime: number;
+  predictedTime?: number;
+  predictionError?: number;
+  targetError: number;
+};
+
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: { payload: ChartPoint }[];
+  label?: number;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const point = payload[0].payload;
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm shadow-lg">
+      <p className="font-semibold text-slate-900">Shot #{label}</p>
+      <p className="text-slate-600">Target: {point.targetTime.toFixed(2)}s</p>
+      {point.predictedTime !== undefined && (
+        <p className="text-slate-600">
+          Prediction: {point.predictedTime.toFixed(2)}s
+        </p>
+      )}
+      <p className="text-slate-600">Actual: {point.releaseTime.toFixed(2)}s</p>
+      {point.predictionError !== undefined && (
+        <p className="text-slate-600">
+          Prediction Error: {formatSigned(point.predictionError)}s
+        </p>
+      )}
+      <p className="text-slate-600">
+        Target Error: {formatSigned(point.targetError)}s
+      </p>
+    </div>
+  );
+}
 
 export default function ReleaseTrendChart({
   shots,
-  targetTime,
 }: ReleaseTrendChartProps) {
-  const chartData = shots.map((shot) => ({
+  const hasPredictions = shots.some(
+    (shot) => shot.predictedTime !== undefined
+  );
+
+  const chartData: ChartPoint[] = shots.map((shot) => ({
     shotNumber: shot.shotNumber,
     releaseTime: shot.releaseTime,
+    targetTime: shot.targetTime,
+    predictedTime: shot.predictedTime,
+    predictionError:
+      shot.predictedTime !== undefined
+        ? shot.predictedTime - shot.releaseTime
+        : undefined,
+    targetError: shot.releaseTime - shot.targetTime,
   }));
 
   return (
@@ -47,23 +101,37 @@ export default function ReleaseTrendChart({
               tickFormatter={(value) => Number(value).toFixed(2)}
             />
 
-            <Tooltip
-              formatter={(value) => [
-                `${Number(value).toFixed(2)}s`,
-                "Release Time",
-              ]}
-              labelFormatter={(label) => `Shot #${label}`}
+            <Tooltip content={<ChartTooltip />} />
+
+            {hasPredictions && <Legend />}
+
+            <Line
+              type="monotone"
+              dataKey="targetTime"
+              name="Target"
+              stroke="#ef4444"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              dot={false}
             />
 
-            <ReferenceLine
-              y={targetTime}
-              stroke="#ef4444"
-              strokeDasharray="4 4"
-            />
+            {hasPredictions && (
+              <Line
+                type="monotone"
+                dataKey="predictedTime"
+                name="Prediction"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                strokeDasharray="2 2"
+                dot={{ r: 3 }}
+                connectNulls
+              />
+            )}
 
             <Line
               type="monotone"
               dataKey="releaseTime"
+              name="Actual"
               stroke="#0f172a"
               strokeWidth={3}
               dot={{ r: 4 }}

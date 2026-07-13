@@ -1,21 +1,78 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import AutoCapture, { type AutoCaptureStartConfig } from "./AutoCapture";
+import BlindShotEntry from "./BlindShotEntry";
 import ConfirmModal from "./ConfirmModal";
+import DashboardCard from "./DashboardCard";
+import NewTrainingBlock from "./NewTrainingBlock";
 import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
 import SessionTrendChart from "./SessionTrendChart";
-import ShotEntry from "./ShotEntry";
+import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
 import TargetTimeSettings from "./TargetTimeSettings";
+import TimingSimulatorPanel, {
+  type SimulatorDiagnosticEntry,
+} from "./TimingSimulatorPanel";
+import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
-import type { Handle, Session, Shot, ShotType } from "../types";
+import type {
+  Handle,
+  Session,
+  Shot,
+  ShotType,
+  TimingResult,
+  TrainingBlock,
+} from "../types";
 
 import { analyzeShots } from "../lib/analytics";
+import {
+  applyTimingResultToSession,
+  createCaptureSequence,
+  isCaptureSequenceActive,
+  pauseCaptureSequence,
+  pauseCaptureSequenceWithError,
+  resumeCaptureSequence,
+  startCaptureSequence,
+  undoLastCapturedShot,
+  type ProcessTimingResultOutcome,
+} from "../lib/captureSequence";
 import {
   exportHistoryToCsv,
   exportSessionToCsv,
 } from "../lib/export";
-import { formatReleaseTime } from "../lib/timeInput";
+import { migrateSession, migrateSessionHistory } from "../lib/sessionMigration";
+import {
+  createSimulatorTimingProvider,
+} from "../lib/simulatorTimingProvider";
+import {
+  DEFAULT_SHOT_FILTER,
+  filterShots,
+  type HandleFilter,
+  type ShotTypeFilter,
+} from "../lib/shotFilters";
+import { createManualTimingResult } from "../lib/timingProvider";
+import {
+  formatReleaseTime,
+  formatSigned,
+  parseReleaseTime,
+} from "../lib/timeInput";
+import {
+  addTrainingBlock,
+  advanceBlockTarget,
+  blindTargetModeLabel,
+  blockModeLabel,
+  computeShotTarget,
+  createTrainingBlock,
+  getActiveBlock,
+  getBlockShots,
+  getNextShotNumberInBlock,
+  getNextShotTarget,
+  measurementModeLabel,
+  variableTargetModeLabel,
+} from "../lib/trainingBlocks";
+
+const IS_DEV = process.env.NODE_ENV !== "production";
 
 const CURRENT_SESSION_STORAGE_KEY =
   "curling-release-tracker-current-session";
@@ -23,8 +80,6 @@ const SESSION_HISTORY_STORAGE_KEY =
   "curling-release-tracker-session-history";
 
 type ActiveView = "current" | "history";
-type HistoryHandleFilter = "all" | Handle;
-type HistoryShotTypeFilter = "all" | ShotType;
 
 type ConfirmAction = {
   title: string;
@@ -37,7 +92,7 @@ type EditingShot = {
   id: string;
   releaseTime: string;
   handle: Handle;
-  shotType: ShotType;
+  shotType?: ShotType;
 };
 
 function createNewSession(): Session {
@@ -45,29 +100,44 @@ function createNewSession(): Session {
     id: crypto.randomUUID(),
     title: "Training Session",
     date: new Date().toISOString(),
-    targetTime: 3.75,
     notes: "",
+    blocks: [],
+    activeBlockId: "",
     shots: [],
   };
 }
 
 function filterSessionShots(
   session: Session,
-  handleFilter: HistoryHandleFilter,
-  shotTypeFilter: HistoryShotTypeFilter
+  handleFilter: HandleFilter,
+  shotTypeFilter: ShotTypeFilter
 ): Session {
   return {
     ...session,
-    shots: session.shots.filter((shot) => {
-      const matchesHandle =
-        handleFilter === "all" || shot.handle === handleFilter;
-
-      const matchesShotType =
-        shotTypeFilter === "all" || shot.shotType === shotTypeFilter;
-
-      return matchesHandle && matchesShotType;
+    shots: filterShots(session.shots, {
+      handle: handleFilter,
+      shotType: shotTypeFilter,
     }),
   };
+}
+
+// Low-effort History note: how many of this block's shots came from Auto Capture, and
+// which provider. Returns null (renders nothing) for a block with no captured shots at
+// all, which covers every block recorded before this feature existed and every
+// classic-manual-only block since.
+function describeCaptureBreakdown(shots: Shot[]): string | null {
+  const captured = shots.filter((shot) => shot.measurementSource !== undefined);
+  if (captured.length === 0) return null;
+
+  const bySource = new Map<string, number>();
+  for (const shot of captured) {
+    const source = shot.measurementSource as string;
+    bySource.set(source, (bySource.get(source) ?? 0) + 1);
+  }
+
+  return Array.from(bySource.entries())
+    .map(([source, count]) => `${count} ${source}`)
+    .join(", ");
 }
 
 export default function TrackerApp() {
@@ -82,10 +152,17 @@ export default function TrackerApp() {
   >([]);
 
   const [historyHandleFilter, setHistoryHandleFilter] =
-    useState<HistoryHandleFilter>("all");
+    useState<HandleFilter>("all");
 
   const [historyShotTypeFilter, setHistoryShotTypeFilter] =
-    useState<HistoryShotTypeFilter>("all");
+    useState<ShotTypeFilter>("all");
+
+  const [blockFilter, setBlockFilter] = useState(
+    DEFAULT_SHOT_FILTER
+  );
+
+  const [showNewBlockModal, setShowNewBlockModal] =
+    useState(false);
 
   const [confirmAction, setConfirmAction] =
     useState<ConfirmAction | null>(null);
@@ -95,6 +172,260 @@ export default function TrackerApp() {
 
   const [editingShot, setEditingShot] =
     useState<EditingShot | null>(null);
+
+  const [hasUnsavedBlindDraft, setHasUnsavedBlindDraft] =
+    useState(false);
+
+  // Bumped whenever the user confirms discarding an in-progress Blind
+  // Weight draft (see guardLeavingBlindDraft) — forces BlindShotEntry to
+  // fully remount with a clean internal state, even if the active block
+  // itself hasn't changed yet (e.g. the New Training Block modal is only
+  // just being opened, and could still be cancelled).
+  const [blindDraftResetToken, setBlindDraftResetToken] = useState(0);
+
+  // --- Capture Sequence UI state ---
+  // "Next Handle" for CaptureHandleMode "manual" — the live sequence itself has no
+  // opinion on this; it's whatever the person running the sequence taps next.
+  const [captureManualHandle, setCaptureManualHandle] = useState<Handle>("in");
+  // Editable "current target" text for Variable/Manual-target blocks during a running
+  // sequence — mirrors ShotEntry's own editable-target input, but lifted to this level
+  // because processIncomingTimingResult (fired from the simulator subscription, not a
+  // form submit) needs to read the latest value at result-processing time.
+  const [captureManualTargetInput, setCaptureManualTargetInput] = useState("");
+  const [lastCaptureMessage, setLastCaptureMessage] = useState<
+    string | undefined
+  >(undefined);
+  const [captureDiagnostics, setCaptureDiagnostics] = useState<
+    SimulatorDiagnosticEntry[]
+  >([]);
+
+  // Mirrored into refs after every render (via effects, not during render — mutating a
+  // ref's `.current` during the render body itself is flagged by this project's lint
+  // config as unsafe for React Compiler compatibility) so the simulator's async
+  // subscription callback (registered once in the effect below) always reads the latest
+  // value instead of a stale one captured at subscribe time.
+  const captureManualHandleRef = useRef(captureManualHandle);
+  useEffect(() => {
+    captureManualHandleRef.current = captureManualHandle;
+  }, [captureManualHandle]);
+
+  const captureManualTargetInputRef = useRef(captureManualTargetInput);
+  useEffect(() => {
+    captureManualTargetInputRef.current = captureManualTargetInput;
+  }, [captureManualTargetInput]);
+
+  // --- Capture Sequence result processing: authoritative session mirror + queue ---
+  //
+  // `sessionRef` mirrors `currentSession`. Every capture-mutating action in this
+  // component (processQueuedTimingResult, and every Pause/Resume/Cancel/Undo/Start
+  // handler, via `commitSession` below) writes this ref SYNCHRONOUSLY, at the exact
+  // point it also calls `setCurrentSession` — not relying on React's own
+  // setState-updater timing. React guarantees queued functional updaters chain
+  // correctly against each other, but it does NOT guarantee an updater is invoked
+  // synchronously at the moment setState is called (that only happens as an internal
+  // "eager state" optimization when no other update is already pending) — code that
+  // needs to synchronously know the *outcome* of a state transition right after
+  // triggering it (as processQueuedTimingResult does, for diagnostics/feedback) cannot
+  // safely depend on that. Computing the full next state via the pure
+  // `applyTimingResultToSession` and writing it to this ref ourselves removes that
+  // dependency entirely.
+  //
+  // The effect below additionally resyncs `sessionRef` after every render, as a
+  // catch-all for the *other*, non-capture handlers (handleAddShot, handleDeleteShot,
+  // block creation, ...) that still use the classic functional-setState-updater
+  // pattern and don't call `commitSession`. This leaves one known, narrow edge case:
+  // if a classic manual shot (ShotEntry) is added in the same render window as a
+  // capture result is being processed for the *same* block (both can be visible on
+  // screen at once — Auto Capture is additive, not exclusive), there is a brief window
+  // before the next render where `sessionRef` may not yet reflect the manual shot. This
+  // is out of scope for this pass (which hardens the Capture Sequence path
+  // specifically, not classic manual entry) and is documented in
+  // docs/TECHNICAL_DEBT_AND_ROADMAP.md rather than silently left unmentioned.
+  //
+  // `captureQueueRef` is a Promise chain that serializes calls to
+  // processIncomingTimingResult: two results arriving back-to-back in the same
+  // synchronous tick (e.g. two simulator events fired without an await between them, or
+  // a simulator event and a manual "Add Result Manually" click landing together) are
+  // still processed one at a time, each reading the immediately-preceding result's
+  // already-committed session — never a torn/stale read of the other's in-flight work.
+  const sessionRef = useRef<Session | null>(currentSession);
+  useEffect(() => {
+    sessionRef.current = currentSession;
+  }, [currentSession]);
+  const captureQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  function outcomeToDiagnostic(
+    outcome: ProcessTimingResultOutcome
+  ): SimulatorDiagnosticEntry {
+    return {
+      id: crypto.randomUUID(),
+      at: new Date().toISOString(),
+      status: outcome.status,
+      message:
+        outcome.status === "accepted"
+          ? `Shot captured: ${outcome.shot.releaseTime.toFixed(2)}s`
+          : outcome.reason,
+    };
+  }
+
+  /**
+   * Commits a new session value through both channels that need it: `sessionRef`
+   * (read synchronously by the capture-result queue) and React state (read by
+   * everything that renders). Used by every capture control, for the same reason
+   * processQueuedTimingResult writes both — a click on Pause/Resume/Cancel/Undo must be
+   * visible to the very next queued result even if React hasn't re-rendered yet.
+   */
+  function commitSession(nextSession: Session) {
+    sessionRef.current = nextSession;
+    setCurrentSession(nextSession);
+  }
+
+  /**
+   * The one place a TimingResult (simulator, manual fallback, or later real hardware)
+   * is turned into a Shot — see docs/adr/0006 and the "Race conditions" section of
+   * docs/SYSTEM_ARCHITECTURE.md. Every call is appended to `captureQueueRef`, so
+   * results are processed strictly one at a time, in arrival order — never two
+   * "in flight" concurrently, and never against a stale/pre-previous-result session.
+   *
+   * This is intentionally NOT synchronous: it always defers the actual work by (at
+   * least) one microtask, via the queue. That's what guarantees two results arriving
+   * in the same synchronous tick — e.g. two simulator events with no await between
+   * them, or a simulator event and an "Add Result Manually" click landing together —
+   * are still serialized correctly, without depending on React's own setState-updater
+   * batching/timing (which chains correctly but does not guarantee synchronous
+   * invocation — see the comment on sessionRef/captureQueueRef above).
+   *
+   * The outer .catch() exists only so a bug in the queue plumbing itself (NOT an
+   * ordinary rejection like "duplicate"/"invalid" — those are returned by
+   * applyTimingResultToSession, never thrown, and are handled by
+   * processQueuedTimingResult's own try/catch) can never permanently wedge the queue
+   * and silently drop every subsequent, unrelated result.
+   */
+  function processIncomingTimingResult(result: TimingResult): void {
+    captureQueueRef.current = captureQueueRef.current
+      .then(() => processQueuedTimingResult(result))
+      .catch((error) => {
+        console.error("Unexpected error while processing a timing result", error);
+      });
+  }
+
+  /**
+   * The actual atomic transition, run strictly one-at-a-time by the queue above.
+   * Reads/writes `sessionRef` directly (not `currentSession` from the render closure)
+   * so it always starts from the immediately-preceding queued result's committed
+   * state, then commits both the ref and React state together before returning.
+   */
+  function processQueuedTimingResult(result: TimingResult): void {
+    const session = sessionRef.current;
+    if (!session) return;
+
+    const activeBlockForOverrides = getActiveBlock(session);
+    const isManualTargetSource =
+      activeBlockForOverrides?.mode === "variable" &&
+      activeBlockForOverrides.variableTargetMode === "manual";
+    const parsedManualTarget = isManualTargetSource
+      ? parseReleaseTime(captureManualTargetInputRef.current)
+      : null;
+
+    let nextSession: Session;
+    let outcome: ProcessTimingResultOutcome;
+
+    try {
+      const applied = applyTimingResultToSession({
+        session,
+        result,
+        manualTargetOverride:
+          parsedManualTarget !== null && parsedManualTarget > 0
+            ? parsedManualTarget
+            : undefined,
+        manualHandleOverride: captureManualHandleRef.current,
+      });
+      nextSession = applied.session;
+      outcome = applied.outcome;
+    } catch (error) {
+      // A genuine exception (a bug — never how an ordinary rejection like "duplicate"
+      // or "invalid" is signaled) must never leave half-applied capture progress. The
+      // session's shots/blocks are left exactly as they were; the sequence is instead
+      // paused with a visible error, per the Save-Fehler decision in
+      // docs/TECHNICAL_DEBT_AND_ROADMAP.md — no partial state, no silent continuation,
+      // no automatic retry.
+      const message =
+        error instanceof Error ? error.message : "Unexpected capture error.";
+
+      nextSession = session.captureSequence
+        ? {
+            ...session,
+            captureSequence: pauseCaptureSequenceWithError(
+              session.captureSequence,
+              message
+            ),
+          }
+        : session;
+
+      outcome = { status: "invalid", reason: message };
+    }
+
+    commitSession(nextSession);
+    applyCaptureOutcomeFeedback(outcome);
+  }
+
+  function applyCaptureOutcomeFeedback(outcome: ProcessTimingResultOutcome) {
+    setCaptureDiagnostics((diagnostics) =>
+      [outcomeToDiagnostic(outcome), ...diagnostics].slice(0, 8)
+    );
+
+    if (outcome.status === "accepted") {
+      setLastCaptureMessage(
+        `Shot ${outcome.shot.shotNumber} captured: ${outcome.shot.releaseTime.toFixed(2)}s`
+      );
+
+      if (outcome.unusualValueWarning) {
+        setLastCaptureMessage(outcome.unusualValueWarning);
+      }
+
+      if (
+        outcome.updatedBlock.pendingTargetTime !== undefined &&
+        (outcome.updatedBlock.mode === "variable" &&
+          outcome.updatedBlock.variableTargetMode === "manual")
+      ) {
+        setCaptureManualTargetInput(
+          outcome.updatedBlock.pendingTargetTime.toFixed(2)
+        );
+      }
+    }
+  }
+
+  // Dev/test-only Timing Simulator — a stable instance for the lifetime of this
+  // component. Created unconditionally (cheap, pure in-memory listeners/state) but
+  // only ever started/subscribed-to in development (see the effect below) and only
+  // ever rendered a UI in development (see TimingSimulatorPanel usage further down).
+  const [simulatorProvider] = useState(() => createSimulatorTimingProvider());
+
+  useEffect(() => {
+    if (!IS_DEV) return;
+
+    // Exactly one subscription per mounted effect instance. React (including Strict
+    // Mode's dev-only mount→cleanup→mount double-invoke) always runs this cleanup
+    // before running the effect body again, and `subscribe`/`unsubscribe` are a plain
+    // Set add/delete (see simulatorTimingProvider.ts) — so a second mount can never
+    // result in two active listeners, and a delayed/in-flight result queued by an
+    // instance that has since been cleaned up can never reach a listener that no
+    // longer exists. `start`/`stop` are similarly idempotent (a plain boolean flag).
+    const unsubscribe = simulatorProvider.subscribe((result) => {
+      processIncomingTimingResult(result);
+    });
+    simulatorProvider.start();
+
+    return () => {
+      unsubscribe();
+      simulatorProvider.stop();
+    };
+    // processIncomingTimingResult reads all its inputs from sessionRef/the refs above
+    // (always-latest) — it never closes over stale state, so it's intentionally not a
+    // dependency here; re-subscribing on every render would defeat the point of a
+    // stable provider instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simulatorProvider]);
 
   useEffect(() => {
     const savedSession = localStorage.getItem(
@@ -106,13 +437,15 @@ export default function TrackerApp() {
     );
 
     if (savedSession) {
-      setCurrentSession(JSON.parse(savedSession));
+      setCurrentSession(migrateSession(JSON.parse(savedSession)));
     } else {
       setCurrentSession(createNewSession());
     }
 
     if (savedHistory) {
-      setSessionHistory(JSON.parse(savedHistory));
+      setSessionHistory(
+        migrateSessionHistory(JSON.parse(savedHistory))
+      );
     }
   }, []);
 
@@ -136,10 +469,33 @@ export default function TrackerApp() {
     return null;
   }
 
-  const shots = currentSession.shots;
-  const targetTime = currentSession.targetTime;
+  const activeBlock = getActiveBlock(currentSession);
+  const activeBlockShots = activeBlock
+    ? getBlockShots(currentSession, activeBlock.id)
+    : [];
+  const filteredActiveBlockShots = filterShots(
+    activeBlockShots,
+    blockFilter
+  );
+  const activeBlockAnalysis = activeBlock
+    ? analyzeShots(filteredActiveBlockShots)
+    : null;
 
-  const analysis = analyzeShots(shots, targetTime);
+  const shotEntryTarget: ShotEntryTarget | null = activeBlock
+    ? {
+        value: getNextShotTarget(activeBlock),
+        editable:
+          (activeBlock.mode === "variable" &&
+            activeBlock.variableTargetMode === "manual") ||
+          (activeBlock.mode === "blind" &&
+            activeBlock.blindTargetMode === "manual"),
+        autoGenerated:
+          (activeBlock.mode === "variable" &&
+            activeBlock.variableTargetMode === "smart-random") ||
+          (activeBlock.mode === "blind" &&
+            activeBlock.blindTargetMode === "smart-random"),
+      }
+    : null;
 
   const filteredSessionHistory = sessionHistory.map(
     (session) =>
@@ -155,13 +511,17 @@ export default function TrackerApp() {
       (session) => session.shots.length > 0
     );
 
-  function handleChangeTargetTime(newTargetTime: number) {
+  function handleChangeActiveBlockTargetTime(newTargetTime: number) {
     setCurrentSession((session) => {
       if (!session) return session;
 
       return {
         ...session,
-        targetTime: newTargetTime,
+        blocks: session.blocks.map((block) =>
+          block.id === session.activeBlockId
+            ? { ...block, targetTime: newTargetTime }
+            : block
+        ),
       };
     });
   }
@@ -191,42 +551,193 @@ export default function TrackerApp() {
   function handleAddShot(
     releaseTime: number,
     handle: Handle,
-    shotType: ShotType
+    shotType: ShotType | undefined,
+    targetTimeOverride?: number,
+    predictedTime?: number
   ) {
     setCurrentSession((session) => {
       if (!session) return session;
 
+      const currentActiveBlock = getActiveBlock(session);
+      if (!currentActiveBlock) return session;
+
+      const targetTime = computeShotTarget(
+        currentActiveBlock,
+        targetTimeOverride
+      );
+
       const newShot: Shot = {
         id: crypto.randomUUID(),
         sessionId: session.id,
-        shotNumber: session.shots.length + 1,
+        blockId: currentActiveBlock.id,
+        shotNumber: getNextShotNumberInBlock(
+          session,
+          currentActiveBlock.id
+        ),
         releaseTime,
+        targetTime,
+        predictedTime,
         handle,
         shotType,
         createdAt: new Date().toISOString(),
       };
 
+      const recentTargets = getBlockShots(
+        session,
+        currentActiveBlock.id
+      ).map((shot) => shot.targetTime);
+
+      const updatedBlock = advanceBlockTarget(
+        currentActiveBlock,
+        targetTime,
+        recentTargets
+      );
+
       return {
         ...session,
         shots: [...session.shots, newShot],
+        blocks: session.blocks.map((block) =>
+          block.id === updatedBlock.id ? updatedBlock : block
+        ),
       };
     });
+  }
+
+  function handleStartCaptureSequence(config: AutoCaptureStartConfig) {
+    const session = sessionRef.current;
+    if (!session || !activeBlock) return;
+
+    try {
+      const newSequence = startCaptureSequence(
+        createCaptureSequence({
+          session,
+          block: activeBlock,
+          expectedShotCount: config.expectedShotCount,
+          providerType: "simulator",
+          handleMode: config.handleMode,
+          startHandle: config.startHandle,
+          shotType: config.shotType,
+        })
+      );
+
+      setCaptureManualHandle(config.startHandle);
+      setCaptureManualTargetInput(getNextShotTarget(activeBlock).toFixed(2));
+      setLastCaptureMessage(undefined);
+      setCaptureDiagnostics([]);
+
+      commitSession({ ...session, captureSequence: newSequence });
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not start Auto Capture."
+      );
+    }
+  }
+
+  function handlePauseCaptureSequence() {
+    const session = sessionRef.current;
+    if (!session || !session.captureSequence) return;
+
+    commitSession({
+      ...session,
+      captureSequence: pauseCaptureSequence(session.captureSequence),
+    });
+  }
+
+  function handleResumeCaptureSequence() {
+    const session = sessionRef.current;
+    if (!session || !session.captureSequence) return;
+
+    commitSession({
+      ...session,
+      captureSequence: resumeCaptureSequence(session.captureSequence),
+    });
+  }
+
+  function handleCancelCaptureSequence() {
+    setConfirmAction({
+      title: "Cancel Auto Capture?",
+      message:
+        "Already captured shots will remain in the training. No half-finished result will be saved.",
+      confirmLabel: "Cancel Capture",
+      onConfirm: () => {
+        const session = sessionRef.current;
+
+        if (session?.captureSequence) {
+          commitSession({
+            ...session,
+            captureSequence: {
+              ...session.captureSequence,
+              status: "cancelled",
+              cancelledAt: new Date().toISOString(),
+            },
+          });
+        }
+
+        setConfirmAction(null);
+      },
+    });
+  }
+
+  function handleUndoLastCapturedShot() {
+    const session = sessionRef.current;
+    if (!session || !session.captureSequence) return;
+
+    const currentActiveBlock = getActiveBlock(session);
+    if (!currentActiveBlock) return;
+
+    const outcome = undoLastCapturedShot(session.captureSequence, currentActiveBlock);
+    if (!outcome) return;
+
+    commitSession({
+      ...session,
+      shots: session.shots.filter((shot) => shot.id !== outcome.removedShotId),
+      blocks: session.blocks.map((block) =>
+        block.id === outcome.updatedBlock.id ? outcome.updatedBlock : block
+      ),
+      captureSequence: outcome.updatedSequence,
+    });
+
+    setLastCaptureMessage("Last captured shot undone.");
+  }
+
+  function handleManualCaptureResult(value: number) {
+    if (!activeBlock) return;
+    processIncomingTimingResult(
+      createManualTimingResult(activeBlock.measurementMode, value)
+    );
   }
 
   function handleDeleteShot(shotId: string) {
     setCurrentSession((session) => {
       if (!session) return session;
 
-      const updatedShots = session.shots
-        .filter((shot) => shot.id !== shotId)
-        .map((shot, index) => ({
-          ...shot,
-          shotNumber: index + 1,
-        }));
+      const shotToDelete = session.shots.find(
+        (shot) => shot.id === shotId
+      );
+
+      if (!shotToDelete) return session;
+
+      const remainingShots = session.shots.filter(
+        (shot) => shot.id !== shotId
+      );
+
+      let nextShotNumber = 0;
+
+      const renumberedShots = remainingShots.map((shot) => {
+        if (shot.blockId !== shotToDelete.blockId) {
+          return shot;
+        }
+
+        nextShotNumber += 1;
+
+        return { ...shot, shotNumber: nextShotNumber };
+      });
 
       return {
         ...session,
-        shots: updatedShots,
+        shots: renumberedShots,
       };
     });
   }
@@ -272,27 +783,199 @@ export default function TrackerApp() {
     setEditingShot(null);
   }
 
-  function handleStartNewSession() {
-    setConfirmAction({
-      title: "Start New Session",
-      message:
-        "Current session will be saved to history. Continue?",
-      confirmLabel: "Start",
-      onConfirm: () => {
-        if (
-          currentSession &&
-          currentSession.shots.length > 0
-        ) {
-          setSessionHistory((currentHistory) => [
-            currentSession,
-            ...currentHistory,
-          ]);
-        }
+  // createTrainingBlock validates the Smart Random / measurement mode
+  // combination and throws a clear error for an invalid one. TrainingSetup's
+  // own UI already prevents submitting such a combination, so this is only a
+  // defensive backstop — but a setCurrentSession updater must never throw,
+  // so we validate/construct outside of it first.
+  function tryCreateTrainingBlock(value: TrainingSetupValue) {
+    try {
+      return createTrainingBlock(value);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not create this training block."
+      );
+      return null;
+    }
+  }
 
-        setCurrentSession(createNewSession());
-        setActiveView("current");
+  function handleCreateFirstBlock(value: TrainingSetupValue) {
+    const block = tryCreateTrainingBlock(value);
+    if (!block) return;
+
+    setCurrentSession((session) => {
+      if (!session) return session;
+
+      return {
+        ...session,
+        blocks: [block],
+        activeBlockId: block.id,
+      };
+    });
+  }
+
+  function handleCreateNewBlock(value: TrainingSetupValue) {
+    // Pre-validate with a throwaway construction; addTrainingBlock's own
+    // internal createTrainingBlock call is then guaranteed not to throw,
+    // since the throw condition depends only on measurementMode/
+    // variableTargetMode, not on the randomly-generated id or target.
+    if (!tryCreateTrainingBlock(value)) return;
+
+    setCurrentSession((session) => {
+      if (!session) return session;
+
+      return addTrainingBlock(session, value);
+    });
+
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setShowNewBlockModal(false);
+  }
+
+  function handleStartNewSession() {
+    guardLeavingActiveWork(
+      hasUnsavedBlindDraft
+        ? "You have an unfinished blind-weight shot. Starting a new session will discard it — the current session itself will still be saved to history. Continue?"
+        : null,
+      isCaptureSequenceActive(currentSession?.captureSequence)
+        ? "Starting a new session will end the current Auto Capture. Already captured shots will remain in the training."
+        : null,
+      () => {
+        setConfirmAction({
+          title: "Start New Session",
+          message:
+            "Current session will be saved to history. Continue?",
+          confirmLabel: "Start",
+          onConfirm: () => {
+            if (
+              currentSession &&
+              currentSession.shots.length > 0
+            ) {
+              setSessionHistory((currentHistory) => [
+                currentSession,
+                ...currentHistory,
+              ]);
+            }
+
+            setCurrentSession(createNewSession());
+            setBlockFilter(DEFAULT_SHOT_FILTER);
+            setActiveView("current");
+            setConfirmAction(null);
+          },
+        });
+      }
+    );
+  }
+
+  /**
+   * Gates navigation away from an in-progress Blind Weight shot (History,
+   * New Training Block, Start New Session, ...). When there's nothing
+   * unsaved, `action` runs immediately; otherwise the user is asked first,
+   * and `action` only runs if they confirm — at which point the draft is
+   * treated as discarded (no partial shot is ever saved, the shot number and
+   * pendingTargetTime are untouched, and blindDraftResetToken forces a clean
+   * remount of BlindShotEntry so a cancelled follow-up action, like
+   * dismissing the New Training Block modal, can't resurrect the old draft).
+   */
+  function runOrConfirmBlindDraftDiscard(
+    warningMessage: string | null,
+    action: () => void
+  ) {
+    if (!warningMessage) {
+      action();
+      return;
+    }
+
+    setConfirmAction({
+      title: "Unfinished Blind Weight Shot",
+      message: warningMessage,
+      confirmLabel: "Leave",
+      onConfirm: () => {
+        setHasUnsavedBlindDraft(false);
+        setBlindDraftResetToken((token) => token + 1);
         setConfirmAction(null);
+        action();
       },
+    });
+  }
+
+  function handleGoToHistory() {
+    guardLeavingActiveWork(
+      hasUnsavedBlindDraft
+        ? "You have an unfinished blind-weight shot. Leave without saving it?"
+        : null,
+      isCaptureSequenceActive(currentSession?.captureSequence)
+        ? "Leaving Auto Capture will end the current capture sequence. Already captured shots will remain in the training."
+        : null,
+      () => setActiveView("history")
+    );
+  }
+
+  function handleOpenNewBlockModal() {
+    guardLeavingActiveWork(
+      hasUnsavedBlindDraft
+        ? "You have an unfinished blind-weight shot. Starting a new training block will discard it. Continue?"
+        : null,
+      isCaptureSequenceActive(currentSession?.captureSequence)
+        ? "Starting a new training block will end the current Auto Capture. Already captured shots will remain in the training."
+        : null,
+      () => setShowNewBlockModal(true)
+    );
+  }
+
+  /**
+   * Gates navigation away from a running/paused Capture Sequence — same shape as
+   * runOrConfirmBlindDraftDiscard, for the same reason (History, New Training Block,
+   * Start New Session shouldn't silently abandon in-progress work). Confirming ends
+   * the sequence (already-captured shots remain; nothing half-finished is ever saved
+   * as a shot) before running `action`.
+   */
+  function runOrConfirmCaptureLeave(
+    warningMessage: string | null,
+    action: () => void
+  ) {
+    if (!warningMessage) {
+      action();
+      return;
+    }
+
+    setConfirmAction({
+      title: "Auto Capture In Progress",
+      message: warningMessage,
+      confirmLabel: "Leave",
+      onConfirm: () => {
+        setCurrentSession((session) => {
+          if (!session || !session.captureSequence) return session;
+          return {
+            ...session,
+            captureSequence: {
+              ...session.captureSequence,
+              status: "cancelled",
+              cancelledAt: new Date().toISOString(),
+            },
+          };
+        });
+        setConfirmAction(null);
+        action();
+      },
+    });
+  }
+
+  /**
+   * Composes the Blind Weight draft guard and the Capture Sequence guard: the blind
+   * draft (if any) is confirmed first, then the capture sequence (if any), then
+   * `action` runs. The two are mutually exclusive in practice — Auto Capture never
+   * exists for a Blind Weight block — but composing them this way is correct either
+   * way and needs no special-casing.
+   */
+  function guardLeavingActiveWork(
+    blindWarningMessage: string | null,
+    captureWarningMessage: string | null,
+    action: () => void
+  ) {
+    runOrConfirmBlindDraftDiscard(blindWarningMessage, () => {
+      runOrConfirmCaptureLeave(captureWarningMessage, action);
     });
   }
 
@@ -350,7 +1033,7 @@ export default function TrackerApp() {
 
         <button
           type="button"
-          onClick={() => setActiveView("history")}
+          onClick={handleGoToHistory}
           className={`rounded-xl px-4 py-3 font-medium transition ${activeView === "history"
               ? "bg-slate-900 text-white"
               : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -362,198 +1045,499 @@ export default function TrackerApp() {
 
       {activeView === "current" && (
         <>
-          <ShotEntry onAddShot={handleAddShot} />
+          {!activeBlock || !activeBlockAnalysis ? (
+            <>
+              <SessionSettings
+                title={currentSession.title}
+                notes={currentSession.notes}
+                onChangeTitle={handleChangeSessionTitle}
+                onChangeNotes={handleChangeSessionNotes}
+              />
 
-          <ReleaseTrendChart
-            shots={shots}
-            targetTime={targetTime}
-          />
+              <div className="rounded-2xl bg-white p-6 shadow-lg">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Set Up Training Block
+                </h2>
 
-          <div className="rounded-2xl bg-white p-6 shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-900">
-              Current Shots
-            </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Configure the first training block for this
+                  session.
+                </p>
 
-            <div className="mt-4 space-y-2">
-              {shots.map((shot) => {
-                const isEditing =
-                  editingShot?.id === shot.id;
+                <div className="mt-4">
+                  <TrainingSetup
+                    submitLabel="Start Training"
+                    onSubmit={handleCreateFirstBlock}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="rounded-2xl bg-white p-6 shadow-lg">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Active Training Block
+                    </p>
 
-                return (
-                  <div
-                    key={shot.id}
-                    className="rounded-xl bg-slate-100 p-4"
-                  >
-                    {isEditing ? (
-                      <div className="space-y-3">
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={editingShot.releaseTime}
-                          onChange={(event) =>
-                            setEditingShot({
-                              ...editingShot,
-                              releaseTime:
-                                event.target.value,
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-                        />
+                    <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                      {activeBlock.name}
+                    </h2>
 
-                        <select
-                          value={editingShot.handle}
-                          onChange={(event) =>
-                            setEditingShot({
-                              ...editingShot,
-                              handle:
-                                event.target
-                                  .value as Handle,
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-                        >
-                          <option value="in">In</option>
-                          <option value="out">Out</option>
-                        </select>
+                    <p className="mt-1 text-sm text-slate-600">
+                      {blockModeLabel(activeBlock.mode)}
+                      {activeBlock.mode === "variable" &&
+                        activeBlock.variableTargetMode && (
+                          <> ({variableTargetModeLabel(
+                            activeBlock.variableTargetMode
+                          )})</>
+                        )}
+                      {activeBlock.mode === "blind" &&
+                        activeBlock.blindTargetMode && (
+                          <> ({blindTargetModeLabel(
+                            activeBlock.blindTargetMode
+                          )})</>
+                        )}{" "}
+                      · {measurementModeLabel(
+                        activeBlock.measurementMode
+                      )}
+                      {(activeBlock.mode === "fixed" ||
+                        (activeBlock.mode === "blind" &&
+                          activeBlock.blindTargetMode === "fixed")) && (
+                        <> · Target {activeBlock.targetTime.toFixed(2)}s</>
+                      )}
+                      {(activeBlock.variableTargetMode === "smart-random" ||
+                        activeBlock.blindTargetMode === "smart-random") &&
+                        activeBlock.smartRandomMin !== undefined &&
+                        activeBlock.smartRandomMax !== undefined && (
+                          <>
+                            {" "}
+                            · Range {activeBlock.smartRandomMin.toFixed(2)}s–
+                            {activeBlock.smartRandomMax.toFixed(2)}s
+                          </>
+                        )}
+                    </p>
 
-                        <select
-                          value={editingShot.shotType}
-                          onChange={(event) =>
-                            setEditingShot({
-                              ...editingShot,
-                              shotType:
-                                event.target
-                                  .value as ShotType,
-                            })
-                          }
-                          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-                        >
-                          <option value="draw">
-                            Draw
-                          </option>
-
-                          <option value="guard">
-                            Guard
-                          </option>
-
-                          <option value="takeout">
-                            Takeout
-                          </option>
-
-                          <option value="other">
-                            Other
-                          </option>
-                        </select>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={
-                              handleSaveEditedShot
-                            }
-                            className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white"
-                          >
-                            Save
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingShot(null)
-                            }
-                            className="flex-1 rounded-xl bg-slate-200 px-4 py-3 font-medium text-slate-700"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-slate-600">
-                            #{shot.shotNumber} ·{" "}
-                            {shot.handle === "in"
-                              ? "In"
-                              : "Out"}{" "}
-                            · {shot.shotType}
-                          </p>
-
-                          <p className="font-semibold text-slate-900">
-                            {shot.releaseTime.toFixed(
-                              2
-                            )}
-                            s
-                          </p>
-                        </div>
-
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleStartEditingShot(
-                                shot
-                              )
-                            }
-                            className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-                          >
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleDeleteShot(
-                                shot.id
-                              )
-                            }
-                            className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    <p className="mt-1 text-xs text-slate-500">
+                      {activeBlockShots.length} shot
+                      {activeBlockShots.length === 1 ? "" : "s"}{" "}
+                      total
+                    </p>
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          <TargetTimeSettings
-            targetTime={targetTime}
-            onChangeTargetTime={
-              handleChangeTargetTime
-            }
-          />
+                  <button
+                    type="button"
+                    onClick={handleOpenNewBlockModal}
+                    className="whitespace-nowrap rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+                  >
+                    New Training Block
+                  </button>
+                </div>
+              </div>
 
-          <SessionSettings
-            title={currentSession.title}
-            notes={currentSession.notes}
-            onChangeTitle={
-              handleChangeSessionTitle
-            }
-            onChangeNotes={
-              handleChangeSessionNotes
-            }
-          />
+              {shotEntryTarget && activeBlock.mode === "blind" ? (
+                <BlindShotEntry
+                  key={`${activeBlock.id}-${blindDraftResetToken}`}
+                  onAddShot={handleAddShot}
+                  target={shotEntryTarget}
+                  onDraftStateChange={setHasUnsavedBlindDraft}
+                />
+              ) : (
+                shotEntryTarget && (
+                  <ShotEntry
+                    onAddShot={handleAddShot}
+                    target={shotEntryTarget}
+                  />
+                )
+              )}
 
-          <button
-            type="button"
-            onClick={() =>
-              exportSessionToCsv(currentSession)
-            }
-            className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
-          >
-            Export Current Session CSV
-          </button>
+              {activeBlock.mode === "blind" ? (
+                <div className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">
+                  Auto Capture isn&apos;t available for Blind Weight yet —
+                  prediction must be locked before an automatic reading could be
+                  applied. Use the manual Blind Weight flow above.
+                </div>
+              ) : (
+                <>
+                  <AutoCapture
+                    activeBlock={activeBlock}
+                    captureSequence={currentSession.captureSequence}
+                    currentTargetTime={getNextShotTarget(activeBlock)}
+                    manualHandle={captureManualHandle}
+                    onChangeManualHandle={setCaptureManualHandle}
+                    manualTargetInput={captureManualTargetInput}
+                    onChangeManualTargetInput={setCaptureManualTargetInput}
+                    lastCaptureMessage={lastCaptureMessage}
+                    onStart={handleStartCaptureSequence}
+                    onPause={handlePauseCaptureSequence}
+                    onResume={handleResumeCaptureSequence}
+                    onCancel={handleCancelCaptureSequence}
+                    onUndo={handleUndoLastCapturedShot}
+                    onManualResult={handleManualCaptureResult}
+                  />
 
-          <button
-            type="button"
-            onClick={handleStartNewSession}
-            className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200"
-          >
-            Start New Session
-          </button>
+                  {IS_DEV && (
+                    <TimingSimulatorPanel
+                      provider={simulatorProvider}
+                      measurementMode={activeBlock.measurementMode}
+                      diagnostics={captureDiagnostics}
+                    />
+                  )}
+                </>
+              )}
+
+              <div className="rounded-2xl bg-white p-4 shadow-lg">
+                <p className="text-sm font-medium text-slate-700">
+                  Filter
+                </p>
+
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ["all", "Total"],
+                      ["in", "Inhandle"],
+                      ["out", "Outhandle"],
+                    ] as [HandleFilter, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setBlockFilter((filter) => ({
+                          ...filter,
+                          handle: value,
+                        }))
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-200 text-slate-700"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ["all", "Total"],
+                      ["draw", "Draw"],
+                      ["takeout", "Takeout"],
+                    ] as [ShotTypeFilter, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setBlockFilter((filter) => ({
+                          ...filter,
+                          shotType: value,
+                        }))
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-200 text-slate-700"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl bg-white p-6 shadow-lg">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Dashboard
+                  </h2>
+
+                  <p className="text-xs text-slate-500">
+                    {filteredActiveBlockShots.length} of{" "}
+                    {activeBlockShots.length} shots shown
+                  </p>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <DashboardCard
+                    label="Average"
+                    value={formatReleaseTime(
+                      activeBlockAnalysis.average
+                    )}
+                  />
+
+                  <DashboardCard
+                    label="Release SD"
+                    value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
+                      3
+                    )}
+                  />
+
+                  <DashboardCard
+                    label="Target Error SD"
+                    value={activeBlockAnalysis.targetErrorStandardDeviation.toFixed(
+                      3
+                    )}
+                  />
+
+                  <DashboardCard
+                    label="Avg Abs Dev"
+                    value={activeBlockAnalysis.averageAbsoluteDeviationFromTarget.toFixed(
+                      3
+                    )}
+                  />
+
+                  <DashboardCard
+                    label="Bias vs Target"
+                    value={`${activeBlockAnalysis.averageDeviationFromTarget >= 0 ? "+" : ""
+                      }${activeBlockAnalysis.averageDeviationFromTarget.toFixed(3)}s`}
+                  />
+
+                  {activeBlock.mode === "blind" && (
+                    <PredictionDashboardCards
+                      analysis={activeBlockAnalysis}
+                    />
+                  )}
+                </div>
+              </div>
+
+              <ReleaseTrendChart shots={filteredActiveBlockShots} />
+
+              <div className="rounded-2xl bg-white p-6 shadow-lg">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Current Shots
+                </h2>
+
+                <div className="mt-4 space-y-2">
+                  {filteredActiveBlockShots.map((shot) => {
+                    const isEditing =
+                      editingShot?.id === shot.id;
+
+                    return (
+                      <div
+                        key={shot.id}
+                        className="rounded-xl bg-slate-100 p-4"
+                      >
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editingShot.releaseTime}
+                              onChange={(event) =>
+                                setEditingShot({
+                                  ...editingShot,
+                                  releaseTime:
+                                    event.target.value,
+                                })
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+                            />
+
+                            <select
+                              value={editingShot.handle}
+                              onChange={(event) =>
+                                setEditingShot({
+                                  ...editingShot,
+                                  handle:
+                                    event.target
+                                      .value as Handle,
+                                })
+                              }
+                              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+                            >
+                              <option value="in">In</option>
+                              <option value="out">Out</option>
+                            </select>
+
+                            {activeBlock.mode !== "blind" && (
+                              <select
+                                value={editingShot.shotType}
+                                onChange={(event) =>
+                                  setEditingShot({
+                                    ...editingShot,
+                                    shotType:
+                                      event.target
+                                        .value as ShotType,
+                                  })
+                                }
+                                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+                              >
+                                <option value="draw">
+                                  Draw
+                                </option>
+
+                                <option value="takeout">
+                                  Takeout
+                                </option>
+                              </select>
+                            )}
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={
+                                  handleSaveEditedShot
+                                }
+                                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white"
+                              >
+                                Save
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingShot(null)
+                                }
+                                className="flex-1 rounded-xl bg-slate-200 px-4 py-3 font-medium text-slate-700"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : activeBlock.mode === "blind" &&
+                          shot.predictedTime !== undefined ? (
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="text-sm">
+                              <p className="font-medium text-slate-900">
+                                Shot {shot.shotNumber}
+                              </p>
+                              <p className="text-slate-600">
+                                Target {shot.targetTime.toFixed(2)} ·
+                                Prediction {shot.predictedTime.toFixed(2)} ·
+                                Actual {shot.releaseTime.toFixed(2)}
+                              </p>
+                              <p className="text-slate-600">
+                                Prediction Error{" "}
+                                {formatSigned(
+                                  shot.predictedTime - shot.releaseTime
+                                )}
+                              </p>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleStartEditingShot(shot)
+                                }
+                                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteShot(shot.id)
+                                }
+                                className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-slate-600">
+                                #{shot.shotNumber} ·{" "}
+                                {shot.handle === "in"
+                                  ? "In"
+                                  : "Out"}
+                                {shot.shotType && (
+                                  <> · {shot.shotType}</>
+                                )}
+                              </p>
+
+                              <p className="font-semibold text-slate-900">
+                                {shot.releaseTime.toFixed(
+                                  2
+                                )}
+                                s
+                              </p>
+
+                              <p className="text-xs text-slate-500">
+                                Target {shot.targetTime.toFixed(2)}s
+                              </p>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleStartEditingShot(
+                                    shot
+                                  )
+                                }
+                                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
+                              >
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDeleteShot(
+                                    shot.id
+                                  )
+                                }
+                                className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {(activeBlock.mode === "fixed" ||
+                (activeBlock.mode === "blind" &&
+                  activeBlock.blindTargetMode === "fixed")) && (
+                <TargetTimeSettings
+                  key={activeBlock.id}
+                  targetTime={activeBlock.targetTime}
+                  onChangeTargetTime={
+                    handleChangeActiveBlockTargetTime
+                  }
+                />
+              )}
+
+              <SessionSettings
+                title={currentSession.title}
+                notes={currentSession.notes}
+                onChangeTitle={
+                  handleChangeSessionTitle
+                }
+                onChangeNotes={
+                  handleChangeSessionNotes
+                }
+              />
+
+              <button
+                type="button"
+                onClick={() =>
+                  exportSessionToCsv(currentSession)
+                }
+                className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+              >
+                Export Current Session CSV
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartNewSession}
+                className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200"
+              >
+                Start New Session
+              </button>
+            </>
+          )}
         </>
       )}
 
@@ -600,14 +1584,73 @@ export default function TrackerApp() {
               )}
             </div>
 
+            {sessionHistory.length > 0 && (
+              <div className="mt-4 rounded-xl bg-slate-100 p-3">
+                <p className="text-sm font-medium text-slate-700">
+                  Filter
+                </p>
+
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ["all", "Total"],
+                      ["in", "Inhandle"],
+                      ["out", "Outhandle"],
+                    ] as [HandleFilter, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setHistoryHandleFilter(value)
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${historyHandleFilter === value
+                          ? "bg-slate-900 text-white"
+                          : "bg-white text-slate-700"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-2 grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ["all", "Total"],
+                      ["draw", "Draw"],
+                      ["takeout", "Takeout"],
+                    ] as [ShotTypeFilter, string][]
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setHistoryShotTypeFilter(value)
+                      }
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${historyShotTypeFilter === value
+                          ? "bg-slate-900 text-white"
+                          : "bg-white text-slate-700"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-4 space-y-3">
               {filteredSessionHistoryWithShots.map(
                 (session) => {
-                  const sessionAnalysis =
-                    analyzeShots(
-                      session.shots,
-                      session.targetTime
-                    );
+                  const sessionAnalysis = analyzeShots(session.shots);
+
+                  const blocksWithShots = session.blocks
+                    .map((block) => ({
+                      block,
+                      shots: getBlockShots(session, block.id),
+                    }))
+                    .filter(({ shots }) => shots.length > 0);
 
                   return (
                     <div
@@ -665,8 +1708,13 @@ export default function TrackerApp() {
                             />
 
                             <DashboardCard
-                              label="Consistency"
-                              value={sessionAnalysis.standardDeviation.toFixed(3)}
+                              label="Release SD"
+                              value={sessionAnalysis.releaseTimeStandardDeviation.toFixed(3)}
+                            />
+
+                            <DashboardCard
+                              label="Target Error SD"
+                              value={sessionAnalysis.targetErrorStandardDeviation.toFixed(3)}
                             />
 
                             <DashboardCard
@@ -679,36 +1727,30 @@ export default function TrackerApp() {
                               value={`${sessionAnalysis.averageDeviationFromTarget >= 0 ? "+" : ""
                                 }${sessionAnalysis.averageDeviationFromTarget.toFixed(3)}s`}
                             />
+
+                            {session.blocks.some(
+                              (block) => block.mode === "blind"
+                            ) && (
+                              <PredictionDashboardCards
+                                analysis={sessionAnalysis}
+                              />
+                            )}
                           </div>
 
-                          <ReleaseTrendChart
-                            shots={session.shots}
-                            targetTime={session.targetTime}
-                          />
-
-                          <div className="rounded-xl bg-white p-4">
+                          <div className="space-y-3">
                             <h3 className="font-semibold text-slate-900">
-                              Shots
+                              By Training Block
                             </h3>
 
-                            <div className="mt-3 space-y-2">
-                              {session.shots.map((shot) => (
-                                <div
-                                  key={shot.id}
-                                  className="flex items-center justify-between rounded-lg bg-slate-100 px-3 py-2"
-                                >
-                                  <span className="text-sm text-slate-600">
-                                    #{shot.shotNumber} ·{" "}
-                                    {shot.handle === "in" ? "In" : "Out"} ·{" "}
-                                    {shot.shotType}
-                                  </span>
-
-                                  <span className="text-sm font-semibold text-slate-900">
-                                    {shot.releaseTime.toFixed(2)}s
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
+                            {blocksWithShots.map(
+                              ({ block, shots }) => (
+                                <HistoryBlockPanel
+                                  key={block.id}
+                                  block={block}
+                                  shots={shots}
+                                />
+                              )
+                            )}
                           </div>
                         </div>
                       )}
@@ -719,6 +1761,15 @@ export default function TrackerApp() {
             </div>
           </div>
         </>
+      )}
+
+      {showNewBlockModal && activeBlock && (
+        <NewTrainingBlock
+          onCreate={handleCreateNewBlock}
+          onCancel={() => setShowNewBlockModal(false)}
+          outgoingBlock={activeBlock}
+          outgoingBlockShots={activeBlockShots}
+        />
       )}
 
       {confirmAction && (
@@ -739,46 +1790,187 @@ export default function TrackerApp() {
   );
 }
 
-type MetricRowProps = {
-  label: string;
-  value: string;
+
+type HistoryBlockPanelProps = {
+  block: TrainingBlock;
+  shots: Shot[];
 };
 
-function MetricRow({
-  label,
-  value,
-}: MetricRowProps) {
-  return (
-    <div className="flex items-center justify-between rounded-xl bg-slate-100 px-4 py-3">
-      <span className="text-slate-600">
-        {label}
-      </span>
+function HistoryBlockPanel({
+  block,
+  shots,
+}: HistoryBlockPanelProps) {
+  const analysis = analyzeShots(shots);
 
-      <span className="font-semibold text-slate-900">
-        {value}
-      </span>
+  return (
+    <div className="rounded-xl bg-white p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-slate-900">
+            {block.name}
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500">
+            {blockModeLabel(block.mode)}
+            {block.mode === "variable" && block.variableTargetMode && (
+              <> ({variableTargetModeLabel(block.variableTargetMode)})</>
+            )}
+            {block.mode === "blind" && block.blindTargetMode && (
+              <> ({blindTargetModeLabel(block.blindTargetMode)})</>
+            )}{" "}
+            · {measurementModeLabel(block.measurementMode)}
+            {(block.mode === "fixed" ||
+              (block.mode === "blind" && block.blindTargetMode === "fixed")) && (
+              <> · Target {block.targetTime.toFixed(2)}s</>
+            )}
+            {(block.variableTargetMode === "smart-random" ||
+              block.blindTargetMode === "smart-random") &&
+              block.smartRandomMin !== undefined &&
+              block.smartRandomMax !== undefined && (
+                <>
+                  {" "}
+                  · Range {block.smartRandomMin.toFixed(2)}s–
+                  {block.smartRandomMax.toFixed(2)}s
+                </>
+              )}
+          </p>
+        </div>
+
+        <p className="whitespace-nowrap text-xs text-slate-500">
+          {shots.length} shot{shots.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
+      {describeCaptureBreakdown(shots) && (
+        <p className="mt-1 text-xs text-slate-500">
+          Captured automatically: {describeCaptureBreakdown(shots)}
+        </p>
+      )}
+
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+        <DashboardCard
+          label="Average"
+          value={formatReleaseTime(analysis.average)}
+        />
+
+        <DashboardCard
+          label="Release SD"
+          value={analysis.releaseTimeStandardDeviation.toFixed(3)}
+        />
+
+        <DashboardCard
+          label="Target Error SD"
+          value={analysis.targetErrorStandardDeviation.toFixed(3)}
+        />
+
+        <DashboardCard
+          label="Avg Abs Dev"
+          value={analysis.averageAbsoluteDeviationFromTarget.toFixed(
+            3
+          )}
+        />
+
+        <DashboardCard
+          label="Bias vs Target"
+          value={`${analysis.averageDeviationFromTarget >= 0 ? "+" : ""
+            }${analysis.averageDeviationFromTarget.toFixed(3)}s`}
+        />
+
+        {block.mode === "blind" && (
+          <PredictionDashboardCards analysis={analysis} />
+        )}
+      </div>
+
+      <div className="mt-3">
+        <ReleaseTrendChart shots={shots} />
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {shots.map((shot) => (
+          <div
+            key={shot.id}
+            className="rounded-lg bg-slate-100 px-3 py-2"
+          >
+            {block.mode === "blind" && shot.predictedTime !== undefined ? (
+              <div className="text-sm text-slate-600">
+                <p className="font-medium text-slate-900">
+                  Shot {shot.shotNumber}
+                </p>
+                <p>
+                  Target {shot.targetTime.toFixed(2)} · Prediction{" "}
+                  {shot.predictedTime.toFixed(2)} · Actual{" "}
+                  {shot.releaseTime.toFixed(2)} · Prediction Error{" "}
+                  {formatSigned(shot.predictedTime - shot.releaseTime)}
+                </p>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600">
+                  #{shot.shotNumber} ·{" "}
+                  {shot.handle === "in" ? "In" : "Out"}
+                  {shot.shotType && <> · {shot.shotType}</>} · Target{" "}
+                  {shot.targetTime.toFixed(2)}s
+                </span>
+
+                <span className="text-sm font-semibold text-slate-900">
+                  {shot.releaseTime.toFixed(2)}s
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-type DashboardCardProps = {
-  label: string;
-  value: string;
+type PredictionDashboardCardsProps = {
+  analysis: ReturnType<typeof analyzeShots>;
 };
 
-function DashboardCard({
-  label,
-  value,
-}: DashboardCardProps) {
-  return (
-    <div className="rounded-xl bg-slate-100 p-4">
-      <p className="text-sm text-slate-500">
-        {label}
-      </p>
+function PredictionDashboardCards({
+  analysis,
+}: PredictionDashboardCardsProps) {
+  const hasEnoughData = analysis.prediction.count >= 2;
+  const notEnough = "Not enough shots";
 
-      <p className="mt-1 text-xl font-semibold text-slate-900">
-        {value}
-      </p>
-    </div>
+  return (
+    <>
+      <DashboardCard
+        label="Prediction Bias"
+        value={
+          hasEnoughData && analysis.prediction.meanError !== null
+            ? `${formatSigned(analysis.prediction.meanError)}s`
+            : notEnough
+        }
+      />
+
+      <DashboardCard
+        label="Avg Prediction Error"
+        value={
+          hasEnoughData && analysis.prediction.meanAbsoluteError !== null
+            ? `${analysis.prediction.meanAbsoluteError.toFixed(3)}s`
+            : notEnough
+        }
+      />
+
+      <DashboardCard
+        label="Prediction Consistency"
+        value={
+          hasEnoughData && analysis.prediction.errorStandardDeviation !== null
+            ? `${analysis.prediction.errorStandardDeviation.toFixed(3)} SD`
+            : notEnough
+        }
+      />
+
+      <DashboardCard
+        label="Prediction Correlation"
+        value={
+          hasEnoughData && analysis.prediction.correlation !== null
+            ? analysis.prediction.correlation.toFixed(2)
+            : notEnough
+        }
+      />
+    </>
   );
 }

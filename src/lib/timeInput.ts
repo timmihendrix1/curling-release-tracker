@@ -17,3 +17,7 @@ export function parseReleaseTime(input: string): number | null {
   export function formatReleaseTime(value: number): string {
     return `${value.toFixed(2)}s`;
   }
+
+  export function formatSigned(value: number, decimals = 3): string {
+    return `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}`;
+  }

@@ -33,7 +33,7 @@ export default function TargetTimeSettings({
       </h2>
 
       <p className="mt-2 text-sm text-slate-600">
-        Set the target release time for this session.
+        Set the target release time for the active training block.
       </p>
 
       <div className="mt-4 flex gap-2">
