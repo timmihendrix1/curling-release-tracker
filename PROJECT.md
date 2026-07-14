@@ -1,5 +1,11 @@
 # Curling Release Tracker MVP
 
+> **Note:** this document describes the original MVP scope. The app has since grown
+> Training Blocks, Fixed/Variable/Blind Weight modes, Smart Random targets, and Blind
+> Weight's prediction workflow — none of that is reflected below. For the current
+> implementation, see `docs/SYSTEM_ARCHITECTURE.md`'s "Current Implementation Snapshot"
+> and `docs/DOMAIN_GLOSSARY.md`. Kept here as a historical record of the initial scope.
+
 This is a mobile-first MVP web app for curling players to track and analyze release times during training.
 
 ## MVP Version 0.1
