@@ -74,6 +74,7 @@ import {
   representativeThresholds,
   resolveDefaultMeasurementMode,
   resolveDefaultTrainingCategory,
+  sanitizeHistoryFilters,
   type HistoryAnalysisFilters,
 } from "../lib/historyAnalysis";
 import {
@@ -471,10 +472,7 @@ export default function TrackerApp() {
 
     if (savedHistoryFilters) {
       try {
-        setHistoryFilters({
-          ...createDefaultHistoryFilters(),
-          ...JSON.parse(savedHistoryFilters),
-        });
+        setHistoryFilters(sanitizeHistoryFilters(JSON.parse(savedHistoryFilters)));
       } catch {
         // Corrupt/old-shape persisted filters are never fatal — fall back to
         // the defaults already set at initial state.

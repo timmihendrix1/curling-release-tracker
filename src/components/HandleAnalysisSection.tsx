@@ -54,6 +54,12 @@ export default function HandleAnalysisSection({
     <div className="space-y-4">
       <h2 className="text-xl font-semibold text-slate-900">{heading}</h2>
 
+      {availableHandles.length === 1 && (
+        <p className="text-sm text-slate-500">
+          Record shots with both handles to unlock a direct handle comparison.
+        </p>
+      )}
+
       <HandleBoxPlot
         boxPlots={boxPlots}
         explanation={handleBoxplotExplanation()}

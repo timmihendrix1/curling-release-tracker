@@ -235,6 +235,24 @@ validation was judged more than the "no big extra effort" bar for this pass.
 gated behind a "Custom…" option, the next time this becomes a real ask — no pipeline
 change is needed, only the picker UI.
 
+### Training Category help not surfaced in the Current Session header
+
+**What:** `helpContent.ts`'s Training Category explanations (Fixed/Variable/Blind
+Weight) are wired up at every Setup screen (first Setup, New Training Block) via
+`InfoButton`s on the Training Mode/Measurement Mode option buttons. The Current
+Session "Active Training Block" header (`TrackerApp.tsx`) — which also names the
+active category inline — does not get one, since its category name is concatenated
+into one dense paragraph alongside target/measurement-mode text rather than sitting
+next to a clear label; adding an `InfoButton` there would need restructuring that
+paragraph, not just adding a sibling icon.
+
+**Impact:** Low — a user already saw the explanation when choosing the category at
+Setup; this only affects re-discovering it later without reopening Setup.
+
+**Recommendation:** if requested, extract the category name into its own labeled
+span within that header (as a small, self-contained change) so an `InfoButton` can
+sit next to it the same way it does in `TrainingSetup.tsx`.
+
 ### `InfoButton` popover has no full keyboard focus trap
 
 **What:** `InfoButton.tsx` closes on Escape and returns focus to its trigger, but does

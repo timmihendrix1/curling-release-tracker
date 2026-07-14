@@ -1,0 +1,27 @@
+docs/
+
+Product Vision
+
+├── PRODUCT_DIRECTION_AND_PRINCIPLES.md
+
+Architecture
+
+├── SYSTEM_ARCHITECTURE.md
+
+├── DOMAIN_GLOSSARY.md
+
+├── adr/
+
+Product Experience
+
+├── UX_WRITING_GUIDELINES.md
+
+├── DESIGN_SYSTEM.md
+
+├── COACHING_PRINCIPLES.md
+
+Engineering
+
+├── TECHNICAL_DEBT_AND_ROADMAP.md
+
+├── EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md

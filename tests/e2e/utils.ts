@@ -17,7 +17,7 @@ export async function setupFixedBlock(page: Page) {
 
 /** Creates a Variable Weight / Smart Random block (the Setup form's Variable default). */
 export async function setupVariableSmartRandomBlock(page: Page) {
-  await page.getByRole("button", { name: "Variable Weight" }).click();
+  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
   await page.waitForSelector("text=Active Training Block");
 }

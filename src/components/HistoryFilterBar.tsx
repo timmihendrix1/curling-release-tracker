@@ -10,6 +10,7 @@ import {
 import {
   dateRangeLabel,
   type HistoryAnalysisFilters,
+  type ThresholdComparisonMode,
   type TrainingCategory,
 } from "../lib/historyAnalysis";
 import { blockModeLabel, measurementModeLabel } from "../lib/trainingBlocks";
@@ -34,6 +35,26 @@ const HANDLE_OPTIONS: { value: Handle | "both"; label: string }[] = [
 ];
 
 type ThresholdModeOption = "original" | "standard" | "tight" | "custom";
+
+/** Which named option a resolved `ThresholdComparisonMode` corresponds to. */
+function thresholdModeOptionFor(
+  mode: ThresholdComparisonMode
+): ThresholdModeOption {
+  if (mode.type === "original") return "original";
+  if (
+    mode.thresholds.onTarget === STANDARD_ACCURACY_THRESHOLDS.onTarget &&
+    mode.thresholds.acceptable === STANDARD_ACCURACY_THRESHOLDS.acceptable
+  ) {
+    return "standard";
+  }
+  if (
+    mode.thresholds.onTarget === TIGHT_ACCURACY_THRESHOLDS.onTarget &&
+    mode.thresholds.acceptable === TIGHT_ACCURACY_THRESHOLDS.acceptable
+  ) {
+    return "tight";
+  }
+  return "custom";
+}
 
 function selectClassName(): string {
   return "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500";
@@ -76,37 +97,78 @@ export default function HistoryFilterBar({
       : ""
   );
 
+  const appliedThresholdMode = thresholdModeOptionFor(
+    filters.thresholdComparisonMode
+  );
+  const appliedComparisonThresholds =
+    filters.thresholdComparisonMode.type === "comparison"
+      ? filters.thresholdComparisonMode.thresholds
+      : null;
+
+  // The dropdown's own selection, distinct from `appliedThresholdMode`: picking
+  // "Compare: Custom…" must reveal the input fields immediately, before Apply
+  // commits anything — Standard/Tight/Original need no such intermediate state,
+  // since they apply the moment they're chosen.
+  const [thresholdModeSelection, setThresholdModeSelection] =
+    useState<ThresholdModeOption>(appliedThresholdMode);
+
   const [customOnTarget, setCustomOnTarget] = useState(
-    STANDARD_ACCURACY_THRESHOLDS.onTarget.toString()
+    (appliedComparisonThresholds ?? STANDARD_ACCURACY_THRESHOLDS).onTarget.toString()
   );
   const [customAcceptable, setCustomAcceptable] = useState(
-    STANDARD_ACCURACY_THRESHOLDS.acceptable.toString()
+    (appliedComparisonThresholds ?? STANDARD_ACCURACY_THRESHOLDS).acceptable.toString()
   );
-  const [customThresholdError, setCustomThresholdError] = useState<
-    string | null
-  >(null);
+  // Becomes true the moment the coach edits a Custom field by hand — once
+  // dirty, switching between modes never silently overwrites what they typed.
+  const [customThresholdsDirty, setCustomThresholdsDirty] = useState(false);
 
-  const thresholdMode: ThresholdModeOption =
-    filters.thresholdComparisonMode.type === "original"
-      ? "original"
-      : filters.thresholdComparisonMode.thresholds.onTarget ===
-            STANDARD_ACCURACY_THRESHOLDS.onTarget &&
-          filters.thresholdComparisonMode.thresholds.acceptable ===
-            STANDARD_ACCURACY_THRESHOLDS.acceptable
-        ? "standard"
-        : filters.thresholdComparisonMode.thresholds.onTarget ===
-              TIGHT_ACCURACY_THRESHOLDS.onTarget &&
-            filters.thresholdComparisonMode.thresholds.acceptable ===
-              TIGHT_ACCURACY_THRESHOLDS.acceptable
-          ? "tight"
-          : "custom";
+  // Adjust local state during render when `filters` changes from *outside*
+  // this component (initial load from localStorage, or this same component's
+  // own Apply committing a value) — never while a Custom entry is only
+  // locally selected and not yet applied. Same "reset derived state on a prop
+  // change without an effect" pattern as ShotEntry.tsx's editable target input.
+  const [lastSeenThresholdMode, setLastSeenThresholdMode] =
+    useState(appliedThresholdMode);
+
+  if (appliedThresholdMode !== lastSeenThresholdMode) {
+    setLastSeenThresholdMode(appliedThresholdMode);
+    setThresholdModeSelection(appliedThresholdMode);
+    if (appliedComparisonThresholds) {
+      setCustomOnTarget(appliedComparisonThresholds.onTarget.toString());
+      setCustomAcceptable(appliedComparisonThresholds.acceptable.toString());
+      // A real custom value now exists (just applied, or restored on reload) —
+      // treat it as a deliberate choice so a later Standard/Tight→Custom
+      // switch never silently overwrites it (only an explicit Reset does).
+      setCustomThresholdsDirty(true);
+    }
+  }
+
+  const parsedCustomOnTarget = Number(customOnTarget);
+  const parsedCustomAcceptable = Number(customAcceptable);
+  const customThresholdsValidation = validateAccuracyThresholds(
+    parsedCustomOnTarget,
+    parsedCustomAcceptable
+  );
+
+  // Both fields share one validation call (the central, reused rule) — this
+  // only decides *which* field the resulting message is anchored to.
+  const onTargetFieldInvalid =
+    !Number.isFinite(parsedCustomOnTarget) || parsedCustomOnTarget <= 0;
+  const customOnTargetError =
+    !customThresholdsValidation.valid && onTargetFieldInvalid
+      ? customThresholdsValidation.error
+      : null;
+  const customAcceptableError =
+    !customThresholdsValidation.valid && !onTargetFieldInvalid
+      ? customThresholdsValidation.error
+      : null;
 
   const availableSessionsForBlockPicker = pendingSessionId
     ? sessions.filter((session) => session.id === pendingSessionId)
     : sessions;
 
   function handleThresholdModeChange(mode: ThresholdModeOption) {
-    setCustomThresholdError(null);
+    setThresholdModeSelection(mode);
 
     if (mode === "original") {
       onChange({ ...filters, thresholdComparisonMode: { type: "original" } });
@@ -122,26 +184,52 @@ export default function HistoryFilterBar({
       });
       return;
     }
-    // "custom" needs explicit values before it can apply — handled below.
+
+    // "custom": only reveal the fields here — applying happens explicitly via
+    // the Apply button below, once the entered values are valid. Switching in
+    // from Standard or Tight adopts that preset's numbers as a sensible
+    // starting point, but only while the coach hasn't started editing Custom
+    // yet — already-entered Custom values are never silently overwritten.
+    if (!customThresholdsDirty) {
+      if (thresholdModeSelection === "standard") {
+        setCustomOnTarget(STANDARD_ACCURACY_THRESHOLDS.onTarget.toString());
+        setCustomAcceptable(STANDARD_ACCURACY_THRESHOLDS.acceptable.toString());
+      } else if (thresholdModeSelection === "tight") {
+        setCustomOnTarget(TIGHT_ACCURACY_THRESHOLDS.onTarget.toString());
+        setCustomAcceptable(TIGHT_ACCURACY_THRESHOLDS.acceptable.toString());
+      }
+    }
+  }
+
+  function handleCustomOnTargetChange(value: string) {
+    setCustomThresholdsDirty(true);
+    setCustomOnTarget(value);
+  }
+
+  function handleCustomAcceptableChange(value: string) {
+    setCustomThresholdsDirty(true);
+    setCustomAcceptable(value);
   }
 
   function applyCustomThresholds() {
-    const result = validateAccuracyThresholds(
-      Number(customOnTarget),
-      Number(customAcceptable)
-    );
-    if (!result.valid) {
-      setCustomThresholdError(result.error);
-      return;
-    }
-    setCustomThresholdError(null);
+    if (!customThresholdsValidation.valid) return;
+
     onChange({
       ...filters,
       thresholdComparisonMode: {
         type: "comparison",
-        thresholds: { onTarget: result.onTarget, acceptable: result.acceptable },
+        thresholds: {
+          onTarget: customThresholdsValidation.onTarget,
+          acceptable: customThresholdsValidation.acceptable,
+        },
       },
     });
+  }
+
+  function resetCustomThresholds() {
+    setCustomOnTarget(STANDARD_ACCURACY_THRESHOLDS.onTarget.toString());
+    setCustomAcceptable(STANDARD_ACCURACY_THRESHOLDS.acceptable.toString());
+    setCustomThresholdsDirty(false);
   }
 
   function applyMoreFilters() {
@@ -276,7 +364,7 @@ export default function HistoryFilterBar({
           <select
             aria-label="Threshold Comparison Mode"
             className={selectClassName()}
-            value={thresholdMode}
+            value={thresholdModeSelection}
             onChange={(event) =>
               handleThresholdModeChange(event.target.value as ThresholdModeOption)
             }
@@ -301,38 +389,74 @@ export default function HistoryFilterBar({
           </button>
         </div>
 
-        {thresholdMode === "custom" && (
-          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-xl bg-slate-100 p-3">
-            <label className="text-xs text-slate-600">
-              On Target (±s)
-              <input
-                type="number"
-                step="0.01"
-                value={customOnTarget}
-                onChange={(event) => setCustomOnTarget(event.target.value)}
-                className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm"
-              />
-            </label>
-            <label className="text-xs text-slate-600">
-              Acceptable (±s)
-              <input
-                type="number"
-                step="0.01"
-                value={customAcceptable}
-                onChange={(event) => setCustomAcceptable(event.target.value)}
-                className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={applyCustomThresholds}
-              className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
-            >
-              Apply
-            </button>
-            {customThresholdError && (
-              <p className="w-full text-xs text-red-600">{customThresholdError}</p>
-            )}
+        {thresholdModeSelection === "custom" && (
+          <div className="mt-3 rounded-xl bg-slate-100 p-3">
+            <p className="text-xs font-medium text-slate-700">
+              Comparison thresholds
+            </p>
+
+            <div className="mt-2 flex flex-wrap items-start gap-2">
+              <label className="text-xs text-slate-600">
+                On Target (±s)
+                <input
+                  type="number"
+                  step="0.01"
+                  aria-label="Custom On Target threshold"
+                  aria-invalid={customOnTargetError !== null}
+                  value={customOnTarget}
+                  onChange={(event) =>
+                    handleCustomOnTargetChange(event.target.value)
+                  }
+                  className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                />
+                {customOnTargetError && (
+                  <span className="mt-1 block max-w-[10rem] text-xs font-normal text-red-600">
+                    {customOnTargetError}
+                  </span>
+                )}
+              </label>
+              <label className="text-xs text-slate-600">
+                Acceptable (±s)
+                <input
+                  type="number"
+                  step="0.01"
+                  aria-label="Custom Acceptable threshold"
+                  aria-invalid={customAcceptableError !== null}
+                  value={customAcceptable}
+                  onChange={(event) =>
+                    handleCustomAcceptableChange(event.target.value)
+                  }
+                  className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                />
+                {customAcceptableError && (
+                  <span className="mt-1 block max-w-[10rem] text-xs font-normal text-red-600">
+                    {customAcceptableError}
+                  </span>
+                )}
+              </label>
+              <div className="flex gap-2 pt-4">
+                <button
+                  type="button"
+                  onClick={applyCustomThresholds}
+                  disabled={!customThresholdsValidation.valid}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  Apply
+                </button>
+                <button
+                  type="button"
+                  onClick={resetCustomThresholds}
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                >
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Only used to compare the selected history. Saved training
+              blocks stay unchanged.
+            </p>
           </div>
         )}
 

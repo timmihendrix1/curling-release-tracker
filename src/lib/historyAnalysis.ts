@@ -25,7 +25,11 @@ import type {
   ShotType,
   TrainingBlock,
 } from "../types";
-import { categorizeTargetError, resolveAccuracyThresholds } from "./accuracyThresholds";
+import {
+  categorizeTargetError,
+  resolveAccuracyThresholds,
+  validateAccuracyThresholds,
+} from "./accuracyThresholds";
 import {
   average,
   standardDeviationOfValues,
@@ -88,6 +92,59 @@ export function createDefaultHistoryFilters(): HistoryAnalysisFilters {
     sessionIds: [],
     blockIds: [],
     thresholdComparisonMode: { type: "original" },
+  };
+}
+
+/**
+ * Repairs a possibly-corrupt persisted `ThresholdComparisonMode` (hand-edited
+ * localStorage, or a value written by an older/different app version) to a
+ * safe, always-valid state — the same "never invent a value, fall back to the
+ * documented safe default" discipline `sessionMigration.ts` uses elsewhere.
+ * Never repairs to a guessed custom number; falls back to Original, which
+ * needs no thresholds of its own (each block already carries a valid
+ * snapshot — see ADR-0008) and is always selectable.
+ */
+export function sanitizeThresholdComparisonMode(
+  mode: ThresholdComparisonMode | null | undefined
+): ThresholdComparisonMode {
+  if (!mode || mode.type !== "comparison") {
+    return { type: "original" };
+  }
+
+  const validation = validateAccuracyThresholds(
+    mode.thresholds?.onTarget ?? NaN,
+    mode.thresholds?.acceptable ?? NaN
+  );
+
+  if (!validation.valid) {
+    return { type: "original" };
+  }
+
+  return {
+    type: "comparison",
+    thresholds: {
+      onTarget: validation.onTarget,
+      acceptable: validation.acceptable,
+    },
+  };
+}
+
+/**
+ * Repairs a `HistoryAnalysisFilters` object read from an untrusted source
+ * (localStorage) — merges onto the safe default shape and repairs the one
+ * field (`thresholdComparisonMode`) that can carry a corrupt numeric value.
+ * Does not otherwise re-validate every field, since the rest is a closed set
+ * of string/array unions that render harmlessly even if stale.
+ */
+export function sanitizeHistoryFilters(
+  raw: Partial<HistoryAnalysisFilters> | null | undefined
+): HistoryAnalysisFilters {
+  return {
+    ...createDefaultHistoryFilters(),
+    ...raw,
+    thresholdComparisonMode: sanitizeThresholdComparisonMode(
+      raw?.thresholdComparisonMode
+    ),
   };
 }
 
