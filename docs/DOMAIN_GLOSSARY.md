@@ -619,6 +619,59 @@ be read alone.
 `src/lib/analytics.ts`'s deviation-from-target family). Applies to every shot in every
 training mode, not just Blind Weight.
 
+## Bias
+
+The signed mean of Target Error (`meanTargetError` /
+`averageDeviationFromTarget`) — a systematic tendency to run long or short, fast or
+slow. Always kept distinct from **Average (Absolute) Error** (magnitude only,
+`meanAbsoluteTargetError`) — a player can have a large average error with zero bias
+(equally-sized misses in both directions) or a small average error with a large bias
+(consistently, slightly off in one direction). Never conflate the two in code, UI, or
+documentation.
+
+## Accuracy Thresholds
+
+*[Implemented, see ADR-0008]* `{ onTarget: number; acceptable: number }`
+(`src/lib/accuracyThresholds.ts`, `TrainingBlock.accuracyThresholds`) — a personal,
+editable Target Accuracy tolerance, snapshotted once per Training Block at creation and
+never re-derived from the app's current default afterward. Two presets exist,
+**Standard** (0.10s / 0.20s) and **Tight** (0.05s / 0.10s), plus **Custom**; these are
+recommendations, not validated sporting standards (same posture as Smart Random's
+ranges — see "No fabricated precision" in `PRODUCT_DIRECTION_AND_PRINCIPLES.md`).
+Unrelated to Blind Weight's Prediction Accuracy, which has no threshold concept.
+
+## On Target / Acceptable / Major Miss
+
+The three mutually exclusive Target Accuracy categories a shot's absolute Target Error
+falls into, judged against a block's Accuracy Thresholds
+(`categorizeTargetError` in `src/lib/accuracyThresholds.ts`):
+
+- **On Target** — `absoluteTargetError <= onTarget`
+- **Acceptable** — `onTarget < absoluteTargetError <= acceptable`
+- **Major Miss** — `absoluteTargetError > acceptable`
+
+**Major Miss is a fachlicher/coaching concept, not a statistical one** — see
+"Statistical Outlier" below. The two must never be labeled, colored, or exported as one
+another.
+
+## Statistical Outlier
+
+A value falling outside a dataset's boxplot whiskers (below `Q1 - 1.5*IQR` or above
+`Q3 + 1.5*IQR`, `src/lib/boxPlotStatistics.ts`). A property of *this specific sample's*
+spread — the same shot could be a statistical outlier in one dataset and not in
+another, depending on what else is in the sample. Deliberately distinct from **Major
+Miss** (a fixed personal tolerance judgement, independent of any other shot in the
+dataset). Never exported, colored, or narrated as a Major Miss, and vice versa.
+
+## Target Accuracy
+
+The general lens of "how close did this shot land to its own recorded `targetTime`" —
+Bias, Average (Absolute) Error, Target Error Standard Deviation, On Target/Acceptable/
+Major Miss rates, Largest Miss (`TargetAccuracyAnalytics` in `src/lib/analytics.ts`).
+Applies to every training mode, including Blind Weight, where it is a second,
+independent lens alongside — never merged with — Prediction Accuracy (see "Prediction
+Error" above).
+
 ## Measurement Mode
 
 *Refines: Measurement Type (above), narrowed to this MVP's one measurement.* What the
@@ -764,3 +817,39 @@ flows (ShotEntry/BlindShotEntry, outside any Capture Sequence); `"manual"` for a
 fallback reading supplied *within* an active Capture Sequence; `"simulator"` for the
 development-only Timing Simulator; `"external"` reserved for real hardware, not yet
 implemented. Never fabricated by migration. **[Implemented]**
+
+## Training Category
+
+*UI-facing name for `BlockMode` (above) — not a new or competing concept.* The History
+filter UI and `src/lib/historyAnalysis.ts` say "Training Category" where the code type
+is `BlockMode`; `TrainingCategory` is a plain type alias, not a rename of the domain
+model. Always one of Fixed Weight / Variable Weight / Blind Weight. Progress and Shot
+Quality are always computed per comparable Training Block *within* one selected
+Training Category — different categories are never merged into one figure.
+**[Implemented]**
+
+## History Analysis Filters
+
+The central, shared filter selection for the History view (`HistoryAnalysisFilters` in
+`src/lib/historyAnalysis.ts`): Training Category, Measurement Mode, Date Range, Handle,
+Shot Type, Session, Block, Target Range, and Threshold Comparison Mode. Every History
+analytics surface — Key Progress Summary, Progress, Shot Quality, the Scatterplot,
+Handle Analysis, and the Blocks/Sessions list — reads from the one
+`HistoryAnalysisContext` this selection produces; no surface filters independently. See
+`SYSTEM_ARCHITECTURE.md`'s "History Analytics and Filtering". **[Implemented]**
+
+## Threshold Comparison Mode
+
+*New concept, distinct from Accuracy Thresholds (above), which it never mutates.* How
+History analytics classify On Target/Acceptable/Major Miss for the current selection:
+
+- **Original** — each Training Block is judged against its own persisted Accuracy
+  Thresholds snapshot (ADR-0008): "how well did I perform against the standard used in
+  that training?"
+- **Comparison** — every selected shot is temporarily re-classified with one shared
+  Accuracy Thresholds value (a Standard/Tight preset, or Custom): "how do all selected
+  trainings compare under one consistent standard?"
+
+Switching modes never rewrites a `TrainingBlock`'s or `Shot`'s persisted values — only
+which thresholds *this render's* History analytics use to categorize them.
+**[Implemented]**

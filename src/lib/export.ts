@@ -1,4 +1,5 @@
 import type { Session, Shot } from "../types";
+import { categorizeTargetError, resolveAccuracyThresholds } from "./accuracyThresholds";
 
 const CSV_HEADER = [
   "session_name",
@@ -18,6 +19,10 @@ const CSV_HEADER = [
   "absolute_prediction_error",
   "target_error",
   "absolute_target_error",
+  "accuracy_on_target_threshold",
+  "accuracy_acceptable_threshold",
+  "target_error_category",
+  "is_major_miss",
   "handle",
   "shot_type",
   "measurement_source",
@@ -58,6 +63,17 @@ function convertShotsToCsvRows(
       Math.abs(shot.releaseTime - shot.targetTime)
     );
 
+    // Uses the shot's own block's threshold snapshot — never the app's
+    // current default — so a historical shot's category never drifts when
+    // defaults change later. A statistical boxplot outlier (1.5x IQR) is a
+    // separate concept and is never exported here (see
+    // src/lib/boxPlotStatistics.ts) — this is only the fachlicher category.
+    const thresholds = resolveAccuracyThresholds(block?.accuracyThresholds);
+    const targetErrorCategory = categorizeTargetError(
+      Math.abs(shot.releaseTime - shot.targetTime),
+      thresholds
+    );
+
     return [
       session.title,
       new Date(session.date).toLocaleDateString(),
@@ -76,6 +92,10 @@ function convertShotsToCsvRows(
       absolutePredictionError,
       targetError,
       absoluteTargetError,
+      thresholds.onTarget,
+      thresholds.acceptable,
+      targetErrorCategory,
+      targetErrorCategory === "major_miss",
       shot.handle,
       shot.shotType ?? "",
       shot.measurementSource ?? "",

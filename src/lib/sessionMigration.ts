@@ -1,4 +1,5 @@
 import type {
+  AccuracyThresholds,
   BlindTargetMode,
   BlockMode,
   CaptureHandleMode,
@@ -13,6 +14,7 @@ import type {
   TrainingBlock,
   VariableTargetMode,
 } from "../types";
+import { resolveAccuracyThresholds } from "./accuracyThresholds";
 import { sanitizeCaptureSequence } from "./captureSequence";
 import { getEffectiveTargetMode } from "./trainingBlocks";
 import {
@@ -94,6 +96,28 @@ function normalizeBlindTargetMode(
     : undefined;
 }
 
+/**
+ * Parses a possibly-absent, possibly-malformed raw `accuracyThresholds`
+ * value into a well-typed candidate (or undefined) for
+ * `resolveAccuracyThresholds` to validate/repair. Never itself decides
+ * validity — that's `resolveAccuracyThresholds`'s job, so the same
+ * validation rule is applied uniformly whether the value came from
+ * migration or from a freshly created block.
+ */
+function parseRawAccuracyThresholds(
+  value: unknown
+): AccuracyThresholds | undefined {
+  if (!isRecord(value)) return undefined;
+  if (
+    typeof value.onTarget !== "number" ||
+    typeof value.acceptable !== "number"
+  ) {
+    return undefined;
+  }
+
+  return { onTarget: value.onTarget, acceptable: value.acceptable };
+}
+
 function createLegacyBlock(raw: Record<string, unknown>): TrainingBlock {
   return {
     id: crypto.randomUUID(),
@@ -103,6 +127,9 @@ function createLegacyBlock(raw: Record<string, unknown>): TrainingBlock {
     targetTime:
       typeof raw.targetTime === "number" ? raw.targetTime : DEFAULT_TARGET_TIME,
     createdAt: typeof raw.date === "string" ? raw.date : new Date().toISOString(),
+    // No accuracyThresholds could ever have existed on genuinely legacy,
+    // pre-block data — resolves to the legacy default (0.10s / 0.20s).
+    accuracyThresholds: resolveAccuracyThresholds(undefined),
   };
 }
 
@@ -168,6 +195,12 @@ function migrateBlocks(raw: Record<string, unknown>): TrainingBlock[] {
           typeof rawBlock.smartRandomMax === "number"
             ? rawBlock.smartRandomMax
             : undefined,
+        // Absent or invalid (NaN/Infinity/<=0/acceptable<=onTarget) always
+        // repairs to the legacy default (0.10s / 0.20s) — never derived from
+        // whichever preset happens to be selected in the app today.
+        accuracyThresholds: resolveAccuracyThresholds(
+          parseRawAccuracyThresholds(rawBlock.accuracyThresholds)
+        ),
       };
     });
   }

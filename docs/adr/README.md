@@ -17,3 +17,4 @@ decisions live in, and `docs/DOMAIN_GLOSSARY.md` for term definitions.
 | [0005](0005-legacy-migration-idempotent-and-value-preserving.md) | Migration never overwrites an existing shot value and must be safe to run repeatedly |
 | [0006](0006-capture-sequences-share-the-timing-result-boundary.md) | Simulator, manual fallback, and future real hardware all deliver Capture Sequence shots through one normalized `TimingResult` boundary; no parallel shot-save path |
 | [0007](0007-capture-result-processing-is-serialized-and-atomic.md) | Capture Sequence results are processed one at a time via a Promise queue and one pure atomic transition; a persisted sequence is reconciled against real shots on every load |
+| [0008](0008-accuracy-thresholds-are-snapshotted-per-training-block.md) | Accuracy Thresholds (On Target / Acceptable / Major Miss) are snapshotted per Training Block at creation, never re-derived from the app's current default |

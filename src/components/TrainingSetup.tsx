@@ -1,6 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import {
+  ACCURACY_THRESHOLD_PRESETS,
+  STANDARD_ACCURACY_THRESHOLDS,
+  TIGHT_ACCURACY_THRESHOLDS,
+  validateAccuracyThresholds,
+  type AccuracyThresholdPreset,
+} from "../lib/accuracyThresholds";
 import { parseReleaseTime } from "../lib/timeInput";
 import {
   blindTargetModeLabel,
@@ -15,6 +22,7 @@ import {
   validateSmartRandomRange,
 } from "../lib/variableTargets";
 import type {
+  AccuracyThresholds,
   BlindTargetMode,
   BlockMode,
   MeasurementMode,
@@ -33,7 +41,43 @@ export type TrainingSetupValue = {
   // Only used when variableTargetMode/blindTargetMode === "smart-random".
   smartRandomMin: number;
   smartRandomMax: number;
+  // Personal Target Accuracy tolerance — applies to Fixed, Variable, and
+  // Blind Weight alike; unrelated to Blind Weight's Prediction Accuracy.
+  accuracyThresholds: AccuracyThresholds;
 };
+
+const ACCURACY_THRESHOLD_PRESET_OPTIONS: Exclude<
+  AccuracyThresholdPreset,
+  "custom"
+>[] = ["standard", "tight"];
+
+const ACCURACY_THRESHOLD_PRESET_LABELS: Record<AccuracyThresholdPreset, string> = {
+  standard: "Standard",
+  tight: "Tight",
+  custom: "Custom",
+};
+
+function detectAccuracyThresholdPreset(
+  thresholds: AccuracyThresholds | undefined
+): AccuracyThresholdPreset {
+  if (!thresholds) return "standard";
+
+  if (
+    thresholds.onTarget === STANDARD_ACCURACY_THRESHOLDS.onTarget &&
+    thresholds.acceptable === STANDARD_ACCURACY_THRESHOLDS.acceptable
+  ) {
+    return "standard";
+  }
+
+  if (
+    thresholds.onTarget === TIGHT_ACCURACY_THRESHOLDS.onTarget &&
+    thresholds.acceptable === TIGHT_ACCURACY_THRESHOLDS.acceptable
+  ) {
+    return "tight";
+  }
+
+  return "custom";
+}
 
 type TrainingSetupProps = {
   initialValue?: Partial<TrainingSetupValue>;
@@ -89,6 +133,41 @@ export default function TrainingSetup({
     (initialValue?.smartRandomMax ?? DEFAULT_SMART_RANDOM_MAX).toFixed(2)
   );
 
+  const [accuracyThresholdPreset, setAccuracyThresholdPreset] =
+    useState<AccuracyThresholdPreset>(
+      detectAccuracyThresholdPreset(initialValue?.accuracyThresholds)
+    );
+  const [customOnTargetInput, setCustomOnTargetInput] = useState(
+    (
+      initialValue?.accuracyThresholds?.onTarget ??
+      STANDARD_ACCURACY_THRESHOLDS.onTarget
+    ).toFixed(2)
+  );
+  const [customAcceptableInput, setCustomAcceptableInput] = useState(
+    (
+      initialValue?.accuracyThresholds?.acceptable ??
+      STANDARD_ACCURACY_THRESHOLDS.acceptable
+    ).toFixed(2)
+  );
+
+  const customAccuracyThresholdsValidation =
+    accuracyThresholdPreset === "custom"
+      ? validateAccuracyThresholds(
+          parseReleaseTime(customOnTargetInput) ?? NaN,
+          parseReleaseTime(customAcceptableInput) ?? NaN
+        )
+      : null;
+
+  const resolvedAccuracyThresholds: AccuracyThresholds | null =
+    accuracyThresholdPreset === "custom"
+      ? customAccuracyThresholdsValidation?.valid === true
+        ? {
+            onTarget: customAccuracyThresholdsValidation.onTarget,
+            acceptable: customAccuracyThresholdsValidation.acceptable,
+          }
+        : null
+      : ACCURACY_THRESHOLD_PRESETS[accuracyThresholdPreset];
+
   const smartRandomAvailable = isSmartRandomAvailable(measurementMode);
 
   const effectiveTargetMode =
@@ -137,6 +216,11 @@ export default function TrainingSetup({
       return;
     }
 
+    if (resolvedAccuracyThresholds === null) {
+      // The inline error under the Custom accuracy fields already explains why.
+      return;
+    }
+
     const parsedTargetTime = parseReleaseTime(targetTimeInput);
 
     if (
@@ -169,6 +253,7 @@ export default function TrainingSetup({
         smartRandomRangeValidation?.valid === true
           ? smartRandomRangeValidation.max
           : DEFAULT_SMART_RANDOM_MAX,
+      accuracyThresholds: resolvedAccuracyThresholds,
     });
   }
 
@@ -232,6 +317,95 @@ export default function TrainingSetup({
             </button>
           ))}
         </div>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-slate-700">
+          Accuracy Tolerance
+        </label>
+
+        <p className="mt-1 text-xs text-slate-500">
+          How close counts as on target. Applies to this block&apos;s Target
+          Accuracy, not Prediction Accuracy — a recommendation you can tune,
+          not a fixed sporting standard.
+        </p>
+
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          {[...ACCURACY_THRESHOLD_PRESET_OPTIONS, "custom" as const].map(
+            (preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setAccuracyThresholdPreset(preset)}
+                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
+                  accuracyThresholdPreset === preset
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {ACCURACY_THRESHOLD_PRESET_LABELS[preset]}
+              </button>
+            )
+          )}
+        </div>
+
+        {accuracyThresholdPreset !== "custom" ? (
+          <p className="mt-2 text-xs text-slate-500">
+            On target ±
+            {ACCURACY_THRESHOLD_PRESETS[accuracyThresholdPreset].onTarget.toFixed(
+              2
+            )}
+            s · Acceptable ±
+            {ACCURACY_THRESHOLD_PRESETS[
+              accuracyThresholdPreset
+            ].acceptable.toFixed(2)}
+            s
+          </p>
+        ) : (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-slate-500">On Target (±s)</label>
+
+              <input
+                type="text"
+                inputMode="decimal"
+                value={customOnTargetInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (/^[0-9.,]*$/.test(value)) {
+                    setCustomOnTargetInput(value);
+                  }
+                }}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-slate-500">
+                Acceptable (±s)
+              </label>
+
+              <input
+                type="text"
+                inputMode="decimal"
+                value={customAcceptableInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (/^[0-9.,]*$/.test(value)) {
+                    setCustomAcceptableInput(value);
+                  }
+                }}
+                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+              />
+            </div>
+
+            {customAccuracyThresholdsValidation?.valid === false && (
+              <p className="col-span-2 text-xs text-red-600">
+                {customAccuracyThresholdsValidation.error}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {mode === "variable" && (

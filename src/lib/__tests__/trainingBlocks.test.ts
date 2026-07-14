@@ -7,6 +7,7 @@ import {
   isSmartRandomAvailable,
   updateSmartRandomRange,
 } from "../trainingBlocks";
+import { STANDARD_ACCURACY_THRESHOLDS, TIGHT_ACCURACY_THRESHOLDS } from "../accuracyThresholds";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
 import type { TrainingBlock } from "../../types";
 
@@ -403,5 +404,51 @@ describe("shot target immutability", () => {
     expect(shot1Target).toBe(3.75);
     expect(shot2Target).toBe(4.2);
     expect(shot1Target).not.toBe(shot2Target);
+  });
+});
+
+describe("createTrainingBlock — Accuracy Thresholds snapshot", () => {
+  it("defaults to the legacy/standard thresholds when none are given", () => {
+    const block = createTrainingBlock({
+      name: "Fixed",
+      mode: "fixed",
+      measurementMode: "back-hog",
+      targetTime: 3.75,
+    });
+    expect(block.accuracyThresholds).toEqual(STANDARD_ACCURACY_THRESHOLDS);
+  });
+
+  it("snapshots whichever thresholds were passed at creation", () => {
+    const block = createTrainingBlock({
+      name: "Fixed",
+      mode: "fixed",
+      measurementMode: "back-hog",
+      targetTime: 3.75,
+      accuracyThresholds: TIGHT_ACCURACY_THRESHOLDS,
+    });
+    expect(block.accuracyThresholds).toEqual(TIGHT_ACCURACY_THRESHOLDS);
+  });
+
+  it("a later change to the block's targetTime never touches its threshold snapshot", () => {
+    const block = createTrainingBlock({
+      name: "Fixed",
+      mode: "fixed",
+      measurementMode: "back-hog",
+      targetTime: 3.75,
+      accuracyThresholds: TIGHT_ACCURACY_THRESHOLDS,
+    });
+    const changed: TrainingBlock = { ...block, targetTime: 4.0 };
+    expect(changed.accuracyThresholds).toEqual(TIGHT_ACCURACY_THRESHOLDS);
+  });
+
+  it("repairs an invalid custom threshold pair to the legacy default rather than rejecting block creation", () => {
+    const block = createTrainingBlock({
+      name: "Fixed",
+      mode: "fixed",
+      measurementMode: "back-hog",
+      targetTime: 3.75,
+      accuracyThresholds: { onTarget: -1, acceptable: -1 },
+    });
+    expect(block.accuracyThresholds).toEqual(STANDARD_ACCURACY_THRESHOLDS);
   });
 });

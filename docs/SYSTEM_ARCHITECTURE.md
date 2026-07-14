@@ -491,6 +491,7 @@ configuration. Ending one block and starting the next never mutates the old bloc
 | `smartRandomMin?`, `smartRandomMax?: number` | The configured Smart Random range, only set when the resolved target source is `"smart-random"` |
 | `pendingTargetTime?: number` | The target to show/use for the *next* shot when the resolved target source is `"smart-random"` or `"manual"` — see "Target model" |
 | `completedAt?: string` | Set once a newer block takes over; `undefined` means this is the active block |
+| `accuracyThresholds?: { onTarget, acceptable }` | **Target Accuracy** tolerance, snapshotted once at block creation from whichever preset/custom pair was selected — never re-derived from the app's current default afterward. See ADR-0008 and `src/lib/accuracyThresholds.ts`. |
 
 **Do not conflate four different concepts that all live near each other on this type:**
 
@@ -845,6 +846,200 @@ whichever shots in the input happen to have a `predictedTime`:
   no renaming was needed as part of this review, but the naming will bear repeating if
   more prediction cards are ever added.
 
+### Target Accuracy (Implemented, ADR-0008)
+
+A second target-related lens, added alongside the plain target-deviation metrics above
+— judges each shot against a resolved `AccuracyThresholds` snapshot rather than just
+computing a raw error. `analyzeShots(shots, thresholds?)` takes an optional threshold
+parameter (defaulting to the legacy/Standard preset for backward compatibility with
+every pre-existing call site) and exposes:
+
+- **`targetAccuracy: TargetAccuracyAnalytics`** (`computeTargetAccuracyAnalytics`) —
+  `meanTargetError` (bias) and `meanAbsoluteTargetError` (magnitude) kept as always-
+  distinct fields; `onTargetCount`/`acceptableCount`/`majorMissCount` (mutually
+  exclusive, see `categorizeTargetError` in `src/lib/accuracyThresholds.ts`) plus their
+  rates; `largestAbsoluteMiss`, `averageMajorMiss`,
+  `positiveMajorMissCount`/`negativeMajorMissCount` (split by signed direction). All
+  rate/mean fields are `null` — never `0`/`NaN`/`Infinity` — for zero shots.
+- **`handleAccuracy: HandleAccuracyComparison`** (`computeHandleAccuracyComparison`) —
+  the same `TargetAccuracyAnalytics` shape computed independently for `in`/`out`
+  handle groups. Filtering always happens before this grouping.
+- **`targetErrorBoxPlot` / `handleTargetErrorBoxPlots`** (`src/lib/boxPlotStatistics.ts`)
+  — boxplot statistics (median-of-halves quantiles, 1.5×IQR whiskers/outliers) computed
+  over **Target Error, never raw Release Time**. A boxplot's statistical outlier is a
+  different concept from a Major Miss (see the Domain Glossary) and the two are never
+  cross-labeled.
+- **`interpretTargetErrorDirection(targetError, measurementMode)`** — the one place
+  Target Error's sign is turned into language. Returns a mathematical `sign`
+  (`"faster" | "slower" | "on-target"`) and a neutral `relativeToTargetLabel` always;
+  only for `measurementMode === "back-hog"` does it also return a `curlingTendency`
+  (`"more-weight-long" | "less-weight-short"`) — Hog-Hog has no documented, validated
+  curling-outcome mapping for its sign, so it deliberately stays neutral-only (same
+  "no fabricated precision" posture as Hog-Hog Smart Random, ADR-0004).
+
+### Chart data preparation (Implemented) — `src/lib/chartData.ts`
+
+Pure functions that shape already-filtered `Shot[]`/block data into chart-ready arrays
+— no analytics computation happens inside any chart component (`src/components/*Chart.tsx`);
+they only receive prepared data and render it. Covers: `prepareTargetErrorByShotData`,
+`prepareTargetVsActualScatterData` (+ `hasMultipleTargetTimes`),
+`prepareProgressMetricData` (+ rolling average, `groupProgressEntriesByMeasurementMode`),
+`prepareShotQualityDistributionData`, and `hasUniformThresholds` (gates whether
+on-target/acceptable reference bands or a "Thresholds vary" notice should show for a
+multi-block selection). Chart color/label tokens live in `src/lib/chartTheme.ts` — no
+chart hard-codes a handle/category color or re-derives sign-formatted text locally.
+
+## History Analytics and Filtering (Implemented) — `src/lib/historyAnalysis.ts`
+
+Everything in the History view — Key Progress Summary, Progress Metric Chart, Shot
+Quality Over Time, the Target vs. Actual Scatterplot, Handle Analysis, and the
+Blocks/Sessions list — reads from **one** `HistoryAnalysisContext`, built by
+`buildHistoryAnalysisContext(sessionHistory, filters)`. No History chart or card is
+allowed to independently re-filter `sessionHistory`; `TrackerApp.tsx`'s History branch
+builds the context once per render and passes its fields down.
+
+```text
+All historical sessions
+  → extract blocks and shots
+  → HistoryAnalysisFilters (Training Category, Measurement Mode, Date Range, Handle,
+    Shot Type, Session, Block, Target Range, Threshold Comparison Mode)
+  → filtered comparable blocks (HistoryAnalysisBlockContext[])
+  → filtered shots (flat, shot-level, across every comparable block/session)
+  → progressEntries / scatter points / handle analytics / session-block list
+```
+
+### Training Category vs. Training Block vs. Session
+
+*Training Category* is the UI-facing name for the existing `BlockMode` type (Fixed /
+Variable / Blind Weight) — **not** a new domain concept or a renamed type; see
+`TrainingCategory` in `historyAnalysis.ts`, a plain alias. A *Training Block* is one
+concrete block within a *Session* (a Session may contain several different Blocks).
+Progress is always computed **per comparable Training Block**, one point per block —
+different Blocks within one Session are never automatically merged into a single
+figure, and a Session-level rollup (in the Blocks/Sessions list) never mixes Measurement
+Modes or Training Categories without an explicit "varies" notice.
+
+### `HistoryAnalysisFilters`
+
+```ts
+type HistoryAnalysisFilters = {
+  trainingCategory: TrainingCategory | null; // BlockMode | null
+  measurementMode: MeasurementMode | null;
+  dateRange: DateRangeFilter; // all | 30d | 90d | 6m | custom
+  handles: Handle[];   // empty = Both
+  shotTypes: ShotType[]; // empty = All
+  sessionIds: string[];  // empty = All
+  blockIds: string[];    // empty = All
+  targetRange?: { min?: number; max?: number };
+  thresholdComparisonMode: ThresholdComparisonMode;
+};
+```
+
+**Defaults** (`resolveDefaultTrainingCategory`/`resolveDefaultMeasurementMode`): a single
+available Training Category or Measurement Mode is auto-selected; with multiple
+available, the previously-chosen value (persisted in `localStorage` under
+`curling-release-tracker-history-filters`, the same simple per-key pattern already used
+for the current session/history, not a new settings architecture) wins, else the first
+available one — the app never leaves both unset, which would silently let incompatible
+categories/modes mix in Progress or the Scatterplot. This resolution is a **plain
+render-time derivation** in `TrackerApp.tsx` (`effectiveHistoryFilters`), not a
+`useEffect` writing state back — deriving it during render avoids the
+`react-hooks/set-state-in-effect` lint violation a naive "sync defaults via effect"
+implementation would trip, and avoids an extra render pass.
+
+### Threshold Comparison Mode
+
+```ts
+type ThresholdComparisonMode =
+  | { type: "original" }
+  | { type: "comparison"; thresholds: AccuracyThresholds };
+```
+
+- **Original** (default): each block is judged against its own persisted
+  `accuracyThresholds` snapshot (ADR-0008) — "how well did I perform against the
+  standard used in that training?"
+- **Comparison**: every selected shot is temporarily re-classified with one shared
+  `AccuracyThresholds` (Standard/Tight preset, or Custom) — "how do all selected
+  trainings compare under one consistent standard?" This **never** mutates a
+  `TrainingBlock` or `Shot` — `HistoryAnalysisBlockContext.thresholds` simply holds the
+  override for that render's analytics instead of the block's own snapshot. Scatterplot
+  coordinates (`targetTime`/`actualTime`) are unaffected either way; only
+  On Target/Acceptable/Major Miss classification changes.
+- `aggregateTargetAccuracyAcrossBlocks` (used for the Key Progress Summary rollup)
+  categorizes **each shot against its own block's effective threshold** before
+  counting — correct even when Original-mode blocks carry different snapshots, rather
+  than picking one threshold and misjudging every other block against it.
+  `representativeThresholds` picks a single value for *display labels only* (e.g. "within
+  ±0.10s") when blocks disagree, falling back to the legacy default — the same
+  approximation this codebase already used for the pre-existing session-level rollup.
+
+### Dynamic analytics visibility
+
+- **Handle Analysis** (`HandleAnalysisSection.tsx`) inspects which handles actually have
+  shots in the current selection: two present → "Handle Comparison"; exactly one → "{Handle}
+  Distribution" (never called a comparison); zero → an explicit empty state, not a blank
+  chart.
+- **Blind Weight** Prediction Accuracy cards (`PredictionDashboardCards`) only render
+  when the selection's Training Category is Blind Weight — Target Accuracy cards remain
+  the same for every category, since they apply uniformly (see ADR-0008).
+- The Scatterplot is prominent (always expanded) for Variable Weight; for Fixed Weight
+  with only one distinct target time it renders inside a collapsed `<details>` (secondary,
+  one tap to expand) instead of being hidden — see "Current Session information
+  hierarchy" below.
+
+### Multi-session Scatterplot
+
+`TargetActualScatterChart` is always shot-level (never reduced to block averages) and,
+in History, receives every filtered shot across every comparable block/session at once
+via `prepareTargetVsActualScatterData(shots, blocksById, sessionContextByBlockId)` — the
+same function already used for the single-block Current Session case, now called with a
+cross-block/cross-session shot list. `TargetVsActualPoint` carries `trainingCategory`
+and `measurementMode` (in addition to the pre-existing `blockName`/`sessionTitle`/`date`)
+so the History tooltip can show them. Back-Hog and Hog-Hog are never combined (the
+Measurement Mode filter guarantees this upstream); combining Fixed and Variable Weight
+deliberately, in one chart, is **not implemented** in this pass (see Technical Debt).
+
+### Metric and chart explanation architecture — `src/lib/analyticsExplanations.ts` + `InfoButton.tsx`
+
+One `AnalyticsExplanation` record (`title`, `shortDescription`, `whatItShows`,
+`howToRead[]`, `betterMeans[]`, optional `possiblePatterns[]`/`limitations[]`) per core
+metric/chart — the single source of truth rendered by `InfoButton.tsx` (an accessible
+popover on wide screens, a bottom sheet on narrow ones via CSS breakpoints alone, same
+markup) wherever that metric/chart appears (`DashboardCard`'s optional `explanation`
+prop, `ChartCard`'s optional `explanation` prop). Chart subtitles read
+`shortDescription`; nothing hard-codes a second copy of the same text. Back-Hog gets an
+additional curling-tendency sentence (`biasExplanation`, `targetErrorByShotExplanation`);
+Hog-Hog explanations stay neutral, since no validated curling-outcome mapping exists for
+its sign (same posture as `interpretTargetErrorDirection`, ADR-0004's "no fabricated
+precision"). `ExplanationContext` (`"current" | "history"`) swaps only the
+*interpretation* framing (immediate in-block feedback vs. recurring cross-block
+patterns) — the underlying math is identical either way.
+
+`ChartCard`'s and `DashboardCard`'s title rows use a `<header>`, not a `<div>`, to hold
+the title/label plus `InfoButton` — both to keep the popover's block-level content
+(`<h3>`/`<p>`/`<ul>`) out of an invalid `<p>`-in-`<p>`/`<h2>`-containing-`<div>` nesting,
+and so existing tests that scope a card by "the div containing this title" keep
+resolving to the card's own root element instead of a new title-only wrapper.
+
+### History information hierarchy
+
+Sticky Analysis Filters (`HistoryFilterBar.tsx`, primary: Training Category, Measurement
+Mode, Date Range, Handle, Threshold Comparison Mode; secondary, behind "More filters":
+Shot Type, Session, Block, Target Range) → Analysis Context (`AnalysisContextSummary.tsx`
+— headline + block/shot/date-span counts + short, non-overloading notices) → Key
+Progress Summary → Progress Metric Chart → Shot Quality Over Time → Target vs. Actual
+Scatterplot → Handle Analysis → Blocks and Sessions (a detail/navigation list onto the
+same filtered selection — it no longer computes its own, separately-filtered rollup).
+
+### Current Session information hierarchy
+
+Active Block header + Shot Entry/Auto Capture → Dashboard (immediate feedback) → Target
+Error by Shot (primary live chart) → Handle Analysis (same dynamic-visibility component
+as History) → Target vs. Actual Scatterplot (prominent for Variable Weight; collapsed
+`<details>` for Fixed Weight with one target) → Current Shots list → Target Time
+Settings / Session Settings / Export / Start New Session. Same interpretation-text
+math as History, framed for immediate in-block feedback (`ExplanationContext: "current"`).
+
 ## Persistence and migration (Implemented)
 
 Two `localStorage` keys, written by two independent `useEffect`s in `TrackerApp.tsx`:
@@ -883,6 +1078,10 @@ migration" check; the function is written to be a safe no-op on already-current 
   starting value — never re-presented as if it were a validated range.
 - **`pendingTargetTime`** already inside the (possibly just-backfilled) range is left
   untouched; outside the range, a single new one is generated once.
+- **Missing or invalid `accuracyThresholds`** (absent, NaN, Infinity, zero/negative, or
+  `acceptable <= onTarget`) repairs to the fixed legacy default (0.10s / 0.20s) — never
+  to whichever preset the app currently defaults new blocks to (see ADR-0008). A valid
+  stored snapshot is left untouched.
 - **Already-recorded shot values are never rewritten** by migration, under any
   circumstance — only block-level configuration gaps are filled in.
 - **Migration must be idempotent** — running it twice on its own output must be a
@@ -1324,13 +1523,24 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 
 | Component | Responsibility |
 |---|---|
-| `TrainingSetup.tsx` | Block creation/edit form: mode, measurement mode, target source, Smart Random range, inline validation |
+| `TrainingSetup.tsx` | Block creation/edit form: mode, measurement mode, target source, Smart Random range, Accuracy Threshold preset/custom picker, inline validation |
 | `NewTrainingBlock.tsx` | Modal wrapping `TrainingSetup` for mid-session block switches; also renders the outgoing block's summary cards |
 | `ShotEntry.tsx` | Fixed/Variable Weight single-step shot capture (release time, handle, shot type, optional editable target) |
 | `BlindShotEntry.tsx` | Blind Weight's 3-phase capture UI, wired to `blindWeight.ts` |
 | `ReleaseTrendChart.tsx` | Per-block chart: target/release/(prediction if present) over shot number, with a combined tooltip |
-| `SessionTrendChart.tsx` | Cross-session trend (bias / avg abs deviation) — session-level only, no per-block or Blind-specific view yet (see Technical Debt) |
-| `DashboardCard.tsx` | One shared metric-tile presentational component, used by the live Dashboard, History, and Block Summary |
+| `DashboardCard.tsx` | One shared metric-tile presentational component (label/value/optional sublabel/tone/explanation), used by the live Dashboard, History, and Block Summary |
+| `TargetAccuracyDashboardCards.tsx` | The shared Bias/Average Error/On Target/Major Misses/... card set — formats a pre-computed `TargetAccuracyAnalytics`, never computes analytics itself |
+| `TargetErrorChart.tsx` | Target Error by Shot — bar chart with on-target/acceptable reference bands and a zero line |
+| `TargetActualScatterChart.tsx` | Target vs. Actual scatterplot with a y=x reference diagonal and a clickable In/Out legend toggle (visual filter only); shot-level across multiple blocks/sessions in History |
+| `HandleBoxPlot.tsx` | Custom-SVG boxplot of Target Error by handle (no Recharts boxplot primitive exists) — statistical outliers kept visually/semantically distinct from Major Miss |
+| `HandleErrorBarChart.tsx` | Handle Bias and Consistency — mean Target Error ± 1 SD per handle, via Recharts `ErrorBar` |
+| `HandleAnalysisSection.tsx` | Wraps Boxplot + Bias/Consistency with one dynamic heading ("Handle Comparison" / "{Handle} Distribution" / empty state) based on which handles are actually present |
+| `ProgressMetricChart.tsx` | Selectable-metric progress line chart across blocks/sessions, with a 3-block rolling average — one point per comparable Training Block |
+| `ShotQualityTrendChart.tsx` | 100%-stacked On Target/Acceptable/Major Miss distribution, one bar per block, plus an optional Major-Miss/On-Target trend summary (≥3 comparable, non-tiny blocks) |
+| `ChartCard.tsx` | Shared chart shell: title + optional `InfoButton`, subtitle, contextual notices, consistent empty state |
+| `InfoButton.tsx` | The one Info-popover/bottom-sheet affordance for `AnalyticsExplanation` content — keyboard-operable, Escape closes and returns focus |
+| `HistoryFilterBar.tsx` | Sticky History filter bar — primary filters (native `<select>`s) apply immediately; secondary filters behind "More filters" with explicit Apply/Reset |
+| `AnalysisContextSummary.tsx` | The "what am I looking at" line directly under the sticky filters — headline, block/shot/date-span counts, short contextual notices |
 | `TargetTimeSettings.tsx` | Edits the active block's constant target — only rendered for Fixed Weight and Blind+Fixed |
 | `AutoCapture.tsx` | Capture Sequence start form + live status/Pause/Resume/Cancel/Undo/"Add Result Manually" panel — not rendered for Blind Weight blocks |
 | `TimingSimulatorPanel.tsx` | Dev/test-only Timing Simulator controls, gated by `process.env.NODE_ENV !== "production"` |
@@ -1342,8 +1552,14 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 | `trainingBlocks.ts` | Block lifecycle and target resolution: creation, active-block/shot lookups, `getEffectiveTargetMode`, `advanceBlockTarget`, labels |
 | `variableTargets.ts` | Pure Smart Random logic: validation, candidate generation, natural-transition selection; measurement-mode availability gate |
 | `blindWeight.ts` | Pure Blind Weight phase state machine and prediction/target error formulas |
-| `analytics.ts` | All release-time/target/prediction statistics |
-| `shotFilters.ts` | Handle/shot-type filtering, shared between the active block view and History |
+| `analytics.ts` | All release-time/target/prediction/Target-Accuracy statistics, plus `interpretTargetErrorDirection` (see ADR-0008) |
+| `accuracyThresholds.ts` | `AccuracyThresholds` presets (Standard/Tight), validation, `categorizeTargetError`, legacy-default resolution |
+| `boxPlotStatistics.ts` | Pure, generic median-of-halves boxplot statistics (median/Q1/Q3/whiskers/statistical outliers) over any `number[]` |
+| `chartData.ts` | Pure chart-data preparation (Target Error by Shot, Target-vs-Actual scatter, Progress, Shot Quality) — chart components never compute analytics themselves |
+| `chartTheme.ts` | Central chart color/label tokens (handle colors, category colors, axis formatting) — no chart hard-codes its own |
+| `historyAnalysis.ts` | The central History filter pipeline: `HistoryAnalysisFilters`, `ThresholdComparisonMode`, `buildHistoryAnalysisContext`, default-selection resolution, `aggregateTargetAccuracyAcrossBlocks` |
+| `analyticsExplanations.ts` | Central `AnalyticsExplanation` content for every core metric/chart — one source for `InfoButton`, chart subtitles, and (later) translation |
+| `shotFilters.ts` | Handle/shot-type filtering for the active block view (Current Session only) — History's filtering now goes through `historyAnalysis.ts` |
 | `sessionMigration.ts` | The one place old or partial `localStorage` JSON becomes a valid `Session` |
 | `export.ts` | CSV string building (pure) and the DOM download side-effect |
 | `timeInput.ts` | Shared numeric input parsing/formatting (`3.75` or `375` → `3.75`, signed formatting) |

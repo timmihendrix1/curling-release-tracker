@@ -1,4 +1,5 @@
 import type {
+  AccuracyThresholds,
   BlindTargetMode,
   BlockMode,
   MeasurementMode,
@@ -7,6 +8,7 @@ import type {
   TrainingBlock,
   VariableTargetMode,
 } from "../types";
+import { resolveAccuracyThresholds } from "./accuracyThresholds";
 import {
   DEFAULT_SMART_RANDOM_MAX,
   DEFAULT_SMART_RANDOM_MIN,
@@ -29,6 +31,9 @@ export type NewBlockInput = {
   // Only relevant when variableTargetMode/blindTargetMode === "smart-random".
   smartRandomMin?: number;
   smartRandomMax?: number;
+  // Snapshotted onto the created block as-is (after resolving to a safe
+  // default if omitted/invalid) — see docs/adr/0008-accuracy-thresholds-are-snapshotted-per-training-block.md.
+  accuracyThresholds?: AccuracyThresholds;
 };
 
 /**
@@ -83,6 +88,9 @@ export function createTrainingBlock(input: NewBlockInput): TrainingBlock {
     createdAt: new Date().toISOString(),
     variableTargetMode,
     blindTargetMode,
+    // Snapshotted once, at creation — never re-derived from a later change
+    // to the app's default thresholds (see ADR-0008).
+    accuracyThresholds: resolveAccuracyThresholds(input.accuracyThresholds),
   };
 
   const effectiveMode = getEffectiveTargetMode(block);

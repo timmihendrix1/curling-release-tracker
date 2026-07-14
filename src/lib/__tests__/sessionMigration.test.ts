@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { migrateSession } from "../sessionMigration";
+import { STANDARD_ACCURACY_THRESHOLDS } from "../accuracyThresholds";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
 
 describe("migrateSession — legacy pre-block sessions", () => {
@@ -947,5 +948,169 @@ describe("migrateSession — capture-sequence and capture-shot metadata", () => 
     const twice = migrateSession(JSON.parse(JSON.stringify(once)));
     expect(twice).toEqual(once);
     expect(twice.captureSequence?.status).toBe("paused");
+  });
+});
+
+describe("migrateSession — Accuracy Thresholds backfill", () => {
+  it("a legacy pre-block session's fabricated Legacy Block gets 0.10/0.20", () => {
+    const migrated = migrateSession({
+      id: "s1",
+      title: "Old Session",
+      date: "2024-01-01T00:00:00.000Z",
+      targetTime: 3.8,
+      shots: [],
+    });
+    expect(migrated.blocks[0].accuracyThresholds).toEqual(
+      STANDARD_ACCURACY_THRESHOLDS
+    );
+  });
+
+  it("a block with no stored accuracyThresholds gets the legacy default", () => {
+    const migrated = migrateSession({
+      id: "s2",
+      title: "Session",
+      date: "2024-01-01T00:00:00.000Z",
+      blocks: [
+        {
+          id: "block-1",
+          name: "Block A",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.9,
+          createdAt: "2024-01-01T00:00:00.000Z",
+        },
+      ],
+      activeBlockId: "block-1",
+      shots: [],
+    });
+    expect(migrated.blocks[0].accuracyThresholds).toEqual(
+      STANDARD_ACCURACY_THRESHOLDS
+    );
+  });
+
+  it("a block with a valid custom accuracyThresholds keeps it exactly", () => {
+    const migrated = migrateSession({
+      id: "s3",
+      title: "Session",
+      date: "2024-01-01T00:00:00.000Z",
+      blocks: [
+        {
+          id: "block-1",
+          name: "Block A",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.9,
+          createdAt: "2024-01-01T00:00:00.000Z",
+          accuracyThresholds: { onTarget: 0.08, acceptable: 0.16 },
+        },
+      ],
+      activeBlockId: "block-1",
+      shots: [],
+    });
+    expect(migrated.blocks[0].accuracyThresholds).toEqual({
+      onTarget: 0.08,
+      acceptable: 0.16,
+    });
+  });
+
+  it("repairs invalid stored thresholds (NaN, negative, acceptable<=onTarget) to the legacy default", () => {
+    const invalidVariants = [
+      { onTarget: NaN, acceptable: 0.2 },
+      { onTarget: 0.1, acceptable: Infinity },
+      { onTarget: -0.1, acceptable: 0.2 },
+      { onTarget: 0.2, acceptable: 0.1 },
+      { onTarget: 0, acceptable: 0.2 },
+    ];
+
+    for (const invalid of invalidVariants) {
+      const migrated = migrateSession({
+        id: "s4",
+        title: "Session",
+        date: "2024-01-01T00:00:00.000Z",
+        blocks: [
+          {
+            id: "block-1",
+            name: "Block A",
+            mode: "fixed",
+            measurementMode: "back-hog",
+            targetTime: 3.9,
+            createdAt: "2024-01-01T00:00:00.000Z",
+            accuracyThresholds: invalid,
+          },
+        ],
+        activeBlockId: "block-1",
+        shots: [],
+      });
+      expect(migrated.blocks[0].accuracyThresholds).toEqual(
+        STANDARD_ACCURACY_THRESHOLDS
+      );
+    }
+  });
+
+  it("never rewrites an already-recorded shot's targetTime/releaseTime when backfilling thresholds", () => {
+    const raw = {
+      id: "s5",
+      title: "Session",
+      date: "2024-01-01T00:00:00.000Z",
+      blocks: [
+        {
+          id: "block-1",
+          name: "Block A",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.9,
+          createdAt: "2024-01-01T00:00:00.000Z",
+        },
+      ],
+      activeBlockId: "block-1",
+      shots: [
+        {
+          id: "shot-1",
+          blockId: "block-1",
+          shotNumber: 1,
+          releaseTime: 3.95,
+          targetTime: 3.9,
+          handle: "in",
+          createdAt: "2024-01-01T00:00:01.000Z",
+        },
+      ],
+    };
+    const migrated = migrateSession(raw);
+    expect(migrated.shots[0].releaseTime).toBe(3.95);
+    expect(migrated.shots[0].targetTime).toBe(3.9);
+  });
+
+  it("migrating twice is idempotent for accuracyThresholds, valid or repaired", () => {
+    const raw = {
+      id: "s6",
+      title: "Session",
+      date: "2024-01-01T00:00:00.000Z",
+      blocks: [
+        {
+          id: "block-1",
+          name: "Valid",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.9,
+          createdAt: "2024-01-01T00:00:00.000Z",
+          accuracyThresholds: { onTarget: 0.08, acceptable: 0.16 },
+        },
+        {
+          id: "block-2",
+          name: "Invalid",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.9,
+          createdAt: "2024-01-01T00:00:00.000Z",
+          accuracyThresholds: { onTarget: -1, acceptable: -1 },
+        },
+      ],
+      activeBlockId: "block-1",
+      shots: [],
+    };
+
+    const once = migrateSession(raw);
+    const twice = migrateSession(JSON.parse(JSON.stringify(once)));
+    expect(twice).toEqual(once);
   });
 });

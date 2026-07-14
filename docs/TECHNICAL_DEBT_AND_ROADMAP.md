@@ -61,6 +61,55 @@ columns by name, not position). Worth a one-line note in `export.ts` once decide
 
 ## Later
 
+### Scatterplot trend lines (Target vs. Actual) — deliberately not built
+
+**What:** The product spec for the Analytics/Visualization overhaul (ADR-0008) allows
+an optional per-handle regression trend line on `TargetActualScatterChart`, gated on
+≥5 shots and ≥3 distinct target times. This pass ships the scatterplot itself (with the
+"becomes more informative with multiple targets" hint) but does **not** add the
+regression line — building it well (clean slope calculation, no false precision, no
+automatic performance judgement) is a real, separable piece of work, and a half-built
+trend line would be worse than none.
+
+**Recommendation:** implement `computeLinearRegression(points)` as a small pure
+function in `chartData.ts` (slope/intercept over `{ x: targetTime, y: actualTime }`),
+gated by the exact thresholds above, the next time this becomes a real ask — the
+scatter chart's data contract already carries everything needed.
+
+### Blind Weight's optional Prediction-Accuracy charts — deliberately not built
+
+**What:** "Prediction Error by Shot" and an "Actual vs. Predicted" scatterplot were
+listed as optional, low-effort additions during the Analytics/Visualization overhaul.
+Not built in this pass — Target Accuracy charts already work for Blind Weight shots
+(judged against `targetTime`, same as every other mode), and the existing Prediction
+Dashboard cards (bias/MAE/SD/correlation) remain the only Prediction-Accuracy surface.
+
+**Recommendation:** if requested, model them as `chartData.ts` functions mirroring
+`prepareTargetErrorByShotData`/`prepareTargetVsActualScatterData` but keyed on
+`predictedTime` instead of `targetTime` — reuse the same chart shell
+(`ChartCard`/`TargetErrorChart`-shaped component), don't build a parallel one.
+
+### ~~Session-level rollup can mix Measurement Modes for its Bias tendency label~~ — Resolved (History Filtering pass)
+
+**What it was:** History's per-session summary cards used to compute one
+`TargetAccuracyAnalytics` across every block in a session, which could include both
+Back-Hog and Hog-Hog blocks.
+
+**Resolution:** the central `HistoryAnalysisFilters.measurementMode` (see
+`src/lib/historyAnalysis.ts` and `SYSTEM_ARCHITECTURE.md`'s "History Analytics and
+Filtering") is now applied *before* any session grouping happens — every block in every
+`historySessionGroups` entry already shares one Measurement Mode, so the Blocks/Sessions
+list's per-session rollup can no longer mix modes. The "Measurement modes vary" note is
+kept only as a defensive check (relevant if a session's blocks span categories the
+current filters didn't fully narrow down), not as a routine caveat.
+
+Threshold snapshots can still differ across blocks within a session under **Original**
+Threshold Comparison Mode — `aggregateTargetAccuracyAcrossBlocks` correctly categorizes
+each shot against its own block's threshold rather than one representative value; only
+the *display label* ("within ±0.10s") falls back to a representative value
+(`representativeThresholds`) when they disagree, same approximation as before, now
+scoped to a much narrower, already-filtered selection.
+
 ### `TrackerApp.tsx` as the single orchestration file
 
 **What:** ~1,470 lines, owns all app-level state. See `SYSTEM_ARCHITECTURE.md`'s
@@ -83,17 +132,20 @@ saving; the shot can still be deleted and re-entered). **Recommendation:** add
 `predictedTime` to the existing edit form when there's a real request for it — no
 architecture blocks this, it just isn't built.
 
-### No Blind Weight trend in `SessionTrendChart`
+### ~~No Blind Weight trend in `SessionTrendChart`~~ — Resolved (History Filtering pass, by removal)
 
-**What:** The cross-session trend chart shows session-level `Bias`/`Avg Abs Deviation`
-only; it has no Blind-specific series (e.g. Mean Absolute Prediction Error per Blind
-block over time). This was explicitly deferred during the Blind Weight feature pass
-because the chart's current unit of aggregation (one point per *session*) doesn't
-cleanly fit a per-*block* metric without restructuring its x-axis.
+**What it was:** The cross-session trend chart showed session-level `Bias`/`Avg Abs
+Deviation` only, with no Blind-specific series, since its unit of aggregation (one point
+per *session*) didn't cleanly fit a per-*block* metric.
 
-**Recommendation:** when this becomes a real ask, prefer a second, separate chart (or a
-metric toggle) that aggregates per Blind Weight block, rather than retrofitting the
-existing session-level chart to mean two different things depending on a toggle.
+**Resolution:** `SessionTrendChart.tsx` has been removed rather than extended. The
+History information hierarchy's Progress Metric Chart already aggregates **per
+comparable Training Block** (never per session), for whichever Training Category and
+Measurement Mode the central filters currently select — this includes Blind Weight
+exactly like every other category, since Target Accuracy is category-agnostic (Blind
+Weight's separate Prediction Accuracy metrics remain in the Key Progress Summary and the
+Blocks/Sessions detail list, never merged into Target Accuracy). A session-level-only
+trend concept no longer exists to have a gap in.
 
 ### Unused `updateSmartRandomRange`
 
@@ -137,6 +189,65 @@ large task. The two implementations are currently in sync but could drift.
 not a data bug). **Recommendation:** extract a small shared hook
 (`useEditableTargetInput`) the next time either file needs a real change to this
 behavior, so the extraction is driven by an actual edit rather than done speculatively.
+
+### Scatterplot combining Fixed and Variable Weight in one selection — deliberately not built
+
+**What:** The History Analytics pass's spec allowed combining Fixed and Variable Weight
+shots in one Scatterplot when "deliberately selected and the Measurement Mode is
+compatible." This pass's Training Category filter is single-select (one category at a
+time) — Progress, Shot Quality, and the Scatterplot all read from whichever one category
+is currently selected. A dedicated "combine these categories" control was not built, to
+avoid a rushed multi-select filter design under an already-large task.
+
+**Impact:** Low (every other required Scatterplot case — multiple Fixed Weight blocks,
+Variable Weight, multiple sessions, In/Out together — already works over the current
+single-category selection).
+
+**Recommendation:** if a real ask for this arrives, extend `trainingCategory` to accept
+an array (or add an explicit "Include other categories" toggle in "More filters") and
+make `buildHistoryAnalysisContext` accept a `TrainingCategory[]` — the underlying
+per-block filtering/aggregation already generalizes to that case without restructuring.
+
+### Unused `groupProgressEntriesByMeasurementMode`
+
+**What:** `chartData.ts` still exports `groupProgressEntriesByMeasurementMode`, no
+longer called from `TrackerApp.tsx` — the central History filter pipeline
+(`historyAnalysis.ts`) now resolves `HistoryAnalysisFilters.measurementMode` to exactly
+one mode before `progressEntries` is ever built, so there is nothing left to group by
+mode. Kept (not deleted) because the rule it encodes — Back-Hog and Hog-Hog must never
+share a series — is still fundamental, it remains covered by its own passing unit test,
+and removing it would be pure code deletion with no current behavior change.
+
+**Recommendation:** delete it only alongside a change that actually needs to re-mix
+Measurement Modes before this function would be reintroduced (e.g. an "All modes" view),
+not preemptively.
+
+### Custom Date Range has a type but no picker UI
+
+**What:** `DateRangeFilter`'s `{ preset: "custom"; from; to }` shape and
+`historyAnalysis.ts`'s filtering logic both support a custom range end-to-end, but
+`HistoryFilterBar.tsx` only exposes the four presets (All time / 30 / 90 / 6 months) in
+its UI — no date-picker inputs were added for Custom, per the spec's own "Custom, falls
+ohne grossen Zusatzaufwand möglich" allowance; a good two-date-input picker with
+validation was judged more than the "no big extra effort" bar for this pass.
+
+**Recommendation:** add two date inputs (from/to) to the primary Date Range control,
+gated behind a "Custom…" option, the next time this becomes a real ask — no pipeline
+change is needed, only the picker UI.
+
+### `InfoButton` popover has no full keyboard focus trap
+
+**What:** `InfoButton.tsx` closes on Escape and returns focus to its trigger, but does
+not trap Tab focus inside the open popover — Tab can move focus to whatever is next in
+the page's normal tab order while the popover is still visually open.
+
+**Impact:** Low (the popover is non-modal informational content, not a form; nothing is
+lost by tabbing past it), but it's a real accessibility gap relative to a full ARIA
+dialog pattern.
+
+**Recommendation:** add a small focus-trap effect (cycle Tab/Shift+Tab between the
+popover's first and last focusable element) if a stricter accessibility audit requires
+it — not built preemptively for a lightweight info popover.
 
 ---
 

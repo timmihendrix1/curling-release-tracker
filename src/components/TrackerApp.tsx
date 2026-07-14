@@ -8,15 +8,23 @@ import DashboardCard from "./DashboardCard";
 import NewTrainingBlock from "./NewTrainingBlock";
 import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
-import SessionTrendChart from "./SessionTrendChart";
 import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
 import TargetTimeSettings from "./TargetTimeSettings";
 import TimingSimulatorPanel, {
   type SimulatorDiagnosticEntry,
 } from "./TimingSimulatorPanel";
+import AnalysisContextSummary from "./AnalysisContextSummary";
+import HandleAnalysisSection from "./HandleAnalysisSection";
+import HistoryFilterBar from "./HistoryFilterBar";
+import ProgressMetricChart from "./ProgressMetricChart";
+import ShotQualityTrendChart from "./ShotQualityTrendChart";
+import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
+import TargetActualScatterChart from "./TargetActualScatterChart";
+import TargetErrorChart from "./TargetErrorChart";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
 import type {
+  AccuracyThresholds,
   Handle,
   Session,
   Shot,
@@ -25,7 +33,13 @@ import type {
   TrainingBlock,
 } from "../types";
 
-import { analyzeShots } from "../lib/analytics";
+import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
+import {
+  analyzeShots,
+  computeHandleAccuracyComparison,
+  computeHandleTargetErrorBoxPlots,
+} from "../lib/analytics";
+import { targetVsActualExplanation } from "../lib/analyticsExplanations";
 import {
   applyTimingResultToSession,
   createCaptureSequence,
@@ -45,6 +59,23 @@ import { migrateSession, migrateSessionHistory } from "../lib/sessionMigration";
 import {
   createSimulatorTimingProvider,
 } from "../lib/simulatorTimingProvider";
+import {
+  hasMultipleTargetTimes,
+  hasUniformThresholds,
+  prepareTargetErrorByShotData,
+  prepareTargetVsActualScatterData,
+} from "../lib/chartData";
+import {
+  aggregateTargetAccuracyAcrossBlocks,
+  buildHistoryAnalysisContext,
+  createDefaultHistoryFilters,
+  getAvailableMeasurementModes,
+  getAvailableTrainingCategories,
+  representativeThresholds,
+  resolveDefaultMeasurementMode,
+  resolveDefaultTrainingCategory,
+  type HistoryAnalysisFilters,
+} from "../lib/historyAnalysis";
 import {
   DEFAULT_SHOT_FILTER,
   filterShots,
@@ -78,6 +109,8 @@ const CURRENT_SESSION_STORAGE_KEY =
   "curling-release-tracker-current-session";
 const SESSION_HISTORY_STORAGE_KEY =
   "curling-release-tracker-session-history";
+const HISTORY_FILTERS_STORAGE_KEY =
+  "curling-release-tracker-history-filters";
 
 type ActiveView = "current" | "history";
 
@@ -104,20 +137,6 @@ function createNewSession(): Session {
     blocks: [],
     activeBlockId: "",
     shots: [],
-  };
-}
-
-function filterSessionShots(
-  session: Session,
-  handleFilter: HandleFilter,
-  shotTypeFilter: ShotTypeFilter
-): Session {
-  return {
-    ...session,
-    shots: filterShots(session.shots, {
-      handle: handleFilter,
-      shotType: shotTypeFilter,
-    }),
   };
 }
 
@@ -151,11 +170,9 @@ export default function TrackerApp() {
     Session[]
   >([]);
 
-  const [historyHandleFilter, setHistoryHandleFilter] =
-    useState<HandleFilter>("all");
-
-  const [historyShotTypeFilter, setHistoryShotTypeFilter] =
-    useState<ShotTypeFilter>("all");
+  const [historyFilters, setHistoryFilters] = useState<HistoryAnalysisFilters>(
+    createDefaultHistoryFilters()
+  );
 
   const [blockFilter, setBlockFilter] = useState(
     DEFAULT_SHOT_FILTER
@@ -447,6 +464,22 @@ export default function TrackerApp() {
         migrateSessionHistory(JSON.parse(savedHistory))
       );
     }
+
+    const savedHistoryFilters = localStorage.getItem(
+      HISTORY_FILTERS_STORAGE_KEY
+    );
+
+    if (savedHistoryFilters) {
+      try {
+        setHistoryFilters({
+          ...createDefaultHistoryFilters(),
+          ...JSON.parse(savedHistoryFilters),
+        });
+      } catch {
+        // Corrupt/old-shape persisted filters are never fatal — fall back to
+        // the defaults already set at initial state.
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -457,6 +490,13 @@ export default function TrackerApp() {
       JSON.stringify(currentSession)
     );
   }, [currentSession]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      HISTORY_FILTERS_STORAGE_KEY,
+      JSON.stringify(historyFilters)
+    );
+  }, [historyFilters]);
 
   useEffect(() => {
     localStorage.setItem(
@@ -477,9 +517,27 @@ export default function TrackerApp() {
     activeBlockShots,
     blockFilter
   );
-  const activeBlockAnalysis = activeBlock
-    ? analyzeShots(filteredActiveBlockShots)
+  const activeBlockAccuracyThresholds = activeBlock
+    ? resolveAccuracyThresholds(activeBlock.accuracyThresholds)
     : null;
+  const activeBlockAnalysis = activeBlock && activeBlockAccuracyThresholds
+    ? analyzeShots(filteredActiveBlockShots, activeBlockAccuracyThresholds)
+    : null;
+
+  const activeBlockMap = activeBlock
+    ? new Map([[activeBlock.id, activeBlock]])
+    : new Map();
+  const targetErrorByShotData = activeBlockAccuracyThresholds
+    ? prepareTargetErrorByShotData(
+        filteredActiveBlockShots,
+        activeBlockMap,
+        activeBlockAccuracyThresholds
+      )
+    : [];
+  const targetVsActualScatterData = prepareTargetVsActualScatterData(
+    filteredActiveBlockShots,
+    activeBlockMap
+  );
 
   const shotEntryTarget: ShotEntryTarget | null = activeBlock
     ? {
@@ -497,18 +555,86 @@ export default function TrackerApp() {
       }
     : null;
 
-  const filteredSessionHistory = sessionHistory.map(
-    (session) =>
-      filterSessionShots(
-        session,
-        historyHandleFilter,
-        historyShotTypeFilter
-      )
+  // Single available Training Category/Measurement Mode is auto-selected;
+  // multiple options keep whatever was previously chosen (persisted above) or
+  // fall back to the first available one — never "no selection", which would
+  // silently let incompatible categories/modes mix in Progress/Scatterplot.
+  // Computed here (not via an effect writing back into state) since this is
+  // plain derived data — an explicit user choice from HistoryFilterBar is
+  // what actually updates `historyFilters` and gets persisted.
+  const effectiveTrainingCategory = resolveDefaultTrainingCategory(
+    getAvailableTrainingCategories(sessionHistory),
+    historyFilters.trainingCategory
   );
+  const effectiveMeasurementMode = resolveDefaultMeasurementMode(
+    getAvailableMeasurementModes(sessionHistory, effectiveTrainingCategory),
+    historyFilters.measurementMode
+  );
+  const effectiveHistoryFilters: HistoryAnalysisFilters = {
+    ...historyFilters,
+    trainingCategory: effectiveTrainingCategory,
+    measurementMode: effectiveMeasurementMode,
+  };
 
-  const filteredSessionHistoryWithShots =
-    filteredSessionHistory.filter(
-      (session) => session.shots.length > 0
+  // The one central History selection every History analytics surface reads
+  // from — see docs/SYSTEM_ARCHITECTURE.md's "Central History filter
+  // pipeline". No History chart/card is allowed to filter sessionHistory on
+  // its own.
+  const historyAnalysisContext = buildHistoryAnalysisContext(
+    sessionHistory,
+    effectiveHistoryFilters
+  );
+  const historyThresholds = representativeThresholds(
+    historyAnalysisContext.blocks
+  );
+  const historyTargetAccuracy = aggregateTargetAccuracyAcrossBlocks(
+    historyAnalysisContext.blocks
+  );
+  const historyFullAnalysis = analyzeShots(
+    historyAnalysisContext.shots,
+    historyThresholds
+  );
+  const historyScatterPoints = prepareTargetVsActualScatterData(
+    historyAnalysisContext.shots,
+    historyAnalysisContext.blocksById,
+    historyAnalysisContext.sessionContextByBlockId
+  );
+  const historyScatterNotices: string[] = [];
+  if (historyAnalysisContext.totalShotCount > 0 && historyAnalysisContext.totalShotCount < 8) {
+    historyScatterNotices.push(
+      `Only ${historyAnalysisContext.totalShotCount} shots are selected. Treat visible patterns as early indications.`
+    );
+  }
+  if (historyAnalysisContext.availableHandles.length === 1) {
+    historyScatterNotices.push(
+      `Only ${historyAnalysisContext.availableHandles[0] === "in" ? "In" : "Out"} handle is available in this selection.`
+    );
+  }
+  if (historyAnalysisContext.sessionIds.length > 1) {
+    historyScatterNotices.push(
+      `Points combine shots from ${historyAnalysisContext.totalBlockCount} blocks across ${historyAnalysisContext.sessionIds.length} sessions.`
+    );
+  }
+
+  // Sessions grouped from the already-filtered block selection (not the raw
+  // sessionHistory) — the "Blocks and Sessions" list is a detail/navigation
+  // view onto the same central selection, never an independently-filtered one.
+  const historySessionGroups = Array.from(
+    historyAnalysisContext.blocks
+      .reduce((map, entry) => {
+        const existing = map.get(entry.session.id);
+        if (existing) {
+          existing.entries.push(entry);
+        } else {
+          map.set(entry.session.id, { session: entry.session, entries: [entry] });
+        }
+        return map;
+      }, new Map<string, { session: Session; entries: typeof historyAnalysisContext.blocks }>())
+      .values()
+  )
+    .filter((group) => group.entries.some((entry) => entry.shots.length > 0))
+    .sort(
+      (a, b) => new Date(b.session.date).getTime() - new Date(a.session.date).getTime()
     );
 
   function handleChangeActiveBlockTargetTime(newTargetTime: number) {
@@ -1274,24 +1400,13 @@ export default function TrackerApp() {
                     )}
                   />
 
-                  <DashboardCard
-                    label="Target Error SD"
-                    value={activeBlockAnalysis.targetErrorStandardDeviation.toFixed(
-                      3
-                    )}
-                  />
-
-                  <DashboardCard
-                    label="Avg Abs Dev"
-                    value={activeBlockAnalysis.averageAbsoluteDeviationFromTarget.toFixed(
-                      3
-                    )}
-                  />
-
-                  <DashboardCard
-                    label="Bias vs Target"
-                    value={`${activeBlockAnalysis.averageDeviationFromTarget >= 0 ? "+" : ""
-                      }${activeBlockAnalysis.averageDeviationFromTarget.toFixed(3)}s`}
+                  <TargetAccuracyDashboardCards
+                    targetAccuracy={activeBlockAnalysis.targetAccuracy}
+                    measurementMode={activeBlock.measurementMode}
+                    thresholds={
+                      activeBlockAccuracyThresholds ??
+                      resolveAccuracyThresholds(undefined)
+                    }
                   />
 
                   {activeBlock.mode === "blind" && (
@@ -1303,6 +1418,44 @@ export default function TrackerApp() {
               </div>
 
               <ReleaseTrendChart shots={filteredActiveBlockShots} />
+
+              {/* Primary live chart — see docs/SYSTEM_ARCHITECTURE.md's
+                  Current Session information hierarchy. */}
+              <TargetErrorChart
+                points={targetErrorByShotData}
+                thresholds={activeBlockAccuracyThresholds}
+                measurementMode={activeBlock.measurementMode}
+                context="current"
+              />
+
+              {activeBlockAnalysis && (
+                <HandleAnalysisSection
+                  boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
+                  comparison={activeBlockAnalysis.handleAccuracy}
+                />
+              )}
+
+              {/* Scatterplot is prominent for Variable Weight; collapsed by
+                  default (secondary) for Fixed Weight with only one target,
+                  since there is little to see beyond consistency at that
+                  single weight. */}
+              {activeBlock.mode === "fixed" &&
+              !hasMultipleTargetTimes(targetVsActualScatterData) ? (
+                <details className="group">
+                  <summary className="cursor-pointer rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-lg marker:content-none group-open:rounded-b-none group-open:shadow-none">
+                    Target vs. Actual (single target — tap to expand)
+                  </summary>
+                  <TargetActualScatterChart
+                    points={targetVsActualScatterData}
+                    explanation={targetVsActualExplanation("current")}
+                  />
+                </details>
+              ) : (
+                <TargetActualScatterChart
+                  points={targetVsActualScatterData}
+                  explanation={targetVsActualExplanation("current")}
+                />
+              )}
 
               <div className="rounded-2xl bg-white p-6 shadow-lg">
                 <h2 className="text-xl font-semibold text-slate-900">
@@ -1543,19 +1696,88 @@ export default function TrackerApp() {
 
       {activeView === "history" && (
         <>
-          <SessionTrendChart
-            sessions={
-              filteredSessionHistoryWithShots
+          {/* 1. Sticky Analysis Filters */}
+          <HistoryFilterBar
+            filters={effectiveHistoryFilters}
+            onChange={setHistoryFilters}
+            availableTrainingCategories={
+              historyAnalysisContext.availableTrainingCategories
             }
+            availableMeasurementModes={
+              historyAnalysisContext.availableMeasurementModes
+            }
+            sessions={sessionHistory}
           />
 
+          {/* 2. Analysis Context */}
+          <AnalysisContextSummary context={historyAnalysisContext} />
+
+          {historyAnalysisContext.totalShotCount > 0 && (
+            <>
+              {/* 3. Key Progress Summary */}
+              <div className="rounded-2xl bg-white p-6 shadow-lg">
+                <h2 className="text-xl font-semibold text-slate-900">
+                  Key Progress Summary
+                </h2>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <TargetAccuracyDashboardCards
+                    targetAccuracy={historyTargetAccuracy}
+                    measurementMode={effectiveHistoryFilters.measurementMode ?? "back-hog"}
+                    thresholds={historyThresholds}
+                  />
+
+                  {historyAnalysisContext.hasBlindCategory && (
+                    <PredictionDashboardCards analysis={historyFullAnalysis} />
+                  )}
+                </div>
+              </div>
+
+              {effectiveHistoryFilters.measurementMode && (
+                <>
+                  {/* 4. Progress Metric Chart */}
+                  <ProgressMetricChart
+                    entries={historyAnalysisContext.progressEntries}
+                    measurementMode={effectiveHistoryFilters.measurementMode}
+                  />
+
+                  {/* 5. Shot Quality Over Time */}
+                  <ShotQualityTrendChart
+                    entries={historyAnalysisContext.progressEntries}
+                    measurementMode={effectiveHistoryFilters.measurementMode}
+                  />
+                </>
+              )}
+
+              {/* 6. Target vs Actual Scatterplot — across every comparable
+                  block/session in the selection, shot-level, never reduced
+                  to block averages. */}
+              <TargetActualScatterChart
+                points={historyScatterPoints}
+                explanation={targetVsActualExplanation("history")}
+                notices={historyScatterNotices}
+              />
+
+              {/* 7. Handle Analysis */}
+              <HandleAnalysisSection
+                boxPlots={computeHandleTargetErrorBoxPlots(
+                  historyAnalysisContext.shots
+                )}
+                comparison={computeHandleAccuracyComparison(
+                  historyAnalysisContext.shots,
+                  historyThresholds
+                )}
+              />
+            </>
+          )}
+
+          {/* 8. Blocks and Sessions — detail/navigation list onto the same
+              central selection; it never dominates the analysis above. */}
           <div className="rounded-2xl bg-white p-6 shadow-lg">
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Session History
-                </h2>
-              </div>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Blocks and Sessions
+              </h2>
 
               {sessionHistory.length > 0 && (
                 <div className="flex gap-2">
@@ -1584,180 +1806,150 @@ export default function TrackerApp() {
               )}
             </div>
 
-            {sessionHistory.length > 0 && (
-              <div className="mt-4 rounded-xl bg-slate-100 p-3">
-                <p className="text-sm font-medium text-slate-700">
-                  Filter
-                </p>
-
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["in", "Inhandle"],
-                      ["out", "Outhandle"],
-                    ] as [HandleFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setHistoryHandleFilter(value)
-                      }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${historyHandleFilter === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["draw", "Draw"],
-                      ["takeout", "Takeout"],
-                    ] as [ShotTypeFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setHistoryShotTypeFilter(value)
-                      }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${historyShotTypeFilter === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div className="mt-4 space-y-3">
-              {filteredSessionHistoryWithShots.map(
-                (session) => {
-                  const sessionAnalysis = analyzeShots(session.shots);
-
-                  const blocksWithShots = session.blocks
-                    .map((block) => ({
-                      block,
-                      shots: getBlockShots(session, block.id),
-                    }))
-                    .filter(({ shots }) => shots.length > 0);
-
-                  return (
-                    <div
-                      key={session.id}
-                      className="rounded-xl bg-slate-100 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            toggleSessionExpanded(
-                              session.id
-                            )
-                          }
-                          className="flex-1 text-left"
-                        >
-                          <p className="font-semibold text-slate-900">
-                            {session.title}
-                          </p>
-
-                          <p className="mt-1 text-sm text-slate-500">
-                            {new Date(
-                              session.date
-                            ).toLocaleDateString()}
-                          </p>
-
-                          <p className="mt-2 text-xs font-medium text-slate-700">
-                            {expandedSessions[
-                              session.id
-                            ]
-                              ? "Hide Details"
-                              : "Show Details"}
-                          </p>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteHistorySession(
-                              session.id
-                            )
-                          }
-                          className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
-                        >
-                          Delete
-                        </button>
-                      </div>
-
-                      {expandedSessions[session.id] && (
-                        <div className="mt-4 space-y-4">
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                            <DashboardCard
-                              label="Average"
-                              value={formatReleaseTime(sessionAnalysis.average)}
-                            />
-
-                            <DashboardCard
-                              label="Release SD"
-                              value={sessionAnalysis.releaseTimeStandardDeviation.toFixed(3)}
-                            />
-
-                            <DashboardCard
-                              label="Target Error SD"
-                              value={sessionAnalysis.targetErrorStandardDeviation.toFixed(3)}
-                            />
-
-                            <DashboardCard
-                              label="Avg Abs Dev"
-                              value={sessionAnalysis.averageAbsoluteDeviationFromTarget.toFixed(3)}
-                            />
-
-                            <DashboardCard
-                              label="Bias vs Target"
-                              value={`${sessionAnalysis.averageDeviationFromTarget >= 0 ? "+" : ""
-                                }${sessionAnalysis.averageDeviationFromTarget.toFixed(3)}s`}
-                            />
-
-                            {session.blocks.some(
-                              (block) => block.mode === "blind"
-                            ) && (
-                              <PredictionDashboardCards
-                                analysis={sessionAnalysis}
-                              />
-                            )}
-                          </div>
-
-                          <div className="space-y-3">
-                            <h3 className="font-semibold text-slate-900">
-                              By Training Block
-                            </h3>
-
-                            {blocksWithShots.map(
-                              ({ block, shots }) => (
-                                <HistoryBlockPanel
-                                  key={block.id}
-                                  block={block}
-                                  shots={shots}
-                                />
-                              )
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+              {historySessionGroups.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  No sessions match the current filters.
+                </p>
               )}
+
+              {historySessionGroups.map(({ session, entries }) => {
+                const sessionThresholdsUniform = hasUniformThresholds(
+                  entries.map((entry) => entry.thresholds)
+                );
+                const sessionThresholds = representativeThresholds(entries);
+                const sessionMeasurementModesUniform = entries.every(
+                  (entry) =>
+                    entry.block.measurementMode ===
+                    entries[0]?.block.measurementMode
+                );
+                const sessionTargetAccuracy =
+                  aggregateTargetAccuracyAcrossBlocks(entries);
+                const sessionShots = entries.flatMap((entry) => entry.shots);
+                const sessionAnalysis = analyzeShots(
+                  sessionShots,
+                  sessionThresholds
+                );
+                const blocksWithShots = entries.filter(
+                  (entry) => entry.shots.length > 0
+                );
+
+                return (
+                  <div
+                    key={session.id}
+                    className="rounded-xl bg-slate-100 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          toggleSessionExpanded(
+                            session.id
+                          )
+                        }
+                        className="flex-1 text-left"
+                      >
+                        <p className="font-semibold text-slate-900">
+                          {session.title}
+                        </p>
+
+                        <p className="mt-1 text-sm text-slate-500">
+                          {new Date(
+                            session.date
+                          ).toLocaleDateString()}
+                        </p>
+
+                        <p className="mt-2 text-xs font-medium text-slate-700">
+                          {expandedSessions[
+                            session.id
+                          ]
+                            ? "Hide Details"
+                            : "Show Details"}
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDeleteHistorySession(
+                            session.id
+                          )
+                        }
+                        className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                      >
+                        Delete
+                      </button>
+                    </div>
+
+                    {expandedSessions[session.id] && (
+                      <div className="mt-4 space-y-4">
+                        {!sessionThresholdsUniform && (
+                          <p className="text-xs text-slate-500">
+                            Thresholds vary across blocks in this session —
+                            rates below use a representative default for
+                            comparison.
+                          </p>
+                        )}
+                        {!sessionMeasurementModesUniform && (
+                          <p className="text-xs text-slate-500">
+                            Measurement modes vary within this session — bias
+                            tendency is shown for{" "}
+                            {measurementModeLabel(
+                              entries[0]?.block.measurementMode ?? "back-hog"
+                            )}{" "}
+                            only.
+                          </p>
+                        )}
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <DashboardCard
+                            label="Average"
+                            value={formatReleaseTime(sessionAnalysis.average)}
+                          />
+
+                          <DashboardCard
+                            label="Release SD"
+                            value={sessionAnalysis.releaseTimeStandardDeviation.toFixed(3)}
+                          />
+
+                          <TargetAccuracyDashboardCards
+                            targetAccuracy={sessionTargetAccuracy}
+                            measurementMode={
+                              entries[0]?.block.measurementMode ?? "back-hog"
+                            }
+                            thresholds={sessionThresholds}
+                          />
+
+                          {entries.some(
+                            (entry) => entry.block.mode === "blind"
+                          ) && (
+                            <PredictionDashboardCards
+                              analysis={sessionAnalysis}
+                            />
+                          )}
+                        </div>
+
+                        <div className="space-y-3">
+                          <h3 className="font-semibold text-slate-900">
+                            By Training Block
+                          </h3>
+
+                          {blocksWithShots.map(
+                            ({ block, shots, thresholds }) => (
+                              <HistoryBlockPanel
+                                key={block.id}
+                                block={block}
+                                shots={shots}
+                                thresholds={thresholds}
+                              />
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>
@@ -1794,13 +1986,19 @@ export default function TrackerApp() {
 type HistoryBlockPanelProps = {
   block: TrainingBlock;
   shots: Shot[];
+  /** The effective thresholds for this View — the block's own snapshot in
+      Original mode, or the active Comparison preset. Never re-derives from
+      block.accuracyThresholds itself, so Comparison mode can override it. */
+  thresholds: AccuracyThresholds;
 };
 
 function HistoryBlockPanel({
   block,
   shots,
+  thresholds,
 }: HistoryBlockPanelProps) {
-  const analysis = analyzeShots(shots);
+  const analysis = analyzeShots(shots, thresholds);
+  const blockMap = new Map([[block.id, block]]);
 
   return (
     <div className="rounded-xl bg-white p-4">
@@ -1847,7 +2045,7 @@ function HistoryBlockPanel({
         </p>
       )}
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         <DashboardCard
           label="Average"
           value={formatReleaseTime(analysis.average)}
@@ -1858,22 +2056,10 @@ function HistoryBlockPanel({
           value={analysis.releaseTimeStandardDeviation.toFixed(3)}
         />
 
-        <DashboardCard
-          label="Target Error SD"
-          value={analysis.targetErrorStandardDeviation.toFixed(3)}
-        />
-
-        <DashboardCard
-          label="Avg Abs Dev"
-          value={analysis.averageAbsoluteDeviationFromTarget.toFixed(
-            3
-          )}
-        />
-
-        <DashboardCard
-          label="Bias vs Target"
-          value={`${analysis.averageDeviationFromTarget >= 0 ? "+" : ""
-            }${analysis.averageDeviationFromTarget.toFixed(3)}s`}
+        <TargetAccuracyDashboardCards
+          targetAccuracy={analysis.targetAccuracy}
+          measurementMode={block.measurementMode}
+          thresholds={thresholds}
         />
 
         {block.mode === "blind" && (
@@ -1883,6 +2069,15 @@ function HistoryBlockPanel({
 
       <div className="mt-3">
         <ReleaseTrendChart shots={shots} />
+      </div>
+
+      <div className="mt-3">
+        <TargetErrorChart
+          points={prepareTargetErrorByShotData(shots, blockMap, thresholds)}
+          thresholds={thresholds}
+          measurementMode={block.measurementMode}
+          context="history"
+        />
       </div>
 
       <div className="mt-3 space-y-2">

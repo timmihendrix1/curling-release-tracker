@@ -1,9 +1,11 @@
 "use client";
 
+import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import { analyzeShots } from "../lib/analytics";
 import { formatReleaseTime, formatSigned } from "../lib/timeInput";
 import type { Shot, TrainingBlock } from "../types";
 import DashboardCard from "./DashboardCard";
+import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
 type NewTrainingBlockProps = {
@@ -62,7 +64,8 @@ type BlockSummaryCardsProps = {
 };
 
 function BlockSummaryCards({ block, shots }: BlockSummaryCardsProps) {
-  const analysis = analyzeShots(shots);
+  const thresholds = resolveAccuracyThresholds(block.accuracyThresholds);
+  const analysis = analyzeShots(shots, thresholds);
   const hasEnoughPredictionData = analysis.prediction.count >= 2;
   const notEnough = "Not enough shots";
 
@@ -75,14 +78,10 @@ function BlockSummaryCards({ block, shots }: BlockSummaryCardsProps) {
         value={formatReleaseTime(analysis.average)}
       />
 
-      <DashboardCard
-        label="Release SD"
-        value={analysis.releaseTimeStandardDeviation.toFixed(3)}
-      />
-
-      <DashboardCard
-        label="Avg Abs Target Error"
-        value={analysis.averageAbsoluteDeviationFromTarget.toFixed(3)}
+      <TargetAccuracyDashboardCards
+        targetAccuracy={analysis.targetAccuracy}
+        measurementMode={block.measurementMode}
+        thresholds={thresholds}
       />
 
       {block.mode === "blind" && (

@@ -297,3 +297,109 @@ describe("buildSessionCsv — Capture Sequence columns", () => {
     expect(col("lane_id")).toBe("");
   });
 });
+
+describe("buildSessionCsv — Accuracy Threshold columns", () => {
+  it("exports the block's own threshold snapshot and the correct category", () => {
+    const session = baseSession({
+      blocks: [
+        {
+          id: "block-1",
+          name: "Fixed Block",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.75,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+        },
+      ],
+      shots: [
+        {
+          id: "shot-1",
+          sessionId: "session-1",
+          blockId: "block-1",
+          shotNumber: 1,
+          releaseTime: 4.2,
+          targetTime: 3.75, // absolute error 0.45 -> major_miss
+          handle: "in",
+          shotType: "draw",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    });
+
+    const col = csvColumns(buildSessionCsv(session));
+    expect(col("accuracy_on_target_threshold")).toBe("0.1");
+    expect(col("accuracy_acceptable_threshold")).toBe("0.2");
+    expect(col("target_error_category")).toBe("major_miss");
+    expect(col("is_major_miss")).toBe("true");
+  });
+
+  it("falls back to the legacy default when the block has no threshold snapshot", () => {
+    const session = baseSession({
+      blocks: [
+        {
+          id: "block-1",
+          name: "Legacy Block",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.75,
+          createdAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      shots: [
+        {
+          id: "shot-1",
+          sessionId: "session-1",
+          blockId: "block-1",
+          shotNumber: 1,
+          releaseTime: 3.8,
+          targetTime: 3.75, // absolute error 0.05 -> on_target
+          handle: "in",
+          shotType: "draw",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    });
+
+    const col = csvColumns(buildSessionCsv(session));
+    expect(col("accuracy_on_target_threshold")).toBe("0.1");
+    expect(col("accuracy_acceptable_threshold")).toBe("0.2");
+    expect(col("target_error_category")).toBe("on_target");
+    expect(col("is_major_miss")).toBe("false");
+  });
+
+  it("never exports a statistical boxplot outlier as a Major Miss category", () => {
+    // A single shot far from target is a fachlicher Major Miss by threshold,
+    // not by any boxplot/outlier statistic — this test documents that the
+    // exported category comes only from categorizeTargetError.
+    const session = baseSession({
+      blocks: [
+        {
+          id: "block-1",
+          name: "Fixed Block",
+          mode: "fixed",
+          measurementMode: "back-hog",
+          targetTime: 3.75,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+        },
+      ],
+      shots: [
+        {
+          id: "shot-1",
+          sessionId: "session-1",
+          blockId: "block-1",
+          shotNumber: 1,
+          releaseTime: 3.8, // absolute error 0.05 -> on_target, even if it were a statistical outlier elsewhere
+          targetTime: 3.75,
+          handle: "in",
+          shotType: "draw",
+          createdAt: "2026-01-01T00:00:01.000Z",
+        },
+      ],
+    });
+
+    const col = csvColumns(buildSessionCsv(session));
+    expect(col("target_error_category")).toBe("on_target");
+  });
+});

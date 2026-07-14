@@ -1,3 +1,13 @@
+// Personal, editable tolerance bands used to judge target accuracy — a Target
+// Accuracy concept, distinct from Prediction Accuracy (Blind Weight). Snapshotted
+// per TrainingBlock at creation time so later default changes never retroactively
+// change a historical block's on-target/acceptable/major-miss rates. See
+// src/lib/accuracyThresholds.ts.
+export type AccuracyThresholds = {
+  onTarget: number;
+  acceptable: number;
+};
+
 export type Handle = "in" | "out";
 
 export type ShotType = "draw" | "takeout";
@@ -72,6 +82,13 @@ export type TrainingBlock = {
   // targets within for this block. Fixed/Manual blocks don't use or store one.
   smartRandomMin?: number;
   smartRandomMax?: number;
+  // Snapshotted at block creation from whatever thresholds were selected at setup
+  // time. Never mutated afterwards and never re-derived from later default changes
+  // — this is what keeps a block's historical on-target/acceptable/major-miss rates
+  // stable even if the app's default thresholds change later. Absent only for
+  // blocks created before this concept existed; migration backfills the legacy
+  // default (0.10s / 0.20s) rather than leaving it undefined.
+  accuracyThresholds?: AccuracyThresholds;
 };
 
 export type Shot = {

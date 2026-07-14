@@ -26,7 +26,7 @@ test("classic manual entry, History navigation, and New Block still work", async
   // diagnostic pass and must keep working after the Capture Sequence navigation guard
   // was added onto the same button).
   await page.getByRole("button", { name: "History" }).click();
-  await expect(page.getByText("Session History")).toBeVisible();
+  await expect(page.getByText("Blocks and Sessions")).toBeVisible();
 
   await page.getByRole("button", { name: "Current Session" }).click();
   await expect(
