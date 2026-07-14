@@ -16,6 +16,23 @@ shared domain terminology, and prior decisions. Do not modify
 unless the task explicitly requests it — but if a task changes the data model or a core
 flow, update the relevant document(s) and/or add an ADR as part of that same task.
 
+For any task touching user-facing text, UI, analytics interpretation, or coaching
+copy, also read:
+
+- `docs/UX_WRITING_GUIDELINES.md`
+- `docs/DESIGN_SYSTEM.md`
+- `docs/COACHING_PRINCIPLES.md`
+
+In particular: user-facing text follows the UX Writing Guidelines; UI changes follow
+the Design System; analytics interpretations and any coaching-style statements follow
+the Coaching Principles. A new feature must explain what it does, why it exists, and
+how to use it well (progressive disclosure via the existing Info-button system, not a
+wall of permanent text) — see "Every feature should explain itself" in the UX Writing
+Guidelines. Observations (measured facts) and interpretations (possible explanations)
+must never be mixed in the same sentence or presented with equal certainty — see
+"Separate facts from interpretation" in the UX Writing Guidelines and "Never diagnose
+technique directly" in the Coaching Principles.
+
 ## Working rules
 
 - **Use existing domain terms consistently** (see `DOMAIN_GLOSSARY.md`). Don't invent a

@@ -63,7 +63,7 @@ test("Category Progress: switching Training Category shows only comparable block
   await addShot(page, 3.8);
 
   await page.getByRole("button", { name: "New Training Block" }).click();
-  await page.getByRole("button", { name: "Variable Weight" }).click();
+  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
   await page.waitForSelector("text=Active Training Block");
   await addShot(page, 3.6);
@@ -88,14 +88,14 @@ test("Multi-session Scatterplot combines shots across sessions and blocks", asyn
 }) => {
   await freshLoad(page);
 
-  await page.getByRole("button", { name: "Variable Weight" }).click();
+  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
   await page.waitForSelector("text=Active Training Block");
   await addShot(page, 3.5);
   await addShot(page, 4.0);
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "Variable Weight" }).click();
+  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
   await page.waitForSelector("text=Active Training Block");
   await addShot(page, 3.7);
@@ -151,6 +151,68 @@ test("Chart Info popover distinguishes a statistical outlier from a Major Miss",
   await expect(
     page.getByText("Statistical outliers are not the same as Major Misses.")
   ).toBeVisible();
+});
+
+test("Compare: Custom reveals threshold fields, validates, re-classifies shots, and survives reload", async ({
+  page,
+}) => {
+  await freshLoad(page);
+
+  // Default block: Fixed Weight, target 3.75s, Standard thresholds (0.10/0.20).
+  await page.getByRole("button", { name: "Start Training", exact: true }).click();
+  await page.waitForSelector("text=Active Training Block");
+  // targetError = +0.15 -> Acceptable under Standard (0.10 < 0.15 <= 0.20).
+  await addShot(page, 3.9);
+  await startNewSession(page);
+
+  await page.getByRole("button", { name: "History" }).click();
+
+  const onTargetCard = page
+    .getByText("On Target", { exact: true })
+    .locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
+  await expect(onTargetCard.getByText("0%")).toBeVisible();
+  await expect(page.getByText("within ±0.10s").first()).toBeVisible();
+
+  const scatterPointCount = await page.locator(".recharts-scatter-symbol").count();
+
+  // Selecting Custom reveals the fields — this is the bug that was fixed:
+  // previously nothing appeared.
+  await page.getByLabel("Threshold Comparison Mode").selectOption("custom");
+  const onTargetInput = page.getByLabel("Custom On Target threshold");
+  const acceptableInput = page.getByLabel("Custom Acceptable threshold");
+  await expect(onTargetInput).toBeVisible();
+  await expect(acceptableInput).toBeVisible();
+
+  // Invalid: acceptable <= onTarget — Apply stays disabled, error shown at the field.
+  await onTargetInput.fill("0.3");
+  await acceptableInput.fill("0.1");
+  await expect(page.getByText("Acceptable must be greater than On Target.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Apply" }).last()).toBeDisabled();
+
+  // Valid custom values wide enough to reclassify the +0.15 shot as On Target.
+  await onTargetInput.fill("0.2");
+  await acceptableInput.fill("0.3");
+  await page.getByRole("button", { name: "Apply" }).last().click();
+
+  await expect(onTargetCard.getByText("100%")).toBeVisible();
+  await expect(page.getByText("within ±0.20s").first()).toBeVisible();
+
+  // Scatterplot point count (raw target/actual coordinates) is unaffected —
+  // only the On Target/Acceptable/Major Miss classification changed.
+  await expect(page.locator(".recharts-scatter-symbol")).toHaveCount(scatterPointCount);
+
+  // Reload: the applied Custom comparison survives (History filters persist).
+  await page.reload();
+  await page.getByRole("button", { name: "History" }).click();
+  await expect(page.getByLabel("Threshold Comparison Mode")).toHaveValue("custom");
+  await expect(onTargetInput).toHaveValue("0.2");
+  await expect(acceptableInput).toHaveValue("0.3");
+  await expect(onTargetCard.getByText("100%")).toBeVisible();
+
+  // Back to Original Thresholds: the block's own persisted snapshot reappears.
+  await page.getByLabel("Threshold Comparison Mode").selectOption("original");
+  await expect(onTargetCard.getByText("0%")).toBeVisible();
+  await expect(page.getByText("within ±0.10s").first()).toBeVisible();
 });
 
 test("Mobile viewport (390x844): History sticky filters render without horizontal overflow", async ({

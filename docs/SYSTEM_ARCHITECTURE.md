@@ -973,6 +973,26 @@ type ThresholdComparisonMode =
   ±0.10s") when blocks disagree, falling back to the legacy default — the same
   approximation this codebase already used for the pre-existing session-level rollup.
 
+**Compare: Custom UI flow (`HistoryFilterBar.tsx`)** — selecting "Compare: Custom…" from
+the Threshold Comparison Mode `<select>` reveals On Target / Acceptable input fields
+immediately, seeded with sensible starting values (the currently-active Standard/Tight
+preset's numbers, or the Standard default if none was active) the first time Custom is
+entered from a fresh, unedited state. A local `thresholdModeSelection` tracks the
+dropdown's own selection separately from the applied `filters.thresholdComparisonMode`,
+since Custom needs an explicit Apply step (gated on the same
+`validateAccuracyThresholds` every other threshold entry point already uses — no second,
+divergent validation logic) while Standard/Tight/Original apply immediately. Once the
+coach edits a Custom field by hand (or a valid value is applied/restored from reload),
+the fields are marked "dirty" so a later Standard/Tight→Custom switch never silently
+overwrites an already-considered value; Reset explicitly restores the Standard default
+and clears that flag. Switching to Original, editing Custom, and switching back to
+Custom preserves the not-yet-applied entry — none of this ever mutates a `TrainingBlock`
+or `Shot`, only the render-local Comparison override (same guarantee as the Decision
+above). `sanitizeThresholdComparisonMode`/`sanitizeHistoryFilters`
+(`historyAnalysis.ts`) repair an invalid persisted Custom value (corrupt/hand-edited
+`localStorage`) to Original on load — the same "never invent a value, fall back to a
+documented safe default" discipline `sessionMigration.ts` uses for `TrainingBlock`s.
+
 ### Dynamic analytics visibility
 
 - **Handle Analysis** (`HandleAnalysisSection.tsx`) inspects which handles actually have
@@ -1020,6 +1040,30 @@ the title/label plus `InfoButton` — both to keep the popover's block-level con
 (`<h3>`/`<p>`/`<ul>`) out of an invalid `<p>`-in-`<p>`/`<h2>`-containing-`<div>` nesting,
 and so existing tests that scope a card by "the div containing this title" keep
 resolving to the card's own root element instead of a new title-only wrapper.
+
+### Training concept explanation architecture — `src/lib/helpContent.ts` + `InfoButton.tsx`
+
+A second, deliberately separate content source from `analyticsExplanations.ts`: that
+file explains *already-recorded analytics* (a metric or chart); `helpContent.ts`
+explains a *training concept a user is choosing or configuring* — today, Training
+Category (Fixed/Variable/Blind Weight) and Measurement Mode (Backline – Hog/Hog – Hog).
+One `FeatureExplanation` record (`title`, `shortDescription`, `purpose`, `howItWorks[]`,
+`usefulFor[]`, optional `limitations[]`) per concept — `trainingCategoryExplanation(mode)`
+and `measurementModeExplanation(mode)` are the lookup functions every call site uses;
+no component hard-codes this text a second time.
+
+`InfoButton.tsx` renders **either** shape (`AnalyticsExplanation | FeatureExplanation`,
+distinguished by a `"purpose" in explanation` type guard) through the same popover/sheet
+shell, keyboard/Escape/focus behavior, and `aria-label` pattern — not a second Info
+component. `TrainingSetup.tsx` places one `InfoButton` per Training Mode option, one per
+Measurement Mode option, and one on the Accuracy Tolerance section heading (reusing
+`analyticsExplanations.ts`'s existing On Target/Acceptable/Major Miss definitions via a
+new `accuracyThresholdsSetupExplanation()`, framed for someone about to choose a
+tolerance rather than someone reading a result). Each per-option Info button is a
+**sibling** of that option's selection `<button>` inside a small `position: relative`
+wrapper `<div>` — never nested inside the selection button — so it can never produce an
+invalid `<button>`-in-`<button>` and clicking it can never also select that option
+(sibling elements don't receive each other's click events).
 
 ### History information hierarchy
 
@@ -1523,7 +1567,7 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 
 | Component | Responsibility |
 |---|---|
-| `TrainingSetup.tsx` | Block creation/edit form: mode, measurement mode, target source, Smart Random range, Accuracy Threshold preset/custom picker, inline validation |
+| `TrainingSetup.tsx` | Block creation/edit form: mode, measurement mode, target source, Smart Random range, Accuracy Threshold preset/custom picker, inline validation; an `InfoButton` per Training Mode/Measurement Mode option plus one for Accuracy Tolerance |
 | `NewTrainingBlock.tsx` | Modal wrapping `TrainingSetup` for mid-session block switches; also renders the outgoing block's summary cards |
 | `ShotEntry.tsx` | Fixed/Variable Weight single-step shot capture (release time, handle, shot type, optional editable target) |
 | `BlindShotEntry.tsx` | Blind Weight's 3-phase capture UI, wired to `blindWeight.ts` |
@@ -1538,8 +1582,8 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 | `ProgressMetricChart.tsx` | Selectable-metric progress line chart across blocks/sessions, with a 3-block rolling average — one point per comparable Training Block |
 | `ShotQualityTrendChart.tsx` | 100%-stacked On Target/Acceptable/Major Miss distribution, one bar per block, plus an optional Major-Miss/On-Target trend summary (≥3 comparable, non-tiny blocks) |
 | `ChartCard.tsx` | Shared chart shell: title + optional `InfoButton`, subtitle, contextual notices, consistent empty state |
-| `InfoButton.tsx` | The one Info-popover/bottom-sheet affordance for `AnalyticsExplanation` content — keyboard-operable, Escape closes and returns focus |
-| `HistoryFilterBar.tsx` | Sticky History filter bar — primary filters (native `<select>`s) apply immediately; secondary filters behind "More filters" with explicit Apply/Reset |
+| `InfoButton.tsx` | The one Info-popover/bottom-sheet affordance for `AnalyticsExplanation` **or** `FeatureExplanation` content — keyboard-operable, Escape closes and returns focus |
+| `HistoryFilterBar.tsx` | Sticky History filter bar — primary filters (native `<select>`s) apply immediately; secondary filters and the Compare: Custom threshold fields behind an explicit Apply/Reset |
 | `AnalysisContextSummary.tsx` | The "what am I looking at" line directly under the sticky filters — headline, block/shot/date-span counts, short contextual notices |
 | `TargetTimeSettings.tsx` | Edits the active block's constant target — only rendered for Fixed Weight and Blind+Fixed |
 | `AutoCapture.tsx` | Capture Sequence start form + live status/Pause/Resume/Cancel/Undo/"Add Result Manually" panel — not rendered for Blind Weight blocks |
@@ -1557,8 +1601,9 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 | `boxPlotStatistics.ts` | Pure, generic median-of-halves boxplot statistics (median/Q1/Q3/whiskers/statistical outliers) over any `number[]` |
 | `chartData.ts` | Pure chart-data preparation (Target Error by Shot, Target-vs-Actual scatter, Progress, Shot Quality) — chart components never compute analytics themselves |
 | `chartTheme.ts` | Central chart color/label tokens (handle colors, category colors, axis formatting) — no chart hard-codes its own |
-| `historyAnalysis.ts` | The central History filter pipeline: `HistoryAnalysisFilters`, `ThresholdComparisonMode`, `buildHistoryAnalysisContext`, default-selection resolution, `aggregateTargetAccuracyAcrossBlocks` |
+| `historyAnalysis.ts` | The central History filter pipeline: `HistoryAnalysisFilters`, `ThresholdComparisonMode`, `buildHistoryAnalysisContext`, default-selection resolution, `aggregateTargetAccuracyAcrossBlocks`, `sanitizeThresholdComparisonMode`/`sanitizeHistoryFilters` (persisted-filter repair) |
 | `analyticsExplanations.ts` | Central `AnalyticsExplanation` content for every core metric/chart — one source for `InfoButton`, chart subtitles, and (later) translation |
+| `helpContent.ts` | Central `FeatureExplanation` content for Training Category and Measurement Mode — one source for `InfoButton` at every Training Setup selection point; kept separate from `analyticsExplanations.ts`, which is scoped to already-recorded analytics |
 | `shotFilters.ts` | Handle/shot-type filtering for the active block view (Current Session only) — History's filtering now goes through `historyAnalysis.ts` |
 | `sessionMigration.ts` | The one place old or partial `localStorage` JSON becomes a valid `Session` |
 | `export.ts` | CSV string building (pure) and the DOM download side-effect |

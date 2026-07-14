@@ -44,7 +44,9 @@ export default function AnalysisContextSummary({
   const notices: string[] = [];
 
   if (context.thresholdsVaryAcrossBlocks) {
-    notices.push("Thresholds vary across selected blocks.");
+    notices.push(
+      "Thresholds vary across selected blocks. Select Custom comparison thresholds to evaluate all selected blocks using one shared standard."
+    );
   }
   if (context.filters.thresholdComparisonMode.type === "comparison") {
     const { onTarget, acceptable } = context.filters.thresholdComparisonMode.thresholds;

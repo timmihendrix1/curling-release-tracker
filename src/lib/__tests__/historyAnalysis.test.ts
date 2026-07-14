@@ -9,6 +9,8 @@ import {
   getAvailableTrainingCategories,
   resolveDefaultMeasurementMode,
   resolveDefaultTrainingCategory,
+  sanitizeHistoryFilters,
+  sanitizeThresholdComparisonMode,
   type HistoryAnalysisFilters,
 } from "../historyAnalysis";
 
@@ -377,5 +379,116 @@ describe("aggregateTargetAccuracyAcrossBlocks", () => {
     expect(aggregate.shotCount).toBe(0);
     expect(aggregate.meanTargetError).toBeNull();
     expect(aggregate.onTargetRate).toBeNull();
+  });
+});
+
+describe("sanitizeThresholdComparisonMode", () => {
+  it("passes through a valid custom comparison mode unchanged", () => {
+    const mode = sanitizeThresholdComparisonMode({
+      type: "comparison",
+      thresholds: { onTarget: 0.07, acceptable: 0.15 },
+    });
+    expect(mode).toEqual({
+      type: "comparison",
+      thresholds: { onTarget: 0.07, acceptable: 0.15 },
+    });
+  });
+
+  it("passes through Original unchanged", () => {
+    expect(sanitizeThresholdComparisonMode({ type: "original" })).toEqual({
+      type: "original",
+    });
+  });
+
+  it("repairs a missing value to Original", () => {
+    expect(sanitizeThresholdComparisonMode(undefined)).toEqual({
+      type: "original",
+    });
+    expect(sanitizeThresholdComparisonMode(null)).toEqual({ type: "original" });
+  });
+
+  it("repairs acceptable <= onTarget to Original", () => {
+    const mode = sanitizeThresholdComparisonMode({
+      type: "comparison",
+      thresholds: { onTarget: 0.2, acceptable: 0.1 },
+    });
+    expect(mode).toEqual({ type: "original" });
+  });
+
+  it("repairs zero/negative thresholds to Original", () => {
+    expect(
+      sanitizeThresholdComparisonMode({
+        type: "comparison",
+        thresholds: { onTarget: 0, acceptable: 0.2 },
+      })
+    ).toEqual({ type: "original" });
+    expect(
+      sanitizeThresholdComparisonMode({
+        type: "comparison",
+        thresholds: { onTarget: -0.1, acceptable: 0.2 },
+      })
+    ).toEqual({ type: "original" });
+  });
+
+  it("repairs NaN/Infinity thresholds to Original", () => {
+    expect(
+      sanitizeThresholdComparisonMode({
+        type: "comparison",
+        thresholds: { onTarget: NaN, acceptable: 0.2 },
+      })
+    ).toEqual({ type: "original" });
+    expect(
+      sanitizeThresholdComparisonMode({
+        type: "comparison",
+        thresholds: { onTarget: 0.1, acceptable: Infinity },
+      })
+    ).toEqual({ type: "original" });
+  });
+
+  it("repairs a comparison mode with a missing thresholds object to Original", () => {
+    expect(
+      sanitizeThresholdComparisonMode({
+        type: "comparison",
+      } as unknown as Parameters<typeof sanitizeThresholdComparisonMode>[0])
+    ).toEqual({ type: "original" });
+  });
+});
+
+describe("sanitizeHistoryFilters", () => {
+  it("merges a partial persisted object onto the safe default shape", () => {
+    const filters = sanitizeHistoryFilters({
+      trainingCategory: "variable",
+    });
+    expect(filters.trainingCategory).toBe("variable");
+    expect(filters.dateRange).toEqual(createDefaultHistoryFilters().dateRange);
+    expect(filters.thresholdComparisonMode).toEqual({ type: "original" });
+  });
+
+  it("keeps a valid persisted custom comparison mode", () => {
+    const filters = sanitizeHistoryFilters({
+      thresholdComparisonMode: {
+        type: "comparison",
+        thresholds: { onTarget: 0.08, acceptable: 0.18 },
+      },
+    });
+    expect(filters.thresholdComparisonMode).toEqual({
+      type: "comparison",
+      thresholds: { onTarget: 0.08, acceptable: 0.18 },
+    });
+  });
+
+  it("repairs an invalid persisted custom comparison mode instead of throwing", () => {
+    const filters = sanitizeHistoryFilters({
+      thresholdComparisonMode: {
+        type: "comparison",
+        thresholds: { onTarget: 0.2, acceptable: 0.1 },
+      },
+    });
+    expect(filters.thresholdComparisonMode).toEqual({ type: "original" });
+  });
+
+  it("falls back to full defaults for undefined/null input", () => {
+    expect(sanitizeHistoryFilters(undefined)).toEqual(createDefaultHistoryFilters());
+    expect(sanitizeHistoryFilters(null)).toEqual(createDefaultHistoryFilters());
   });
 });

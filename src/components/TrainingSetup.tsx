@@ -8,6 +8,11 @@ import {
   validateAccuracyThresholds,
   type AccuracyThresholdPreset,
 } from "../lib/accuracyThresholds";
+import { accuracyThresholdsSetupExplanation } from "../lib/analyticsExplanations";
+import {
+  measurementModeExplanation,
+  trainingCategoryExplanation,
+} from "../lib/helpContent";
 import { parseReleaseTime } from "../lib/timeInput";
 import {
   blindTargetModeLabel,
@@ -28,6 +33,7 @@ import type {
   MeasurementMode,
   VariableTargetMode,
 } from "../types";
+import InfoButton from "./InfoButton";
 
 export type TrainingSetupValue = {
   name: string;
@@ -280,18 +286,26 @@ export default function TrainingSetup({
 
         <div className="mt-2 grid grid-cols-3 gap-2">
           {BLOCK_MODES.map((blockMode) => (
-            <button
-              key={blockMode}
-              type="button"
-              onClick={() => setMode(blockMode)}
-              className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                mode === blockMode
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-200 text-slate-700"
-              }`}
-            >
-              {blockModeLabel(blockMode)}
-            </button>
+            // The Info button is a sibling of the selection button, not
+            // nested inside it — a <button> inside a <button> would be
+            // invalid HTML, and clicking the info icon must never also
+            // select this Training Mode.
+            <div key={blockMode} className="relative">
+              <button
+                type="button"
+                onClick={() => setMode(blockMode)}
+                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
+                  mode === blockMode
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {blockModeLabel(blockMode)}
+              </button>
+              <span className="absolute right-1 top-1">
+                <InfoButton explanation={trainingCategoryExplanation(blockMode)} />
+              </span>
+            </div>
           ))}
         </div>
       </div>
@@ -303,26 +317,36 @@ export default function TrainingSetup({
 
         <div className="mt-2 grid grid-cols-2 gap-2">
           {MEASUREMENT_MODES.map((mm) => (
-            <button
-              key={mm}
-              type="button"
-              onClick={() => setMeasurementMode(mm)}
-              className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                measurementMode === mm
-                  ? "bg-slate-900 text-white"
-                  : "bg-slate-200 text-slate-700"
-              }`}
-            >
-              {measurementModeLabel(mm)}
-            </button>
+            <div key={mm} className="relative">
+              <button
+                type="button"
+                onClick={() => setMeasurementMode(mm)}
+                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
+                  measurementMode === mm
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-200 text-slate-700"
+                }`}
+              >
+                {measurementModeLabel(mm)}
+              </button>
+              <span className="absolute right-1 top-1">
+                <InfoButton explanation={measurementModeExplanation(mm)} />
+              </span>
+            </div>
           ))}
         </div>
       </div>
 
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Accuracy Tolerance
-        </label>
+        {/* <header>, not <div>/<label>, so the popover's block-level content
+            (h3/p/ul) never nests inside this row's own text elements — same
+            reasoning as ChartCard/DashboardCard's title row. */}
+        <header className="flex items-center">
+          <span className="text-sm font-medium text-slate-700">
+            Accuracy Tolerance
+          </span>
+          <InfoButton explanation={accuracyThresholdsSetupExplanation()} />
+        </header>
 
         <p className="mt-1 text-xs text-slate-500">
           How close counts as on target. Applies to this block&apos;s Target

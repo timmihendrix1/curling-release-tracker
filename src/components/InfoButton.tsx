@@ -2,13 +2,27 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { AnalyticsExplanation } from "../lib/analyticsExplanations";
+import type { FeatureExplanation } from "../lib/helpContent";
 
 type InfoButtonProps = {
-  explanation: AnalyticsExplanation;
+  /**
+   * Either shape renders through this one component — a metric/chart
+   * `AnalyticsExplanation` (see `analyticsExplanations.ts`) or a training
+   * concept `FeatureExplanation` (see `helpContent.ts`, Training Category /
+   * Measurement Mode explanations). No second Info component exists for the
+   * latter; only the content shape differs.
+   */
+  explanation: AnalyticsExplanation | FeatureExplanation;
 };
 
+function isFeatureExplanation(
+  explanation: AnalyticsExplanation | FeatureExplanation
+): explanation is FeatureExplanation {
+  return "purpose" in explanation;
+}
+
 /**
- * The one Info affordance every metric/chart uses (see
+ * The one Info affordance every metric/chart/training-concept uses (see
  * docs/SYSTEM_ARCHITECTURE.md's "Metric and chart explanation architecture").
  * Renders as an anchored popover on wide screens and a bottom sheet on narrow
  * ones via CSS breakpoints alone — same markup, no separate mobile
@@ -83,35 +97,78 @@ export default function InfoButton({ explanation }: InfoButtonProps) {
               </button>
             </div>
 
-            <p className="mt-2 text-sm text-slate-600">
-              {explanation.whatItShows}
-            </p>
+            {isFeatureExplanation(explanation) ? (
+              <>
+                <p className="mt-2 text-sm text-slate-600">
+                  {explanation.shortDescription}
+                </p>
 
-            {explanation.howToRead.length > 0 && (
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-                {explanation.howToRead.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
+                <p className="mt-3 text-sm text-slate-600">
+                  <span className="font-medium text-slate-800">
+                    Purpose:{" "}
+                  </span>
+                  {explanation.purpose}
+                </p>
+
+                {explanation.howItWorks.length > 0 && (
+                  <>
+                    <p className="mt-3 text-xs font-medium text-slate-700">
+                      How it works
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-600">
+                      {explanation.howItWorks.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+
+                {explanation.usefulFor.length > 0 && (
+                  <>
+                    <p className="mt-3 text-xs font-medium text-slate-700">
+                      Useful for
+                    </p>
+                    <ul className="mt-1 list-disc space-y-1 pl-4 text-sm text-slate-600">
+                      {explanation.usefulFor.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-slate-600">
+                  {explanation.whatItShows}
+                </p>
+
+                {explanation.howToRead.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
+                    {explanation.howToRead.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
+
+                {explanation.betterMeans.length > 0 && (
+                  <p className="mt-2 text-sm text-slate-600">
+                    <span className="font-medium text-slate-800">
+                      Better means:{" "}
+                    </span>
+                    {explanation.betterMeans.join(" ")}
+                  </p>
+                )}
+
+                {explanation.possiblePatterns &&
+                  explanation.possiblePatterns.length > 0 && (
+                    <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
+                      {explanation.possiblePatterns.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                  )}
+              </>
             )}
-
-            {explanation.betterMeans.length > 0 && (
-              <p className="mt-2 text-sm text-slate-600">
-                <span className="font-medium text-slate-800">
-                  Better means:{" "}
-                </span>
-                {explanation.betterMeans.join(" ")}
-              </p>
-            )}
-
-            {explanation.possiblePatterns &&
-              explanation.possiblePatterns.length > 0 && (
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-                  {explanation.possiblePatterns.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              )}
 
             {explanation.limitations && explanation.limitations.length > 0 && (
               <p className="mt-2 text-xs text-slate-500">

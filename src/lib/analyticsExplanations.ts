@@ -276,6 +276,31 @@ export function progressMetricExplanation(
   };
 }
 
+/**
+ * The Setup-time overview of Accuracy Thresholds — deliberately short (see
+ * UX_WRITING_GUIDELINES.md's "explain, don't overwhelm"), behind the same
+ * `InfoButton` used everywhere else. Reuses the On Target/Acceptable/Major
+ * Miss category definitions already established by `onTargetExplanation`/
+ * `acceptableExplanation`/`majorMissExplanation` above, framed for someone
+ * about to choose a tolerance rather than someone reading a result.
+ */
+export function accuracyThresholdsSetupExplanation(): AnalyticsExplanation {
+  return {
+    id: "accuracyThresholdsSetup",
+    title: "Accuracy Thresholds",
+    shortDescription:
+      "How close counts as On Target, Acceptable, or a Major Miss for this block.",
+    whatItShows:
+      "On Target: shots within the tighter tolerance. Acceptable: shots outside On Target but within the broader tolerance. Major Miss: shots outside the Acceptable tolerance.",
+    howToRead: [
+      "Standard and Tight are recommendations, not scientifically validated performance levels.",
+      "Custom lets you match a tolerance to your own training level and goal.",
+      "Thresholds are saved with this block, so past blocks stay judged against what you actually trained under.",
+    ],
+    betterMeans: [],
+  };
+}
+
 export function shotQualityExplanation(): AnalyticsExplanation {
   return {
     id: "shotQuality",
