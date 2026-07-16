@@ -356,6 +356,28 @@ The application should never imply that one category is inherently better than a
 
 ---
 
+# Assessments (Future)
+
+**[Planned — not implemented.]** See `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md`
+for the full Assessment domain and execution model. The principles above already apply to
+Assessment results (measure first, describe observations, never diagnose technique
+directly, prefer possibilities). Two points are specific to Assessments and not already
+covered above:
+
+- An Assessment result must only interpret the capability it actually measured (e.g. a
+  release-time assessment measures delivery-speed control, not the athlete's complete
+  curling ability) — never a global classification of the athlete (beginner /
+  intermediate / advanced / elite) from one assessment's data.
+- In a future Coach Guided workflow, coach-defined priorities take precedence over
+  automatic platform suggestions — a Training Focus Suggestion derived from assessment
+  data is replaceable by the coach, never the other way around.
+
+A single completed Assessment Run is one data point, same as one training block — the
+existing "Patterns over individual shots" and "Trends over snapshots" principles apply
+unchanged and are not restated here.
+
+---
+
 # Coaching Suggestions
 
 Whenever suggestions are shown they should:

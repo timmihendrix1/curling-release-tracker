@@ -340,6 +340,24 @@ over
 
 ---
 
+# Assessment Language
+
+**[Implemented — Release Time Core Assessment v1 execution flow, Phase B.]** See
+`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the full Assessment model and
+`src/lib/assessmentContent.ts` for the actual copy used throughout the flow. The
+general principles above (separate facts from interpretation, prefer "may indicate"/
+"suggests" over certainty) already apply to Assessment copy. Two rules are specific to
+Assessments:
+
+- `Official Assessment` describes platform/organisation control and versioning — it must
+  never be worded in a way that implies federation endorsement (e.g. "Official Swiss
+  Curling Assessment") unless that endorsement genuinely exists.
+- Do not label a result `Perfect`, `Poor`, or similarly, without a validated reference
+  value behind it — prefer describing the measured difference itself (e.g. "Your largest
+  measured difference was...", "This run is not directly comparable because...").
+
+---
+
 # Accessibility
 
 Do not rely only on colour.

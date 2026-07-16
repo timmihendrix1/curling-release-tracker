@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad } from "./utils";
+import {
+  freshLoad,
+  goToAnalyze,
+  setupFixedBlock,
+  setupVariableSmartRandomBlock,
+} from "./utils";
 
 /** ShotEntry panel — scoped away from Auto Capture's differently-labeled controls. */
 function shotEntryPanel(page: import("@playwright/test").Page) {
@@ -29,13 +34,12 @@ test("Sticky filters update all History analytics together", async ({ page }) =>
   await freshLoad(page);
 
   // Session 1: Fixed Weight, target 3.75s, one In and one Out handle shot.
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   await addShot(page, 3.8, "In");
   await addShot(page, 3.9, "Out");
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
 
   await expect(page.getByText("Key Progress Summary")).toBeVisible();
   await expect(page.getByText(/\d+ blocks? · \d+ shots?/)).toBeVisible();
@@ -58,8 +62,7 @@ test("Category Progress: switching Training Category shows only comparable block
   await freshLoad(page);
 
   // Fixed Weight block, then a Variable Weight block in the same session.
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   await addShot(page, 3.8);
 
   await page.getByRole("button", { name: "New Training Block" }).click();
@@ -70,7 +73,7 @@ test("Category Progress: switching Training Category shows only comparable block
   await addShot(page, 4.0);
 
   await startNewSession(page);
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
 
   await page.getByLabel("Training Category").selectOption("variable");
   await expect(
@@ -88,20 +91,16 @@ test("Multi-session Scatterplot combines shots across sessions and blocks", asyn
 }) => {
   await freshLoad(page);
 
-  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupVariableSmartRandomBlock(page);
   await addShot(page, 3.5);
   await addShot(page, 4.0);
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupVariableSmartRandomBlock(page);
   await addShot(page, 3.7);
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
   await page.getByLabel("Training Category").selectOption("variable");
 
   const scatterCard = page.locator("div", {
@@ -118,8 +117,7 @@ test("Metric Info popover opens with an explanation and closes with Escape", asy
   page,
 }) => {
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   await addShot(page, 3.8);
 
   const infoButton = page.getByRole("button", { name: "About Average Error" });
@@ -142,8 +140,7 @@ test("Chart Info popover distinguishes a statistical outlier from a Major Miss",
   page,
 }) => {
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   await addShot(page, 3.8);
 
   const boxplotInfo = page.getByRole("button", { name: "About Handle Boxplot" });
@@ -159,13 +156,12 @@ test("Compare: Custom reveals threshold fields, validates, re-classifies shots, 
   await freshLoad(page);
 
   // Default block: Fixed Weight, target 3.75s, Standard thresholds (0.10/0.20).
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   // targetError = +0.15 -> Acceptable under Standard (0.10 < 0.15 <= 0.20).
   await addShot(page, 3.9);
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
 
   const onTargetCard = page
     .getByText("On Target", { exact: true })
@@ -201,9 +197,10 @@ test("Compare: Custom reveals threshold fields, validates, re-classifies shots, 
   // only the On Target/Acceptable/Major Miss classification changed.
   await expect(page.locator(".recharts-scatter-symbol")).toHaveCount(scatterPointCount);
 
-  // Reload: the applied Custom comparison survives (History filters persist).
+  // Reload: the applied Custom comparison survives (History filters persist,
+  // even though the active navigation tab itself resets to Home — see docs/adr/0009).
   await page.reload();
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
   await expect(page.getByLabel("Threshold Comparison Mode")).toHaveValue("custom");
   await expect(onTargetInput).toHaveValue("0.2");
   await expect(acceptableInput).toHaveValue("0.3");
@@ -215,17 +212,16 @@ test("Compare: Custom reveals threshold fields, validates, re-classifies shots, 
   await expect(page.getByText("within ±0.10s").first()).toBeVisible();
 });
 
-test("Mobile viewport (390x844): History sticky filters render without horizontal overflow", async ({
+test("Mobile viewport (390x844): Analyze sticky filters render without horizontal overflow", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
   await addShot(page, 3.8);
   await startNewSession(page);
 
-  await page.getByRole("button", { name: "History" }).click();
+  await goToAnalyze(page);
   await expect(page.getByLabel("Training Category")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(

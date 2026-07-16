@@ -210,6 +210,33 @@ Users should always understand:
 
 - how to return
 
+**Implemented:** `PrimaryNavigation.tsx` — one component, two renderings of the same
+config-driven item list (`src/lib/navigation.ts`): a static top bar on desktop/tablet, a
+fixed bottom bar on mobile (safe-area aware). The active item always carries
+`aria-current="page"`. All five items (Home, Train, Assess, Analyze, Settings) are
+active as of the Release Time Core Assessment v1 execution flow (Phase B); a hidden
+item (`availability: "hidden"`) would still never reach this component if one existed.
+
+## Future Capability Items
+
+A reusable pattern for a platform capability that's described in the product vision but
+doesn't exist yet (Home's Schedule, Coach, Team). **Implemented:**
+`FutureCapabilityItem.tsx` — a title, a small "Coming soon" pill (kept on the same line
+as the title, never wrapping to its own row), and a one-sentence description. Never
+interactive (no button, no click handler, never focusable) and always visually secondary
+(muted colors, no border/background of its own) to whatever real functionality is on the
+same screen.
+
+`FutureCapabilitiesSection.tsx` wraps every item in **one shared, dashed-border
+container** under a single "Coming next" heading — not three individually-boxed cards.
+Below the `sm` breakpoint, items stack as rows separated by a subtle divider line; at
+`sm` and above, the same container becomes a three-column grid with vertical dividers.
+This distinction matters: three separately-bordered boxes read as fragmented even when
+stacked vertically, while one shared container with internal dividers reads as a single,
+quieter section — keeping future platform capabilities visually secondary to Today's Plan
+and Training Overview. See "Empty States" below for the related but distinct case of a
+real feature with no data yet.
+
 ---
 
 # Sticky Elements
@@ -425,6 +452,37 @@ Accessibility should be part of every feature, not an afterthought.
 New reusable components should follow existing patterns whenever possible.
 
 Avoid introducing visually different components when an existing one can be extended.
+
+## Assessment patterns (Implemented, Phase B)
+
+See `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the Assessment product
+model these support, and `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section for the
+implementation snapshot. Implemented components (`src/components/Assessment*.tsx`):
+
+- **`AssessmentSetupDiagram`** — a plain, provider-neutral inline SVG (hack, delivery
+  direction, backline/Gate 1, hogline/Gate 2, stone path, measured segment
+  highlighted). No manufacturer branding, no external asset.
+- **`AssessmentProtocolSheet`** — the permanent "full protocol" overlay (purpose,
+  blocks, warm-up sequence, setup, invalid-attempt/wrong-handle rules, pause/abandon
+  rules), reachable from Overview, execution, and the Completion Summary — the
+  Assessment-domain counterpart to `InfoButton`'s content sheets, but standalone since
+  it needs to be triggered from multiple, unrelated screens.
+- **`AssessmentProgress`** — a labeled progress bar with real `aria-valuenow`/
+  `-valuemin`/`-valuemax` semantics, reused for warm-up, per-block, and overall (x of
+  32) progress alike.
+- **`AssessmentCurrentShot`** — target/handle/phase display plus the Executed Handle
+  toggle (defaults to Expected Handle) and the most recent result, including the
+  wrong-handle Protocol Deviation notice.
+- **`AssessmentThresholdSelector`** / **`AssessmentSetupConfirmation`** — the
+  threshold-preset and setup-confirmation sections shown on Overview before a Run can
+  start.
+- **`AssessmentInvalidAttemptDialog`** / **`AssessmentBlockTransition`** /
+  **`AssessmentPausedView`** / **`AssessmentCompletionSummary`** — the remaining
+  execution-lifecycle screens, each a single-purpose card following the same visual
+  language (rounded-2xl white cards, `shadow-lg`) as the rest of the app.
+
+No Comparison Eligibility Notice exists yet — that belongs to Phase C (result
+comparison), not this execution-flow pass.
 
 ---
 

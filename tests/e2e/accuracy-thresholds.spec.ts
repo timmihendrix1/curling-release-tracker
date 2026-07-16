@@ -1,10 +1,17 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad } from "./utils";
+import {
+  freshLoad,
+  goToTrain,
+  setupFixedBlock,
+  setupVariableSmartRandomBlock,
+} from "./utils";
 
 test("Threshold Setup: presets show their values, Custom validates inline, and the snapshot survives into a new block", async ({
   page,
 }) => {
   await freshLoad(page);
+  await goToTrain(page);
+  await page.waitForSelector("text=Set Up Training Block");
 
   // Standard is the default preset.
   await expect(page.getByText("On target ±0.10s")).toBeVisible();
@@ -51,8 +58,7 @@ test("Block Analytics: deterministic shots produce the expected Bias, Average Er
   page,
 }) => {
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
 
   // Default block: target 3.75s, Standard thresholds (0.10 / 0.20).
   // Shots (targetError): 3.80 (+0.05, on target), 3.90 (+0.15, acceptable),
@@ -79,8 +85,7 @@ test("Target Error Chart: shows the zero line, positive/negative bars, and a too
   page,
 }) => {
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
 
   const shotEntry = page.locator("div", {
     has: page.getByRole("heading", { name: "Add Shot" }),
@@ -100,9 +105,7 @@ test("Scatterplot: legend toggles In/Out visibility without mutating underlying 
   page,
 }) => {
   await freshLoad(page);
-  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupVariableSmartRandomBlock(page);
 
   const shotEntry = page.locator("div", {
     has: page.getByRole("heading", { name: "Add Shot" }),
@@ -133,9 +136,7 @@ test("Regression: Smart Random Variable Weight, Blind Weight, and mobile viewpor
   await freshLoad(page);
 
   // Variable Weight / Smart Random still creates a block with a generated target.
-  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupVariableSmartRandomBlock(page);
   await expect(page.getByText("Smart Random")).toBeVisible();
 });
 
@@ -144,8 +145,7 @@ test("Mobile viewport (390x844): Dashboard and charts render without horizontal 
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await freshLoad(page);
-  await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await setupFixedBlock(page);
 
   const shotEntry = page.locator("div", {
     has: page.getByRole("heading", { name: "Add Shot" }),

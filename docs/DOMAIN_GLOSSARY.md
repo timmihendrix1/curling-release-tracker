@@ -300,6 +300,10 @@ Examples:
 
 Baselines support analysis but are not goals.
 
+Distinct from a future **Baseline Assessment** (see "Assessment" below) — an optional
+assessment type used to establish this kind of reference value, not the reference value
+itself.
+
 ---
 
 # Feedback
@@ -415,6 +419,105 @@ Examples:
 - Team
 
 - Ice sheet
+
+---
+
+# Assessment
+
+**[Domain/persistence (Phase A) and the Release Time Core Assessment v1 execution flow
+(Phase B) are both implemented — see `docs/adr/0010-assessment-domain-foundation.md`
+and `docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`.]** These
+terms are defined in full by `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md`, the
+authoritative source for Assessment product and domain rules. This section gives short,
+glossary-level definitions only — see that document for execution, comparison and
+versioning rules, and `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section for the
+current implementation snapshot (`src/lib/assessment/`, `AssessScreen.tsx`). Not yet
+implemented: the full Result screen, Assessment history/comparison, Analyze integration
+(Phase C).
+
+## Assessment
+
+A standardised performance measurement executed under a defined protocol.
+
+An Assessment is **not** a Training Session: it exists to measure current performance
+under consistent conditions, not to freely improve it. See "Training Session" above —
+the two are deliberately distinct concepts and must not be conflated or modeled as one
+another, even though an Assessment Run may reuse Training/Timing infrastructure.
+
+## Assessment Template
+
+A versioned definition of an Assessment protocol (blocks, targets, handles, validity and
+scoring rules). Immutable after publication — a semantic change requires a new version,
+never a silent edit to an existing one.
+
+## Official Assessment
+
+A fixed, platform- or organisation-controlled Assessment Template, not editable by the
+athlete. `Official` describes control and versioning — it does not by itself imply
+endorsement by a federation (e.g. Swiss Curling) unless that endorsement genuinely
+exists.
+
+## Custom Assessment
+
+A configurable Assessment Template (blocks, targets, handles, rules), potentially
+authored by an athlete, coach, team or organisation in the future. A modified Official
+Assessment becomes a separate Custom Assessment with its own comparison identity.
+
+## Assessment Block Definition
+
+The definition of one part of an Assessment Template's protocol (e.g. "Slow
+Reproduction") — the Assessment-domain counterpart to a Training Block, but part of an
+immutable template rather than a mutable, athlete-configured block.
+
+## Planned Assessment Shot
+
+The prescribed target (time, handle) a specific position in an Assessment Run is
+supposed to execute, as defined by the template — distinct from a Training Block's
+`pendingTargetTime`, which is athlete/session-specific and mutable.
+
+## Assessment Attempt
+
+One physical execution of a Planned Assessment Shot. A planned shot may have multiple
+technically invalid attempts, but only one valid, scored attempt.
+
+## Assessment Run
+
+One athlete's execution of one Assessment Template version — the Assessment-domain
+counterpart to a Training Session, but with a fixed sequence, a stable template-version
+reference, and stricter immutability once completed.
+
+## Assessment Result
+
+The derived evaluation of a completed Assessment Run. **[Open decision / not yet built as
+a stored type]** — Phase A implements the pure metric functions a Result would be built
+from (`src/lib/assessment/metrics.ts`'s raw and category metrics), but no `AssessmentResult`
+type or Result screen exists yet; results are computed on demand from a run's `attempts`,
+never cached as the authoritative source.
+
+## Invalid Attempt
+
+A technically or objectively invalid Assessment Attempt (e.g. a timing gate failure),
+excluded from scored metrics and repeatable within a documented limit.
+
+## Protocol Deviation
+
+A recorded, transparent deviation from the prescribed execution of an Assessment Run
+(e.g. the wrong handle was used) that does not invalidate the attempt but must be
+disclosed.
+
+## Comparison Eligibility
+
+The rules determining whether two Assessment Runs may be directly compared (same
+template, version, measurement mode, and sequence, among others).
+
+## Release Time Core Assessment v1
+
+The proposed first standardised Assessment: Backline–Hog measurement, Draw shot type,
+targets of 3.50s / 3.75s / 4.00s, 32 scored stones across four blocks, 6 warm-up stones.
+Proposed, not yet externally validated — see
+`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the full protocol and open
+validation questions. Do not restate or vary these numbers elsewhere in the
+documentation; treat the specification as the single source for them.
 
 ---
 
@@ -746,6 +849,10 @@ in any future documentation or UI copy.
 
 The `Session[]` list of completed sessions, kept in a separate `localStorage` key from
 the current session. Append-only aside from explicit per-entry or clear-all deletion.
+**Analyze** (see below) is the visible screen name for the view onto this data — "History"
+remains the correct term for the data concept itself (types, storage key, function names
+like `migrateSessionHistory`); the two are not the same thing and this rename was
+deliberately UI-only. See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`.
 
 ## Migration
 
@@ -853,3 +960,29 @@ History analytics classify On Target/Acceptable/Major Miss for the current selec
 Switching modes never rewrites a `TrainingBlock`'s or `Shot`'s persisted values — only
 which thresholds *this render's* History analytics use to categorize them.
 **[Implemented]**
+
+## Home / Train / Assess / Analyze / Settings
+
+The five visible top-level navigation sections (`ActiveView` in `src/lib/navigation.ts`).
+UI/screen names, not new domain concepts layered on top of the ones above:
+
+- **Home** — "what is relevant today"; composes a plain greeting, Today's Plan (incl. a
+  contextual "Resume Assessment" action when an active Assessment Run exists), Training
+  Overview (an honestly-scoped rename of "Performance Snapshot", with a secondary "View
+  Analyze" action — there is no separate Quick Access section), Devices, and a grouped
+  "Coming next" preview of Schedule/Coach/Team. Never an analytics dashboard.
+- **Train** — the former "Current Session" view (Setup, active Training Block, Shot
+  Entry, Auto Capture, current-session analytics) under a new name; no behavior change.
+- **Assess** — the Release Time Core Assessment v1 execution flow (`AssessScreen.tsx`,
+  Phase B): Landing, Overview, Guided Introduction, Threshold/Setup, Warm-up, Scored
+  Execution, Pause/Resume/Abandon, Completion Summary. See **Assessment** above and
+  `docs/adr/0011`.
+- **Analyze** — the visible name for the History view (see **History** above); the
+  underlying data/filter concepts are unchanged. Does not yet include Assessment data
+  (Phase C).
+- **Settings** — app-wide Data Management (Export History CSV, Clear History) and About.
+  Session-specific settings (title/notes, fixed-target adjustment) stay in Train.
+
+**[Implemented — Home/Train/Assess/Analyze/Settings]** See `docs/adr/0009` (navigation
+model), `docs/adr/0011` (Assess-specific capture-ownership/navigation-guard/persistence
+integration), and `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`.
