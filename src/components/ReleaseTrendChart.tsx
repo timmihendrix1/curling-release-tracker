@@ -2,6 +2,7 @@
 
 import type { Shot } from "../types";
 import { formatSigned } from "../lib/timeInput";
+import ChartCard from "./ChartCard";
 
 import {
   LineChart,
@@ -80,13 +81,18 @@ export default function ReleaseTrendChart({
     targetError: shot.releaseTime - shot.targetTime,
   }));
 
-  return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
-      <h2 className="text-xl font-semibold text-slate-900">
-        Release Trend
-      </h2>
+  // A single point has no trend to show — avoid rendering a blank/degenerate
+  // chart frame (DESIGN_SYSTEM.md §22.3) below that.
+  const isEmpty = shots.length < 2;
 
-      <div className="mt-6 h-72">
+  return (
+    <ChartCard
+      title="Release Trend"
+      subtitle="Is my release becoming more consistent?"
+      isEmpty={isEmpty}
+      emptyMessage="Add at least two shots to see the release trend."
+    >
+      <div className="h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <XAxis dataKey="shotNumber" />
@@ -139,6 +145,6 @@ export default function ReleaseTrendChart({
           </LineChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </ChartCard>
   );
 }
