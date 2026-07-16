@@ -280,61 +280,78 @@ export default function TrainingSetup({
       </div>
 
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Training Mode
-        </label>
+        {/* One shared Info action for the whole control group, describing
+            whichever Training Mode is currently selected, rather than a
+            cramped per-segment info icon on every button (DESIGN_SYSTEM.md
+            §13.1's preferred alternative). */}
+        <header className="flex items-center">
+          <span className="text-sm font-medium text-slate-700">
+            Training Mode
+          </span>
+          <InfoButton explanation={trainingCategoryExplanation(mode)} />
+        </header>
 
         <div className="mt-2 grid grid-cols-3 gap-2">
           {BLOCK_MODES.map((blockMode) => (
-            // The Info button is a sibling of the selection button, not
-            // nested inside it — a <button> inside a <button> would be
-            // invalid HTML, and clicking the info icon must never also
-            // select this Training Mode.
-            <div key={blockMode} className="relative">
-              <button
-                type="button"
-                onClick={() => setMode(blockMode)}
-                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
-                  mode === blockMode
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                {blockModeLabel(blockMode)}
-              </button>
-              <span className="absolute right-1 top-1">
-                <InfoButton explanation={trainingCategoryExplanation(blockMode)} />
-              </span>
-            </div>
+            <button
+              key={blockMode}
+              type="button"
+              onClick={() => setMode(blockMode)}
+              className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
+                mode === blockMode
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {blockModeLabel(blockMode)}
+            </button>
           ))}
         </div>
+
+        <p className="mt-1.5 text-xs text-slate-500">
+          {trainingCategoryExplanation(mode).shortDescription}
+        </p>
       </div>
 
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Measurement Mode
-        </label>
+        <header className="flex items-center">
+          <span className="text-sm font-medium text-slate-700">
+            Measurement Mode
+          </span>
+          <InfoButton explanation={measurementModeExplanation(measurementMode)} />
+        </header>
 
         <div className="mt-2 grid grid-cols-2 gap-2">
           {MEASUREMENT_MODES.map((mm) => (
-            <div key={mm} className="relative">
-              <button
-                type="button"
-                onClick={() => setMeasurementMode(mm)}
-                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
-                  measurementMode === mm
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                {measurementModeLabel(mm)}
-              </button>
-              <span className="absolute right-1 top-1">
-                <InfoButton explanation={measurementModeExplanation(mm)} />
-              </span>
-            </div>
+            <button
+              key={mm}
+              type="button"
+              onClick={() => setMeasurementMode(mm)}
+              className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
+                measurementMode === mm
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {measurementModeLabel(mm)}
+            </button>
           ))}
         </div>
+
+        <p className="mt-1.5 text-xs text-slate-500">
+          {measurementModeExplanation(measurementMode).shortDescription}
+        </p>
+      </div>
+
+      {/* Target Configuration group — Block Name/Training Mode/Measurement
+          Mode above are the Training Block decision; everything from here
+          down is the Target Configuration decision (DESIGN_SYSTEM.md §15.5).
+          A divider and section title separate the two within one form,
+          rather than a second major card for a few related fields. */}
+      <div className="border-t border-slate-200 pt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Target Configuration
+        </h3>
       </div>
 
       <div>

@@ -178,7 +178,7 @@ export default function AssessmentResultScreen({
 
       <AssessmentShotDetails shots={shotRows} invalidAttempts={invalidAttemptRows} />
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5">
         <h2 className="text-lg font-semibold text-slate-900">Compare With Another Run</h2>
 
         {eligibleCandidates.length === 0 ? (

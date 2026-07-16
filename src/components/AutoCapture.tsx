@@ -36,6 +36,10 @@ type AutoCaptureProps = {
   onCancel: () => void;
   onUndo: () => void;
   onManualResult: (value: number) => void;
+  /** Only true in development builds — the Simulator itself never renders
+   * otherwise, so this description shouldn't mention it to production
+   * users either (DESIGN_SYSTEM.md: no dev-only explanations in production). */
+  isDevEnvironment?: boolean;
 };
 
 const HANDLE_MODES: CaptureHandleMode[] = ["manual", "fixed-in", "fixed-out", "alternate"];
@@ -68,6 +72,7 @@ export default function AutoCapture({
   onCancel,
   onUndo,
   onManualResult,
+  isDevEnvironment = false,
 }: AutoCaptureProps) {
   const [shotCountInput, setShotCountInput] = useState(
     String(DEFAULT_CAPTURE_SHOT_COUNT)
@@ -143,8 +148,9 @@ export default function AutoCapture({
         <h2 className="text-xl font-semibold text-slate-900">Auto Capture</h2>
 
         <p className="mt-2 text-sm text-slate-600">
-          Have a timing result (or the Simulator, in development mode) automatically
-          save each shot as it comes in.
+          {isDevEnvironment
+            ? "Have a timing result (or the Simulator, in development mode) automatically save each shot as it comes in."
+            : "Have a timing result automatically save each shot as it comes in."}
         </p>
 
         {captureSequence?.status === "completed" && (
@@ -426,7 +432,9 @@ export default function AutoCapture({
         <p className="mt-1 text-xs text-slate-500">
           {captureSequence!.status === "paused"
             ? "Resume the sequence to add a result manually."
-            : "Works even if the simulator is off or a real device isn't connected."}
+            : isDevEnvironment
+              ? "Works even if the simulator is off or a real device isn't connected."
+              : "Works even if a real device isn't connected."}
         </p>
 
         <div className="mt-2 flex gap-2">

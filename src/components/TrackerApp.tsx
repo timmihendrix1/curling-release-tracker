@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
 import AssessmentAnalyze from "./AssessmentAnalyze";
 import AssessmentResultScreen from "./AssessmentResultScreen";
@@ -9,6 +10,7 @@ import BlindShotEntry from "./BlindShotEntry";
 import ConfirmModal from "./ConfirmModal";
 import DashboardCard from "./DashboardCard";
 import HomeScreen from "./HomeScreen";
+import PageHeader from "./PageHeader";
 import NewTrainingBlock from "./NewTrainingBlock";
 import PrimaryNavigation from "./PrimaryNavigation";
 import ReleaseTrendChart from "./ReleaseTrendChart";
@@ -129,6 +131,31 @@ import {
 } from "../lib/trainingBlocks";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
+
+// Compact contextual header copy for every functional screen (DESIGN_SYSTEM.md
+// §9.2) — Home keeps the full AppHeader product identity instead, see the
+// activeView switch below.
+const FUNCTIONAL_PAGE_HEADERS: Record<
+  Exclude<ActiveView, "home">,
+  { title: string; description: string }
+> = {
+  train: {
+    title: "Train",
+    description: "Set up a session and record release times as you throw.",
+  },
+  assess: {
+    title: "Assess",
+    description: "Run the Release Time Core Assessment and review results.",
+  },
+  analyze: {
+    title: "Analyze",
+    description: "Review training and assessment history.",
+  },
+  settings: {
+    title: "Settings",
+    description: "Manage local data and app preferences.",
+  },
+};
 
 const CURRENT_SESSION_STORAGE_KEY =
   "curling-release-tracker-current-session";
@@ -1478,7 +1505,16 @@ export default function TrackerApp() {
   }
 
   return (
-    <div className="space-y-4 pb-24 sm:pb-4">
+    <div className="app-content-clearance space-y-4">
+      {activeView === "home" ? (
+        <AppHeader />
+      ) : (
+        <PageHeader
+          title={FUNCTIONAL_PAGE_HEADERS[activeView].title}
+          description={FUNCTIONAL_PAGE_HEADERS[activeView].description}
+        />
+      )}
+
       <PrimaryNavigation activeView={activeView} onNavigate={handleNavigate} />
 
       {viewingAssessmentResultRunId && resolvedAssessmentResultRun && (
@@ -1546,7 +1582,7 @@ export default function TrackerApp() {
             </>
           ) : (
             <>
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              <div className="rounded-2xl bg-white p-4 shadow-lg">
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1598,10 +1634,13 @@ export default function TrackerApp() {
                     </p>
                   </div>
 
+                  {/* Secondary action — kept visually subordinate to the
+                      block identity beside it and to the primary shot-entry
+                      action below (DESIGN_SYSTEM.md §19.1/§12.2). */}
                   <button
                     type="button"
                     onClick={handleOpenNewBlockModal}
-                    className="whitespace-nowrap rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+                    className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
                   >
                     New Training Block
                   </button>
@@ -1647,6 +1686,7 @@ export default function TrackerApp() {
                     onCancel={handleCancelCaptureSequence}
                     onUndo={handleUndoLastCapturedShot}
                     onManualResult={handleManualCaptureResult}
+                    isDevEnvironment={IS_DEV}
                   />
 
                   {IS_DEV && (
@@ -1659,7 +1699,7 @@ export default function TrackerApp() {
                 </>
               )}
 
-              <div className="rounded-2xl bg-white p-4 shadow-lg">
+              <div className="rounded-xl bg-slate-100 p-3">
                 <p className="text-sm font-medium text-slate-700">
                   Filter
                 </p>
@@ -1668,8 +1708,8 @@ export default function TrackerApp() {
                   {(
                     [
                       ["all", "Total"],
-                      ["in", "Inhandle"],
-                      ["out", "Outhandle"],
+                      ["in", "In Handle"],
+                      ["out", "Out Handle"],
                     ] as [HandleFilter, string][]
                   ).map(([value, label]) => (
                     <button
@@ -1681,9 +1721,9 @@ export default function TrackerApp() {
                           handle: value,
                         }))
                       }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
+                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
                           ? "bg-slate-900 text-white"
-                          : "bg-slate-200 text-slate-700"
+                          : "bg-white text-slate-700"
                         }`}
                     >
                       {label}
@@ -1708,9 +1748,9 @@ export default function TrackerApp() {
                           shotType: value,
                         }))
                       }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
+                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
                           ? "bg-slate-900 text-white"
-                          : "bg-slate-200 text-slate-700"
+                          : "bg-white text-slate-700"
                         }`}
                     >
                       {label}
@@ -1731,36 +1771,47 @@ export default function TrackerApp() {
                   </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <DashboardCard
-                    label="Average"
-                    value={formatReleaseTime(
-                      activeBlockAnalysis.average
-                    )}
-                  />
-
-                  <DashboardCard
-                    label="Release SD"
-                    value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
-                      3
-                    )}
-                  />
-
-                  <TargetAccuracyDashboardCards
-                    targetAccuracy={activeBlockAnalysis.targetAccuracy}
-                    measurementMode={activeBlock.measurementMode}
-                    thresholds={
-                      activeBlockAccuracyThresholds ??
-                      resolveAccuracyThresholds(undefined)
-                    }
-                  />
-
-                  {activeBlock.mode === "blind" && (
-                    <PredictionDashboardCards
-                      analysis={activeBlockAnalysis}
+                {activeBlockAnalysis.count === 0 ? (
+                  // One compact group-level empty state rather than a false
+                  // "Average 0.00s"/"Release SD 0.000" plus several repeated
+                  // "Not enough shots" cards (DESIGN_SYSTEM.md §21.2/§25.1).
+                  <p className="mt-4 text-sm text-slate-500">
+                    {filteredActiveBlockShots.length === activeBlockShots.length
+                      ? "Add a shot to begin the live summary."
+                      : "No shots match this filter yet."}
+                  </p>
+                ) : (
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <DashboardCard
+                      label="Average"
+                      value={formatReleaseTime(
+                        activeBlockAnalysis.average
+                      )}
                     />
-                  )}
-                </div>
+
+                    <DashboardCard
+                      label="Release SD"
+                      value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
+                        3
+                      )}
+                    />
+
+                    <TargetAccuracyDashboardCards
+                      targetAccuracy={activeBlockAnalysis.targetAccuracy}
+                      measurementMode={activeBlock.measurementMode}
+                      thresholds={
+                        activeBlockAccuracyThresholds ??
+                        resolveAccuracyThresholds(undefined)
+                      }
+                    />
+
+                    {activeBlock.mode === "blind" && (
+                      <PredictionDashboardCards
+                        analysis={activeBlockAnalysis}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
 
               <ReleaseTrendChart shots={filteredActiveBlockShots} />
@@ -1995,28 +2046,49 @@ export default function TrackerApp() {
                 </div>
               </div>
 
-              {(activeBlock.mode === "fixed" ||
-                (activeBlock.mode === "blind" &&
-                  activeBlock.blindTargetMode === "fixed")) && (
-                <TargetTimeSettings
-                  key={activeBlock.id}
-                  targetTime={activeBlock.targetTime}
-                  onChangeTargetTime={
-                    handleChangeActiveBlockTargetTime
-                  }
-                />
-              )}
+              {/* Session Details During Execution (DESIGN_SYSTEM.md §19.6):
+                  collapsed by default rather than repeating the entire
+                  Target Time / Session Name / Notes setup form after the
+                  analytics area — the athlete opens it explicitly via Edit
+                  Details when they actually need to change something. */}
+              <details className="group rounded-2xl bg-white shadow-lg">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 marker:content-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>
+                      Edit Details — {currentSession.title || "Untitled Session"}
+                    </span>
+                    <span className="text-xs text-slate-400 group-open:hidden">
+                      Show
+                    </span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">
+                      Hide
+                    </span>
+                  </span>
+                </summary>
 
-              <SessionSettings
-                title={currentSession.title}
-                notes={currentSession.notes}
-                onChangeTitle={
-                  handleChangeSessionTitle
-                }
-                onChangeNotes={
-                  handleChangeSessionNotes
-                }
-              />
+                <div className="space-y-4 border-t border-slate-100 p-4">
+                  {(activeBlock.mode === "fixed" ||
+                    (activeBlock.mode === "blind" &&
+                      activeBlock.blindTargetMode === "fixed")) && (
+                    <TargetTimeSettings
+                      key={activeBlock.id}
+                      variant="bare"
+                      targetTime={activeBlock.targetTime}
+                      onChangeTargetTime={
+                        handleChangeActiveBlockTargetTime
+                      }
+                    />
+                  )}
+
+                  <SessionSettings
+                    variant="bare"
+                    title={currentSession.title}
+                    notes={currentSession.notes}
+                    onChangeTitle={handleChangeSessionTitle}
+                    onChangeNotes={handleChangeSessionNotes}
+                  />
+                </div>
+              </details>
 
               <button
                 type="button"
@@ -2082,44 +2154,47 @@ export default function TrackerApp() {
 
       {activeView === "analyze" && (
         <>
-          <div className="rounded-2xl bg-white p-4 shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-900">Analyze</h2>
-            <p className="text-sm text-slate-500">History &amp; Analytics</p>
-
-            {/* Training / Assessments are distinct domain concepts (Training
-                Sessions vs. Assessment Runs) that happen to share this one
-                Analyze destination — see
-                docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
-                Integration section. Switching tabs never resets the other
-                tab's filters/state (each keeps its own independent state). */}
-            <div role="tablist" aria-label="Analyze section" className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={analyzeTab === "training"}
-                onClick={() => setAnalyzeTab("training")}
-                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                  analyzeTab === "training"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                Training
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={analyzeTab === "assessments"}
-                onClick={() => setAnalyzeTab("assessments")}
-                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                  analyzeTab === "assessments"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                Assessments
-              </button>
-            </div>
+          {/* Training / Assessments are distinct domain concepts (Training
+              Sessions vs. Assessment Runs) that happen to share this one
+              Analyze destination — see
+              docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
+              Integration section. Switching tabs never resets the other
+              tab's filters/state (each keeps its own independent state).
+              Rendered as an inline segmented control (Level 1 subtle
+              surface, DESIGN_SYSTEM.md §13) — the page-level PageHeader
+              above already identifies this screen as "Analyze", so this no
+              longer repeats that title in its own card. */}
+          <div
+            role="tablist"
+            aria-label="Analyze section"
+            className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analyzeTab === "training"}
+              onClick={() => setAnalyzeTab("training")}
+              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                analyzeTab === "training"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Training
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analyzeTab === "assessments"}
+              onClick={() => setAnalyzeTab("assessments")}
+              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                analyzeTab === "assessments"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Assessments
+            </button>
           </div>
 
           {analyzeTab === "assessments" && assessmentState && (

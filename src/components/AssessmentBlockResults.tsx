@@ -17,7 +17,7 @@ type AssessmentBlockResultsProps = {
  */
 export default function AssessmentBlockResults({ blocks }: AssessmentBlockResultsProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="text-lg font-semibold text-slate-900">Block Results</h2>
 
       <div className="mt-3 space-y-3">

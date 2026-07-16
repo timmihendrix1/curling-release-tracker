@@ -60,13 +60,9 @@ export default function AssessmentLanding({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Assess</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Measure your current performance under consistent conditions.
-        </p>
-      </div>
-
+      {/* The page-level PageHeader (TrackerApp.tsx) already identifies this
+          screen as "Assess" with a one-line description, so this no longer
+          repeats that heading (DESIGN_SYSTEM.md §32 Priority 2). */}
       {hasActiveRun && currentRun && (
         <div className="rounded-2xl bg-amber-50 p-4 shadow-lg ring-1 ring-amber-200">
           <p className="text-xs font-medium uppercase tracking-wide text-amber-700">

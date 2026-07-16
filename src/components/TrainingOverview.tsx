@@ -26,8 +26,11 @@ export default function TrainingOverview({
   onOpenAnalyze,
 }: TrainingOverviewProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
-      <h2 className="text-xl font-semibold text-slate-900">
+    // Standard Section Card (DESIGN_SYSTEM.md §8.3/§10.2) — deliberately
+    // lighter than TodayPlanCard's primary-task surface, so Home's actual
+    // primary section keeps the strongest visual weight.
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <h2 className="text-base font-semibold text-slate-900">
         Training Overview
       </h2>
 

@@ -15,7 +15,7 @@ export default function AssessmentVariableAdaptationResults({
   result,
 }: AssessmentVariableAdaptationResultsProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 className="text-lg font-semibold text-slate-900">{result.name}</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_VARIABLE_ADAPTATION_RESTRAINT_NOTE}</p>
 

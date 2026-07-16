@@ -19,36 +19,26 @@ export default function SettingsScreen({
 }: SettingsScreenProps) {
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-4 shadow-lg">
-        <h2 className="text-xl font-semibold text-slate-900">Settings</h2>
-      </div>
+      {/* Standard section card — the page-level PageHeader above already
+          identifies this screen as "Settings", so this no longer repeats
+          that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
+      <div className="rounded-2xl bg-white p-5 shadow-lg">
+        <h2 className="text-lg font-semibold text-slate-900">
+          Data Management
+        </h2>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-slate-900">Data Management</h2>
-
-        <p className="mt-2 text-sm text-slate-600">
-          Export or clear your locally stored training history.
+        <p className="mt-1 text-sm text-slate-600">
+          Export your locally stored training history.
         </p>
 
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onExportHistoryCsv}
-            disabled={!hasHistory}
-            className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            Export History CSV
-          </button>
-
-          <button
-            type="button"
-            onClick={onClearHistory}
-            disabled={!hasHistory}
-            className="flex-1 rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:bg-red-50 disabled:text-red-300"
-          >
-            Clear History
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onExportHistoryCsv}
+          disabled={!hasHistory}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          Export History CSV
+        </button>
 
         {!hasHistory && (
           <p className="mt-3 text-xs text-slate-500">
@@ -57,15 +47,36 @@ export default function SettingsScreen({
         )}
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-xl font-semibold text-slate-900">
+      {/* Inline section — one descriptive paragraph, no controls, so it
+          doesn't need a full elevated card (DESIGN_SYSTEM.md §10.6). */}
+      <div className="px-1">
+        <h2 className="text-sm font-semibold text-slate-500">
           Data &amp; Privacy
         </h2>
-
-        <p className="mt-2 text-sm text-slate-600">
+        <p className="mt-1 text-sm text-slate-600">
           Your training data is stored locally on this device. No account,
           cloud sync or server storage is currently used.
         </p>
+      </div>
+
+      {/* Destructive action kept in its own, clearly separated section
+          (DESIGN_SYSTEM.md §12.4) rather than sharing a card with the
+          non-destructive export action above. */}
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+        <h2 className="text-lg font-semibold text-red-900">Clear Data</h2>
+        <p className="mt-1 text-sm text-red-700">
+          Permanently delete the entire session history from this device.
+          This cannot be undone.
+        </p>
+
+        <button
+          type="button"
+          onClick={onClearHistory}
+          disabled={!hasHistory}
+          className="mt-4 w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:bg-red-50/60 disabled:text-red-300"
+        >
+          Clear History
+        </button>
       </div>
     </div>
   );

@@ -107,18 +107,31 @@ export default function AssessmentOverview({
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-sm font-semibold text-slate-900">What this assessment measures</h2>
-        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-          {ASSESSMENT_WHAT_IT_MEASURES.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-slate-500">{ASSESSMENT_WHAT_IT_DOES_NOT_MEASURE}</p>
+      {/* Reference material, not a required setup step — collapsed by
+          default (progressive disclosure, DESIGN_SYSTEM.md §16.2/§20.1)
+          rather than permanently occupying the same weight as the two
+          actionable cards below it. */}
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 marker:content-none">
+          <span className="flex items-center justify-between gap-2">
+            <span>What this assessment measures</span>
+            <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+            <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+          </span>
+        </summary>
 
-        <h2 className="mt-4 text-sm font-semibold text-slate-900">Why this structure</h2>
-        <p className="mt-1 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
-      </div>
+        <div className="border-t border-slate-100 px-4 py-3">
+          <ul className="list-disc space-y-1 pl-4 text-sm text-slate-600">
+            {ASSESSMENT_WHAT_IT_MEASURES.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-slate-500">{ASSESSMENT_WHAT_IT_DOES_NOT_MEASURE}</p>
+
+          <h2 className="mt-4 text-sm font-semibold text-slate-900">Why this structure</h2>
+          <p className="mt-1 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
+        </div>
+      </details>
 
       <div className="rounded-2xl bg-white p-6 shadow-lg">
         <AssessmentThresholdSelector

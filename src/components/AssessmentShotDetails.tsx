@@ -21,7 +21,7 @@ export default function AssessmentShotDetails({ shots, invalidAttempts }: Assess
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
