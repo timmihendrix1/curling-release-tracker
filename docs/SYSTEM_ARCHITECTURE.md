@@ -1587,9 +1587,13 @@ below).
 ### `TrackerApp`'s `activeView` state
 
 `TrackerApp` owns one `activeView: ActiveView` state value and renders exactly one of
-`HomeScreen` / the Train JSX / `AssessScreen` / the Analyze JSX (visible title
-"Analyze" / "History & Analytics") / `SettingsScreen` based on it. `PrimaryNavigation`
-is the only thing that calls `setActiveView` (via `handleNavigate`).
+`HomeScreen` / the Train JSX / `AssessScreen` / the Analyze JSX (a Training/Assessments
+segmented control, no repeated screen title) / `SettingsScreen` based on it.
+`PrimaryNavigation` is the only thing that calls `setActiveView` (via `handleNavigate`).
+`TrackerApp` also renders the one screen-identifying header for whichever view is
+active — `AppHeader` (full product identity) only when `activeView === "home"`,
+`PageHeader` (compact contextual title + one-sentence description) otherwise — see
+"Mobile shell, safe area and page headers" below.
 
 ### Leaving Train or Assess are the guarded transitions
 
@@ -1637,10 +1641,33 @@ rationale of this narrower, first-review information hierarchy). `TodayPlanCard`
 one contextual action (Phase B) when an active, non-terminal Assessment Run exists —
 "Resume Assessment" — computed from `assessmentState.currentRun` exactly like
 `hasActiveAssessmentRun`/`onResumeAssessment`; never an invented or scheduled
-assessment, only a real in-progress one. The app-wide title above the navigation
-(`AppHeader.tsx`, rendered once by `src/app/page.tsx`) currently reads "Curling
-Performance" with the subtitle "Train, assess and understand your performance." — a
-provisional, visible-only name/subtitle, not reflected in package/PWA metadata.
+assessment, only a real in-progress one. The full-product-identity title
+(`AppHeader.tsx`) currently reads "Curling Performance" with the subtitle "Train,
+assess and understand your performance." — a provisional, visible-only name/subtitle,
+not reflected in package/PWA metadata. It is rendered by `TrackerApp` only on Home;
+every other screen renders `PageHeader.tsx` instead (see below).
+
+### Mobile shell, safe area and page headers
+
+- **Content clearance** — `TrackerApp`'s one scrolling content root uses a single
+  `app-content-clearance` utility class (`src/app/globals.css`) rather than a
+  per-screen bottom-padding value, so the reserved space for the fixed mobile
+  navigation (its rendered height + `env(safe-area-inset-bottom)` + a small visual
+  gap) is centralized in one place. At `sm:` and above, where `PrimaryNavigation`
+  returns to normal document flow, the class collapses to ordinary page padding.
+- **Safe area** — `src/app/layout.tsx` exports a Next.js `viewport` config with
+  `viewportFit: "cover"` (required for `env(safe-area-inset-*)` to resolve to a
+  non-zero value on notch/Home-Indicator devices) and carries `themeColor` (moved
+  there from `metadata` per Next's current API). `PrimaryNavigation`'s mobile bar is a
+  floating, edge-inset surface (not five buttons flush against the device edge) that
+  reads the safe-area inset directly in its own Tailwind class.
+  `NAVIGATION_ITEMS`/`ActiveView`/`getVisibleNavigationItems` are unchanged.
+- **Page headers** — `PageHeader.tsx` is a small shared component (title + optional
+  one-sentence description, no card/border/shadow) used for Train/Assess/Analyze/
+  Settings, so the large `AppHeader` product identity is never repeated as a card on
+  every functional screen. Screens that previously rendered their own in-content
+  "Train"/"Analyze"/"Settings" title card (e.g. the old "Analyze" / "History &
+  Analytics" card) no longer do, since `PageHeader` now owns that role.
 
 ## Assessments (Phase A domain/persistence, Phase B execution flow, and Phase C Results/Analyze integration implemented)
 
@@ -1819,8 +1846,9 @@ this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on de
 | `TargetTimeSettings.tsx` | Edits the active block's constant target — only rendered for Fixed Weight and Blind+Fixed |
 | `AutoCapture.tsx` | Capture Sequence start form + live status/Pause/Resume/Cancel/Undo/"Add Result Manually" panel — not rendered for Blind Weight blocks |
 | `TimingSimulatorPanel.tsx` | Dev/test-only Timing Simulator controls, gated by `process.env.NODE_ENV !== "production"` |
-| `PrimaryNavigation.tsx` | The one platform-wide navigation surface — desktop top bar + mobile fixed bottom bar, both rendered from `getVisibleNavigationItems()`; a hidden item would never reach it, though none currently is |
-| `AppHeader.tsx` | The one app-wide title/subtitle shown above the navigation on every view, rendered once by `src/app/page.tsx` — no per-view branding logic |
+| `PrimaryNavigation.tsx` | The one platform-wide navigation surface — desktop top bar + mobile floating, safe-area-aware bottom bar, both rendered from `getVisibleNavigationItems()`; a hidden item would never reach it, though none currently is |
+| `AppHeader.tsx` | The full "Curling Performance" product identity — rendered by `TrackerApp` only when `activeView === "home"` |
+| `PageHeader.tsx` | Compact contextual header (title + optional one-sentence description, no card) for Train/Assess/Analyze/Settings |
 | `HomeScreen.tsx` | Composes the Home screen's sections from already-prepared props — no analytics/scheduling logic of its own |
 | `TodayPlanCard.tsx` | Today's Plan — the "no scheduled session" empty state (no scheduling data model exists yet) with the Start Training primary action, plus (Phase B) a contextual "Resume Assessment" action when an active Assessment Run exists |
 | `TrainingOverview.tsx` | Compact Last Training / Total Sessions glance (an honestly-scoped rename of the former "Performance Snapshot"), or an honest "no training yet" empty state — never a new metric or inferred trend; also hosts the secondary "View Analyze" action |
