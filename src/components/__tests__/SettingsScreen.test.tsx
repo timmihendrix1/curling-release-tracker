@@ -64,6 +64,31 @@ describe("SettingsScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("keeps the destructive Clear History action in its own separated section", () => {
+    render(
+      <SettingsScreen
+        hasHistory
+        onExportHistoryCsv={() => {}}
+        onClearHistory={() => {}}
+      />
+    );
+
+    const clearDataHeading = screen.getByRole("heading", { name: "Clear Data" });
+    const dataManagementHeading = screen.getByRole("heading", {
+      name: "Data Management",
+    });
+    const clearButton = screen.getByRole("button", { name: "Clear History" });
+    const exportButton = screen.getByRole("button", {
+      name: "Export History CSV",
+    });
+
+    // Different containing sections, not siblings in the same card.
+    expect(clearDataHeading.closest("div")).not.toBe(
+      dataManagementHeading.closest("div")
+    );
+    expect(clearButton.closest("div")).not.toBe(exportButton.closest("div"));
+  });
+
   it("calls the export/clear callbacks when history exists", () => {
     const onExportHistoryCsv = vi.fn();
     const onClearHistory = vi.fn();

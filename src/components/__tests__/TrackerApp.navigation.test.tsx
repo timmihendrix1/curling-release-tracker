@@ -39,7 +39,7 @@ describe("TrackerApp — top-level navigation", () => {
     expect(screen.getByText("Set Up Training Block")).toBeInTheDocument();
   });
 
-  it("Analyze is reachable and its visible title is Analyze / History & Analytics", async () => {
+  it("Analyze is reachable, shows the compact page header and its Training/Assessments tabs", async () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
 
@@ -49,7 +49,8 @@ describe("TrackerApp — top-level navigation", () => {
       expect(navButton("Analyze")).toHaveAttribute("aria-current", "page")
     );
     expect(screen.getByRole("heading", { name: "Analyze" })).toBeInTheDocument();
-    expect(screen.getByText("History & Analytics")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Training" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Assessments" })).toBeInTheDocument();
   });
 
   it("Settings is reachable", async () => {
@@ -62,6 +63,35 @@ describe("TrackerApp — top-level navigation", () => {
       expect(navButton("Settings")).toHaveAttribute("aria-current", "page")
     );
     expect(screen.getByText("Data Management")).toBeInTheDocument();
+  });
+
+  it("shows the full product identity only on Home, and a compact page header on functional screens", async () => {
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+
+    expect(
+      screen.getByRole("heading", { name: "Curling Performance" })
+    ).toBeInTheDocument();
+
+    navButton("Settings").click();
+    await waitFor(() =>
+      expect(navButton("Settings")).toHaveAttribute("aria-current", "page")
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: "Curling Performance" })
+    ).not.toBeInTheDocument();
+    // getByRole (not getAllByRole) already asserts there is exactly one
+    // "Settings" heading — the old duplicate in-card title was removed once
+    // this compact page header took over identifying the screen.
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+  });
+
+  it("reserves bottom clearance for the floating mobile navigation on the one scrolling content root", async () => {
+    const { container } = render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+
+    expect(container.firstChild).toHaveClass("app-content-clearance");
   });
 
   it("Assess is reachable and shows the Release Time Core Assessment landing", async () => {

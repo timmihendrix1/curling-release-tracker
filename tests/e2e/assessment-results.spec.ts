@@ -90,14 +90,14 @@ test.describe("Analyze Assessments", () => {
     await page.getByRole("button", { name: "Done" }).click();
 
     await goToAnalyze(page);
-    await expect(page.getByText("History & Analytics")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Training" })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: "Assessments" }).click();
     await expect(page.getByRole("heading", { name: "Latest Completed Assessment" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Assessment History" })).toBeVisible();
 
     await page.getByRole("tab", { name: "Training" }).click();
-    await expect(page.getByText("History & Analytics")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Training" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("View Results from Analyze opens the correct run's Result Screen", async ({ page }) => {

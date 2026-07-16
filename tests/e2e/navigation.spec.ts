@@ -84,7 +84,8 @@ test.describe("Navigation", () => {
 
     await goToAnalyze(page);
     await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
-    await expect(page.getByText("History & Analytics")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Training" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Assessments" })).toBeVisible();
     await expect(
       primaryNav(page).getByRole("button", { name: "Analyze" })
     ).toHaveAttribute("aria-current", "page");

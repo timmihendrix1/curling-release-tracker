@@ -6,11 +6,20 @@ import {
   setupVariableSmartRandomBlock,
 } from "./utils";
 
-/** ShotEntry panel — scoped away from Auto Capture's differently-labeled controls. */
+/**
+ * ShotEntry panel — scoped away from Auto Capture's differently-labeled
+ * controls, and away from the Filter control (which also uses "In
+ * Handle"/"Out Handle" labels). `div:has(heading)` matches every ancestor
+ * div of the heading, not just its innermost card, so `.last()` picks the
+ * most specific (deepest) match in document order — the actual ShotEntry
+ * card, not an outer content wrapper that also happens to contain it.
+ */
 function shotEntryPanel(page: import("@playwright/test").Page) {
-  return page.locator("div", {
-    has: page.getByRole("heading", { name: "Add Shot" }),
-  });
+  return page
+    .locator("div", {
+      has: page.getByRole("heading", { name: "Add Shot" }),
+    })
+    .last();
 }
 
 async function addShot(

@@ -38,7 +38,7 @@ export async function goToAssess(page: Page) {
 
 export async function goToAnalyze(page: Page) {
   await navigateTo(page, "Analyze");
-  await page.waitForSelector("text=History & Analytics");
+  await page.getByRole("tab", { name: "Training" }).waitFor();
 }
 
 export async function goToSettings(page: Page) {

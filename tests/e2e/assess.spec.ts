@@ -24,7 +24,9 @@ test.describe("First Assessment Start", () => {
     await expect(page.getByRole("heading", { name: "Release Time Core Assessment" })).toBeVisible();
 
     await openReleaseTimeCoreOverview(page);
-    await expect(page.getByText("What this assessment measures")).toBeVisible();
+    // Reference material, collapsed by default (progressive disclosure) —
+    // expand it to check the content itself is present and correct.
+    await page.getByText("What this assessment measures").click();
     await expect(page.getByText("Why this structure")).toBeVisible();
 
     await page.getByRole("button", { name: "View full protocol" }).click();
