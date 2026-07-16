@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -19,12 +19,22 @@ export const metadata: Metadata = {
 
   manifest: "/manifest.json",
 
-  themeColor: "#0f172a",
-
   icons: {
     apple: "/icon.png",
     icon: "/icon.png",
   },
+};
+
+// viewport-fit=cover lets env(safe-area-inset-*) resolve to the actual iOS
+// safe-area insets instead of 0 — required for PrimaryNavigation's bottom
+// safe-area padding to have any effect on notch/Home-Indicator devices.
+// themeColor moved here from `metadata` (Next.js 14+ requires it in the
+// viewport export, not metadata).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0f172a",
 };
 
 export default function RootLayout({

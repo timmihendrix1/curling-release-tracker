@@ -45,11 +45,14 @@ export default function PrimaryNavigation({
         ))}
       </div>
 
-      {/* Mobile: fixed bottom bar, clear of the safe area, below any modal/
+      {/* Mobile: fixed floating pill, inset from both side edges and
+          elevated above the device edge/Home Indicator rather than five
+          buttons flush to the screen edge (see DESIGN_SYSTEM.md's
+          "Preferred Mobile Navigation Surface"). Sits below any modal/
           bottom-sheet layer (InfoButton's mobile sheet uses z-50/backdrop z-40). */}
       <div
         data-testid="primary-nav-mobile"
-        className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 gap-1 border-t border-slate-200 bg-white/95 px-2 pt-2 backdrop-blur [padding-bottom:max(0.5rem,env(safe-area-inset-bottom))] sm:hidden"
+        className="fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 grid grid-cols-5 gap-1 rounded-2xl border border-slate-200 bg-white/95 p-1.5 shadow-lg backdrop-blur sm:hidden"
       >
         {items.map((item) => (
           <NavButton
@@ -81,7 +84,7 @@ function NavButton({
       type="button"
       aria-current={isActive ? "page" : undefined}
       onClick={() => onNavigate(item.id as ActiveView)}
-      className={`rounded-xl font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
+      className={`flex min-h-11 items-center justify-center rounded-xl font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2 ${
         compact ? "px-2 py-2 text-xs" : "px-4 py-3 text-sm"
       } ${
         isActive

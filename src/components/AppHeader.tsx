@@ -1,10 +1,11 @@
 /**
- * The one app-wide title shown above the navigation on every view (rendered
- * once by src/app/page.tsx, not per-screen). "Curling Performance" is a
- * provisional, visible-only product name — not a final branding decision, and
- * not reflected in package/PWA metadata or export files. Kept deliberately
- * compact so it never competes with the active screen's own content — see
- * docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md. The subtitle only names
+ * The full "Curling Performance" product identity — rendered by TrackerApp
+ * only when activeView is "home" (see DESIGN_SYSTEM.md §9.1/§32 Priority 2).
+ * Functional screens (Train/Assess/Analyze/Settings) use PageHeader's compact
+ * contextual header instead, so this large product title is never repeated
+ * as a card on every screen. "Curling Performance" is a provisional,
+ * visible-only product name — not a final branding decision, and not
+ * reflected in package/PWA metadata or export files. The subtitle only names
  * capabilities that are actually available today — Assess joined Train and
  * Analyze here once the Release Time Core Assessment v1 execution flow
  * (Phase B) made it a real, usable capability, not before.
