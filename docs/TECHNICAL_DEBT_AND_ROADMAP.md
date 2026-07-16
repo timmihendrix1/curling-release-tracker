@@ -415,6 +415,107 @@ through one synchronous-ref-plus-setState path — not done in this pass to keep
 the Capture Sequence subsystem specifically, per this task's own instruction not to
 touch unrelated flows.
 
+### No routing / deep-linking for Home, Train, Analyze, or Settings
+
+**What:** Navigation is an in-memory `ActiveView` value (see `docs/adr/0009`), not Next.js
+routes — there is no URL for any section, so nothing can be bookmarked, shared, or
+reached via browser back/forward.
+
+**Impact:** Low today (single-user, local-first, no sharing use case yet).
+
+**Recommendation:** if a section ever needs a shareable/bookmarkable URL, introduce routes
+for that section specifically; the navigation config (`src/lib/navigation.ts`) was kept
+independent of the switching mechanism so this doesn't require a redesign.
+
+---
+
+## Assessment Framework
+
+**Phase A and Phase B implemented; Phase C not implemented.** See
+`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the authoritative product and
+domain model this workstream implements, `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments"
+section for the architecture-level summary, `docs/adr/0010-assessment-domain-foundation.md`
+for the domain-separation and persistence-strategy decisions, and
+`docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md` for the
+Phase B app-shell integration decisions. The phases below are a proposed sequencing,
+not a committed schedule.
+
+### Phase A — Assessment Foundation (Implemented)
+
+- Domain types (`src/lib/assessment/types.ts`)
+- immutable, versioned Release Time Core Assessment v1 template
+  (`src/lib/assessment/templates.ts`), self-validated at import
+- Assessment Run state machine (`src/lib/assessment/run.ts`)
+- planned-shot and attempt semantics, incl. wrong-handle Protocol Deviation and
+  invalid-repeat-limit enforcement (`src/lib/assessment/attempts.ts`)
+- threshold-independent raw metrics and threshold-dependent category metrics
+  (`src/lib/assessment/metrics.ts`)
+- protocol/category comparison eligibility (`src/lib/assessment/comparison.ts`)
+- local persistence with its own `localStorage` key, separate from Session History
+  (`src/lib/assessment/persistence.ts`)
+- defensive validation/migration strategy — individually invalid persisted runs are
+  quarantined, never partially repaired (`src/lib/assessment/migration.ts`)
+- 148 unit + integration tests (`src/lib/assessment/__tests__/`)
+- no active Assess UI, navigation, or capture integration in this phase — see Phase B
+
+### Phase B — Release Time Core v1 execution flow (Implemented)
+
+- Assess navigation activated (`src/lib/navigation.ts`, `PrimaryNavigation.tsx`
+  unchanged) and Home integration (`TodayPlanCard`'s "Resume Assessment")
+- Assess Landing (`AssessmentLanding.tsx`) and Overview (`AssessmentOverview.tsx`)
+- Guided Introduction (`AssessmentGuidedIntroduction.tsx`) with a local, resettable
+  "show automatically" preference (`assessmentPreferences.ts`)
+- permanently accessible protocol (`AssessmentProtocolSheet.tsx`)
+- provider-neutral setup guidance and diagram (`AssessmentSetupConfirmation.tsx`,
+  `AssessmentSetupDiagram.tsx`)
+- standard six-shot warm-up, four fixed scored blocks, fixed target/handle sequences —
+  all driven by `getAllPlannedShots`/`getCurrentPlannedShot`, never a separately
+  maintained shot counter (`AssessmentExecution.tsx`)
+- capture integration sharing Training's single `TimingProvider` subscription under a
+  Run-status-derived capture-ownership rule (`src/lib/assessment/capture.ts`,
+  `TrackerApp.tsx`'s `isAssessmentCaptureActive`/`processQueuedAssessmentTimingResult`
+  — see ADR-0011)
+- invalid attempts (capped at 2 per shot, technical reasons only —
+  `AssessmentInvalidAttemptDialog.tsx`) and wrong-handle Protocol Deviations
+  (`AssessmentCurrentShot.tsx`)
+- pause/resume (`pauseAssessmentRun`, ADR-0011 Decision 3), reload recovery
+  (force-pause + quarantine notice, ADR-0011 Decision 4), and abandonment
+- completion (`AssessmentCompletionSummary.tsx`) — raw metrics + category summary
+  under the original Run Threshold, no charts/trends/score
+
+### Phase C — Results and Analyze integration (Not implemented)
+
+- assessment result screen
+- transparent metrics
+- block, handle and target breakdowns
+- completed-run history
+- comparison of eligible same-version runs
+- Analyze integration
+- no benchmarking or synthetic overall score in v1
+
+### Later
+
+- Blind Weight Assessment
+- Custom Assessments
+- organisation-published assessments
+- optional baseline onboarding
+- capability profiles
+- explainable training-focus suggestions
+- benchmarking after sufficient validation and data
+- coach-assigned assessments
+- cloud and workspace permissions
+
+### Product validation / research items (not technical debt)
+
+Release Time Core Assessment v1 is **proposed, not yet externally validated** — targets
+and the overall protocol need piloting, and the provider-neutral setup needs validation
+against real hardware, before this is treated as a validated platform standard. The
+specification's "Open Validation Questions" and "Pilot Recommendation" sections list the
+open questions in full (target times, 32-stone duration/fatigue impact, warm-up
+adequacy, block order, invalid-attempt/protocol-deviation thresholds, accuracy
+thresholds, run-to-run reliability, single-run sufficiency for a baseline, and others) —
+not duplicated here.
+
 ---
 
 ## Open product decisions
@@ -434,3 +535,15 @@ needs to make, not something engineering can resolve by itself:
 5. **External timing device discovery** — see
    `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md`; this is a full open question, not a
    narrow one.
+6. ~~**Assess as a real screen.**~~ — Resolved (Phase B). `NAVIGATION_ITEMS`'s
+   `"assess"` entry is now `availability: "active"`, and `AssessScreen.tsx` implements
+   the full Release Time Core Assessment v1 execution flow on top of the Phase A
+   domain foundation — see "Assessment Framework" above and ADR-0011. Still open (Phase
+   C, not this item): the Result screen, Assessment history/comparison, and Analyze
+   integration.
+7. **Athlete Experience (Personal / Coach Guided / Team Training).** Described
+   conceptually in the platform nav doc as something that "changes Home's behavior,
+   rather than unlocking different products," but no selection, persistence, or
+   Home-branching logic exists yet — Home currently behaves identically regardless of
+   this concept. Needs a decision on where this selection would live (Settings?
+   first-run?) before any implementation.

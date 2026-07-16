@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AssessScreen from "./AssessScreen";
 import AutoCapture, { type AutoCaptureStartConfig } from "./AutoCapture";
 import BlindShotEntry from "./BlindShotEntry";
 import ConfirmModal from "./ConfirmModal";
 import DashboardCard from "./DashboardCard";
+import HomeScreen from "./HomeScreen";
 import NewTrainingBlock from "./NewTrainingBlock";
+import PrimaryNavigation from "./PrimaryNavigation";
 import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
+import SettingsScreen from "./SettingsScreen";
 import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
 import TargetTimeSettings from "./TargetTimeSettings";
 import TimingSimulatorPanel, {
@@ -40,6 +44,20 @@ import {
   computeHandleTargetErrorBoxPlots,
 } from "../lib/analytics";
 import { targetVsActualExplanation } from "../lib/analyticsExplanations";
+import { applyTimingResultToAssessmentRun } from "../lib/assessment/capture";
+import { migrateAssessmentPersistedState } from "../lib/assessment/migration";
+import {
+  ASSESSMENT_STORAGE_KEY,
+  createEmptyAssessmentPersistedState,
+  serializeAssessmentPersistedState,
+  type AssessmentPersistedState,
+} from "../lib/assessment/persistence";
+import { getCurrentPlannedShot } from "../lib/assessment/progress";
+import { pauseAssessmentRun } from "../lib/assessment/run";
+import {
+  ASSESSMENT_LEAVE_NOTICE,
+  ASSESSMENT_QUARANTINE_NOTICE,
+} from "../lib/assessmentContent";
 import {
   applyTimingResultToSession,
   createCaptureSequence,
@@ -55,6 +73,7 @@ import {
   exportHistoryToCsv,
   exportSessionToCsv,
 } from "../lib/export";
+import { DEFAULT_ACTIVE_VIEW, type ActiveView } from "../lib/navigation";
 import { migrateSession, migrateSessionHistory } from "../lib/sessionMigration";
 import {
   createSimulatorTimingProvider,
@@ -113,8 +132,6 @@ const SESSION_HISTORY_STORAGE_KEY =
 const HISTORY_FILTERS_STORAGE_KEY =
   "curling-release-tracker-history-filters";
 
-type ActiveView = "current" | "history";
-
 type ConfirmAction = {
   title: string;
   message: string;
@@ -162,7 +179,7 @@ function describeCaptureBreakdown(shots: Shot[]): string | null {
 
 export default function TrackerApp() {
   const [activeView, setActiveView] =
-    useState<ActiveView>("current");
+    useState<ActiveView>(DEFAULT_ACTIVE_VIEW);
 
   const [currentSession, setCurrentSession] =
     useState<Session | null>(null);
@@ -193,6 +210,33 @@ export default function TrackerApp() {
 
   const [hasUnsavedBlindDraft, setHasUnsavedBlindDraft] =
     useState(false);
+
+  // --- Assessment state (Phase B) — see docs/adr/0011. Its own storage key
+  // and its own load/save effect, entirely separate from Session/Session
+  // History (ADR-0010). `null` until the mount effect below has loaded it,
+  // matching the same "render nothing until loaded" pattern currentSession
+  // uses (see docs/TECHNICAL_DEBT_AND_ROADMAP.md's set-state-in-effect note).
+  const [assessmentState, setAssessmentState] =
+    useState<AssessmentPersistedState | null>(null);
+  // The handle actually executed for the current planned shot — defaults to
+  // the shot's Expected Handle (set by AssessScreen) but may be toggled by
+  // the athlete. Lives here, not inside AssessScreen, for the same reason
+  // captureManualHandle does: the shared TimingProvider subscription
+  // callback below needs synchronous access to it.
+  const [assessmentExecutedHandle, setAssessmentExecutedHandle] =
+    useState<Handle>("in");
+  const [assessmentLastCaptureMessage, setAssessmentLastCaptureMessage] =
+    useState<string | undefined>(undefined);
+  const [assessmentDiagnostics, setAssessmentDiagnostics] = useState<
+    SimulatorDiagnosticEntry[]
+  >([]);
+  // Set at load time if a persisted currentRun had to be force-paused
+  // because it was still "warmup"/"in_progress" after a reload (see the
+  // mount effect) — consumed exactly once, by the first explicit Resume.
+  const [pendingReloadRecoveryRunId, setPendingReloadRecoveryRunId] =
+    useState<string | null>(null);
+  const [assessmentQuarantineNotice, setAssessmentQuarantineNotice] =
+    useState<string | null>(null);
 
   // Bumped whenever the user confirms discarding an in-progress Blind
   // Weight draft (see guardLeavingBlindDraft) — forces BlindShotEntry to
@@ -231,6 +275,23 @@ export default function TrackerApp() {
   useEffect(() => {
     captureManualTargetInputRef.current = captureManualTargetInput;
   }, [captureManualTargetInput]);
+
+  const assessmentExecutedHandleRef = useRef(assessmentExecutedHandle);
+  useEffect(() => {
+    assessmentExecutedHandleRef.current = assessmentExecutedHandle;
+  }, [assessmentExecutedHandle]);
+
+  // Authoritative mirror of assessmentState, written synchronously by
+  // commitAssessmentState (below) at the same instant as setAssessmentState —
+  // same rationale as sessionRef (see the Capture Sequence comment below):
+  // the shared TimingResult subscription needs a synchronous read of the
+  // outcome of the *previous* queued result before processing the next one.
+  const assessmentStateRef = useRef<AssessmentPersistedState | null>(
+    assessmentState
+  );
+  useEffect(() => {
+    assessmentStateRef.current = assessmentState;
+  }, [assessmentState]);
 
   // --- Capture Sequence result processing: authoritative session mirror + queue ---
   //
@@ -298,6 +359,39 @@ export default function TrackerApp() {
     setCurrentSession(nextSession);
   }
 
+  /** The Assessment-domain counterpart to commitSession — see the comment on assessmentStateRef above. */
+  function commitAssessmentState(next: AssessmentPersistedState) {
+    assessmentStateRef.current = next;
+    setAssessmentState(next);
+  }
+
+  /**
+   * The one entry point AssessScreen uses to mutate Assessment state — reads
+   * the authoritative ref (never a possibly-stale render-closure value),
+   * computes the next state via the supplied pure updater (which calls
+   * src/lib/assessment/* domain functions), and commits it through both
+   * channels. No-ops if Assessment data hasn't finished loading yet.
+   */
+  function updateAssessmentState(
+    updater: (state: AssessmentPersistedState) => AssessmentPersistedState
+  ) {
+    const current = assessmentStateRef.current;
+    if (!current) return;
+    commitAssessmentState(updater(current));
+  }
+
+  /**
+   * Capture Ownership rule (see docs/adr/0011): an Assessment Run "owns" the
+   * shared TimingResult stream whenever it is actively warming up or scoring
+   * — never simultaneously with a Training Capture Sequence. Computed from
+   * the ref (not React state) so the queue below always reads the up-to-date
+   * value, even mid-queue.
+   */
+  function isAssessmentCaptureActive(): boolean {
+    const run = assessmentStateRef.current?.currentRun;
+    return !!run && (run.status === "warmup" || run.status === "in_progress");
+  }
+
   /**
    * The one place a TimingResult (simulator, manual fallback, or later real hardware)
    * is turned into a Shot — see docs/adr/0006 and the "Race conditions" section of
@@ -334,6 +428,15 @@ export default function TrackerApp() {
    * state, then commits both the ref and React state together before returning.
    */
   function processQueuedTimingResult(result: TimingResult): void {
+    // Capture Ownership: a Timing Result is routed to exactly one context.
+    // While an Assessment Run is actively warming up or scoring, it is the
+    // sole consumer of the shared stream — Training's capture logic below
+    // never runs for that result. See docs/adr/0011.
+    if (isAssessmentCaptureActive()) {
+      processQueuedAssessmentTimingResult(result);
+      return;
+    }
+
     const session = sessionRef.current;
     if (!session) return;
 
@@ -413,6 +516,65 @@ export default function TrackerApp() {
     }
   }
 
+  /**
+   * The Assessment-domain counterpart to processQueuedTimingResult, run by
+   * the same serialized queue whenever isAssessmentCaptureActive() was true
+   * at dispatch time. Adapts the TimingResult via
+   * applyTimingResultToAssessmentRun (src/lib/assessment/capture.ts) — the
+   * only call site that produces a valid Assessment Attempt from captured
+   * hardware/simulator input; manual entry (AssessScreen's
+   * onSubmitManualTime) reaches this same function via a manually-built
+   * TimingResult, so there is exactly one path.
+   */
+  function processQueuedAssessmentTimingResult(result: TimingResult): void {
+    const state = assessmentStateRef.current;
+    const run = state?.currentRun;
+    if (!state || !run) return;
+
+    const outcome = applyTimingResultToAssessmentRun(
+      run,
+      result,
+      assessmentExecutedHandleRef.current
+    );
+
+    if (outcome.status === "accepted") {
+      commitAssessmentState({ ...state, currentRun: outcome.run });
+      setAssessmentLastCaptureMessage(
+        `Shot captured: ${outcome.measuredTime.toFixed(2)}s`
+      );
+      setAssessmentDiagnostics((diagnostics) =>
+        [
+          {
+            id: crypto.randomUUID(),
+            at: new Date().toISOString(),
+            status: "accepted",
+            message: `Shot captured: ${outcome.measuredTime.toFixed(2)}s`,
+          },
+          ...diagnostics,
+        ].slice(0, 8)
+      );
+      return;
+    }
+
+    // Duplicate/rejected results never change assessment progress and never
+    // show user-facing feedback (see spec section 20) — only the dev
+    // diagnostics panel is informed.
+    setAssessmentDiagnostics((diagnostics) =>
+      [
+        {
+          id: crypto.randomUUID(),
+          at: new Date().toISOString(),
+          status: outcome.status,
+          message:
+            outcome.status === "duplicate"
+              ? "Duplicate timing result ignored."
+              : outcome.reason,
+        },
+        ...diagnostics,
+      ].slice(0, 8)
+    );
+  }
+
   // Dev/test-only Timing Simulator — a stable instance for the lifetime of this
   // component. Created unconditionally (cheap, pure in-memory listeners/state) but
   // only ever started/subscribed-to in development (see the effect below) and only
@@ -455,7 +617,18 @@ export default function TrackerApp() {
     );
 
     if (savedSession) {
-      setCurrentSession(migrateSession(JSON.parse(savedSession)));
+      const loadedSession = migrateSession(JSON.parse(savedSession));
+      setCurrentSession(loadedSession);
+
+      // Home is the normal entry point (see docs/adr/0009), except for the one
+      // active training situation reload can hand back: a Capture Sequence
+      // that was running or paused when the page closed. Landing on Home would
+      // hide that in-progress state behind an extra tap for no benefit — Train
+      // shows it exactly as left (paused, progress intact) without any risk,
+      // so this is the one case that starts there instead.
+      if (isCaptureSequenceActive(loadedSession.captureSequence)) {
+        setActiveView("train");
+      }
     } else {
       setCurrentSession(createNewSession());
     }
@@ -478,6 +651,59 @@ export default function TrackerApp() {
         // the defaults already set at initial state.
       }
     }
+
+    // --- Assessment data (its own key, own migration path — ADR-0010/0011) ---
+    const savedAssessment = localStorage.getItem(ASSESSMENT_STORAGE_KEY);
+    let rawAssessment: unknown = null;
+    try {
+      rawAssessment = savedAssessment ? JSON.parse(savedAssessment) : null;
+    } catch {
+      rawAssessment = null;
+    }
+    const migratedAssessment = rawAssessment
+      ? migrateAssessmentPersistedState(rawAssessment)
+      : createEmptyAssessmentPersistedState();
+
+    // A raw currentRun existed but failed validation (quarantined) — surface
+    // this transparently rather than letting it silently disappear (see
+    // docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md section 24).
+    const rawHadCurrentRun =
+      typeof rawAssessment === "object" &&
+      rawAssessment !== null &&
+      "currentRun" in rawAssessment &&
+      (rawAssessment as { currentRun?: unknown }).currentRun !== undefined;
+    if (rawHadCurrentRun && !migratedAssessment.currentRun) {
+      setAssessmentQuarantineNotice(ASSESSMENT_QUARANTINE_NOTICE);
+    }
+
+    // Reload Recovery: a persisted run that was still "warmup"/"in_progress"
+    // survived a reload (the app never persists "capture is live" as a
+    // separate flag — this status combination IS that signal). Force it to
+    // "paused" before it's ever rendered, so capture never silently
+    // reactivates without an explicit Resume tap (see spec section 21-23).
+    let finalAssessment = migratedAssessment;
+    if (
+      migratedAssessment.currentRun &&
+      (migratedAssessment.currentRun.status === "warmup" ||
+        migratedAssessment.currentRun.status === "in_progress")
+    ) {
+      const pausedOutcome = pauseAssessmentRun(migratedAssessment.currentRun);
+      if (pausedOutcome.ok) {
+        const pausedRun = {
+          ...pausedOutcome.value,
+          interruption: {
+            ...pausedOutcome.value.interruption,
+            interruptionCount: pausedOutcome.value.interruption.interruptionCount + 1,
+          },
+        };
+        finalAssessment = { ...migratedAssessment, currentRun: pausedRun };
+        setPendingReloadRecoveryRunId(pausedRun.id);
+        const currentShot = getCurrentPlannedShot(pausedRun);
+        if (currentShot) setAssessmentExecutedHandle(currentShot.expectedHandle);
+      }
+    }
+
+    setAssessmentState(finalAssessment);
   }, []);
 
   useEffect(() => {
@@ -502,6 +728,14 @@ export default function TrackerApp() {
       JSON.stringify(sessionHistory)
     );
   }, [sessionHistory]);
+
+  useEffect(() => {
+    if (!assessmentState) return;
+    localStorage.setItem(
+      ASSESSMENT_STORAGE_KEY,
+      serializeAssessmentPersistedState(assessmentState)
+    );
+  }, [assessmentState]);
 
   if (!currentSession) {
     return null;
@@ -730,6 +964,13 @@ export default function TrackerApp() {
   function handleStartCaptureSequence(config: AutoCaptureStartConfig) {
     const session = sessionRef.current;
     if (!session || !activeBlock) return;
+
+    if (isAssessmentCaptureActive()) {
+      alert(
+        "An Assessment Run is currently active. Pause or finish it in Assess before starting Auto Capture in Training."
+      );
+      return;
+    }
 
     try {
       const newSequence = startCaptureSequence(
@@ -965,6 +1206,7 @@ export default function TrackerApp() {
       isCaptureSequenceActive(currentSession?.captureSequence)
         ? "Starting a new session will end the current Auto Capture. Already captured shots will remain in the training."
         : null,
+      null,
       () => {
         setConfirmAction({
           title: "Start New Session",
@@ -984,7 +1226,7 @@ export default function TrackerApp() {
 
             setCurrentSession(createNewSession());
             setBlockFilter(DEFAULT_SHOT_FILTER);
-            setActiveView("current");
+            setActiveView("train");
             setConfirmAction(null);
           },
         });
@@ -1024,16 +1266,41 @@ export default function TrackerApp() {
     });
   }
 
-  function handleGoToHistory() {
-    guardLeavingActiveWork(
-      hasUnsavedBlindDraft
-        ? "You have an unfinished blind-weight shot. Leave without saving it?"
-        : null,
-      isCaptureSequenceActive(currentSession?.captureSequence)
-        ? "Leaving Auto Capture will end the current capture sequence. Already captured shots will remain in the training."
-        : null,
-      () => setActiveView("history")
-    );
+  /**
+   * The single entry point PrimaryNavigation calls to switch top-level
+   * screens. Only leaving Train while a Blind Weight draft is unsaved or an
+   * Auto Capture sequence is active/paused is guarded — every other
+   * transition (including navigating *into* Train, or moving between
+   * Home/Analyze/Settings) is safe by construction, since Session state
+   * itself is untouched by which screen is currently rendered. See
+   * docs/adr/0009.
+   */
+  function handleNavigate(view: ActiveView) {
+    if (activeView === "train" && view !== "train") {
+      guardLeavingActiveWork(
+        hasUnsavedBlindDraft
+          ? "You have an unfinished blind-weight shot. Leave without saving it?"
+          : null,
+        isCaptureSequenceActive(currentSession?.captureSequence)
+          ? "Leaving Auto Capture will end the current capture sequence. Already captured shots will remain in the training."
+          : null,
+        null,
+        () => setActiveView(view)
+      );
+      return;
+    }
+
+    if (activeView === "assess" && view !== "assess") {
+      guardLeavingActiveWork(
+        null,
+        null,
+        isAssessmentCaptureActive() ? ASSESSMENT_LEAVE_NOTICE : null,
+        () => setActiveView(view)
+      );
+      return;
+    }
+
+    setActiveView(view);
   }
 
   function handleOpenNewBlockModal() {
@@ -1044,6 +1311,7 @@ export default function TrackerApp() {
       isCaptureSequenceActive(currentSession?.captureSequence)
         ? "Starting a new training block will end the current Auto Capture. Already captured shots will remain in the training."
         : null,
+      null,
       () => setShowNewBlockModal(true)
     );
   }
@@ -1087,19 +1355,56 @@ export default function TrackerApp() {
   }
 
   /**
-   * Composes the Blind Weight draft guard and the Capture Sequence guard: the blind
-   * draft (if any) is confirmed first, then the capture sequence (if any), then
-   * `action` runs. The two are mutually exclusive in practice — Auto Capture never
-   * exists for a Blind Weight block — but composing them this way is correct either
-   * way and needs no special-casing.
+   * Gates navigation away from an active (warmup/in_progress) Assessment Run
+   * — the Assess-domain counterpart to runOrConfirmCaptureLeave. Confirming
+   * pauses the run (never cancels/abandons it) before `action` runs — see
+   * docs/adr/0011: "Leaving the assessment will pause capture. Your recorded
+   * attempts and progress will be kept."
+   */
+  function runOrConfirmAssessmentLeave(
+    warningMessage: string | null,
+    action: () => void
+  ) {
+    if (!warningMessage) {
+      action();
+      return;
+    }
+
+    setConfirmAction({
+      title: "Assessment In Progress",
+      message: warningMessage,
+      confirmLabel: "Leave",
+      onConfirm: () => {
+        updateAssessmentState((state) => {
+          const current = state.currentRun;
+          if (!current) return state;
+          const outcome = pauseAssessmentRun(current);
+          return outcome.ok ? { ...state, currentRun: outcome.value } : state;
+        });
+        setConfirmAction(null);
+        action();
+      },
+    });
+  }
+
+  /**
+   * Composes the Blind Weight draft guard, the Training Capture Sequence
+   * guard, and the Assessment guard: each (if its warning message is
+   * non-null) is confirmed in turn before `action` runs. Blind Weight and
+   * Training Capture are mutually exclusive with an active Assessment Run in
+   * practice (see docs/adr/0011's Capture Ownership rule), but composing all
+   * three unconditionally is correct either way and needs no special-casing.
    */
   function guardLeavingActiveWork(
     blindWarningMessage: string | null,
     captureWarningMessage: string | null,
+    assessmentWarningMessage: string | null,
     action: () => void
   ) {
     runOrConfirmBlindDraftDiscard(blindWarningMessage, () => {
-      runOrConfirmCaptureLeave(captureWarningMessage, action);
+      runOrConfirmCaptureLeave(captureWarningMessage, () => {
+        runOrConfirmAssessmentLeave(assessmentWarningMessage, action);
+      });
     });
   }
 
@@ -1142,32 +1447,33 @@ export default function TrackerApp() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-white p-2 shadow-lg">
-        <button
-          type="button"
-          onClick={() => setActiveView("current")}
-          className={`rounded-xl px-4 py-3 font-medium transition ${activeView === "current"
-              ? "bg-slate-900 text-white"
-              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-        >
-          Current Session
-        </button>
+    <div className="space-y-4 pb-24 sm:pb-4">
+      <PrimaryNavigation activeView={activeView} onNavigate={handleNavigate} />
 
-        <button
-          type="button"
-          onClick={handleGoToHistory}
-          className={`rounded-xl px-4 py-3 font-medium transition ${activeView === "history"
-              ? "bg-slate-900 text-white"
-              : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-            }`}
-        >
-          History
-        </button>
-      </div>
+      {activeView === "home" && (
+        <HomeScreen
+          currentSession={currentSession}
+          sessionHistory={sessionHistory}
+          onStartTraining={() => handleNavigate("train")}
+          onOpenAnalyze={() => handleNavigate("analyze")}
+          hasActiveAssessmentRun={
+            !!assessmentState?.currentRun &&
+            assessmentState.currentRun.status !== "completed" &&
+            assessmentState.currentRun.status !== "incomplete"
+          }
+          onResumeAssessment={() => handleNavigate("assess")}
+        />
+      )}
 
-      {activeView === "current" && (
+      {activeView === "settings" && (
+        <SettingsScreen
+          hasHistory={sessionHistory.length > 0}
+          onExportHistoryCsv={() => exportHistoryToCsv(sessionHistory)}
+          onClearHistory={handleClearSessionHistory}
+        />
+      )}
+
+      {activeView === "train" && (
         <>
           {!activeBlock || !activeBlockAnalysis ? (
             <>
@@ -1692,8 +1998,52 @@ export default function TrackerApp() {
         </>
       )}
 
-      {activeView === "history" && (
+      {activeView === "assess" && assessmentState && (
         <>
+          <AssessScreen
+            assessmentState={assessmentState}
+            updateAssessmentState={updateAssessmentState}
+            isTrainingCaptureActive={isCaptureSequenceActive(
+              currentSession?.captureSequence
+            )}
+            executedHandle={assessmentExecutedHandle}
+            onChangeExecutedHandle={setAssessmentExecutedHandle}
+            showSimulatorOption={IS_DEV}
+            onSubmitManualTime={(value) =>
+              processIncomingTimingResult(
+                createManualTimingResult("back-hog", value)
+              )
+            }
+            captureStatusMessage={assessmentLastCaptureMessage}
+            pendingReloadRecovery={
+              pendingReloadRecoveryRunId === assessmentState.currentRun?.id &&
+              pendingReloadRecoveryRunId !== null
+            }
+            onConsumedReloadRecovery={() => setPendingReloadRecoveryRunId(null)}
+            quarantineNotice={assessmentQuarantineNotice}
+            onDismissQuarantineNotice={() => setAssessmentQuarantineNotice(null)}
+          />
+
+          {IS_DEV &&
+            assessmentState.currentRun &&
+            (assessmentState.currentRun.status === "warmup" ||
+              assessmentState.currentRun.status === "in_progress") && (
+              <TimingSimulatorPanel
+                provider={simulatorProvider}
+                measurementMode="back-hog"
+                diagnostics={assessmentDiagnostics}
+              />
+            )}
+        </>
+      )}
+
+      {activeView === "analyze" && (
+        <>
+          <div className="rounded-2xl bg-white p-4 shadow-lg">
+            <h2 className="text-xl font-semibold text-slate-900">Analyze</h2>
+            <p className="text-sm text-slate-500">History &amp; Analytics</p>
+          </div>
+
           {/* 1. Sticky Analysis Filters */}
           <HistoryFilterBar
             filters={effectiveHistoryFilters}
@@ -1776,32 +2126,6 @@ export default function TrackerApp() {
               <h2 className="text-xl font-semibold text-slate-900">
                 Blocks and Sessions
               </h2>
-
-              {sessionHistory.length > 0 && (
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      exportHistoryToCsv(
-                        sessionHistory
-                      )
-                    }
-                    className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-700"
-                  >
-                    Export CSV
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={
-                      handleClearSessionHistory
-                    }
-                    className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
-                  >
-                    Clear All
-                  </button>
-                </div>
-              )}
             </div>
 
             <div className="mt-4 space-y-3">

@@ -1,11 +1,20 @@
 ## Project direction
 
 Before making substantial changes to the data model, persistence, training logic,
-analytics, device integrations, mobile architecture or team functionality, read:
+analytics, device integrations, mobile architecture, navigation/screen structure, or team
+functionality, read:
 
 - `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`
+- `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md` (long-term navigation model and Home
+  content — check its "Implementation Status" section for what's actually built vs. still
+  aspirational)
+- `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — the authoritative product and
+  domain source for Assess (assessment purpose, domain model, Release Time Core
+  Assessment v1, execution/comparison rules, future direction). Read this before any
+  Assessment-related work, in addition to the documents above.
 - `docs/SYSTEM_ARCHITECTURE.md` (includes the "Current Implementation Snapshot" —
-  the actual domain model, target model, Blind Weight state machine, and data flows)
+  the actual domain model, target model, Blind Weight state machine, data flows, and the
+  "Platform Navigation" section)
 - `docs/DOMAIN_GLOSSARY.md`
 - `docs/adr/` for the reasoning behind existing architectural decisions
 - `docs/TECHNICAL_DEBT_AND_ROADMAP.md` before deciding whether something is worth fixing now
@@ -78,6 +87,43 @@ technique directly" in the Coaching Principles.
   `setState` call and then committed as a plain value — not assembled across several
   separately-observable `setState` calls. See `applyTimingResultToSession` in
   `src/lib/captureSequence.ts` for the pattern (ADR-0007).
+- **Top-level navigation is config-driven and in-memory, not routed.** New sections go
+  into `src/lib/navigation.ts`'s `NAVIGATION_ITEMS` (with `availability: "hidden"` until
+  the screen actually exists); leaving Train while a Blind Weight draft is unsaved or a
+  Capture Sequence is active, and leaving Assess while a Run is actively warming up or
+  scoring, are both guarded — reuse `guardLeavingActiveWork` (now composing three
+  guards: Blind draft, Training Capture, Assessment), don't invent a new per-section
+  guard. See `docs/adr/0009` and `docs/adr/0011`.
+- **Assessments are their own domain, not a Training Session in disguise.** Before any
+  Assessment-related implementation, read
+  `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — it is the authoritative source
+  for Assessment product logic and domain rules. Existing Training, Timing, and
+  Analytics infrastructure (Timing Provider/Timing Result, chart components, metric
+  utilities) may be reused, but Assessment Run, Assessment Template, and Assessment
+  Attempt must not be modeled as, or substituted by, ordinary Training Session/Training
+  Block/Shot semantics — Assessments need immutable completed runs, template
+  versioning, invalid-attempt/protocol-deviation history, and comparison eligibility
+  that Training Sessions don't. Any change touching assessment protocols, versioning,
+  comparability, or persistence must be checked against that specification, and an
+  Assessment Template version must never be changed in a way that silently alters its
+  meaning (a semantic change requires a new version). A new ADR is only needed for a
+  genuine, novel long-term architectural decision — not merely because this document
+  exists. **The domain + persistence foundation (Phase A) already exists** in
+  `src/lib/assessment/` (types, the official Release Time Core Assessment v1 template,
+  Run state machine, attempt semantics, metrics, comparison eligibility, persistence and
+  migration — see `docs/adr/0010-assessment-domain-foundation.md` and
+  `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section) — build on it rather than
+  re-deriving equivalent types or persistence elsewhere. **The Release Time Core
+  Assessment v1 execution flow (Phase B) is now implemented**: Assess is a real,
+  active navigation item; `AssessScreen.tsx` (plus its Assessment-prefixed
+  sub-components) drives Landing → Overview → Guided Introduction → Threshold/Setup →
+  Warm-up → Scored Execution → Pause/Resume/Abandon → Completion Summary entirely
+  through the Phase A domain functions; capture is routed through the same shared
+  `TimingProvider`/`TimingResult` boundary as Training, under one active-capture-owner
+  rule (see `docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`).
+  Not yet built: the full Result screen, Assessment Analyze integration, run comparison,
+  benchmarking, or a synthetic score (Phase C) — see
+  `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework" section.
 - **Keep current implementation and future vision clearly separated** in whatever you
   write or say — state which of *Implemented*, *Prepared*, *Planned*, or *Open decision*
   something is, rather than presenting a plan as if it already exists.

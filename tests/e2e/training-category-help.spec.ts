@@ -1,10 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad } from "./utils";
+import { freshLoad, goToTrain } from "./utils";
 
 test("Training Category Help: Fixed, Variable and Blind Weight each explain purpose and mechanics", async ({
   page,
 }) => {
   await freshLoad(page);
+  await goToTrain(page);
+  await page.waitForSelector("text=Set Up Training Block");
 
   // Fixed Weight is selected by default on the first Setup screen.
   await page.getByRole("button", { name: "About Fixed Weight" }).click();
@@ -46,6 +48,8 @@ test("Measurement Mode Help: Backline – Hog and Hog – Hog explain the differ
   page,
 }) => {
   await freshLoad(page);
+  await goToTrain(page);
+  await page.waitForSelector("text=Set Up Training Block");
 
   await page.getByRole("button", { name: "About Backline – Hog" }).click();
   await expect(page.getByRole("dialog", { name: "Backline – Hog" })).toBeVisible();
@@ -67,6 +71,8 @@ test("Accuracy Thresholds Help explains On Target / Acceptable / Major Miss at S
   page,
 }) => {
   await freshLoad(page);
+  await goToTrain(page);
+  await page.waitForSelector("text=Set Up Training Block");
 
   await page.getByRole("button", { name: "About Accuracy Thresholds" }).click();
   await expect(page.getByRole("dialog", { name: "Accuracy Thresholds" })).toBeVisible();
@@ -79,6 +85,8 @@ test("Mobile viewport (390x844): Training Category Info popover is fully readabl
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await freshLoad(page);
+  await goToTrain(page);
+  await page.waitForSelector("text=Set Up Training Block");
 
   await page.getByRole("button", { name: "About Blind Weight" }).click();
   await expect(page.getByRole("dialog", { name: "Blind Weight" })).toBeVisible();

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { goToTrain } from "./utils";
 
 const STORAGE_KEY = "curling-release-tracker-current-session";
 
@@ -70,6 +71,9 @@ test("an inconsistent persisted capturedShotCount is repaired from real shots on
 
   await seedCorruptSession(page, corruptSession);
 
+  // The repaired sequence is active (paused) — this is the one case Home
+  // defers to Train automatically on load (see docs/adr/0009), so no explicit
+  // navigation is needed here, unlike the discarded-sequence case below.
   // The existing real shot must survive untouched.
   await expect(page.getByText("1 shot total")).toBeVisible();
 
@@ -134,6 +138,8 @@ test("a capture sequence referencing a non-existent block is discarded, but exis
   };
 
   await seedCorruptSession(page, corruptSession);
+  await page.waitForSelector("text=Today's Plan");
+  await goToTrain(page);
 
   await expect(page.getByText("1 shot total")).toBeVisible();
   // No stale/broken sequence surfaces — the Start Auto Capture form shows, not a

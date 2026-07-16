@@ -186,6 +186,41 @@ The platform should avoid merging them simply because today's interface presents
 
 ---
 
+# The Train – Assess – Analyze cycle
+
+The platform's core functionality is organised around three recurring athlete
+intentions, not around pages or data. See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`
+for how this maps to navigation and Home content.
+
+## Train
+
+Improve performance through deliberate practice.
+
+## Assess
+
+Measure current capability under consistent conditions.
+
+## Analyze
+
+Understand performance and development.
+
+Home is the entry point into the platform, not a fourth stage of this cycle — it exists
+to answer "what is relevant today?", not to add its own domain concept.
+
+Assessments are optional: completing one must never be required to use Train, and the
+platform must not force an assessment before normal training is available. A release-time
+assessment measures delivery-speed control specifically; the platform must not infer an
+athlete's complete curling ability from it, and any coaching-style statement derived from
+an assessment must stay limited to the capability actually measured. Wherever an
+assessment result is shown, the platform should make clear what it measures and,
+where relevant, what it does not.
+
+The full assessment product and domain model — including the proposed first assessment
+type, its exact protocol, and its execution/comparison rules — is defined in
+`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md`, not here.
+
+---
+
 # Long-term capability areas
 
 The current application focuses on release-time training.

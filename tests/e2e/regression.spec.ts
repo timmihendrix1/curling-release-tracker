@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad, setupFixedBlock } from "./utils";
+import { freshLoad, goToAnalyze, goToTrain, setupFixedBlock } from "./utils";
 
-test("classic manual entry, History navigation, and New Block still work", async ({
+test("classic manual entry, Analyze navigation, and New Block still work", async ({
   page,
 }) => {
   await freshLoad(page);
@@ -22,13 +22,13 @@ test("classic manual entry, History navigation, and New Block still work", async
   await expect(page.getByText("1 shot total")).toBeVisible();
   await expect(page.getByText("#1 · In · draw")).toBeVisible();
 
-  // History navigation must still work (this was the subject of an earlier, separate
+  // Analyze navigation must still work (this was the subject of an earlier, separate
   // diagnostic pass and must keep working after the Capture Sequence navigation guard
-  // was added onto the same button).
-  await page.getByRole("button", { name: "History" }).click();
+  // was added onto the same navigation).
+  await goToAnalyze(page);
   await expect(page.getByText("Blocks and Sessions")).toBeVisible();
 
-  await page.getByRole("button", { name: "Current Session" }).click();
+  await goToTrain(page);
   await expect(
     page.getByText("Active Training Block", { exact: true })
   ).toBeVisible();

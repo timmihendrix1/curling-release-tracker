@@ -1561,6 +1561,189 @@ scope limit above), buffering a result that arrives while paused, and Auto Captu
 Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
 
+## Platform Navigation (Implemented for Home/Train/Assess/Analyze/Settings)
+
+See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md` for the product-level navigation
+model and Home content, ADR-0009 for the original two architectural decisions
+summarized here, and ADR-0011 for the Assess-specific navigation guard added in Phase B.
+
+### Navigation config — `src/lib/navigation.ts`
+
+A single `NAVIGATION_ITEMS: NavigationItem[]` array is the one place the platform's
+top-level structure is declared: `{ id, label, availability }` per item, for
+`home | train | assess | analyze | settings`. All five are `availability: "active"` as
+of the Release Time Core Assessment v1 execution flow (Phase B) —
+`getVisibleNavigationItems()` still filters on `availability`, so a future section can
+still be added `"hidden"` first without a navigation/layout rewrite; this filter is just
+not currently hiding anything.
+
+`ActiveView` (`"home" | "train" | "assess" | "analyze" | "settings"`) is the
+screen-switching type — kept distinct from `NavigationItemId` in case a nav entry is
+ever reserved (`"hidden"`) again before its screen exists. `sanitizeActiveView`/
+`isActiveView` resolve any value to a valid `ActiveView`, defaulting to `"home"` — used
+by `src/lib/__tests__/navigation.test.ts`, not currently wired to persistence (see
+below).
+
+### `TrackerApp`'s `activeView` state
+
+`TrackerApp` owns one `activeView: ActiveView` state value and renders exactly one of
+`HomeScreen` / the Train JSX / `AssessScreen` / the Analyze JSX (visible title
+"Analyze" / "History & Analytics") / `SettingsScreen` based on it. `PrimaryNavigation`
+is the only thing that calls `setActiveView` (via `handleNavigate`).
+
+### Leaving Train or Assess are the guarded transitions
+
+The Blind-draft-leave guard, the Training-Capture-Sequence-leave guard, and (added in
+Phase B) the Assessment-leave guard are composed by `guardLeavingActiveWork` (see
+"Module responsibilities" below). `handleNavigate` gates on them when
+`activeView === "train"` and the target is something else, or when
+`activeView === "assess"` and the target is something else — navigating **into**
+Train/Assess, or moving among Home/Analyze/Settings, is always safe by construction,
+since neither Session nor Assessment state is touched by which screen currently
+renders it. Confirming the Train guard still cancels an active Capture Sequence exactly
+as it always did (see "Pause / Resume / Cancel" below); confirming the Assess guard
+*pauses* (never cancels/abandons) an active Assessment Run — see ADR-0011 Decision 2 for
+why pausing, not cancelling, is correct there. This pass generalized *which
+navigations* trigger the existing guard mechanism, not what confirming
+it does.
+
+### Default view and reload behavior
+
+Home is the default `activeView` on every normal load — no scheduling data model exists
+yet to justify anything else, and nothing about Session/Capture state is protected by
+*which* screen is shown first (both are read from `localStorage` and rendered correctly
+whichever screen the user navigates to). The one exception: if the loaded session has an
+active Capture Sequence (`isCaptureSequenceActive` — status `"ready"`, `"running"`, or
+`"paused"`), the initial view is `"train"` instead, so a paused-on-reload sequence (see
+"Persistence and reload" below) is immediately visible rather than hidden behind an extra
+tap. `activeView` itself is **not** persisted to `localStorage` — seeing §"Non-goals" in
+ADR-0009 for why not, and why no "invalid persisted view" migration exists for it (there
+is nothing to migrate).
+
+### Home screen composition — `src/components/HomeScreen.tsx` + friends
+
+`HomeScreen` renders, in order: a plain time-of-day greeting (no card), `TodayPlanCard`,
+`TrainingOverview`, `DeviceStatusCard`, and `FutureCapabilitiesSection` (which renders one
+`FutureCapabilityItem` row per Schedule/Coach/Team inside one shared, dashed-border
+container — not three individually-boxed tiles, which read as fragmented even when
+stacked on mobile). All of them receive already-prepared data/callbacks as props — none
+computes analytics or invents scheduling/coaching data;
+`TrainingOverview`'s "Last Training"/"Total Sessions" figures are read directly from
+`sessionHistory`/`currentSession`, not a new analytics function. There is no standalone
+Quick Access section — its one non-redundant action ("View Analyze") is a secondary
+control inside `TrainingOverview` instead (see
+`docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`'s Implementation Status for the full
+rationale of this narrower, first-review information hierarchy). `TodayPlanCard` adds
+one contextual action (Phase B) when an active, non-terminal Assessment Run exists —
+"Resume Assessment" — computed from `assessmentState.currentRun` exactly like
+`hasActiveAssessmentRun`/`onResumeAssessment`; never an invented or scheduled
+assessment, only a real in-progress one. The app-wide title above the navigation
+(`AppHeader.tsx`, rendered once by `src/app/page.tsx`) currently reads "Curling
+Performance" with the subtitle "Train, assess and understand your performance." — a
+provisional, visible-only name/subtitle, not reflected in package/PWA metadata.
+
+## Assessments (Phase A domain/persistence + Phase B execution flow implemented; Phase C not implemented)
+
+See `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the authoritative product
+and domain model this section only summarizes at an architecture-snapshot level,
+`docs/adr/0010-assessment-domain-foundation.md` for the Phase A domain/persistence
+decisions, and `docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`
+for the Phase B app-shell integration decisions (capture ownership, navigation guard,
+persistence wiring) summarized below.
+
+### Current state
+
+- Assess is a real, active navigation item (see "Platform Navigation" above) — no
+  longer reserved/hidden.
+- The complete Assessment domain and persistence layer from Phase A is unchanged
+  (`src/lib/assessment/` — types, the official Release Time Core Assessment v1
+  template, the Run state machine, attempt semantics, raw/category metrics, comparison
+  eligibility, defensive persistence/migration), plus one new Phase B addition,
+  `src/lib/assessment/capture.ts` (see below).
+- `AssessScreen.tsx` and its `Assessment*.tsx` sub-components drive the full Landing →
+  Overview → Guided Introduction → Threshold/Setup → Warm-up → Scored Execution →
+  Pause/Resume/Abandon → Completion Summary flow, calling the Phase A domain functions
+  directly — no domain logic is duplicated in the UI layer.
+- Training Sessions and Assessment Runs are both executable workflows now, sharing the
+  app's single `TimingProvider`/`TimingResult` subscription under one
+  status-derived capture-ownership rule (see below) — never simultaneously.
+
+### Implemented Assessment domain (Phase A, unchanged)
+
+Core concepts: `AssessmentTemplate`, `AssessmentBlockDefinition`, `PlannedAssessmentShot`,
+`AssessmentRun`, `AssessmentAttempt`, `AccuracyThresholdSet`, `ProtocolDeviation`, plus
+the official `RELEASE_TIME_CORE_ASSESSMENT_V1` template.
+
+Architectural principles this module follows (see ADR-0010 for the full reasoning):
+
+- Reuses `Handle`/`ShotType`/`MeasurementMode`/`TimingProviderType` and the existing
+  `categorizeTargetError`/`average`/`standardDeviationOfValues` utilities directly —
+  never redefines them.
+- An `AssessmentRun` is not persisted as, or substitutable for, a Training Session —
+  it has its own types, its own `localStorage` key, its own state machine.
+- Every `AssessmentRun` holds a deep, immutable snapshot of the exact template version
+  it was created from (`AssessmentRun.templateSnapshot`) — a later template edit can
+  never retroactively change a historical run's protocol.
+- Completed (and incomplete) runs are terminal: `transitionAssessmentRun` refuses any
+  further status change, and `addValidAttempt`/`addInvalidAttempt` refuse any further
+  attempt, once a run reaches `"completed"` or `"incomplete"`.
+- Invalid Attempts and Protocol Deviations are preserved, never discarded — a wrong-handle
+  attempt stays scored and valid, with the deviation recorded alongside it.
+- Assessment persistence (`src/lib/assessment/persistence.ts` /
+  `src/lib/assessment/migration.ts`) is schema-versioned and defensively validated on
+  load: an individually invalid persisted run is quarantined (dropped) rather than
+  partially repaired, since — unlike `Session`/`Shot`'s mostly-independent scalar
+  fields — an `AssessmentRun`'s cross-field invariants (at most one valid attempt per
+  planned shot, no duplicate `timingResultId`s, a completed run must cover every scored
+  shot) make partial repair unsafe. See ADR-0010 and this module's doc comments for the
+  full rationale.
+- `pauseAssessmentRun` (`run.ts`, added in Phase B) composes the two already-legal
+  `"warmup" -> "in_progress" -> "paused"` transitions so a run can be paused regardless
+  of whether warm-up has finished — `ALLOWED_TRANSITIONS` deliberately has no direct
+  `"warmup" -> "paused"` edge (see ADR-0011 Decision 3). This is the only function the
+  app calls to pause a run.
+
+### Capture integration (Phase B) — one shared TimingResult stream, ownership derived from Run status
+
+`src/lib/assessment/capture.ts`'s `applyTimingResultToAssessmentRun(run, result,
+executedHandle)` is the sole adapter from a `TimingResult` to `addValidAttempt` — the
+Assessment-domain counterpart to `captureSequence.ts`'s `applyTimingResultToSession`.
+`TrackerApp` keeps exactly one Timing Simulator subscription (unchanged from Training)
+feeding one serialized processing queue; a new `isAssessmentCaptureActive()` check
+(true iff `currentRun.status` is `"warmup"` or `"in_progress"`) decides, per result,
+whether it's routed to Assessment (`processQueuedAssessmentTimingResult`) or to
+Training's existing logic — never both, and never via a second, independently-set
+"owner" flag that could desync from the Run's own status. Manual Assessment timing
+entry (`AssessScreen`'s "Enter measured time") builds a `TimingResult` via the same
+`createManualTimingResult` Training's manual fallback uses and pushes it through the
+same queue, so there is exactly one code path that ever creates a valid Assessment
+Attempt from captured input. See ADR-0011 Decision 1.
+
+### Navigation guard and persistence wiring (Phase B)
+
+`handleNavigate`'s guard (ADR-0009) now also protects leaving Assess while a Run is
+actively warming up or scoring: confirming pauses the run (via `pauseAssessmentRun`,
+never abandons/cancels it) before the navigation proceeds — composed into
+`guardLeavingActiveWork` alongside the pre-existing Blind-draft and Training-Capture
+guards. `assessmentState` (`AssessmentPersistedState | null`) mirrors
+`currentSession`'s existing load/save-effect pattern exactly: its own `localStorage`
+key (`ASSESSMENT_STORAGE_KEY`), read via `migrateAssessmentPersistedState` inside the
+same mount effect, a save effect on every change, and an `assessmentStateRef` mirror for
+the capture queue's synchronous reads (same rationale as `sessionRef`, ADR-0007). A
+`currentRun` still `"warmup"`/`"in_progress"` at load time (i.e. it survived a reload
+rather than an explicit Pause) is force-paused via `pauseAssessmentRun` before ever
+rendering, so capture never silently reactivates without an explicit Resume — see
+ADR-0011 Decision 4 for the reload-recovery/quarantine-notice details.
+
+### Not yet implemented (Phase C)
+
+- The full Assessment Result screen, transparent metric breakdowns beyond the simple
+  Completion Summary, block/handle/target detail views.
+- Completed-run history browsing, run comparison, Analyze integration.
+- Benchmarking, a synthetic overall score, Custom Assessment editor, coach/team
+  features — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework" section
+  for the full phase sequencing.
+
 ## Module responsibilities / architecture boundaries (Implemented)
 
 ### UI components (`src/components/`)
@@ -1588,6 +1771,31 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 | `TargetTimeSettings.tsx` | Edits the active block's constant target — only rendered for Fixed Weight and Blind+Fixed |
 | `AutoCapture.tsx` | Capture Sequence start form + live status/Pause/Resume/Cancel/Undo/"Add Result Manually" panel — not rendered for Blind Weight blocks |
 | `TimingSimulatorPanel.tsx` | Dev/test-only Timing Simulator controls, gated by `process.env.NODE_ENV !== "production"` |
+| `PrimaryNavigation.tsx` | The one platform-wide navigation surface — desktop top bar + mobile fixed bottom bar, both rendered from `getVisibleNavigationItems()`; a hidden item would never reach it, though none currently is |
+| `AppHeader.tsx` | The one app-wide title/subtitle shown above the navigation on every view, rendered once by `src/app/page.tsx` — no per-view branding logic |
+| `HomeScreen.tsx` | Composes the Home screen's sections from already-prepared props — no analytics/scheduling logic of its own |
+| `TodayPlanCard.tsx` | Today's Plan — the "no scheduled session" empty state (no scheduling data model exists yet) with the Start Training primary action, plus (Phase B) a contextual "Resume Assessment" action when an active Assessment Run exists |
+| `TrainingOverview.tsx` | Compact Last Training / Total Sessions glance (an honestly-scoped rename of the former "Performance Snapshot"), or an honest "no training yet" empty state — never a new metric or inferred trend; also hosts the secondary "View Analyze" action |
+| `FutureCapabilitiesSection.tsx` | Groups Schedule/Coach/Team into one shared, dashed-border "Coming next" container (rows stack on mobile, columns at `sm`+) instead of three separate full-width cards |
+| `FutureCapabilityItem.tsx` | One reusable, visually secondary "Coming soon" row/column (used for Schedule, Coach, Team) — never interactive, renders no border/background of its own |
+| `DeviceStatusCard.tsx` | Honest current device state ("Manual Timing") |
+| `SettingsScreen.tsx` | App-wide Data Management (Export History CSV / Clear History, moved here from the old History view) and Data & Privacy — session-specific settings stay in Train |
+| `AssessScreen.tsx` | Phase B's Assess-domain orchestrator — the Assess-domain counterpart to `TrackerApp`'s Train branch; owns pre-run UI state (threshold draft, setup confirmation, guided-introduction step) and calls `src/lib/assessment/*` directly, never duplicating its logic |
+| `AssessmentLanding.tsx` | Assess entry point — Release Time Core Assessment v1 metadata card, and a prominent "Resume Assessment" state when an active run exists (never silently offering a fresh start alongside it) |
+| `AssessmentOverview.tsx` | Compact protocol overview with progressive disclosure — purpose, what is/isn't measured, why this structure, threshold selection, setup confirmation |
+| `AssessmentGuidedIntroduction.tsx` | The four-block explanation shown by default before a first run — Continue/Skip/"Do not show again", never skips threshold selection, setup, or the warm-up itself |
+| `AssessmentProtocolSheet.tsx` | The permanent, full-protocol overlay reachable from Overview, execution, and the Completion Summary |
+| `AssessmentSetupDiagram.tsx` | Plain provider-neutral inline SVG of the Backline–Hog measurement setup |
+| `AssessmentThresholdSelector.tsx` | Standard/Tight/Custom Accuracy Threshold selection with inline Custom validation |
+| `AssessmentSetupConfirmation.tsx` | Setup Requirements + a single confirmation checkbox before Warm-up can start; Manual vs. (dev-only) Simulator timing-method copy differs, never claiming a gate that isn't there |
+| `AssessmentExecution.tsx` | The active warm-up/scored surface — header (block/progress/threshold/Protocol/Pause), current shot, attempt entry, warm-up-complete and block-transition sub-states |
+| `AssessmentProgress.tsx` | A labeled progress bar with real `aria-valuenow`/`-valuemin`/`-valuemax` — reused for warm-up, per-block, and overall progress |
+| `AssessmentCurrentShot.tsx` | Target/Expected Handle display, the Executed Handle toggle (defaults to Expected Handle), and the most recent result incl. the wrong-handle notice |
+| `AssessmentAttemptEntry.tsx` | Manual timing entry (reusing `timeInput.ts`, Enter-key submit, a double-submit ref guard) plus the "Mark attempt invalid" trigger and invalid-count/limit display |
+| `AssessmentInvalidAttemptDialog.tsx` | The technical-reason-only invalid-attempt picker — a sporting complaint is never offered here |
+| `AssessmentBlockTransition.tsx` | Shown between scored blocks — next block's purpose/first target, `Continue`, no enforced rest |
+| `AssessmentPausedView.tsx` | Shown while a Run is paused — progress, Resume, Abandon |
+| `AssessmentCompletionSummary.tsx` | The simple Completion Summary — counts, raw metrics (MAE/Bias/SD), category percentages under the original Run Threshold — deliberately no charts/trends/score (Phase C) |
 
 ### Domain and logic modules (`src/lib/`)
 
@@ -1611,18 +1819,47 @@ Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 | `timingProvider.ts` | The shared `TimingProvider` contract and `createManualTimingResult` |
 | `simulatorTimingProvider.ts` | Dev/test-only `TimingProvider` implementation with test-trigger methods |
 | `captureSequence.ts` | Capture Sequence lifecycle, handle strategies, `processTimingResult`/`applyTimingResultToSession` (the one shot-save path for captured shots, plain-value in/out), Undo, `sanitizeCaptureSequence` (persistence repair), `pauseCaptureSequenceWithError` |
+| `navigation.ts` | The one place the platform's top-level navigation structure is declared (`NAVIGATION_ITEMS`, `ActiveView`, `sanitizeActiveView`) — see "Platform Navigation" above |
+| `assessmentContent.ts` | Central Assessment UI copy (Guided Introduction block text, what-it-measures/doesn't, why-structure, setup requirements/notes, invalid-reason labels) — the Assessment-domain counterpart to `helpContent.ts` |
+| `assessmentPreferences.ts` | Local, device-only Assess UI preferences (show-introduction, last-used threshold preset/custom values) — deliberately separate from the `AssessmentRun`/`AssessmentPersistedState` domain objects; never affects an already-started run |
+
+### Assessment domain modules (`src/lib/assessment/`)
+
+A separate domain from Training — see "Assessments" above, ADR-0010, and ADR-0011.
+Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
+`src/lib/assessment/__tests__/` for the domain layer itself.
+
+| Module | Responsibility |
+|---|---|
+| `types.ts` | `AssessmentTemplate`, `AssessmentBlockDefinition`, `PlannedAssessmentShot`, `AssessmentRun`, `AssessmentAttempt`, `AccuracyThresholdSet`, `ProtocolDeviation`, and every related status/reason enum |
+| `errors.ts` | The `AssessmentOutcome<T>`/`AssessmentError` discriminated-union convention every domain function returns |
+| `thresholds.ts` | Assessment threshold presets (Standard/Tight, reusing `accuracyThresholds.ts`'s values), `validateThresholdValues`, `AccuracyThresholdSet` construction/cloning |
+| `templateValidation.ts` | `validateAssessmentTemplate` — every structural template invariant (unique IDs, contiguous sequence, warm-up/scored separation, published-Official completeness) |
+| `templates.ts` | The immutable, versioned, deterministic `RELEASE_TIME_CORE_ASSESSMENT_V1` template, self-validated at import |
+| `progress.ts` | Planned-shot navigation and progress: `getCurrentPlannedShot`, `calculateWarmupProgress`/`calculateScoredProgress`, `isRunCompletable`, deviation/attempt counters |
+| `run.ts` | `createAssessmentRun`, the centralized Run Status state machine (`transitionAssessmentRun`), and `pauseAssessmentRun` (Phase B — composes the legal `"warmup" -> "in_progress" -> "paused"` transitions; see ADR-0011) |
+| `attempts.ts` | `addValidAttempt`/`addInvalidAttempt` — repeat-limit enforcement, wrong-handle Protocol Deviation, timing-result deduplication |
+| `capture.ts` | (Phase B) `applyTimingResultToAssessmentRun` — the sole adapter from a `TimingResult` to `addValidAttempt`, the Assessment-domain counterpart to `captureSequence.ts`'s `applyTimingResultToSession` |
+| `metrics.ts` | Threshold-independent raw metrics (MAE/Bias/SD) and threshold-dependent category metrics (On Target/Acceptable/Major Miss), reusing `analytics.ts`/`accuracyThresholds.ts` |
+| `comparison.ts` | `checkProtocolComparisonEligibility`/`checkCategoryComparisonEligibility` |
+| `persistence.ts` | The Assessment root persisted shape (own `localStorage` key, current run + history), pure state-shape transitions — the actual `localStorage` read/write call site lives in `TrackerApp.tsx` (Phase B, ADR-0011) |
+| `migration.ts` | Defensive validation/quarantine of persisted Assessment data (`migrateAssessmentPersistedState`, `validatePersistedAssessmentRun`) |
 
 ### Orchestration — `TrackerApp.tsx`
 
 The one client component that owns all application state: current session, history,
 active view, filters, the edit-shot form, the new-block modal, confirm dialogs, the
 Blind-draft-leave guard, the Capture Sequence handlers (`processIncomingTimingResult`
-and Start/Pause/Resume/Cancel/Undo), and the stable `SimulatorTimingProvider` instance.
-It reads `localStorage` on mount, migrates, and persists on every change.
+and Start/Pause/Resume/Cancel/Undo), the stable `SimulatorTimingProvider` instance, and
+(Phase B) `assessmentState` plus its own load/save effect pair and
+`updateAssessmentState`/`commitAssessmentState` helpers (`AssessScreen`'s one entry
+point for mutating it — see ADR-0011). It reads `localStorage` on mount, migrates, and
+persists on every change, for both Session data and Assessment data independently.
 
 `processIncomingTimingResult` is the one place a `TimingResult` (from the simulator
-subscription or from "Add Result Manually") gets applied to session state. It appends
-onto `captureQueueRef`, a Promise chain that serializes processing (see
+subscription, from Training's "Add Result Manually", or from `AssessScreen`'s manual
+timing entry) gets applied to state. It appends onto `captureQueueRef`, a Promise chain
+that serializes processing (see
 "Race conditions and serialized result processing" in the Capture Sequences section
 above) — each queued call reads `sessionRef.current` (an authoritative session mirror,
 not `currentSession` from the render closure), computes the next state via the pure
