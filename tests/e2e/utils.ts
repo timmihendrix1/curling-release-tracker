@@ -127,7 +127,7 @@ export async function openReleaseTimeCoreOverview(page: Page) {
   await page.waitForSelector("text=Accuracy Thresholds");
 }
 
-type ThresholdPreset = "Standard" | "Tight" | "Custom";
+export type ThresholdPreset = "Standard" | "Tight" | "Custom";
 
 /** Confirms setup and starts the Warm-up — assumes the Overview is already open. */
 export async function confirmAssessSetupAndStartWarmup(
@@ -174,4 +174,19 @@ export async function fastForwardAssessScoredShots(page: Page, count: number) {
     }
     await page.getByRole("button", { name: "3.75s" }).click();
   }
+}
+
+/**
+ * Full happy-path Assess flow, from Assess Landing through the Completion
+ * Summary — the shared setup step for Phase C Result Screen / Analyze
+ * Integration E2E tests (see tests/e2e/assessment-results.spec.ts). Assumes
+ * the caller has already done a freshLoad and is not currently mid-run.
+ */
+export async function completeFullAssessment(page: Page, options: { threshold?: ThresholdPreset } = {}) {
+  await goToAssess(page);
+  await openReleaseTimeCoreOverview(page);
+  await confirmAssessSetupAndStartWarmup(page, options);
+  await completeAssessWarmup(page);
+  await fastForwardAssessScoredShots(page, 32);
+  await page.waitForSelector("text=Assessment complete");
 }

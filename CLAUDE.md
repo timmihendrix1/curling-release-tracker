@@ -121,9 +121,23 @@ technique directly" in the Coaching Principles.
   through the Phase A domain functions; capture is routed through the same shared
   `TimingProvider`/`TimingResult` boundary as Training, under one active-capture-owner
   rule (see `docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`).
-  Not yet built: the full Result screen, Assessment Analyze integration, run comparison,
-  benchmarking, or a synthetic score (Phase C) — see
-  `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework" section.
+  **The Result screen and Analyze integration (Phase C) are now implemented**:
+  `AssessmentResultScreen.tsx` (plus its Assessment-prefixed sub-components) renders a
+  full, derived result view for one completed/incomplete run — threshold-independent
+  and threshold-dependent metrics, block/target/handle/Variable-Adaptation breakdowns,
+  Protocol Integrity, an Original/Standard/Tight/Custom Analysis Threshold control, run
+  comparison, and development trends — computed on demand from
+  `src/lib/assessment/result.ts`, never persisted as a second source of truth (see
+  `docs/adr/0010`'s Decision 4). It's reachable from the Completion Summary's "View
+  Full Results", `AssessmentLanding`'s "Latest Completed Assessment" card, and a new
+  Assessments tab under Analyze (`AssessmentAnalyze.tsx`), and is mounted from
+  `TrackerApp.tsx` as a read-only overlay that never mutates a run except through the
+  explicit, whole-run `deleteAssessmentRunFromHistory`. Not yet built: benchmarking, a
+  synthetic overall score, athlete-level classification, a Custom Assessment editor, or
+  coach/team features — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment
+  Framework" section (which also documents one known Phase C limitation: returning from
+  the Result Screen to Assess remounts `AssessScreen`, losing an in-flight Completion
+  Summary in favor of Landing — the archived run itself is unaffected).
 - **Keep current implementation and future vision clearly separated** in whatever you
   write or say — state which of *Implemented*, *Prepared*, *Planned*, or *Open decision*
   something is, rather than presenting a plan as if it already exists.

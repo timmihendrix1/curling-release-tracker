@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import AssessScreen from "./AssessScreen";
+import AssessmentAnalyze from "./AssessmentAnalyze";
+import AssessmentResultScreen from "./AssessmentResultScreen";
 import AutoCapture, { type AutoCaptureStartConfig } from "./AutoCapture";
 import BlindShotEntry from "./BlindShotEntry";
 import ConfirmModal from "./ConfirmModal";
@@ -36,6 +38,7 @@ import type {
   TimingResult,
   TrainingBlock,
 } from "../types";
+import type { AssessmentRun } from "../lib/assessment/types";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import {
@@ -49,6 +52,8 @@ import { migrateAssessmentPersistedState } from "../lib/assessment/migration";
 import {
   ASSESSMENT_STORAGE_KEY,
   createEmptyAssessmentPersistedState,
+  deleteAssessmentRunFromHistory,
+  getAssessmentRunFromHistory,
   serializeAssessmentPersistedState,
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
@@ -237,6 +242,16 @@ export default function TrackerApp() {
     useState<string | null>(null);
   const [assessmentQuarantineNotice, setAssessmentQuarantineNotice] =
     useState<string | null>(null);
+  // Phase C — the id of a completed/incomplete Assessment Run currently
+  // shown full-screen via AssessmentResultScreen. Reachable from both Assess
+  // (Completion Summary, Landing) and Analyze → Assessments (history, latest
+  // card); modeled as an id (not the run object) so it always resolves
+  // against the latest assessmentState — e.g. it clears itself correctly if
+  // the run is deleted. See docs/adr/0011's note that Phase C is purely
+  // additive/read-only relative to capture ownership and navigation guards.
+  const [viewingAssessmentResultRunId, setViewingAssessmentResultRunId] =
+    useState<string | null>(null);
+  const [analyzeTab, setAnalyzeTab] = useState<"training" | "assessments">("training");
 
   // Bumped whenever the user confirms discarding an in-progress Blind
   // Weight draft (see guardLeavingBlindDraft) — forces BlindShotEntry to
@@ -1446,10 +1461,37 @@ export default function TrackerApp() {
     }));
   }
 
+  const resolvedAssessmentResultRun: AssessmentRun | null =
+    viewingAssessmentResultRunId && assessmentState
+      ? getAssessmentRunFromHistory(assessmentState, viewingAssessmentResultRunId) ?? null
+      : null;
+
+  /** Removes one archived Assessment Run entirely — see spec's completed-run immutability rules ("delete the entire run after explicit confirmation" is the one destructive action allowed). Never touches currentRun or the Template. */
+  function handleDeleteAssessmentRun(runId: string) {
+    updateAssessmentState((state) => {
+      const outcome = deleteAssessmentRunFromHistory(state, runId);
+      return outcome.ok ? outcome.value : state;
+    });
+    if (viewingAssessmentResultRunId === runId) {
+      setViewingAssessmentResultRunId(null);
+    }
+  }
+
   return (
     <div className="space-y-4 pb-24 sm:pb-4">
       <PrimaryNavigation activeView={activeView} onNavigate={handleNavigate} />
 
+      {viewingAssessmentResultRunId && resolvedAssessmentResultRun && (
+        <AssessmentResultScreen
+          run={resolvedAssessmentResultRun}
+          history={assessmentState?.history ?? []}
+          onBack={() => setViewingAssessmentResultRunId(null)}
+          onDeleteRun={handleDeleteAssessmentRun}
+        />
+      )}
+
+      {!viewingAssessmentResultRunId && (
+      <>
       {activeView === "home" && (
         <HomeScreen
           currentSession={currentSession}
@@ -2022,6 +2064,7 @@ export default function TrackerApp() {
             onConsumedReloadRecovery={() => setPendingReloadRecoveryRunId(null)}
             quarantineNotice={assessmentQuarantineNotice}
             onDismissQuarantineNotice={() => setAssessmentQuarantineNotice(null)}
+            onViewFullResults={(runId) => setViewingAssessmentResultRunId(runId)}
           />
 
           {IS_DEV &&
@@ -2042,8 +2085,55 @@ export default function TrackerApp() {
           <div className="rounded-2xl bg-white p-4 shadow-lg">
             <h2 className="text-xl font-semibold text-slate-900">Analyze</h2>
             <p className="text-sm text-slate-500">History &amp; Analytics</p>
+
+            {/* Training / Assessments are distinct domain concepts (Training
+                Sessions vs. Assessment Runs) that happen to share this one
+                Analyze destination — see
+                docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
+                Integration section. Switching tabs never resets the other
+                tab's filters/state (each keeps its own independent state). */}
+            <div role="tablist" aria-label="Analyze section" className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={analyzeTab === "training"}
+                onClick={() => setAnalyzeTab("training")}
+                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
+                  analyzeTab === "training"
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Training
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={analyzeTab === "assessments"}
+                onClick={() => setAnalyzeTab("assessments")}
+                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
+                  analyzeTab === "assessments"
+                    ? "bg-slate-900 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                Assessments
+              </button>
+            </div>
           </div>
 
+          {analyzeTab === "assessments" && assessmentState && (
+            <AssessmentAnalyze
+              assessmentState={assessmentState}
+              onViewResult={(runId) => setViewingAssessmentResultRunId(runId)}
+              onResumeCurrent={() => handleNavigate("assess")}
+              onGoToAssess={() => handleNavigate("assess")}
+              onDeleteRun={handleDeleteAssessmentRun}
+            />
+          )}
+
+          {analyzeTab === "training" && (
+          <>
           {/* 1. Sticky Analysis Filters */}
           <HistoryFilterBar
             filters={effectiveHistoryFilters}
@@ -2274,6 +2364,8 @@ export default function TrackerApp() {
               })}
             </div>
           </div>
+          </>
+          )}
         </>
       )}
 
@@ -2299,6 +2391,8 @@ export default function TrackerApp() {
             setConfirmAction(null)
           }
         />
+      )}
+      </>
       )}
     </div>
   );

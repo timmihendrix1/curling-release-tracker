@@ -27,10 +27,16 @@ deliberately narrows this:
   Pause/Resume/Abandon → Completion Summary flow, on top of the domain and
   local-persistence foundation built in Phase A (`src/lib/assessment/` — see
   `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section, `docs/adr/0010`, and
-  `docs/adr/0011`). Not yet built: the full Result screen, Assessment history/detail
-  views, and Analyze integration (Phase C) — see
-  `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework" section. The
-  Assessment product and domain model this screen implements is defined in
+  `docs/adr/0011`).
+- **The full Result screen, Assessment history/detail views, and Analyze integration
+  (Phase C) are now implemented**: the Completion Summary's "View Full Results" action,
+  `AssessmentLanding`'s "Latest Completed Assessment" card, and a new Assessments tab
+  under Analyze (`AssessmentAnalyze.tsx`) all open `AssessmentResultScreen.tsx` for a
+  given completed/incomplete run — see `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments"
+  section for the full breakdown. Not yet built: benchmarking, a synthetic overall
+  score, athlete-level classification, a Custom Assessment editor, coach/team
+  workflows — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework"
+  section. The Assessment product and domain model this screen implements is defined in
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — read it before any further
   Assess implementation work, alongside this document.
 - **Coach and Team** appear on Home as visually secondary "Coming soon"

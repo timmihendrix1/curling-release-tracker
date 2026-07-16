@@ -453,7 +453,7 @@ New reusable components should follow existing patterns whenever possible.
 
 Avoid introducing visually different components when an existing one can be extended.
 
-## Assessment patterns (Implemented, Phase B)
+## Assessment patterns (Implemented, Phase B and Phase C)
 
 See `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the Assessment product
 model these support, and `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section for the
@@ -481,8 +481,20 @@ implementation snapshot. Implemented components (`src/components/Assessment*.tsx
   execution-lifecycle screens, each a single-purpose card following the same visual
   language (rounded-2xl white cards, `shadow-lg`) as the rest of the app.
 
-No Comparison Eligibility Notice exists yet — that belongs to Phase C (result
-comparison), not this execution-flow pass.
+Phase C added the Assessment Result Screen and its own component family
+(`src/components/Assessment*.tsx`, see `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments"
+section for the full list) — `AssessmentResultScreen`, `AssessmentResultSummary`,
+`AssessmentThresholdControl` (the Result-screen counterpart to
+`AssessmentThresholdSelector`, with an added "Original" option and, in multi-run
+contexts, `allowOriginal={false}`), `AssessmentCoreMetrics`, `AssessmentBlockResults`,
+`AssessmentTargetResults`, `AssessmentHandleComparison`, `AssessmentVariableAdaptationResults`,
+`AssessmentProtocolIntegrity`, `AssessmentShotDetails`, `AssessmentComparisonEligibilityNotice`
+(maps `ComparisonIneligibilityReason` to plain-language copy — never a raw enum value),
+`AssessmentRunComparison`, `AssessmentTrendChart`, `AssessmentAnalyze`, and
+`AssessmentHistoryItem`. All follow the same visual language (rounded-2xl white cards,
+`shadow-lg`, compact card/small-multiple breakdowns rather than dense tables on mobile)
+and reuse `ChartCard`/`DashboardCard`/`InfoButton`/`chartTheme.ts` rather than
+introducing parallel chart chrome.
 
 ---
 

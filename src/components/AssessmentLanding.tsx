@@ -4,14 +4,19 @@ import {
   getCurrentBlock,
   isWarmupComplete,
 } from "../lib/assessment/progress";
+import { computeRawAssessmentMetrics } from "../lib/assessment/metrics";
 import { RELEASE_TIME_CORE_ASSESSMENT_V1 } from "../lib/assessment/templates";
 import type { AssessmentRun } from "../lib/assessment/types";
+import { formatAssessmentSeconds } from "../lib/assessment/resultFormatting";
 
 type AssessmentLandingProps = {
   currentRun: AssessmentRun | null;
   onViewAssessment: () => void;
   onResume: () => void;
   onStartNew: () => void;
+  /** The most recently completed run, if any — see Phase C brief section 17. Detailed history/comparison stays under Analyze. */
+  latestCompletedRun?: AssessmentRun | null;
+  onViewLatestResult?: (runId: string) => void;
 };
 
 const STATUS_LABELS: Record<AssessmentRun["status"], string> = {
@@ -47,6 +52,8 @@ export default function AssessmentLanding({
   onViewAssessment,
   onResume,
   onStartNew,
+  latestCompletedRun,
+  onViewLatestResult,
 }: AssessmentLandingProps) {
   const template = RELEASE_TIME_CORE_ASSESSMENT_V1;
   const hasActiveRun = currentRun && currentRun.status !== "completed" && currentRun.status !== "incomplete";
@@ -125,8 +132,27 @@ export default function AssessmentLanding({
         </div>
       </div>
 
+      {latestCompletedRun && onViewLatestResult && (
+        <div className="rounded-2xl bg-white p-4 shadow-lg">
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Latest Completed Assessment</p>
+          <p className="mt-1 text-sm font-semibold text-slate-900">
+            {latestCompletedRun.completedAt ? new Date(latestCompletedRun.completedAt).toLocaleDateString() : ""}
+          </p>
+          <p className="mt-1 text-xs text-slate-600">
+            MAE: {formatAssessmentSeconds(computeRawAssessmentMetrics(latestCompletedRun).meanAbsoluteError)}
+          </p>
+          <button
+            type="button"
+            onClick={() => onViewLatestResult(latestCompletedRun.id)}
+            className="mt-2 rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
+          >
+            View Results
+          </button>
+        </div>
+      )}
+
       <p className="text-xs text-slate-500">
-        Completed assessments will be available in Analyze in a later phase.
+        Full history and run comparison are available under Analyze → Assessments.
       </p>
     </div>
   );

@@ -8,6 +8,7 @@ type AssessmentCompletionSummaryProps = {
   onDone: () => void;
   onViewProtocol: () => void;
   onStartNew: () => void;
+  onViewFullResults: () => void;
 };
 
 function formatPercent(rate: number | null): string {
@@ -16,7 +17,8 @@ function formatPercent(rate: number | null): string {
 
 /**
  * Simple completion summary — deliberately no charts, trends, handle/target
- * breakdowns, ranking, or overall score (all reserved for Phase C). See
+ * breakdowns, ranking, or overall score; those live in the full
+ * AssessmentResultScreen (Phase C), reached via `onViewFullResults`. See
  * docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md section 21 and
  * docs/TECHNICAL_DEBT_AND_ROADMAP.md's Phase B/C split.
  */
@@ -25,6 +27,7 @@ export default function AssessmentCompletionSummary({
   onDone,
   onViewProtocol,
   onStartNew,
+  onViewFullResults,
 }: AssessmentCompletionSummaryProps) {
   const raw = computeRawAssessmentMetrics(run);
   const category = computeCategoryMetrics(run, run.thresholdSnapshot.values);
@@ -105,11 +108,19 @@ export default function AssessmentCompletionSummary({
         </div>
       </div>
 
+      <button
+        type="button"
+        onClick={onViewFullResults}
+        className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+      >
+        View Full Results
+      </button>
+
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
           onClick={onDone}
-          className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+          className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
         >
           Done
         </button>

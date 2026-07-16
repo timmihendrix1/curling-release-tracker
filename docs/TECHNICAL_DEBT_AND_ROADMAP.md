@@ -431,7 +431,7 @@ independent of the switching mechanism so this doesn't require a redesign.
 
 ## Assessment Framework
 
-**Phase A and Phase B implemented; Phase C not implemented.** See
+**Phase A, Phase B, and Phase C implemented.** See
 `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the authoritative product and
 domain model this workstream implements, `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments"
 section for the architecture-level summary, `docs/adr/0010-assessment-domain-foundation.md`
@@ -483,15 +483,43 @@ not a committed schedule.
 - completion (`AssessmentCompletionSummary.tsx`) — raw metrics + category summary
   under the original Run Threshold, no charts/trends/score
 
-### Phase C — Results and Analyze integration (Not implemented)
+### Phase C — Results and Analyze integration (Implemented)
 
-- assessment result screen
-- transparent metrics
-- block, handle and target breakdowns
-- completed-run history
-- comparison of eligible same-version runs
-- Analyze integration
-- no benchmarking or synthetic overall score in v1
+- `AssessmentResultScreen.tsx` — full single-run result view (`src/lib/assessment/result.ts`'s
+  `AssessmentResultView`), reached from the Completion Summary's "View Full Results",
+  `AssessmentLanding`'s "Latest Completed Assessment" card, and Analyze → Assessments
+- transparent metrics: threshold-independent (MAE/Bias/SD) and threshold-dependent
+  (On Target/Acceptable/Major Miss) always shown with the active Threshold Set labeled
+- block (`AssessmentBlockResults.tsx`), handle (`AssessmentHandleComparison.tsx`,
+  grouped by executed handle), target (`AssessmentTargetResults.tsx`, Fast/Medium/Slow
+  Delivery combining every block), and Variable Adaptation
+  (`AssessmentVariableAdaptationResults.tsx`, deliberately restrained given 8 shots)
+  breakdowns
+- Original/Standard/Tight/Custom Analysis Threshold control
+  (`AssessmentThresholdControl.tsx`) — never mutates the run or its Run Threshold
+  Snapshot
+- completed-run history, separated from incomplete runs
+  (`AssessmentAnalyze.tsx`/`AssessmentHistoryItem.tsx`), plus whole-run delete with
+  explicit confirmation (`deleteAssessmentRunFromHistory`)
+- comparison of protocol-compatible completed runs under one shared Comparison
+  Threshold Set (`compareAssessmentRuns`, `AssessmentRunComparison.tsx`,
+  `AssessmentComparisonEligibilityNotice.tsx`) and development trends across
+  same-Template-and-Version completed runs (`AssessmentTrendChart.tsx`)
+- Analyze → Assessments tab (`analyzeTab` local state in `TrackerApp.tsx`), a dedicated
+  Assessment CSV export (`src/lib/assessment/export.ts`) never merged with Training's
+  export
+- no benchmarking or synthetic overall score in v1 — by design, not an omission (see
+  `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` sections 2/20)
+
+**Known limitation carried from this pass**: `AssessmentResultScreen` is mounted as a
+top-level overlay in `TrackerApp.tsx`, conditionally unmounting `AssessScreen` while
+shown. Returning via "← Back" therefore remounts `AssessScreen` from scratch, losing an
+in-flight Completion Summary in favor of Assess Landing — the archived run itself is
+unaffected (still fully visible under Analyze → Assessments), only the transient "just
+completed" UI framing is lost. Fixing this would mean lifting `completedRunSummary` (or
+an equivalent "just finished this run" flag) out of `AssessScreen` into `TrackerApp`, or
+keeping `AssessScreen` mounted underneath the overlay — not done in this pass to keep
+scope to Phase C's own brief.
 
 ### Later
 
@@ -538,9 +566,9 @@ needs to make, not something engineering can resolve by itself:
 6. ~~**Assess as a real screen.**~~ — Resolved (Phase B). `NAVIGATION_ITEMS`'s
    `"assess"` entry is now `availability: "active"`, and `AssessScreen.tsx` implements
    the full Release Time Core Assessment v1 execution flow on top of the Phase A
-   domain foundation — see "Assessment Framework" above and ADR-0011. Still open (Phase
-   C, not this item): the Result screen, Assessment history/comparison, and Analyze
-   integration.
+   domain foundation — see "Assessment Framework" above and ADR-0011.
+   ~~**The Result screen, Assessment history/comparison, and Analyze integration.**~~ —
+   Resolved (Phase C) — see "Assessment Framework" above.
 7. **Athlete Experience (Personal / Coach Guided / Team Training).** Described
    conceptually in the platform nav doc as something that "changes Home's behavior,
    rather than unlocking different products," but no selection, persistence, or

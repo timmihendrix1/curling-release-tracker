@@ -342,12 +342,13 @@ over
 
 # Assessment Language
 
-**[Implemented — Release Time Core Assessment v1 execution flow, Phase B.]** See
-`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the full Assessment model and
-`src/lib/assessmentContent.ts` for the actual copy used throughout the flow. The
-general principles above (separate facts from interpretation, prefer "may indicate"/
-"suggests" over certainty) already apply to Assessment copy. Two rules are specific to
-Assessments:
+**[Implemented — Release Time Core Assessment v1 execution flow (Phase B) and Results/
+Analyze integration (Phase C).]** See
+`docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the full Assessment model,
+`src/lib/assessmentContent.ts` for the execution-flow copy, and
+`src/lib/assessmentResultContent.ts` for the Result-screen copy. The general principles
+above (separate facts from interpretation, prefer "may indicate"/"suggests" over
+certainty) already apply to Assessment copy. Rules specific to Assessments:
 
 - `Official Assessment` describes platform/organisation control and versioning — it must
   never be worded in a way that implies federation endorsement (e.g. "Official Swiss
@@ -355,6 +356,17 @@ Assessments:
 - Do not label a result `Perfect`, `Poor`, or similarly, without a validated reference
   value behind it — prefer describing the measured difference itself (e.g. "Your largest
   measured difference was...", "This run is not directly comparable because...").
+- **Result-comparison language (Phase C)**: describe a change, never a verdict. Use
+  `percentage points` (never `percent`) when comparing category rates across runs (e.g.
+  "On Target increased by 6 percentage points under Standard thresholds", not "6%
+  better"); state a metric's direction plainly ("MAE decreased by 0.02s", "Bias moved
+  0.01s closer to zero") without adding "improved"/"worse" when the interpretation is
+  ambiguous — a lower Standard Deviation means more consistent errors, not automatically
+  more accurate. Comparison-ineligibility reasons are always mapped to plain language
+  (`AssessmentComparisonEligibilityNotice.tsx`'s `COMPARISON_INELIGIBILITY_COPY`), never
+  shown as a raw code like `different_protocol_sequence`. Threshold-control copy makes
+  explicit that changing the analysis threshold "only changes how results are grouped" —
+  never implies the recorded times themselves changed.
 
 ---
 

@@ -1642,7 +1642,7 @@ assessment, only a real in-progress one. The app-wide title above the navigation
 Performance" with the subtitle "Train, assess and understand your performance." — a
 provisional, visible-only name/subtitle, not reflected in package/PWA metadata.
 
-## Assessments (Phase A domain/persistence + Phase B execution flow implemented; Phase C not implemented)
+## Assessments (Phase A domain/persistence, Phase B execution flow, and Phase C Results/Analyze integration implemented)
 
 See `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` for the authoritative product
 and domain model this section only summarizes at an architecture-snapshot level,
@@ -1735,14 +1735,62 @@ rather than an explicit Pause) is force-paused via `pauseAssessmentRun` before e
 rendering, so capture never silently reactivates without an explicit Resume — see
 ADR-0011 Decision 4 for the reload-recovery/quarantine-notice details.
 
-### Not yet implemented (Phase C)
+### Implemented Assessment Results and Analyze integration (Phase C)
 
-- The full Assessment Result screen, transparent metric breakdowns beyond the simple
-  Completion Summary, block/handle/target detail views.
-- Completed-run history browsing, run comparison, Analyze integration.
-- Benchmarking, a synthetic overall score, Custom Assessment editor, coach/team
-  features — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment Framework" section
-  for the full phase sequencing.
+All derivation is on-demand and pure — see `src/lib/assessment/result.ts`. No
+`AssessmentResult` type is persisted; ADR-0010's rejection of caching derived metrics on
+the Run extends to this phase too (ADR-0010's Decision 4 already anticipated exactly
+this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on demand" —
+`result.ts` is the same principle applied to richer, multi-dimensional breakdowns).
+
+- `src/lib/assessment/result.ts` — block/target/handle/Variable-Adaptation breakdowns,
+  Protocol Integrity summaries, comparison-ineligibility copy, an `AssessmentResultView`
+  aggregate for a single run, `compareAssessmentRuns` (two protocol-comparable runs
+  under one shared Comparison Threshold Set), and `buildAssessmentTrendSeries`
+  (same-Template-and-Version completed runs only). Handle-based breakdowns group by the
+  handle actually **executed**, not the planned/expected handle — an explicit
+  implementation decision (the domain spec doesn't spell this out in exact words); a
+  wrong-handle attempt's own Protocol Deviation stays independently visible via
+  `ProtocolIntegritySummary`.
+- `src/lib/assessment/persistence.ts` gained `getCompletedAssessmentRuns` /
+  `getIncompleteAssessmentRuns` / `getLatestCompletedAssessmentRun` /
+  `deleteAssessmentRunFromHistory` — still pure state-shape functions, no new
+  `localStorage` access.
+- `src/lib/assessment/export.ts` — a dedicated Assessment CSV builder
+  (`buildAssessmentCsv`/`exportAssessmentRunsToCsv`), one row per attempt (valid and
+  invalid), never merged with Training's `export.ts` CSV. `export.ts`'s `downloadCsv`
+  is now exported so this module reuses the same download mechanics rather than
+  duplicating it.
+- `AssessmentResultScreen.tsx` (plus its `Assessment*.tsx` sub-components — see the
+  components table below) is a read-only view over one already-terminal
+  `AssessmentRun`: it never calls `updateAssessmentState` to mutate the run itself, only
+  the Original/Standard/Tight/Custom Analysis Threshold selection (local UI state,
+  recalculates category metrics only) and the caller-supplied `onDeleteRun` (removes the
+  run from history as a whole). It is mounted from `TrackerApp.tsx` as a top-level
+  overlay (`viewingAssessmentResultRunId`, an id, not the run object, so it always
+  resolves against the latest `assessmentState` and self-clears if the run is deleted) —
+  reachable from the Completion Summary's new "View Full Results" action, from
+  `AssessmentLanding`'s "Latest Completed Assessment" card, and from Analyze →
+  Assessments.
+- Analyze gained a Training/Assessments tab (`analyzeTab` local state inside
+  `TrackerApp.tsx`'s existing `activeView === "analyze"` block — no new top-level
+  `ActiveView`/nav item). `AssessmentAnalyze.tsx` reads `assessmentState` directly:
+  Latest Completed Assessment, separate Completed/Incomplete history lists
+  (`AssessmentHistoryItem.tsx`), the empty state, and a CSV export action. Training's own
+  History filters/state are untouched by switching tabs.
+- **Known limitation**: navigating away from `AssessmentResultScreen` back into
+  `AssessScreen` remounts `AssessScreen` from scratch (it was conditionally unmounted
+  while the Result Screen overlay was shown), so an in-flight Completion Summary is
+  lost in favor of Assess Landing — the archived run itself is never affected, only the
+  transient "just completed" UI state. See `docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
+
+### Not yet implemented
+
+- Benchmarking, a synthetic overall score, athlete-level classification/capability
+  profile, automatic training-focus suggestions, a Custom Assessment editor, coach/team
+  workflows, cloud sync — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Assessment
+  Framework" section. None of these were in scope for Phase C by design (see
+  `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` sections 2/20).
 
 ## Module responsibilities / architecture boundaries (Implemented)
 
@@ -1795,7 +1843,22 @@ ADR-0011 Decision 4 for the reload-recovery/quarantine-notice details.
 | `AssessmentInvalidAttemptDialog.tsx` | The technical-reason-only invalid-attempt picker — a sporting complaint is never offered here |
 | `AssessmentBlockTransition.tsx` | Shown between scored blocks — next block's purpose/first target, `Continue`, no enforced rest |
 | `AssessmentPausedView.tsx` | Shown while a Run is paused — progress, Resume, Abandon |
-| `AssessmentCompletionSummary.tsx` | The simple Completion Summary — counts, raw metrics (MAE/Bias/SD), category percentages under the original Run Threshold — deliberately no charts/trends/score (Phase C) |
+| `AssessmentCompletionSummary.tsx` | The simple Completion Summary — counts, raw metrics (MAE/Bias/SD), category percentages under the original Run Threshold, and (Phase C) a "View Full Results" action opening `AssessmentResultScreen` |
+| `AssessmentResultScreen.tsx` | (Phase C) Top-level orchestrator for a single completed/incomplete run's full result view — composes every section below, owns Analysis/Comparison threshold UI state, delete confirmation |
+| `AssessmentResultSummary.tsx` | (Phase C) Header card: name/version/date/measurement mode/shot type/scored count/original vs. active threshold |
+| `AssessmentThresholdControl.tsx` | (Phase C) Original/Standard/Tight/Custom (or, with `allowOriginal={false}`, Standard/Tight/Custom only, for multi-run contexts) — never mutates the run |
+| `AssessmentCoreMetrics.tsx` | (Phase C) Threshold-independent MAE/Bias/SD card + threshold-dependent On Target/Acceptable/Major Miss card, always shown with the active Threshold Set labeled |
+| `AssessmentBlockResults.tsx` | (Phase C) Per-block metrics — no block score or ranking |
+| `AssessmentTargetResults.tsx` | (Phase C) Fast/Medium/Slow Delivery breakdown, combining every block including Variable Adaptation |
+| `AssessmentHandleComparison.tsx` | (Phase C) In vs. Out Handle (grouped by executed handle) plus MAE/Bias/SD differences, with careful non-diagnostic copy |
+| `AssessmentVariableAdaptationResults.tsx` | (Phase C) The one block with more than one target time — deliberately restrained copy given only 8 scored shots |
+| `AssessmentProtocolIntegrity.tsx` | (Phase C) Factual protocol-quality disclosure — never treats a deviation as automatic invalidation |
+| `AssessmentShotDetails.tsx` | (Phase C) Expandable, read-only shot-level table + a separate invalid-attempt technical log — no edit/delete/reclassify action |
+| `AssessmentComparisonEligibilityNotice.tsx` | (Phase C) Maps `ComparisonIneligibilityReason[]` to plain-language copy — never a raw enum value |
+| `AssessmentRunComparison.tsx` | (Phase C) Two-run delta view under one shared Comparison Threshold — neutral, percentage-point phrasing, never a synthetic winner |
+| `AssessmentTrendChart.tsx` | (Phase C) MAE/Bias/SD/On-Target trend across protocol-compatible completed runs of the same Template+Version, one shared Comparison Threshold |
+| `AssessmentAnalyze.tsx` | (Phase C) Analyze → Assessments landing: Latest Completed Assessment, separate Completed/Incomplete history, empty state, CSV export |
+| `AssessmentHistoryItem.tsx` | (Phase C) One history row (completed or incomplete), with View/Delete actions |
 
 ### Domain and logic modules (`src/lib/`)
 
@@ -1821,6 +1884,7 @@ ADR-0011 Decision 4 for the reload-recovery/quarantine-notice details.
 | `captureSequence.ts` | Capture Sequence lifecycle, handle strategies, `processTimingResult`/`applyTimingResultToSession` (the one shot-save path for captured shots, plain-value in/out), Undo, `sanitizeCaptureSequence` (persistence repair), `pauseCaptureSequenceWithError` |
 | `navigation.ts` | The one place the platform's top-level navigation structure is declared (`NAVIGATION_ITEMS`, `ActiveView`, `sanitizeActiveView`) — see "Platform Navigation" above |
 | `assessmentContent.ts` | Central Assessment UI copy (Guided Introduction block text, what-it-measures/doesn't, why-structure, setup requirements/notes, invalid-reason labels) — the Assessment-domain counterpart to `helpContent.ts` |
+| `assessmentResultContent.ts` | (Phase C) Central Result-screen copy (MAE/Bias/SD explanations, category/handle/Variable-Adaptation/threshold-control notices) — facts and interpretation kept separately, per `docs/UX_WRITING_GUIDELINES.md` |
 | `assessmentPreferences.ts` | Local, device-only Assess UI preferences (show-introduction, last-used threshold preset/custom values) — deliberately separate from the `AssessmentRun`/`AssessmentPersistedState` domain objects; never affects an already-started run |
 
 ### Assessment domain modules (`src/lib/assessment/`)
@@ -1842,8 +1906,11 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 | `capture.ts` | (Phase B) `applyTimingResultToAssessmentRun` — the sole adapter from a `TimingResult` to `addValidAttempt`, the Assessment-domain counterpart to `captureSequence.ts`'s `applyTimingResultToSession` |
 | `metrics.ts` | Threshold-independent raw metrics (MAE/Bias/SD) and threshold-dependent category metrics (On Target/Acceptable/Major Miss), reusing `analytics.ts`/`accuracyThresholds.ts` |
 | `comparison.ts` | `checkProtocolComparisonEligibility`/`checkCategoryComparisonEligibility` |
-| `persistence.ts` | The Assessment root persisted shape (own `localStorage` key, current run + history), pure state-shape transitions — the actual `localStorage` read/write call site lives in `TrackerApp.tsx` (Phase B, ADR-0011) |
+| `persistence.ts` | The Assessment root persisted shape (own `localStorage` key, current run + history), pure state-shape transitions — the actual `localStorage` read/write call site lives in `TrackerApp.tsx` (Phase B, ADR-0011); Phase C added `getCompletedAssessmentRuns`/`getIncompleteAssessmentRuns`/`getLatestCompletedAssessmentRun`/`deleteAssessmentRunFromHistory` |
 | `migration.ts` | Defensive validation/quarantine of persisted Assessment data (`migrateAssessmentPersistedState`, `validatePersistedAssessmentRun`) |
+| `result.ts` | (Phase C) Derived, non-persisted Result view: block/target/handle/Variable-Adaptation breakdowns, Protocol Integrity summary, comparison-ineligibility copy, `AssessmentResultView`, `compareAssessmentRuns`, `buildAssessmentTrendSeries`, `resolveAnalysisThresholdSet` |
+| `resultFormatting.ts` | (Phase C) Shared display formatting (percent/seconds/signed/percentage-point-delta) for Result-screen components — kept out of JSX |
+| `export.ts` | (Phase C) `buildAssessmentCsv`/`exportAssessmentRunsToCsv` — one row per attempt; deliberately its own file, never merged with Training's `src/lib/export.ts` |
 
 ### Orchestration — `TrackerApp.tsx`
 

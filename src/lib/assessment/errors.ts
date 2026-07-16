@@ -19,7 +19,8 @@ export type AssessmentErrorCode =
   | "unknown_planned_shot"
   | "invalid_measured_time"
   | "current_run_mismatch"
-  | "current_run_already_active";
+  | "current_run_already_active"
+  | "run_not_found";
 
 export type AssessmentError = {
   code: AssessmentErrorCode;

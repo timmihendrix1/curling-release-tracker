@@ -1,0 +1,45 @@
+import { accuracyThresholdSetLabel, type AssessmentResultView } from "../lib/assessment/result";
+
+type AssessmentResultSummaryProps = {
+  result: AssessmentResultView;
+};
+
+const MEASUREMENT_MODE_LABELS: Record<string, string> = {
+  "back-hog": "Backline–Hog",
+  "hog-hog": "Hog–Hog",
+};
+
+/** The header card of a Result Screen — see docs' Phase C brief section 3 "Summary". */
+export default function AssessmentResultSummary({ result }: AssessmentResultSummaryProps) {
+  const { run, activeThresholdSet, protocolIntegrity } = result;
+
+  return (
+    <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <h1 className="text-xl font-semibold text-slate-900">{run.templateSnapshot.name}</h1>
+      <p className="mt-1 text-sm text-slate-600">
+        Version {run.templateVersion} ·{" "}
+        {run.completedAt ? new Date(run.completedAt).toLocaleDateString() : "Incomplete"}
+      </p>
+
+      <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+        <li>{MEASUREMENT_MODE_LABELS[protocolIntegrity.measurementMode] ?? protocolIntegrity.measurementMode}</li>
+        <li className="capitalize">{run.templateSnapshot.shotType}</li>
+        <li>{result.raw.count} of {run.templateSnapshot.protocolMetadata.scoredShotCount} scored stones</li>
+        <li>{protocolIntegrity.invalidAttemptCount} invalid attempts</li>
+        <li>{protocolIntegrity.totalDeviationCount} protocol deviations</li>
+        <li className="capitalize">{run.status}</li>
+      </ul>
+
+      <div className="mt-3 grid grid-cols-1 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2">
+        <p>
+          Original Run Thresholds: {accuracyThresholdSetLabel(run.thresholdSnapshot)} (±
+          {run.thresholdSnapshot.values.onTarget.toFixed(2)}s / ±{run.thresholdSnapshot.values.acceptable.toFixed(2)}s)
+        </p>
+        <p>
+          Active analysis: {accuracyThresholdSetLabel(activeThresholdSet)} (±
+          {activeThresholdSet.values.onTarget.toFixed(2)}s / ±{activeThresholdSet.values.acceptable.toFixed(2)}s)
+        </p>
+      </div>
+    </div>
+  );
+}

@@ -92,6 +92,44 @@ export function getAssessmentRunFromHistory(
   return state.history.find((run) => run.id === id);
 }
 
+function runSortTimestamp(run: AssessmentRun): number {
+  return new Date(run.completedAt ?? run.pausedAt ?? run.createdAt).getTime();
+}
+
+/** Newest-first, per Phase C's Analyze history ordering (see docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze Integration section). */
+export function getCompletedAssessmentRuns(state: AssessmentPersistedState): AssessmentRun[] {
+  return state.history
+    .filter((run) => run.status === "completed")
+    .sort((a, b) => runSortTimestamp(b) - runSortTimestamp(a));
+}
+
+/** Newest-first. Never includes the still-active `currentRun` — only terminal, archived incomplete runs. */
+export function getIncompleteAssessmentRuns(state: AssessmentPersistedState): AssessmentRun[] {
+  return state.history
+    .filter((run) => run.status === "incomplete")
+    .sort((a, b) => runSortTimestamp(b) - runSortTimestamp(a));
+}
+
+export function getLatestCompletedAssessmentRun(state: AssessmentPersistedState): AssessmentRun | undefined {
+  return getCompletedAssessmentRuns(state)[0];
+}
+
+/**
+ * Removes one completed or incomplete run from history as a whole — never a
+ * partial edit (see spec section 17's immutability rules: "delete the entire
+ * run after explicit confirmation" is the one destructive action allowed on
+ * a completed run). Never touches `currentRun` or the Assessment Template.
+ */
+export function deleteAssessmentRunFromHistory(
+  state: AssessmentPersistedState,
+  runId: string
+): AssessmentOutcome<AssessmentPersistedState> {
+  if (!state.history.some((run) => run.id === runId)) {
+    return err("run_not_found", "The Assessment Run to delete was not found in history.");
+  }
+  return ok({ ...state, history: state.history.filter((run) => run.id !== runId) });
+}
+
 export function serializeAssessmentPersistedState(state: AssessmentPersistedState): string {
   return JSON.stringify(state);
 }

@@ -424,16 +424,18 @@ Examples:
 
 # Assessment
 
-**[Domain/persistence (Phase A) and the Release Time Core Assessment v1 execution flow
-(Phase B) are both implemented — see `docs/adr/0010-assessment-domain-foundation.md`
-and `docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`.]** These
+**[Domain/persistence (Phase A), the Release Time Core Assessment v1 execution flow
+(Phase B), and Results/Analyze integration (Phase C) are all implemented — see
+`docs/adr/0010-assessment-domain-foundation.md` and
+`docs/adr/0011-assessment-capture-ownership-and-app-shell-integration.md`.]** These
 terms are defined in full by `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md`, the
 authoritative source for Assessment product and domain rules. This section gives short,
 glossary-level definitions only — see that document for execution, comparison and
 versioning rules, and `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section for the
-current implementation snapshot (`src/lib/assessment/`, `AssessScreen.tsx`). Not yet
-implemented: the full Result screen, Assessment history/comparison, Analyze integration
-(Phase C).
+current implementation snapshot (`src/lib/assessment/`, `AssessScreen.tsx`,
+`AssessmentResultScreen.tsx`, `AssessmentAnalyze.tsx`). Not yet implemented:
+benchmarking, a synthetic overall score, athlete-level classification, a Custom
+Assessment editor, coach/team workflows.
 
 ## Assessment
 
@@ -488,11 +490,15 @@ reference, and stricter immutability once completed.
 
 ## Assessment Result
 
-The derived evaluation of a completed Assessment Run. **[Open decision / not yet built as
-a stored type]** — Phase A implements the pure metric functions a Result would be built
-from (`src/lib/assessment/metrics.ts`'s raw and category metrics), but no `AssessmentResult`
-type or Result screen exists yet; results are computed on demand from a run's `attempts`,
-never cached as the authoritative source.
+The derived evaluation of a completed (or incomplete) Assessment Run. **[Implemented as a
+derived view, not a persisted type]** — `src/lib/assessment/result.ts`'s
+`AssessmentResultView` (and the block/target/handle/Variable-Adaptation breakdowns it
+composes) is always computed on demand from a run's `attempts` plus an explicitly chosen
+Threshold Set; there is no `AssessmentResult` record in `AssessmentPersistedState`. This
+matches ADR-0010's Decision 4 (raw data stays the sole persisted source; the derivation
+functions are cheap and pure enough to recompute every time). `AssessmentResultScreen.tsx`
+renders this view; `AssessmentAnalyze.tsx` is where completed/incomplete Assessment Runs
+are browsed under Analyze.
 
 ## Invalid Attempt
 
@@ -508,7 +514,26 @@ disclosed.
 ## Comparison Eligibility
 
 The rules determining whether two Assessment Runs may be directly compared (same
-template, version, measurement mode, and sequence, among others).
+template, version, measurement mode, and sequence, among others). **[Implemented]** —
+`checkProtocolComparisonEligibility`/`checkCategoryComparisonEligibility`
+(`src/lib/assessment/comparison.ts`) implement the rule; `src/lib/assessment/result.ts`'s
+`compareAssessmentRuns` and `AssessmentComparisonEligibilityNotice.tsx` surface it in the
+UI, mapping every `ComparisonIneligibilityReason` to plain-language copy rather than a
+raw enum value. Different original Run Threshold Sets never make two runs
+protocol-ineligible; a shared Comparison Threshold Set (see "Comparison Threshold" below)
+is still required for any category-based comparison.
+
+## Comparison Threshold
+
+The Threshold Set currently applied when analyzing one or more Assessment Runs —
+Original (single-run only), Standard, Tight, or Custom. Distinct from a Run's own,
+immutable Run Threshold Snapshot: changing the Comparison Threshold recalculates
+threshold-dependent category metrics on screen only, never the stored run. When
+comparing multiple runs, one shared Comparison Threshold Set must be applied to all of
+them for their category metrics to be comparable. **[Implemented]** — see
+`AssessmentThresholdControl.tsx` and `resolveAnalysisThresholdSet` in
+`src/lib/assessment/result.ts`; the selection is local UI/preference state, never
+persisted onto the Assessment Run.
 
 ## Release Time Core Assessment v1
 
@@ -975,11 +1000,14 @@ UI/screen names, not new domain concepts layered on top of the ones above:
   Entry, Auto Capture, current-session analytics) under a new name; no behavior change.
 - **Assess** — the Release Time Core Assessment v1 execution flow (`AssessScreen.tsx`,
   Phase B): Landing, Overview, Guided Introduction, Threshold/Setup, Warm-up, Scored
-  Execution, Pause/Resume/Abandon, Completion Summary. See **Assessment** above and
-  `docs/adr/0011`.
+  Execution, Pause/Resume/Abandon, Completion Summary. The Completion Summary's "View
+  Full Results" action (Phase C) opens `AssessmentResultScreen.tsx`. See **Assessment**
+  above and `docs/adr/0011`.
 - **Analyze** — the visible name for the History view (see **History** above); the
-  underlying data/filter concepts are unchanged. Does not yet include Assessment data
-  (Phase C).
+  underlying Training data/filter concepts are unchanged. Also hosts a separate
+  Assessments tab (Phase C, `AssessmentAnalyze.tsx`) — Training and Assessment analytics
+  are distinct domain concepts sharing this one destination; switching tabs never resets
+  the other tab's state.
 - **Settings** — app-wide Data Management (Export History CSV, Clear History) and About.
   Session-specific settings (title/notes, fixed-target adjustment) stay in Train.
 

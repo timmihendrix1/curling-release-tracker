@@ -8,6 +8,7 @@ import {
 } from "../lib/assessment/attempts";
 import {
   archiveCurrentAssessmentRun,
+  getLatestCompletedAssessmentRun,
   setCurrentAssessmentRun,
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
@@ -69,6 +70,8 @@ type AssessScreenProps = {
   onConsumedReloadRecovery: () => void;
   quarantineNotice: string | null;
   onDismissQuarantineNotice: () => void;
+  /** Opens the full Phase C Result Screen for a completed run — owned by TrackerApp, since it's reachable from Analyze too. */
+  onViewFullResults: (runId: string) => void;
 };
 
 type LocalConfirmAction = {
@@ -107,6 +110,7 @@ export default function AssessScreen({
   onConsumedReloadRecovery,
   quarantineNotice,
   onDismissQuarantineNotice,
+  onViewFullResults,
 }: AssessScreenProps) {
   const [view, setView] = useState<PreRunView>("landing");
   const [introductionReturnView, setIntroductionReturnView] = useState<PreRunView>("landing");
@@ -454,6 +458,7 @@ export default function AssessScreen({
             setSetupConfirmed(false);
             handleViewAssessment();
           }}
+          onViewFullResults={() => onViewFullResults(completedRunSummary.id)}
         />
         <AssessmentProtocolSheet open={protocolOpen} onClose={() => setProtocolOpen(false)} />
       </>
@@ -482,6 +487,8 @@ export default function AssessScreen({
             onViewAssessment={handleViewAssessment}
             onResume={handleViewAssessment}
             onStartNew={handleStartNewFromLanding}
+            latestCompletedRun={getLatestCompletedAssessmentRun(assessmentState)}
+            onViewLatestResult={onViewFullResults}
           />
         )}
 

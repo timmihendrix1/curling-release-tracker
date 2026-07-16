@@ -25,9 +25,11 @@ beforeEach(() => {
 function Harness({
   isTrainingCaptureActive = false,
   onStateChange,
+  onViewFullResults,
 }: {
   isTrainingCaptureActive?: boolean;
   onStateChange?: (state: AssessmentPersistedState) => void;
+  onViewFullResults?: (runId: string) => void;
 }) {
   const [assessmentState, setAssessmentState] = useState<AssessmentPersistedState>(
     createEmptyAssessmentPersistedState()
@@ -73,6 +75,7 @@ function Harness({
       onConsumedReloadRecovery={() => {}}
       quarantineNotice={null}
       onDismissQuarantineNotice={() => {}}
+      onViewFullResults={onViewFullResults ?? (() => {})}
     />
   );
 }

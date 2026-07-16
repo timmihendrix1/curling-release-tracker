@@ -132,7 +132,8 @@ export function exportHistoryToCsv(sessions: Session[]) {
   downloadCsv(buildHistoryCsv(sessions), "curling_session_history.csv");
 }
 
-function downloadCsv(content: string, fileName: string) {
+/** Exported so other domains (e.g. src/lib/assessment/export.ts) can reuse this download mechanics without duplicating it. */
+export function downloadCsv(content: string, fileName: string) {
   const blob = new Blob([content], {
     type: "text/csv;charset=utf-8;",
   });
