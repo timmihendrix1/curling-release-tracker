@@ -56,6 +56,26 @@ export function countValidAttemptsForPhase(
 
 export type ProgressCount = { completed: number; total: number };
 
+/**
+ * Progress within one specific scored block — "how much of this block is
+ * left" (Epic 2 / audit finding: Scored Execution previously had no
+ * compact answer to that, only the whole-run counter). Same valid-attempt
+ * counting as `countValidAttemptsForPhase`, scoped to one block's planned
+ * shots instead of a whole phase.
+ */
+export function calculateBlockProgress(
+  run: AssessmentRun,
+  block: AssessmentBlockDefinition
+): ProgressCount {
+  const shotIds = new Set(block.plannedShots.map((shot) => shot.id));
+  const completedShotIds = new Set(
+    run.attempts
+      .filter((attempt) => attempt.status === "valid" && shotIds.has(attempt.plannedShotId))
+      .map((attempt) => attempt.plannedShotId)
+  );
+  return { completed: completedShotIds.size, total: block.plannedShots.length };
+}
+
 export function calculateWarmupProgress(run: AssessmentRun): ProgressCount {
   return {
     completed: countValidAttemptsForPhase(run, "warmup"),

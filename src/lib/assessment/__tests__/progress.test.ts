@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addValidAttempt } from "../attempts";
 import {
+  calculateBlockProgress,
   calculateScoredProgress,
   calculateWarmupProgress,
   countInvalidAttempts,
@@ -58,6 +59,23 @@ describe("progress utilities", () => {
     const shot = getCurrentPlannedShot(run)!;
     run = expectOk(addValidAttempt(run, shot.id, { measuredTime: shot.targetTime, executedHandle: shot.expectedHandle }));
     expect(calculateScoredProgress(run)).toEqual({ completed: 1, total: 32 });
+  });
+
+  it("calculateBlockProgress counts only the current block's own planned shots, not the whole run", () => {
+    let run = createTestRun();
+    run = expectOk(transitionAssessmentRun(run, "warmup"));
+    run = completeWarmup(run);
+    run = expectOk(transitionAssessmentRun(run, "in_progress"));
+
+    const block = getCurrentBlock(run)!;
+    expect(calculateBlockProgress(run, block)).toEqual({ completed: 0, total: block.plannedShots.length });
+
+    const shot = getCurrentPlannedShot(run)!;
+    run = expectOk(addValidAttempt(run, shot.id, { measuredTime: shot.targetTime, executedHandle: shot.expectedHandle }));
+
+    expect(calculateBlockProgress(run, block)).toEqual({ completed: 1, total: block.plannedShots.length });
+    // The whole-run scored total must stay unaffected by asking about one block.
+    expect(calculateScoredProgress(run).total).toBe(32);
   });
 
   it("isWarmupComplete flips true only once every warm-up shot has a valid attempt", () => {

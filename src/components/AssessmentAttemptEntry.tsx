@@ -90,7 +90,7 @@ export default function AssessmentAttemptEntry({
           type="button"
           onClick={onOpenInvalidDialog}
           disabled={invalidLimitReached}
-          className="whitespace-nowrap rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 whitespace-nowrap rounded-lg bg-red-50 px-3 text-xs font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Mark attempt invalid
         </button>

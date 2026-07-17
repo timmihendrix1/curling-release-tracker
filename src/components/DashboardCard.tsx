@@ -14,6 +14,10 @@ type DashboardCardProps = {
   // prioritize (see docs/DOMAIN_GLOSSARY.md's Dashboard metrics ordering).
   // Defaults to the original, unchanged appearance.
   tone?: "default" | "highlight";
+  // "hero" is for the single KPI a screen wants to dominate the eye — not
+  // every KPI deserves equal weight (docs/VISUAL_LANGUAGE.md's "Visual
+  // Weight"). Defaults to the original size for every existing call site.
+  size?: "default" | "hero";
   /** Full interpretation content, shown via an Info button next to the label. */
   explanation?: AnalyticsExplanation;
 };
@@ -23,13 +27,15 @@ export default function DashboardCard({
   value,
   sublabel,
   tone = "default",
+  size = "default",
   explanation,
 }: DashboardCardProps) {
   const isHighlight = tone === "highlight";
+  const isHero = size === "hero";
 
   return (
     <div
-      className={`rounded-xl p-4 ${isHighlight ? "bg-slate-900" : "bg-slate-100"}`}
+      className={`rounded-xl ${isHero ? "p-6" : "p-4"} ${isHighlight ? "bg-slate-900" : "bg-slate-100"}`}
     >
       <header
         className={`flex items-center text-sm ${isHighlight ? "text-slate-300" : "text-slate-500"}`}
@@ -39,7 +45,7 @@ export default function DashboardCard({
       </header>
 
       <p
-        className={`mt-1 text-xl font-semibold ${isHighlight ? "text-white" : "text-slate-900"}`}
+        className={`mt-1 font-semibold ${isHero ? "text-4xl" : "text-xl"} ${isHighlight ? "text-white" : "text-slate-900"}`}
       >
         {value}
       </p>

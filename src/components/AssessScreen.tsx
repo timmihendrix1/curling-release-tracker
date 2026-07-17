@@ -287,6 +287,16 @@ export default function AssessScreen({
   const thresholdIsValid = thresholdPreset !== "custom" || (customValidation?.valid ?? false);
   const canStart = setupConfirmed && thresholdIsValid && !isTrainingCaptureActive;
 
+  // The disabled "Start Warm-up" button must say why nearby, not just refuse
+  // to activate (docs/DESIGN_SYSTEM.md §12.5). The training-conflict case
+  // already has its own visible amber notice, so this only covers the two
+  // silent requirements: threshold decision and setup confirmation.
+  const startBlockedReason = !thresholdIsValid
+    ? "Fix the Custom threshold values above to continue."
+    : !setupConfirmed
+      ? "Confirm your setup above to continue."
+      : null;
+
   function handleViewAssessment() {
     if (getShowAssessmentIntroductionPreference()) {
       setIntroductionReturnView("overview");
@@ -525,6 +535,7 @@ export default function AssessScreen({
               setView("guidedIntroduction");
             }}
             canStart={canStart}
+            startBlockedReason={startBlockedReason}
             trainingConflictMessage={trainingConflictMessage}
             onStartWarmup={handleStartWarmup}
             onBack={() => setView("landing")}

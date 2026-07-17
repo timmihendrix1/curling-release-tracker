@@ -20,6 +20,8 @@ test("classic manual entry, Analyze navigation, and New Block still work", async
   await shotEntryPanel.getByRole("button", { name: "Add Shot" }).click();
 
   await expect(page.getByText("1 shot total")).toBeVisible();
+  // Recent Shots is collapsed by default (Epic 2).
+  await page.getByText(/Recent Shots/).click();
   await expect(page.getByText("#1 · In · draw")).toBeVisible();
 
   // Analyze navigation must still work (this was the subject of an earlier, separate

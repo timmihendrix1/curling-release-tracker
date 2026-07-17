@@ -76,7 +76,7 @@ export default function AssessmentCurrentShot({
               key={handle}
               type="button"
               onClick={() => onChangeExecutedHandle(handle)}
-              className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              className={`min-h-11 rounded-lg px-3 text-sm font-medium transition ${
                 executedHandle === handle
                   ? "bg-slate-900 text-white"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"

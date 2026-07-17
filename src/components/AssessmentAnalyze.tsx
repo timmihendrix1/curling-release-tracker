@@ -9,7 +9,12 @@ import {
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
 import { countInvalidAttempts, countProtocolDeviations } from "../lib/assessment/progress";
-import { accuracyThresholdSetLabel } from "../lib/assessment/result";
+import {
+  accuracyThresholdSetLabel,
+  buildAssessmentTrendInsight,
+  buildAssessmentTrendSeries,
+  findProtocolCompatibleRuns,
+} from "../lib/assessment/result";
 import { formatAssessmentPercent, formatAssessmentSeconds, formatAssessmentSignedSeconds } from "../lib/assessment/resultFormatting";
 import { exportAssessmentRunsToCsv } from "../lib/assessment/export";
 import type { AssessmentRun } from "../lib/assessment/types";
@@ -75,6 +80,21 @@ export default function AssessmentAnalyze({
   const latestRaw = latest ? computeRawAssessmentMetrics(latest) : null;
   const latestCategory = latest ? computeCategoryMetrics(latest, latest.thresholdSnapshot.values) : null;
 
+  // "What should I learn from this?" ahead of the raw metrics below — the
+  // same key-takeaway-first pattern as Analyze → Training (Epic 2). Reuses
+  // the Result screen's own comparison-eligibility rules, so it only ever
+  // compares runs already judged protocol-compatible; never a new domain
+  // computation of its own.
+  const trendInsight = latest
+    ? buildAssessmentTrendInsight(
+        buildAssessmentTrendSeries(
+          [latest, ...findProtocolCompatibleRuns(completedRuns, latest)],
+          latest.thresholdSnapshot,
+          latest.id
+        )
+      )
+    : null;
+
   return (
     <div className="space-y-4">
       {/* An in-progress run is more relevant than a past result — same
@@ -97,6 +117,17 @@ export default function AssessmentAnalyze({
 
       {latest && latestRaw && latestCategory && (
         <div className={surfaceClass(activeCurrentRun ? "primary" : "hero")}>
+          {trendInsight && (
+            <div className="mb-4 border-b border-slate-100 pb-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                What should I learn from this?
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {trendInsight.headline}
+              </p>
+            </div>
+          )}
+
           <h2 className="text-lg font-semibold text-slate-900">Latest Completed Assessment</h2>
           <p className="mt-1 text-sm text-slate-600">
             {latest.templateSnapshot.name} v{latest.templateVersion} ·{" "}

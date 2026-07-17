@@ -29,6 +29,8 @@ type AssessmentOverviewProps = {
   onOpenProtocol: () => void;
   onShowIntroduction: () => void;
   canStart: boolean;
+  /** Shown beneath the disabled Start Warm-up button — the missing requirement, not just a refusal. */
+  startBlockedReason: string | null;
   trainingConflictMessage: string | null;
   onStartWarmup: () => void;
   onBack: () => void;
@@ -59,6 +61,7 @@ export default function AssessmentOverview({
   onOpenProtocol,
   onShowIntroduction,
   canStart,
+  startBlockedReason,
   trainingConflictMessage,
   onStartWarmup,
   onBack,
@@ -182,6 +185,10 @@ export default function AssessmentOverview({
       >
         Start Warm-up
       </button>
+
+      {!canStart && startBlockedReason && (
+        <p className="text-center text-xs text-slate-500">{startBlockedReason}</p>
+      )}
     </div>
   );
 }

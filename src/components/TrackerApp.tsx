@@ -91,6 +91,7 @@ import {
   prepareTargetErrorByShotData,
   prepareTargetVsActualScatterData,
 } from "../lib/chartData";
+import { buildTrainingInsight } from "../lib/trainingInsight";
 import {
   aggregateTargetAccuracyAcrossBlocks,
   buildHistoryAnalysisContext,
@@ -880,6 +881,10 @@ export default function TrackerApp() {
   const historyTargetAccuracy = aggregateTargetAccuracyAcrossBlocks(
     historyAnalysisContext.blocks
   );
+  // Analyze's opening "what should I learn" sentence — computed only from
+  // the same selection every other History surface reads from, never a
+  // separate query (Epic 2: insight before raw metrics).
+  const trainingInsight = buildTrainingInsight(historyAnalysisContext.blocks);
   const historyFullAnalysis = analyzeShots(
     historyAnalysisContext.shots,
     historyThresholds
@@ -1862,22 +1867,13 @@ export default function TrackerApp() {
                       : "No shots match this filter yet."}
                   </p>
                 ) : (
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <DashboardCard
-                      label="Average"
-                      value={formatReleaseTime(
-                        activeBlockAnalysis.average
-                      )}
-                    />
-
-                    <DashboardCard
-                      label="Release SD"
-                      value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
-                        3
-                      )}
-                    />
-
+                  <div className="mt-4 space-y-3">
+                    {/* Not every KPI deserves equal weight (Epic 2): Average
+                        Error is the one number the eye should go to first,
+                        with Bias/On Target/Major Misses as compact
+                        supporting context right beside it. */}
                     <TargetAccuracyDashboardCards
+                      variant="hero"
                       targetAccuracy={activeBlockAnalysis.targetAccuracy}
                       measurementMode={activeBlock.measurementMode}
                       thresholds={
@@ -1887,19 +1883,102 @@ export default function TrackerApp() {
                     />
 
                     {activeBlock.mode === "blind" && (
-                      <PredictionDashboardCards
-                        analysis={activeBlockAnalysis}
-                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <PredictionDashboardCards
+                          analysis={activeBlockAnalysis}
+                        />
+                      </div>
                     )}
+
+                    {/* Quietly-supporting figures — same data, lower visual
+                        weight, kept in view rather than hidden (this is a
+                        secondary surface already; the tiering happens
+                        within it, not behind another click). */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <DashboardCard
+                        label="Average"
+                        value={formatReleaseTime(
+                          activeBlockAnalysis.average
+                        )}
+                      />
+
+                      <DashboardCard
+                        label="Release SD"
+                        value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
+                          3
+                        )}
+                      />
+
+                      <TargetAccuracyDashboardCards
+                        variant="supporting"
+                        targetAccuracy={activeBlockAnalysis.targetAccuracy}
+                        measurementMode={activeBlock.measurementMode}
+                        thresholds={
+                          activeBlockAccuracyThresholds ??
+                          resolveAccuracyThresholds(undefined)
+                        }
+                      />
+                    </div>
                   </div>
                 )}
+              </div>
 
-                <div className="mt-5 border-t border-slate-100 pt-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Recent Shots
-                  </h3>
+              {/* Detailed Analytics comes right after Live Summary — before
+                  Recent Shots/Edit Shots/Session Actions, matching the IA
+                  doc's Active Training priority (Live Summary, then Detailed
+                  Analytics) and closing this gap: editing tools must never
+                  outrank analysis in the reading order. */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Detailed Analytics</span>
+                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+                  </span>
+                </summary>
 
-                  <div className="mt-3 space-y-2">
+                <div className="space-y-4 border-t border-slate-100 p-4">
+                  <ReleaseTrendChart shots={filteredActiveBlockShots} />
+
+                  <TargetErrorChart
+                    points={targetErrorByShotData}
+                    thresholds={activeBlockAccuracyThresholds}
+                    measurementMode={activeBlock.measurementMode}
+                    context="current"
+                  />
+
+                  {activeBlockAnalysis && (
+                    <HandleAnalysisSection
+                      boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
+                      comparison={activeBlockAnalysis.handleAccuracy}
+                    />
+                  )}
+
+                  <TargetActualScatterChart
+                    points={targetVsActualScatterData}
+                    explanation={targetVsActualExplanation("current")}
+                  />
+                </div>
+              </details>
+
+              {/* Recent Shots — and its inline Edit/Delete controls — is a
+                  correction tool, not the primary analysis surface, so it
+                  stays collapsed by default and below Detailed Analytics
+                  ("Editing previous shots is an exception workflow.
+                  Monitoring performance is the primary workflow."). */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>
+                      Recent Shots ({filteredActiveBlockShots.length})
+                    </span>
+                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+                  </span>
+                </summary>
+
+                <div className="border-t border-slate-100 p-4">
+                  <div className="space-y-2">
                   {filteredActiveBlockShots.map((shot) => {
                     const isEditing =
                       editingShot?.id === shot.id;
@@ -2085,45 +2164,6 @@ export default function TrackerApp() {
                   })}
                   </div>
                 </div>
-              </div>
-
-              {/* Detailed Analytics — every chart grouped into one
-                  collapsed-by-default section, well below the current task
-                  (compositional redesign; docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md
-                  §17: "Detailed charts should appear ... in collapsible
-                  sections", and IA doc's Active Training priority puts
-                  Detailed Analytics last, after Live Summary). */}
-              <details className="group rounded-2xl border border-slate-200 bg-white">
-                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Detailed Analytics</span>
-                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
-                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
-                  </span>
-                </summary>
-
-                <div className="space-y-4 border-t border-slate-100 p-4">
-                  <ReleaseTrendChart shots={filteredActiveBlockShots} />
-
-                  <TargetErrorChart
-                    points={targetErrorByShotData}
-                    thresholds={activeBlockAccuracyThresholds}
-                    measurementMode={activeBlock.measurementMode}
-                    context="current"
-                  />
-
-                  {activeBlockAnalysis && (
-                    <HandleAnalysisSection
-                      boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
-                      comparison={activeBlockAnalysis.handleAccuracy}
-                    />
-                  )}
-
-                  <TargetActualScatterChart
-                    points={targetVsActualScatterData}
-                    explanation={targetVsActualExplanation("current")}
-                  />
-                </div>
               </details>
 
               {/* Session Details During Execution (DESIGN_SYSTEM.md §19.6):
@@ -2304,29 +2344,47 @@ export default function TrackerApp() {
 
           {historyAnalysisContext.totalShotCount > 0 ? (
             <>
-              {/* 2+3. "What am I looking at" and "what does it show" are one
-                  continuous answer — the screen's one Hero (compositional
-                  redesign: MOBUX §19's Analyze hierarchy groups context and
-                  key performance summary as the same opening tier). */}
+              {/* 1. The one Hero on this screen answers "what should I learn
+                  from this training?" before any metric — a key-takeaway
+                  sentence, not a dashboard (Epic 2:
+                  docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+                  Analyze hierarchy: "Key takeaway" precedes "Summary
+                  metrics"). "What am I looking at" stays directly above it —
+                  context the takeaway needs to be read correctly, not a
+                  metric itself. */}
               <div className={surfaceClass("hero")}>
                 <AnalysisContextSummary context={historyAnalysisContext} variant="bare" />
 
                 <div className="mt-4 border-t border-slate-100 pt-4">
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    Key Progress Summary
-                  </h2>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    What should I learn from this?
+                  </p>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <TargetAccuracyDashboardCards
-                      targetAccuracy={historyTargetAccuracy}
-                      measurementMode={effectiveHistoryFilters.measurementMode ?? "back-hog"}
-                      thresholds={historyThresholds}
-                    />
+                  <p className="mt-2 text-lg font-semibold text-slate-900">
+                    {trainingInsight
+                      ? trainingInsight.headline
+                      : "Complete another comparable block to see whether your results are changing."}
+                  </p>
+                </div>
+              </div>
 
-                    {historyAnalysisContext.hasBlindCategory && (
-                      <PredictionDashboardCards analysis={historyFullAnalysis} />
-                    )}
-                  </div>
+              {/* 2. Summary metrics — demoted beneath the takeaway rather
+                  than leading the screen (a standard, not a Hero, surface). */}
+              <div className={surfaceClass("primary")}>
+                <h2 className="text-sm font-semibold text-slate-500">
+                  Key Progress Summary
+                </h2>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <TargetAccuracyDashboardCards
+                    targetAccuracy={historyTargetAccuracy}
+                    measurementMode={effectiveHistoryFilters.measurementMode ?? "back-hog"}
+                    thresholds={historyThresholds}
+                  />
+
+                  {historyAnalysisContext.hasBlindCategory && (
+                    <PredictionDashboardCards analysis={historyFullAnalysis} />
+                  )}
                 </div>
               </div>
 
@@ -2586,46 +2644,65 @@ function HistoryBlockPanel({
 }: HistoryBlockPanelProps) {
   const analysis = analyzeShots(shots, thresholds);
   const blockMap = new Map([[block.id, block]]);
+  const onTargetPercent =
+    analysis.targetAccuracy.shotCount > 0
+      ? Math.round((analysis.targetAccuracy.onTargetRate ?? 0) * 100)
+      : null;
 
   return (
-    <div className="rounded-xl bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-slate-900">
-            {block.name}
-          </p>
+    // Compact row with on-demand detail, not a second full dashboard per
+    // block (Epic 2 / audit finding: session expansion previously repeated
+    // the entire aggregate analysis for every block underneath it).
+    <details className="group rounded-xl bg-white">
+      <summary className="cursor-pointer list-none rounded-xl p-4 marker:content-none">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-slate-900">
+              {block.name}
+            </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            {blockModeLabel(block.mode)}
-            {block.mode === "variable" && block.variableTargetMode && (
-              <> ({variableTargetModeLabel(block.variableTargetMode)})</>
-            )}
-            {block.mode === "blind" && block.blindTargetMode && (
-              <> ({blindTargetModeLabel(block.blindTargetMode)})</>
-            )}{" "}
-            · {measurementModeLabel(block.measurementMode)}
-            {(block.mode === "fixed" ||
-              (block.mode === "blind" && block.blindTargetMode === "fixed")) && (
-              <> · Target {block.targetTime.toFixed(2)}s</>
-            )}
-            {(block.variableTargetMode === "smart-random" ||
-              block.blindTargetMode === "smart-random") &&
-              block.smartRandomMin !== undefined &&
-              block.smartRandomMax !== undefined && (
-                <>
-                  {" "}
-                  · Range {block.smartRandomMin.toFixed(2)}s–
-                  {block.smartRandomMax.toFixed(2)}s
-                </>
+            <p className="mt-1 text-xs text-slate-500">
+              {blockModeLabel(block.mode)}
+              {block.mode === "variable" && block.variableTargetMode && (
+                <> ({variableTargetModeLabel(block.variableTargetMode)})</>
               )}
-          </p>
+              {block.mode === "blind" && block.blindTargetMode && (
+                <> ({blindTargetModeLabel(block.blindTargetMode)})</>
+              )}{" "}
+              · {measurementModeLabel(block.measurementMode)}
+              {(block.mode === "fixed" ||
+                (block.mode === "blind" && block.blindTargetMode === "fixed")) && (
+                <> · Target {block.targetTime.toFixed(2)}s</>
+              )}
+              {(block.variableTargetMode === "smart-random" ||
+                block.blindTargetMode === "smart-random") &&
+                block.smartRandomMin !== undefined &&
+                block.smartRandomMax !== undefined && (
+                  <>
+                    {" "}
+                    · Range {block.smartRandomMin.toFixed(2)}s–
+                    {block.smartRandomMax.toFixed(2)}s
+                  </>
+                )}
+            </p>
+          </div>
+
+          <div className="whitespace-nowrap text-right text-xs text-slate-500">
+            <p>
+              {shots.length} shot{shots.length === 1 ? "" : "s"}
+              {onTargetPercent !== null && <> · {onTargetPercent}% on target</>}
+            </p>
+            <p className="mt-1 font-medium text-slate-700 group-open:hidden">
+              Show detail
+            </p>
+            <p className="mt-1 hidden font-medium text-slate-700 group-open:block">
+              Hide detail
+            </p>
+          </div>
         </div>
+      </summary>
 
-        <p className="whitespace-nowrap text-xs text-slate-500">
-          {shots.length} shot{shots.length === 1 ? "" : "s"}
-        </p>
-      </div>
-
+      <div className="border-t border-slate-100 p-4">
       {describeCaptureBreakdown(shots) && (
         <p className="mt-1 text-xs text-slate-500">
           Captured automatically: {describeCaptureBreakdown(shots)}
@@ -2702,7 +2779,8 @@ function HistoryBlockPanel({
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }
 

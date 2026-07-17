@@ -30,7 +30,6 @@ import AssessmentThresholdControl from "./AssessmentThresholdControl";
 import AssessmentTrendChart from "./AssessmentTrendChart";
 import AssessmentVariableAdaptationResults from "./AssessmentVariableAdaptationResults";
 import ConfirmModal from "./ConfirmModal";
-import { surfaceClass } from "./Surface";
 
 type AssessmentResultScreenProps = {
   run: AssessmentRun;
@@ -168,100 +167,132 @@ export default function AssessmentResultScreen({
 
       <AssessmentCoreMetrics result={result} />
 
-      {/* Every detailed breakdown is one shared "Grouped Row List" surface
-          (DESIGN_SYSTEM.md §10.5), divided by section, instead of six
-          separate cards of identical weight (compositional redesign — this
-          is the audit's "six Hero-weight surfaces" problem, structurally
-          resolved, not just restyled). */}
-      <div className={surfaceClass("secondary")}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Detailed Breakdown
-        </p>
+      {/* One-tap detail, not automatic reading (Epic 2 / audit's own
+          suggested tiering: always-visible Summary + Core Metrics above,
+          Block/Target/Handle/Variable Adaptation/Protocol Integrity/Shot
+          Details behind one collapsed disclosure here — the athlete opens
+          it when they actually want the full breakdown, not by default). */}
+      <details className="group rounded-2xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+          <span className="flex items-center justify-between gap-2">
+            <span>Full Breakdown</span>
+            <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+            <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+          </span>
+        </summary>
 
-        <div className="mt-3">
+        <div className="border-t border-slate-100 p-4">
           <AssessmentBlockResults variant="bare" blocks={result.blocks} />
-        </div>
 
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <AssessmentTargetResults variant="bare" targets={result.targets} />
-        </div>
-
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <AssessmentHandleComparison variant="bare" comparison={result.handles} />
-        </div>
-
-        {result.variableAdaptation && (
           <div className="mt-5 border-t border-slate-100 pt-4">
-            <AssessmentVariableAdaptationResults variant="bare" result={result.variableAdaptation} />
+            <AssessmentTargetResults
+              variant="bare"
+              targets={result.targets}
+              shots={shotRows}
+              thresholds={activeThresholdSet.values}
+              measurementMode={run.timingProviderSnapshot.measurementMode}
+            />
           </div>
-        )}
 
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <AssessmentProtocolIntegrity
-            variant="bare"
-            summary={result.protocolIntegrity}
-            eligibilityNote={protocolEligibilityNote}
-          />
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <AssessmentHandleComparison variant="bare" comparison={result.handles} shots={shotRows} />
+          </div>
+
+          {result.variableAdaptation && (
+            <div className="mt-5 border-t border-slate-100 pt-4">
+              <AssessmentVariableAdaptationResults variant="bare" result={result.variableAdaptation} />
+            </div>
+          )}
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <AssessmentProtocolIntegrity
+              variant="bare"
+              summary={result.protocolIntegrity}
+              eligibilityNote={protocolEligibilityNote}
+            />
+          </div>
+
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <AssessmentShotDetails variant="bare" shots={shotRows} invalidAttempts={invalidAttemptRows} />
+          </div>
         </div>
+      </details>
 
-        <div className="mt-5 border-t border-slate-100 pt-4">
-          <AssessmentShotDetails variant="bare" shots={shotRows} invalidAttempts={invalidAttemptRows} />
-        </div>
-      </div>
+      {/* Compare & Trends is a separate action, not a permanent fixture —
+          and it shouldn't offer a full selector/chart when there's nothing
+          yet to compare (audit finding: the Comparison Threshold selector
+          rendered even for a first assessment with nothing eligible). */}
+      {eligibleCandidates.length === 0 && trendPoints.length < 2 ? (
+        <p className="px-1 text-sm text-slate-500">
+          Complete another comparable assessment to compare results or see development over time.
+        </p>
+      ) : (
+        <details className="group rounded-2xl border border-slate-200 bg-white">
+          <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+            <span className="flex items-center justify-between gap-2">
+              <span>Compare &amp; Trends</span>
+              <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+              <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+            </span>
+          </summary>
 
-      {/* Comparison and its resulting numbers are one continuous action,
-          not two stacked cards. */}
-      <div className={surfaceClass("secondary")}>
-        <h2 className="text-lg font-semibold text-slate-900">Compare With Another Run</h2>
+          <div className="space-y-4 border-t border-slate-100 p-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Compare With Another Run</h3>
 
-        {eligibleCandidates.length === 0 ? (
-          <p className="mt-2 text-sm text-slate-500">
-            No other protocol-compatible completed run exists yet to compare against.
-          </p>
-        ) : (
-          <label className="mt-2 block text-sm">
-            <span className="text-xs font-medium text-slate-700">Compare against</span>
-            <select
-              aria-label="Comparison run"
-              value={comparisonRun?.id ?? ""}
-              onChange={(event) => setSelectedComparisonRunId(event.target.value || null)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-            >
-              {eligibleCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {new Date(candidate.completedAt ?? candidate.createdAt).toLocaleDateString()}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+              {eligibleCandidates.length > 0 && (
+                <label className="mt-2 block text-sm">
+                  <span className="text-xs font-medium text-slate-700">Compare against</span>
+                  <select
+                    aria-label="Comparison run"
+                    value={comparisonRun?.id ?? ""}
+                    onChange={(event) => setSelectedComparisonRunId(event.target.value || null)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                  >
+                    {eligibleCandidates.map((candidate) => (
+                      <option key={candidate.id} value={candidate.id}>
+                        {new Date(candidate.completedAt ?? candidate.createdAt).toLocaleDateString()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
 
-        <div className="mt-4">
-          <AssessmentThresholdControl
-            mode={comparisonMode}
-            onChangeMode={setComparisonMode}
-            allowOriginal={false}
-            customOnTargetInput={comparisonCustom.onTargetInput}
-            customAcceptableInput={comparisonCustom.acceptableInput}
-            onChangeCustomOnTargetInput={comparisonCustom.setOnTargetInput}
-            onChangeCustomAcceptableInput={comparisonCustom.setAcceptableInput}
-            customValidation={comparisonCustomValidation}
-          />
-        </div>
+              {eligibleCandidates.length > 0 && (
+                <div className="mt-4">
+                  <AssessmentThresholdControl
+                    mode={comparisonMode}
+                    onChangeMode={setComparisonMode}
+                    allowOriginal={false}
+                    customOnTargetInput={comparisonCustom.onTargetInput}
+                    customAcceptableInput={comparisonCustom.acceptableInput}
+                    onChangeCustomOnTargetInput={comparisonCustom.setOnTargetInput}
+                    onChangeCustomAcceptableInput={comparisonCustom.setAcceptableInput}
+                    customValidation={comparisonCustomValidation}
+                  />
+                </div>
+              )}
 
-        {comparisonResult && (
-          <AssessmentRunComparison
-            variant="bare"
-            comparison={comparisonResult}
-            comparisonThresholdSet={comparisonThresholdSet}
-          />
-        )}
-      </div>
+              {comparisonResult && (
+                <AssessmentRunComparison
+                  variant="bare"
+                  comparison={comparisonResult}
+                  comparisonThresholdSet={comparisonThresholdSet}
+                />
+              )}
+            </div>
 
-      <AssessmentTrendChart
-        points={trendPoints}
-        comparisonThresholdLabel={`${accuracyThresholdSetLabel(comparisonThresholdSet)} (±${comparisonThresholdSet.values.onTarget.toFixed(2)}s / ±${comparisonThresholdSet.values.acceptable.toFixed(2)}s)`}
-      />
+            {trendPoints.length >= 2 && (
+              <div className="border-t border-slate-100 pt-4">
+                <AssessmentTrendChart
+                  points={trendPoints}
+                  comparisonThresholdLabel={`${accuracyThresholdSetLabel(comparisonThresholdSet)} (±${comparisonThresholdSet.values.onTarget.toFixed(2)}s / ±${comparisonThresholdSet.values.acceptable.toFixed(2)}s)`}
+                />
+              </div>
+            )}
+          </div>
+        </details>
+      )}
 
       <div className="flex flex-col gap-2 sm:flex-row">
         <button

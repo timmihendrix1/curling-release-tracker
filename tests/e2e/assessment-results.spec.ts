@@ -25,12 +25,22 @@ test.describe("Completion to Full Results", () => {
 
     await expect(page.getByRole("heading", { name: "Release Time Core Assessment" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Core Metrics" })).toBeVisible();
+    await expect(page.getByText(/Original Run Thresholds:/).first()).toBeVisible();
+
+    // Block/Target/Handle/Variable Adaptation/Protocol Integrity now live
+    // behind one collapsed "Full Breakdown" disclosure (Epic 2: one-tap
+    // detail, not automatic reading).
+    await page.getByText("Full Breakdown").click();
     await expect(page.getByRole("heading", { name: "Block Results" })).toBeVisible();
+    // Target Results and Handle Comparison lead with the same visual charts
+    // Train/Analyze already use for the identical question (Epic 3: reuse
+    // existing charts instead of Assessment-specific tables-only presentation).
+    await expect(page.getByRole("heading", { name: "Target Error by Shot" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Target Results" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Handle Boxplot" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Handle Comparison" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Variable Adaptation" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Protocol Integrity" })).toBeVisible();
-    await expect(page.getByText(/Original Run Thresholds:/).first()).toBeVisible();
   });
 
   test("Back returns to the Assess Landing without losing the archived run", async ({ page }) => {
@@ -138,6 +148,10 @@ test.describe("Run Comparison and Trends", () => {
 
     await page.getByRole("button", { name: "View Full Results" }).click();
 
+    // Compare & Trends is a separate, collapsed action (Epic 2) once
+    // there's actually something to compare.
+    await page.getByText("Compare & Trends").click();
+
     await expect(page.getByText("This run remains protocol-comparable.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Run Comparison" })).toBeVisible();
     await expect(page.getByText(/MAE change/).first()).toBeVisible();
@@ -195,6 +209,7 @@ test.describe("Desktop", () => {
 
     await page.getByRole("button", { name: "View Full Results" }).click();
     await expect(page.getByRole("heading", { name: "Core Metrics" })).toBeVisible();
+    await page.getByText("Full Breakdown").click();
     await expect(page.getByRole("heading", { name: "Block Results" })).toBeVisible();
   });
 });

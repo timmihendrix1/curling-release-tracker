@@ -67,12 +67,16 @@ export default function AssessmentThresholdSelector({
             role="radio"
             aria-checked={preset === option.id}
             onClick={() => onChangePreset(option.id)}
+            // Selection, not an action — a light fill + check mark, never
+            // the primary button's solid dark treatment (DESIGN_SYSTEM.md
+            // §13.1: selected options must not resemble the primary action).
             className={`rounded-xl px-3 py-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${
               preset === option.id
-                ? "bg-slate-900 text-white"
+                ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
             }`}
           >
+            {preset === option.id && <span aria-hidden="true">✓ </span>}
             {option.label}
           </button>
         ))}
