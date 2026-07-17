@@ -266,21 +266,12 @@ export default function TrainingSetup({
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Block Name
-        </label>
-
-        <input
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="e.g. Draw Weight Practice"
-          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-        />
-      </div>
-
-      <div>
-        {/* One shared Info action for the whole control group, describing
+        {/* Training objective comes first — the IA's #1 priority question
+            for Train is "what kind of training am I about to do?", not the
+            block's name (compositional redesign — see
+            docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's Train
+            Information Priority). One shared Info action for the whole
+            control group, describing
             whichever Training Mode is currently selected, rather than a
             cramped per-segment info icon on every button (DESIGN_SYSTEM.md
             §13.1's preferred alternative). */}
@@ -612,6 +603,23 @@ export default function TrainingSetup({
           />
         </div>
       )}
+
+      {/* Optional detail, deliberately last — naming a block is lower
+          priority than deciding what to train (IA doc's "Optional details",
+          priority 4 of 4). */}
+      <div className="border-t border-slate-100 pt-4">
+        <label className="text-xs font-medium text-slate-500">
+          Block Name <span className="font-normal">(optional)</span>
+        </label>
+
+        <input
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Draw Weight Practice"
+          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400"
+        />
+      </div>
 
       <div className="flex gap-2 pt-2">
         {onCancel && (

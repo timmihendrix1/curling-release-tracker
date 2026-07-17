@@ -152,6 +152,10 @@ test("Chart Info popover distinguishes a statistical outlier from a Major Miss",
   await setupFixedBlock(page);
   await addShot(page, 3.8);
 
+  // Handle Analysis lives inside Active Training's collapsed-by-default
+  // Detailed Analytics section (compositional redesign).
+  await page.getByText("Detailed Analytics").click();
+
   const boxplotInfo = page.getByRole("button", { name: "About Handle Boxplot" });
   await boxplotInfo.click();
   await expect(

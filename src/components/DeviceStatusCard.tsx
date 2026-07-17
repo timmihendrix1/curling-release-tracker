@@ -9,11 +9,14 @@
  */
 import { surfaceClass } from "./Surface";
 
-export default function DeviceStatusCard() {
+type DeviceStatusCardProps = {
+  /** "bare" strips the outer surface — see TrainingOverview's identical variant. */
+  variant?: "card" | "bare";
+};
+
+export default function DeviceStatusCard({ variant = "card" }: DeviceStatusCardProps) {
   return (
-    // Secondary Surface (Epic 1) — compact and visually lighter than
-    // Today's Plan, matching its supporting role on Home.
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h3 className="text-sm font-semibold text-slate-700">Devices</h3>
       <p className="mt-1 text-sm text-slate-900">Manual Timing</p>
       <p className="mt-1 text-xs text-slate-500">

@@ -150,10 +150,9 @@ export default function AssessmentResultScreen({
         ← Back
       </button>
 
-      <AssessmentResultSummary result={result} />
-
-      {/* Threshold context — visible but not equally dominant (Epic 1). */}
-      <div className={surfaceClass("primary")}>
+      {/* The Analysis Threshold choice lives inside the Hero — it's how you
+          read the ONE result, not a separate task (compositional redesign). */}
+      <AssessmentResultSummary result={result}>
         <AssessmentThresholdControl
           mode={analysisMode}
           onChangeMode={setAnalysisMode}
@@ -165,21 +164,53 @@ export default function AssessmentResultScreen({
           customValidation={analysisCustomValidation}
         />
         <p className="mt-3 text-xs text-slate-500">{ASSESSMENT_RESULT_RECORDED_TIMES_UNCHANGED_NOTE}</p>
-      </div>
+      </AssessmentResultSummary>
 
       <AssessmentCoreMetrics result={result} />
-      <AssessmentBlockResults blocks={result.blocks} />
-      <AssessmentTargetResults targets={result.targets} />
-      <AssessmentHandleComparison comparison={result.handles} />
 
-      {result.variableAdaptation && (
-        <AssessmentVariableAdaptationResults result={result.variableAdaptation} />
-      )}
+      {/* Every detailed breakdown is one shared "Grouped Row List" surface
+          (DESIGN_SYSTEM.md §10.5), divided by section, instead of six
+          separate cards of identical weight (compositional redesign — this
+          is the audit's "six Hero-weight surfaces" problem, structurally
+          resolved, not just restyled). */}
+      <div className={surfaceClass("secondary")}>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Detailed Breakdown
+        </p>
 
-      <AssessmentProtocolIntegrity summary={result.protocolIntegrity} eligibilityNote={protocolEligibilityNote} />
+        <div className="mt-3">
+          <AssessmentBlockResults variant="bare" blocks={result.blocks} />
+        </div>
 
-      <AssessmentShotDetails shots={shotRows} invalidAttempts={invalidAttemptRows} />
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentTargetResults variant="bare" targets={result.targets} />
+        </div>
 
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentHandleComparison variant="bare" comparison={result.handles} />
+        </div>
+
+        {result.variableAdaptation && (
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <AssessmentVariableAdaptationResults variant="bare" result={result.variableAdaptation} />
+          </div>
+        )}
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentProtocolIntegrity
+            variant="bare"
+            summary={result.protocolIntegrity}
+            eligibilityNote={protocolEligibilityNote}
+          />
+        </div>
+
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentShotDetails variant="bare" shots={shotRows} invalidAttempts={invalidAttemptRows} />
+        </div>
+      </div>
+
+      {/* Comparison and its resulting numbers are one continuous action,
+          not two stacked cards. */}
       <div className={surfaceClass("secondary")}>
         <h2 className="text-lg font-semibold text-slate-900">Compare With Another Run</h2>
 
@@ -217,11 +248,15 @@ export default function AssessmentResultScreen({
             customValidation={comparisonCustomValidation}
           />
         </div>
-      </div>
 
-      {comparisonResult && (
-        <AssessmentRunComparison comparison={comparisonResult} comparisonThresholdSet={comparisonThresholdSet} />
-      )}
+        {comparisonResult && (
+          <AssessmentRunComparison
+            variant="bare"
+            comparison={comparisonResult}
+            comparisonThresholdSet={comparisonThresholdSet}
+          />
+        )}
+      </div>
 
       <AssessmentTrendChart
         points={trendPoints}

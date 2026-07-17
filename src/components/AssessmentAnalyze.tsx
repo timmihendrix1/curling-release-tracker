@@ -77,9 +77,26 @@ export default function AssessmentAnalyze({
 
   return (
     <div className="space-y-4">
-      {latest && latestRaw && latestCategory && (
-        // This screen's one Hero (Epic 1).
+      {/* An in-progress run is more relevant than a past result — same
+          "real, current state leads" rule as Home and Assess Landing
+          (compositional redesign, not just restyling: this reorders which
+          section is the Hero based on what's actually happening). */}
+      {activeCurrentRun && (
         <div className={surfaceClass("hero")}>
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Active Assessment Run</p>
+          <p className="mt-1 text-sm text-slate-700">This run is still in progress and not yet part of your history.</p>
+          <button
+            type="button"
+            onClick={onResumeCurrent}
+            className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700 sm:w-auto"
+          >
+            Resume Assessment
+          </button>
+        </div>
+      )}
+
+      {latest && latestRaw && latestCategory && (
+        <div className={surfaceClass(activeCurrentRun ? "primary" : "hero")}>
           <h2 className="text-lg font-semibold text-slate-900">Latest Completed Assessment</h2>
           <p className="mt-1 text-sm text-slate-600">
             {latest.templateSnapshot.name} v{latest.templateVersion} ·{" "}
@@ -124,20 +141,6 @@ export default function AssessmentAnalyze({
             className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700 sm:w-auto"
           >
             View Results
-          </button>
-        </div>
-      )}
-
-      {activeCurrentRun && (
-        <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Active Assessment Run</p>
-          <p className="mt-1 text-sm text-slate-700">This run is still in progress and not yet part of your history.</p>
-          <button
-            type="button"
-            onClick={onResumeCurrent}
-            className="mt-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            Resume Assessment
           </button>
         </div>
       )}

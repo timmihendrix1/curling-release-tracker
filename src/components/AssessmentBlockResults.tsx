@@ -9,6 +9,8 @@ import { surfaceClass } from "./Surface";
 
 type AssessmentBlockResultsProps = {
   blocks: BlockResult[];
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 /**
@@ -16,9 +18,9 @@ type AssessmentBlockResultsProps = {
  * deliberately no block score or ranking, just the same transparent metric
  * set as the overall run. See Phase C brief section 6.
  */
-export default function AssessmentBlockResults({ blocks }: AssessmentBlockResultsProps) {
+export default function AssessmentBlockResults({ blocks, variant = "card" }: AssessmentBlockResultsProps) {
   return (
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-lg font-semibold text-slate-900">Block Results</h2>
 
       <div className="mt-3 space-y-3">

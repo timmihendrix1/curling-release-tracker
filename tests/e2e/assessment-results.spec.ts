@@ -52,17 +52,21 @@ test.describe("Threshold Switching", () => {
     await completeFullAssessment(page);
     await page.getByRole("button", { name: "View Full Results" }).click();
 
-    // The whole "Core Metrics" card is threshold-independent — its full text
-    // (including MAE/Bias/Std. Dev.) must stay byte-identical across every
-    // Analysis Threshold switch, unlike the separate "Category Metrics" card.
-    const coreMetricsCard = page.getByRole("heading", { name: "Core Metrics" }).locator("xpath=..");
-    const maeBefore = await coreMetricsCard.textContent();
+    // Core Metrics (MAE/Bias/Std. Dev.) is threshold-independent — its tile
+    // row must stay byte-identical across every Analysis Threshold switch,
+    // unlike Category Metrics further down the same merged surface (see
+    // AssessmentCoreMetrics.tsx's compositional redesign: Core and Category
+    // Metrics are now one Primary surface, not two separate cards).
+    const coreMetricsTiles = page
+      .getByRole("heading", { name: "Core Metrics" })
+      .locator("xpath=following-sibling::div[1]");
+    const maeBefore = await coreMetricsTiles.textContent();
 
     const analysisControl = page.getByRole("radiogroup", { name: "Analysis Threshold Set" });
     await analysisControl.getByRole("radio", { name: "Standard" }).click();
     await analysisControl.getByRole("radio", { name: "Tight" }).click();
 
-    const maeAfter = await coreMetricsCard.textContent();
+    const maeAfter = await coreMetricsTiles.textContent();
     expect(maeAfter).toBe(maeBefore);
   });
 

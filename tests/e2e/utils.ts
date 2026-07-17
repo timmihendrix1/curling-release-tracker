@@ -92,11 +92,18 @@ type StartAutoCaptureOptions = {
   handleMode?: "Manual" | "Fixed In" | "Fixed Out" | "Alternate";
 };
 
-/** Opens the Auto Capture start form and starts a sequence. */
+/**
+ * Switches from Manual Entry to the Auto Capture tab, opens its start form,
+ * and starts a sequence. Manual Entry is the default selected tab
+ * (compositional redesign — Manual Entry and Auto Capture are a segmented
+ * choice, not two permanently-stacked panels), so every Auto Capture flow
+ * needs this one extra tab click first.
+ */
 export async function startAutoCapture(
   page: Page,
   { count = 3, handleMode = "Fixed In" }: StartAutoCaptureOptions = {}
 ) {
+  await page.getByRole("tab", { name: "Auto Capture" }).click();
   await page.getByLabel("Number of Shots").fill(String(count));
   await page.getByRole("button", { name: handleMode, exact: true }).click();
   await page.getByRole("button", { name: "Start Auto Capture" }).click();

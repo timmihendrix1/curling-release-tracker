@@ -180,7 +180,7 @@ export default function BlindShotEntry({
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400"
           />
         ) : (
-          <p className="mt-1 text-2xl font-semibold text-slate-900">
+          <p className="mt-1 text-3xl font-semibold text-slate-900">
             {formatReleaseTime(targetTimeForDisplay)}
           </p>
         )}

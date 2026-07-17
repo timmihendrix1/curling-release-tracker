@@ -87,7 +87,6 @@ import {
   createSimulatorTimingProvider,
 } from "../lib/simulatorTimingProvider";
 import {
-  hasMultipleTargetTimes,
   hasUniformThresholds,
   prepareTargetErrorByShotData,
   prepareTargetVsActualScatterData,
@@ -228,6 +227,15 @@ export default function TrackerApp() {
   const [blockFilter, setBlockFilter] = useState(
     DEFAULT_SHOT_FILTER
   );
+
+  // Which entry mode the athlete is currently looking at when idle — once a
+  // capture sequence is actually running/paused, its own live status takes
+  // over regardless of this choice (compositional redesign: Manual Entry and
+  // Auto Capture are two alternative ways to do the same task, not two
+  // permanently-stacked panels — see docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md
+  // §17's "Auto Capture configuration should not permanently occupy the main
+  // execution area").
+  const [entryMode, setEntryMode] = useState<"manual" | "auto">("manual");
 
   const [showNewBlockModal, setShowNewBlockModal] =
     useState(false);
@@ -1562,39 +1570,40 @@ export default function TrackerApp() {
       {activeView === "train" && (
         <>
           {!activeBlock || !activeBlockAnalysis ? (
-            // One Hero setup surface — Session Details and the Training
-            // Block form are two sections of the same task ("set up and
-            // start training"), grouped by a divider rather than stacked as
-            // two equal-weight cards (Epic 1: remove the literal Card ↓
-            // Card pattern; DESIGN_SYSTEM.md §10.1/§10.6).
+            // One Hero setup surface, composed around the actual decision
+            // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+            // Train Information Priority — training objective and
+            // configuration first, session naming last as the clearly
+            // optional detail it is (compositional redesign, not a
+            // Session-card-then-Block-card stack).
             <div className={surfaceClass("hero")}>
               <h2 className="text-xl font-semibold text-slate-900">
-                Session Details
+                Set Up Training Block
               </h2>
 
-              <div className="mt-4">
-                <SessionSettings
-                  variant="bare"
-                  title={currentSession.title}
-                  notes={currentSession.notes}
-                  onChangeTitle={handleChangeSessionTitle}
-                  onChangeNotes={handleChangeSessionNotes}
+              <p className="mt-2 text-sm text-slate-600">
+                Choose what you&apos;re training, then start.
+              </p>
+
+              <div className="mt-5">
+                <TrainingSetup
+                  submitLabel="Start Training"
+                  onSubmit={handleCreateFirstBlock}
                 />
               </div>
 
               <div className="mt-6 border-t border-slate-100 pt-4">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Set Up Training Block
-                </h2>
+                <label className="text-xs font-medium text-slate-500">
+                  Session name <span className="font-normal">(optional)</span>
+                </label>
 
-                <p className="mt-2 text-sm text-slate-600">
-                  Configure the first training block for this session.
-                </p>
-
-                <div className="mt-4">
-                  <TrainingSetup
-                    submitLabel="Start Training"
-                    onSubmit={handleCreateFirstBlock}
+                <div className="mt-2">
+                  <SessionSettings
+                    variant="bare"
+                    title={currentSession.title}
+                    notes={currentSession.notes}
+                    onChangeTitle={handleChangeSessionTitle}
+                    onChangeNotes={handleChangeSessionNotes}
                   />
                 </div>
               </div>
@@ -1668,49 +1677,93 @@ export default function TrackerApp() {
                 </div>
               </div>
 
-              {shotEntryTarget && activeBlock.mode === "blind" ? (
-                <BlindShotEntry
-                  key={`${activeBlock.id}-${blindDraftResetToken}`}
-                  onAddShot={handleAddShot}
-                  target={shotEntryTarget}
-                  onDraftStateChange={setHasUnsavedBlindDraft}
-                />
-              ) : (
-                shotEntryTarget && (
-                  <ShotEntry
-                    onAddShot={handleAddShot}
-                    target={shotEntryTarget}
-                    level={autoCaptureIsActive ? "primary" : "hero"}
-                  />
-                )
-              )}
-
               {activeBlock.mode === "blind" ? (
-                <div className={`${surfaceClass("inset")} text-sm text-slate-600`}>
-                  Auto Capture isn&apos;t available for Blind Weight yet —
-                  prediction must be locked before an automatic reading could be
-                  applied. Use the manual Blind Weight flow above.
-                </div>
+                <>
+                  {shotEntryTarget && (
+                    <BlindShotEntry
+                      key={`${activeBlock.id}-${blindDraftResetToken}`}
+                      onAddShot={handleAddShot}
+                      target={shotEntryTarget}
+                      onDraftStateChange={setHasUnsavedBlindDraft}
+                    />
+                  )}
+
+                  <p className="px-1 text-xs text-slate-500">
+                    Auto Capture isn&apos;t available for Blind Weight yet —
+                    prediction must be locked before an automatic reading
+                    could be applied.
+                  </p>
+                </>
               ) : (
                 <>
-                  <AutoCapture
-                    activeBlock={activeBlock}
-                    captureSequence={currentSession.captureSequence}
-                    currentTargetTime={getNextShotTarget(activeBlock)}
-                    manualHandle={captureManualHandle}
-                    onChangeManualHandle={setCaptureManualHandle}
-                    manualTargetInput={captureManualTargetInput}
-                    onChangeManualTargetInput={setCaptureManualTargetInput}
-                    lastCaptureMessage={lastCaptureMessage}
-                    onStart={handleStartCaptureSequence}
-                    onPause={handlePauseCaptureSequence}
-                    onResume={handleResumeCaptureSequence}
-                    onCancel={handleCancelCaptureSequence}
-                    onUndo={handleUndoLastCapturedShot}
-                    onManualResult={handleManualCaptureResult}
-                    isDevEnvironment={IS_DEV}
-                    level={autoCaptureIsActive ? "hero" : "primary"}
-                  />
+                  {/* Manual Entry and Auto Capture are two ways to do the
+                      same task, not two permanently-stacked panels — a
+                      segmented choice while idle; once a sequence is
+                      actually running/paused, its own live status takes
+                      over and speaks for itself (compositional redesign). */}
+                  {!autoCaptureIsActive && (
+                    <div
+                      role="tablist"
+                      aria-label="Shot entry method"
+                      className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={entryMode === "manual"}
+                        onClick={() => setEntryMode("manual")}
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                          entryMode === "manual"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        Manual Entry
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={entryMode === "auto"}
+                        onClick={() => setEntryMode("auto")}
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                          entryMode === "auto"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        Auto Capture
+                      </button>
+                    </div>
+                  )}
+
+                  {shotEntryTarget && (autoCaptureIsActive || entryMode === "manual") && (
+                    <ShotEntry
+                      onAddShot={handleAddShot}
+                      target={shotEntryTarget}
+                      level={autoCaptureIsActive ? "primary" : "hero"}
+                    />
+                  )}
+
+                  {(autoCaptureIsActive || entryMode === "auto") && (
+                    <AutoCapture
+                      activeBlock={activeBlock}
+                      captureSequence={currentSession.captureSequence}
+                      currentTargetTime={getNextShotTarget(activeBlock)}
+                      manualHandle={captureManualHandle}
+                      onChangeManualHandle={setCaptureManualHandle}
+                      manualTargetInput={captureManualTargetInput}
+                      onChangeManualTargetInput={setCaptureManualTargetInput}
+                      lastCaptureMessage={lastCaptureMessage}
+                      onStart={handleStartCaptureSequence}
+                      onPause={handlePauseCaptureSequence}
+                      onResume={handleResumeCaptureSequence}
+                      onCancel={handleCancelCaptureSequence}
+                      onUndo={handleUndoLastCapturedShot}
+                      onManualResult={handleManualCaptureResult}
+                      isDevEnvironment={IS_DEV}
+                      level={autoCaptureIsActive ? "hero" : "primary"}
+                    />
+                  )}
 
                   {IS_DEV && (
                     <TimingSimulatorPanel
@@ -1722,77 +1775,81 @@ export default function TrackerApp() {
                 </>
               )}
 
-              <div className={surfaceClass("utility")}>
-                <p className="text-sm font-medium text-slate-700">
-                  Filter
-                </p>
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["in", "In Handle"],
-                      ["out", "Out Handle"],
-                    ] as [HandleFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setBlockFilter((filter) => ({
-                          ...filter,
-                          handle: value,
-                        }))
-                      }
-                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["draw", "Draw"],
-                      ["takeout", "Takeout"],
-                    ] as [ShotTypeFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setBlockFilter((filter) => ({
-                          ...filter,
-                          shotType: value,
-                        }))
-                      }
-                      className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-white text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Live analytics — supporting, not the Hero (Epic 1). */}
+              {/* Live Summary — filter, live metrics and shot history are
+                  one continuous "how am I doing so far" reading, not three
+                  stacked cards (compositional redesign: IA doc's Active
+                  Training priority groups Session Progress/Live Summary
+                  together, below the current task above). */}
               <div className={surfaceClass("secondary")}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-slate-900">
-                    Dashboard
+                    Live Summary
                   </h2>
 
                   <p className="text-xs text-slate-500">
                     {filteredActiveBlockShots.length} of{" "}
                     {activeBlockShots.length} shots shown
                   </p>
+                </div>
+
+                <div className={`${surfaceClass("utility")} mt-3`}>
+                  <p className="text-sm font-medium text-slate-700">
+                    Filter
+                  </p>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["all", "Total"],
+                        ["in", "In Handle"],
+                        ["out", "Out Handle"],
+                      ] as [HandleFilter, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setBlockFilter((filter) => ({
+                            ...filter,
+                            handle: value,
+                          }))
+                        }
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-700"
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["all", "Total"],
+                        ["draw", "Draw"],
+                        ["takeout", "Takeout"],
+                      ] as [ShotTypeFilter, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setBlockFilter((filter) => ({
+                            ...filter,
+                            shotType: value,
+                          }))
+                        }
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-700"
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {activeBlockAnalysis.count === 0 ? (
@@ -1836,57 +1893,13 @@ export default function TrackerApp() {
                     )}
                   </div>
                 )}
-              </div>
 
-              <ReleaseTrendChart shots={filteredActiveBlockShots} />
+                <div className="mt-5 border-t border-slate-100 pt-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Recent Shots
+                  </h3>
 
-              {/* Most important live chart — see docs/SYSTEM_ARCHITECTURE.md's
-                  Current Session information hierarchy. Still a Secondary
-                  Surface (ChartCard's default): it supports the Hero above,
-                  it doesn't compete with it (Epic 1). */}
-              <TargetErrorChart
-                points={targetErrorByShotData}
-                thresholds={activeBlockAccuracyThresholds}
-                measurementMode={activeBlock.measurementMode}
-                context="current"
-              />
-
-              {activeBlockAnalysis && (
-                <HandleAnalysisSection
-                  boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
-                  comparison={activeBlockAnalysis.handleAccuracy}
-                />
-              )}
-
-              {/* Scatterplot is prominent for Variable Weight; collapsed by
-                  default (secondary) for Fixed Weight with only one target,
-                  since there is little to see beyond consistency at that
-                  single weight. */}
-              {activeBlock.mode === "fixed" &&
-              !hasMultipleTargetTimes(targetVsActualScatterData) ? (
-                <details className="group">
-                  <summary className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
-                    Target vs. Actual (single target — tap to expand)
-                  </summary>
-                  <TargetActualScatterChart
-                    points={targetVsActualScatterData}
-                    explanation={targetVsActualExplanation("current")}
-                  />
-                </details>
-              ) : (
-                <TargetActualScatterChart
-                  points={targetVsActualScatterData}
-                  explanation={targetVsActualExplanation("current")}
-                />
-              )}
-
-              {/* Shot history — visibly steps back from the Hero (Epic 1). */}
-              <div className={surfaceClass("secondary")}>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Current Shots
-                </h2>
-
-                <div className="mt-4 space-y-2">
+                  <div className="mt-3 space-y-2">
                   {filteredActiveBlockShots.map((shot) => {
                     const isEditing =
                       editingShot?.id === shot.id;
@@ -2070,8 +2083,48 @@ export default function TrackerApp() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               </div>
+
+              {/* Detailed Analytics — every chart grouped into one
+                  collapsed-by-default section, well below the current task
+                  (compositional redesign; docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md
+                  §17: "Detailed charts should appear ... in collapsible
+                  sections", and IA doc's Active Training priority puts
+                  Detailed Analytics last, after Live Summary). */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Detailed Analytics</span>
+                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+                  </span>
+                </summary>
+
+                <div className="space-y-4 border-t border-slate-100 p-4">
+                  <ReleaseTrendChart shots={filteredActiveBlockShots} />
+
+                  <TargetErrorChart
+                    points={targetErrorByShotData}
+                    thresholds={activeBlockAccuracyThresholds}
+                    measurementMode={activeBlock.measurementMode}
+                    context="current"
+                  />
+
+                  {activeBlockAnalysis && (
+                    <HandleAnalysisSection
+                      boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
+                      comparison={activeBlockAnalysis.handleAccuracy}
+                    />
+                  )}
+
+                  <TargetActualScatterChart
+                    points={targetVsActualScatterData}
+                    explanation={targetVsActualExplanation("current")}
+                  />
+                </div>
+              </details>
 
               {/* Session Details During Execution (DESIGN_SYSTEM.md §19.6):
                   collapsed by default rather than repeating the entire
@@ -2249,67 +2302,81 @@ export default function TrackerApp() {
             sessions={sessionHistory}
           />
 
-          {/* 2. Analysis Context */}
-          <AnalysisContextSummary context={historyAnalysisContext} />
-
-          {historyAnalysisContext.totalShotCount > 0 && (
+          {historyAnalysisContext.totalShotCount > 0 ? (
             <>
-              {/* 3. Key Progress Summary — the screen's one Hero (Epic 1):
-                  the dominant "what did I learn" answer for this selection. */}
+              {/* 2+3. "What am I looking at" and "what does it show" are one
+                  continuous answer — the screen's one Hero (compositional
+                  redesign: MOBUX §19's Analyze hierarchy groups context and
+                  key performance summary as the same opening tier). */}
               <div className={surfaceClass("hero")}>
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Key Progress Summary
-                </h2>
+                <AnalysisContextSummary context={historyAnalysisContext} variant="bare" />
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <TargetAccuracyDashboardCards
-                    targetAccuracy={historyTargetAccuracy}
-                    measurementMode={effectiveHistoryFilters.measurementMode ?? "back-hog"}
-                    thresholds={historyThresholds}
-                  />
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Key Progress Summary
+                  </h2>
 
-                  {historyAnalysisContext.hasBlindCategory && (
-                    <PredictionDashboardCards analysis={historyFullAnalysis} />
-                  )}
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <TargetAccuracyDashboardCards
+                      targetAccuracy={historyTargetAccuracy}
+                      measurementMode={effectiveHistoryFilters.measurementMode ?? "back-hog"}
+                      thresholds={historyThresholds}
+                    />
+
+                    {historyAnalysisContext.hasBlindCategory && (
+                      <PredictionDashboardCards analysis={historyFullAnalysis} />
+                    )}
+                  </div>
                 </div>
               </div>
 
               {effectiveHistoryFilters.measurementMode && (
-                <>
-                  {/* 4. Progress Metric Chart */}
-                  <ProgressMetricChart
-                    entries={historyAnalysisContext.progressEntries}
-                    measurementMode={effectiveHistoryFilters.measurementMode}
-                  />
-
-                  {/* 5. Shot Quality Over Time */}
-                  <ShotQualityTrendChart
-                    entries={historyAnalysisContext.progressEntries}
-                    measurementMode={effectiveHistoryFilters.measurementMode}
-                  />
-                </>
+                // 4. The featured primary trend — one chart answering "is my
+                // release becoming more consistent", ahead of the other
+                // charts (MOBUX §19: "primary trend" is its own tier, before
+                // "accuracy and bias").
+                <ProgressMetricChart
+                  entries={historyAnalysisContext.progressEntries}
+                  measurementMode={effectiveHistoryFilters.measurementMode}
+                />
               )}
 
-              {/* 6. Target vs Actual Scatterplot — across every comparable
-                  block/session in the selection, shot-level, never reduced
-                  to block averages. */}
-              <TargetActualScatterChart
-                points={historyScatterPoints}
-                explanation={targetVsActualExplanation("history")}
-                notices={historyScatterNotices}
-              />
+              {/* 5-7. Detailed Analysis — accuracy/bias, target and handle
+                  questions grouped under one open section instead of three
+                  more same-weight chart cards (compositional redesign). */}
+              <div>
+                <h3 className="px-1 text-sm font-semibold text-slate-500">
+                  Detailed Analysis
+                </h3>
 
-              {/* 7. Handle Analysis */}
-              <HandleAnalysisSection
-                boxPlots={computeHandleTargetErrorBoxPlots(
-                  historyAnalysisContext.shots
-                )}
-                comparison={computeHandleAccuracyComparison(
-                  historyAnalysisContext.shots,
-                  historyThresholds
-                )}
-              />
+                <div className="mt-3 space-y-4">
+                  {effectiveHistoryFilters.measurementMode && (
+                    <ShotQualityTrendChart
+                      entries={historyAnalysisContext.progressEntries}
+                      measurementMode={effectiveHistoryFilters.measurementMode}
+                    />
+                  )}
+
+                  <TargetActualScatterChart
+                    points={historyScatterPoints}
+                    explanation={targetVsActualExplanation("history")}
+                    notices={historyScatterNotices}
+                  />
+
+                  <HandleAnalysisSection
+                    boxPlots={computeHandleTargetErrorBoxPlots(
+                      historyAnalysisContext.shots
+                    )}
+                    comparison={computeHandleAccuracyComparison(
+                      historyAnalysisContext.shots,
+                      historyThresholds
+                    )}
+                  />
+                </div>
+              </div>
             </>
+          ) : (
+            <AnalysisContextSummary context={historyAnalysisContext} />
           )}
 
           {/* 8. Blocks and Sessions — detail/navigation list onto the same

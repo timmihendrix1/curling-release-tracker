@@ -6,6 +6,12 @@ type TrainingOverviewProps = {
   lastTrainingLabel: string;
   totalSessions: number;
   onOpenAnalyze: () => void;
+  /**
+   * "bare" strips the outer surface so HomeScreen can compose this together
+   * with DeviceStatusCard inside one shared section instead of two
+   * separately-boxed cards (compositional redesign).
+   */
+  variant?: "card" | "bare";
 };
 
 /**
@@ -25,11 +31,10 @@ export default function TrainingOverview({
   lastTrainingLabel,
   totalSessions,
   onOpenAnalyze,
+  variant = "card",
 }: TrainingOverviewProps) {
   return (
-    // Secondary Surface (Epic 1) — deliberately lighter than TodayPlanCard's
-    // Hero, so Home's actual primary section keeps the strongest visual weight.
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-base font-semibold text-slate-900">
         Training Overview
       </h2>

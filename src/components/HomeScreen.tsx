@@ -1,6 +1,7 @@
 import type { Session } from "../types";
 import DeviceStatusCard from "./DeviceStatusCard";
 import FutureCapabilitiesSection from "./FutureCapabilitiesSection";
+import { surfaceClass } from "./Surface";
 import TodayPlanCard from "./TodayPlanCard";
 import TrainingOverview from "./TrainingOverview";
 
@@ -66,14 +67,23 @@ export default function HomeScreen({
         onResumeAssessment={onResumeAssessment}
       />
 
-      <TrainingOverview
-        hasAnyTraining={hasAnyTraining}
-        lastTrainingLabel={lastTrainingLabel}
-        totalSessions={totalSessions}
-        onOpenAnalyze={onOpenAnalyze}
-      />
+      {/* Recent progress and platform status are both compact, thin
+          sections — one shared surface with an internal divider reads as
+          "recent activity", not two more equal-weight cards competing with
+          Today's Plan (compositional redesign, not just restyling). */}
+      <div className={surfaceClass("secondary")}>
+        <TrainingOverview
+          variant="bare"
+          hasAnyTraining={hasAnyTraining}
+          lastTrainingLabel={lastTrainingLabel}
+          totalSessions={totalSessions}
+          onOpenAnalyze={onOpenAnalyze}
+        />
 
-      <DeviceStatusCard />
+        <div className="mt-4 border-t border-slate-100 pt-4">
+          <DeviceStatusCard variant="bare" />
+        </div>
+      </div>
 
       <FutureCapabilitiesSection />
     </div>

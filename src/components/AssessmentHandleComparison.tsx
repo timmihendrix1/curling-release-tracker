@@ -10,14 +10,16 @@ import { surfaceClass } from "./Surface";
 
 type AssessmentHandleComparisonProps = {
   comparison: HandleComparison;
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 /** In vs. Out Handle — grouped by executed handle. See Phase C brief section 8. */
-export default function AssessmentHandleComparison({ comparison }: AssessmentHandleComparisonProps) {
+export default function AssessmentHandleComparison({ comparison, variant = "card" }: AssessmentHandleComparisonProps) {
   const { in: inResult, out: outResult } = comparison;
 
   return (
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-lg font-semibold text-slate-900">Handle Comparison</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_HANDLE_GROUPING_NOTE}</p>
 

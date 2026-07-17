@@ -47,18 +47,19 @@ export default function SettingsScreen({
             No completed sessions yet — nothing to export or clear.
           </p>
         )}
-      </div>
 
-      {/* Inline section — one descriptive paragraph, no controls, so it
-          doesn't need a full elevated card (DESIGN_SYSTEM.md §10.6). */}
-      <div className="px-1">
-        <h2 className="text-sm font-semibold text-slate-500">
-          Data &amp; Privacy
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Your training data is stored locally on this device. No account,
-          cloud sync or server storage is currently used.
-        </p>
+        {/* Data & Privacy is a footnote to Data Management, not a
+            competing section — same trust question, same surface
+            (compositional redesign). */}
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h2 className="text-sm font-semibold text-slate-500">
+            Data &amp; Privacy
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Your training data is stored locally on this device. No account,
+            cloud sync or server storage is currently used.
+          </p>
+        </div>
       </div>
 
       {/* Destructive action kept in its own, clearly separated section

@@ -9,6 +9,9 @@ import { surfaceClass } from "./Surface";
 type AssessmentRunComparisonProps = {
   comparison: AssessmentRunComparisonData;
   comparisonThresholdSet: AccuracyThresholdSet;
+  /** "bare" strips the outer surface so this merges directly beneath the
+   * comparison-run selector instead of appearing as a second card. */
+  variant?: "card" | "bare";
 };
 
 function DeltaRow({ label, delta }: { label: string } & Pick<NamedMetricDelta, "delta">) {
@@ -61,10 +64,11 @@ function DeltaRow({ label, delta }: { label: string } & Pick<NamedMetricDelta, "
 export default function AssessmentRunComparison({
   comparison,
   comparisonThresholdSet,
+  variant = "card",
 }: AssessmentRunComparisonProps) {
   return (
     // Comparison content must not compete with the current result (Epic 1).
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : "mt-5 border-t border-slate-100 pt-4"}>
       <h2 className="text-lg font-semibold text-slate-900">Run Comparison</h2>
 
       <AssessmentComparisonEligibilityNotice

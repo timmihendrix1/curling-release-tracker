@@ -73,9 +73,12 @@ export default function AssessmentOverview({
         ← Back to Assess
       </button>
 
-      {/* Contextual identity/stats — subordinate to readiness-to-start
-          below (Epic 1). */}
-      <div className={surfaceClass("secondary")}>
+      {/* Compose around the protocol itself: identity, required threshold
+          decision and the final readiness confirmation are three sections
+          of ONE setup task, not three competing cards (compositional
+          redesign — see docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md
+          section 23 and this screen's IA purpose, "readiness to start"). */}
+      <div className={surfaceClass("hero")}>
         <h1 className="text-xl font-semibold text-slate-900">
           {template.name} <span className="text-slate-400">v{template.version}</span>
         </h1>
@@ -108,12 +111,41 @@ export default function AssessmentOverview({
             View full protocol
           </button>
         </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <AssessmentThresholdSelector
+            preset={thresholdPreset}
+            onChangePreset={onChangeThresholdPreset}
+            customOnTargetInput={customOnTargetInput}
+            customAcceptableInput={customAcceptableInput}
+            onChangeCustomOnTargetInput={onChangeCustomOnTargetInput}
+            onChangeCustomAcceptableInput={onChangeCustomAcceptableInput}
+            customValidation={customValidation}
+          />
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <AssessmentSetupConfirmation
+            timingMethod={timingMethod}
+            onChangeTimingMethod={onChangeTimingMethod}
+            showSimulatorOption={showSimulatorOption}
+            confirmed={setupConfirmed}
+            onChangeConfirmed={onChangeSetupConfirmed}
+          />
+
+          <details className="mt-3 group">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700 marker:content-none">
+              View setup diagram
+            </summary>
+            <div className="mt-3">
+              <AssessmentSetupDiagram />
+            </div>
+          </details>
+        </div>
       </div>
 
       {/* Reference material, not a required setup step — collapsed by
-          default (progressive disclosure, DESIGN_SYSTEM.md §16.2/§20.1)
-          rather than permanently occupying the same weight as the two
-          actionable cards below it. */}
+          default (progressive disclosure). */}
       <details className="group rounded-xl border border-slate-200 bg-white">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 marker:content-none">
           <span className="flex items-center justify-between gap-2">
@@ -135,40 +167,6 @@ export default function AssessmentOverview({
           <p className="mt-1 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
         </div>
       </details>
-
-      {/* Required setup step — clear, but not a second Hero (Epic 1). */}
-      <div className={surfaceClass("primary")}>
-        <AssessmentThresholdSelector
-          preset={thresholdPreset}
-          onChangePreset={onChangeThresholdPreset}
-          customOnTargetInput={customOnTargetInput}
-          customAcceptableInput={customAcceptableInput}
-          onChangeCustomOnTargetInput={onChangeCustomOnTargetInput}
-          onChangeCustomAcceptableInput={onChangeCustomAcceptableInput}
-          customValidation={customValidation}
-        />
-      </div>
-
-      {/* Readiness to start — this screen's one Hero (Epic 1): the final
-          confirmation gating "Start Warm-up" below. */}
-      <div className={surfaceClass("hero")}>
-        <AssessmentSetupConfirmation
-          timingMethod={timingMethod}
-          onChangeTimingMethod={onChangeTimingMethod}
-          showSimulatorOption={showSimulatorOption}
-          confirmed={setupConfirmed}
-          onChangeConfirmed={onChangeSetupConfirmed}
-        />
-
-        <details className="mt-3 group">
-          <summary className="cursor-pointer text-sm font-medium text-slate-700 marker:content-none">
-            View setup diagram
-          </summary>
-          <div className="mt-3">
-            <AssessmentSetupDiagram />
-          </div>
-        </details>
-      </div>
 
       {trainingConflictMessage && (
         <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">

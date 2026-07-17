@@ -9,12 +9,14 @@ import { surfaceClass } from "./Surface";
 
 type AssessmentTargetResultsProps = {
   targets: TargetResult[];
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 /** Fast/Medium/Slow Delivery breakdown, combining every block including Variable Adaptation. See Phase C brief section 7. */
-export default function AssessmentTargetResults({ targets }: AssessmentTargetResultsProps) {
+export default function AssessmentTargetResults({ targets, variant = "card" }: AssessmentTargetResultsProps) {
   return (
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-lg font-semibold text-slate-900">Target Results</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_TARGET_AGGREGATION_EXPLANATION}</p>
 

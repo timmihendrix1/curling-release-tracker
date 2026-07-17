@@ -9,14 +9,17 @@ import { surfaceClass } from "./Surface";
 
 type AssessmentVariableAdaptationResultsProps = {
   result: VariableAdaptationResult;
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 /** Dedicated Variable Adaptation section — deliberately restrained copy given only 8 scored shots. See Phase C brief section 9. */
 export default function AssessmentVariableAdaptationResults({
   result,
+  variant = "card",
 }: AssessmentVariableAdaptationResultsProps) {
   return (
-    <div className={surfaceClass("secondary")}>
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-lg font-semibold text-slate-900">{result.name}</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_VARIABLE_ADAPTATION_RESTRAINT_NOTE}</p>
 

@@ -118,9 +118,13 @@ export default function AssessmentExecution({
 
   return (
     <div className="space-y-4">
-      {/* Supporting status/progress — not the Hero (Epic 1: Current Planned
-          Shot below carries the strongest surface). */}
-      <div className={surfaceClass("primary")}>
+      {/* Compose around the protocol itself: current phase/progress and the
+          current planned shot are one continuous "where am I, what's next"
+          unit during execution, not two stacked cards (compositional
+          redesign — see docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md §18 and
+          docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+          Assessment Information Priority). This is the screen's one Hero. */}
+      <div className={surfaceClass("hero")}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Release Time Core Assessment</p>
@@ -152,7 +156,7 @@ export default function AssessmentExecution({
           </div>
         </div>
 
-        <div className="mt-3 space-y-2">
+        <div className="mt-3">
           {inWarmup ? (
             <AssessmentProgress label="Warm-up" completed={warmupProgress.completed} total={warmupProgress.total} />
           ) : (
@@ -163,17 +167,20 @@ export default function AssessmentExecution({
             />
           )}
         </div>
-      </div>
 
-      <AssessmentCurrentShot
-        phase={inWarmup ? "warmup" : "scored"}
-        blockName={block?.name}
-        targetTime={currentShot.targetTime}
-        expectedHandle={currentShot.expectedHandle}
-        executedHandle={executedHandle}
-        onChangeExecutedHandle={onChangeExecutedHandle}
-        lastResult={lastResult}
-      />
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentCurrentShot
+            variant="bare"
+            phase={inWarmup ? "warmup" : "scored"}
+            blockName={block?.name}
+            targetTime={currentShot.targetTime}
+            expectedHandle={currentShot.expectedHandle}
+            executedHandle={executedHandle}
+            onChangeExecutedHandle={onChangeExecutedHandle}
+            lastResult={lastResult}
+          />
+        </div>
+      </div>
 
       <AssessmentAttemptEntry
         onSubmitManualTime={onSubmitManualTime}

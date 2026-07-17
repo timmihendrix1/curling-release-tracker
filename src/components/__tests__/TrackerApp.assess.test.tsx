@@ -110,6 +110,7 @@ describe("TrackerApp — Assess integration", () => {
     await waitFor(() => screen.getByText("Set Up Training Block"));
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
     await waitFor(() => screen.getByText("Active Training Block"));
+    fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.change(screen.getByLabelText("Number of Shots"), { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: "Fixed In" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));

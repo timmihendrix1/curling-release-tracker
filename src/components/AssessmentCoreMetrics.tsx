@@ -29,33 +29,33 @@ export default function AssessmentCoreMetrics({ result }: AssessmentCoreMetricsP
   const { raw, category, activeThresholdSet } = result;
 
   return (
-    // Core metrics are the Result Screen's first supporting tier — clearly
-    // beneath the Hero Summary, still above the detailed breakdowns (Epic 1).
-    <div className="space-y-4">
-      <div className={surfaceClass("primary")}>
-        <h2 className="text-lg font-semibold text-slate-900">Core Metrics</h2>
-        <p className="mt-1 text-xs text-slate-500">Threshold-independent — never affected by the analysis threshold below.</p>
+    // Core and Category metrics are one continuous "how did I do" reading,
+    // not two same-weight cards — the Result Screen's first supporting tier,
+    // clearly beneath the Hero Summary, still above the detailed breakdowns
+    // (compositional redesign).
+    <div className={surfaceClass("primary")}>
+      <h2 className="text-lg font-semibold text-slate-900">Core Metrics</h2>
+      <p className="mt-1 text-xs text-slate-500">Threshold-independent — never affected by the analysis threshold below.</p>
 
-        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <DashboardCard
-            label="Mean Absolute Error"
-            value={formatAssessmentSeconds(raw.meanAbsoluteError)}
-            explanation={ASSESSMENT_MAE_EXPLANATION}
-          />
-          <DashboardCard
-            label="Bias"
-            value={formatAssessmentSignedSeconds(raw.bias)}
-            explanation={ASSESSMENT_BIAS_EXPLANATION}
-          />
-          <DashboardCard
-            label="Standard Deviation"
-            value={formatAssessmentSeconds(raw.standardDeviation)}
-            explanation={ASSESSMENT_STANDARD_DEVIATION_EXPLANATION}
-          />
-        </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <DashboardCard
+          label="Mean Absolute Error"
+          value={formatAssessmentSeconds(raw.meanAbsoluteError)}
+          explanation={ASSESSMENT_MAE_EXPLANATION}
+        />
+        <DashboardCard
+          label="Bias"
+          value={formatAssessmentSignedSeconds(raw.bias)}
+          explanation={ASSESSMENT_BIAS_EXPLANATION}
+        />
+        <DashboardCard
+          label="Standard Deviation"
+          value={formatAssessmentSeconds(raw.standardDeviation)}
+          explanation={ASSESSMENT_STANDARD_DEVIATION_EXPLANATION}
+        />
       </div>
 
-      <div className={surfaceClass("primary")}>
+      <div className="mt-5 border-t border-slate-100 pt-4">
         <h2 className="text-lg font-semibold text-slate-900">
           Category Metrics <span className="text-sm font-normal text-slate-500">under {accuracyThresholdSetLabel(activeThresholdSet)}</span>
         </h2>
