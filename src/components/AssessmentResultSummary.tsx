@@ -1,4 +1,5 @@
 import { accuracyThresholdSetLabel, type AssessmentResultView } from "../lib/assessment/result";
+import { surfaceClass } from "./Surface";
 
 type AssessmentResultSummaryProps = {
   result: AssessmentResultView;
@@ -14,7 +15,8 @@ export default function AssessmentResultSummary({ result }: AssessmentResultSumm
   const { run, activeThresholdSet, protocolIntegrity } = result;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // The Result Screen's one Hero (Epic 1).
+    <div className={surfaceClass("hero")}>
       <h1 className="text-xl font-semibold text-slate-900">{run.templateSnapshot.name}</h1>
       <p className="mt-1 text-sm text-slate-600">
         Version {run.templateVersion} ·{" "}

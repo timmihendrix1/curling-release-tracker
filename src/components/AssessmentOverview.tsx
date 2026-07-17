@@ -11,6 +11,7 @@ import AssessmentSetupConfirmation, {
 } from "./AssessmentSetupConfirmation";
 import AssessmentSetupDiagram from "./AssessmentSetupDiagram";
 import AssessmentThresholdSelector from "./AssessmentThresholdSelector";
+import { surfaceClass } from "./Surface";
 
 type AssessmentOverviewProps = {
   thresholdPreset: AccuracyThresholdPreset;
@@ -72,7 +73,9 @@ export default function AssessmentOverview({
         ← Back to Assess
       </button>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Contextual identity/stats — subordinate to readiness-to-start
+          below (Epic 1). */}
+      <div className={surfaceClass("secondary")}>
         <h1 className="text-xl font-semibold text-slate-900">
           {template.name} <span className="text-slate-400">v{template.version}</span>
         </h1>
@@ -133,7 +136,8 @@ export default function AssessmentOverview({
         </div>
       </details>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Required setup step — clear, but not a second Hero (Epic 1). */}
+      <div className={surfaceClass("primary")}>
         <AssessmentThresholdSelector
           preset={thresholdPreset}
           onChangePreset={onChangeThresholdPreset}
@@ -145,7 +149,9 @@ export default function AssessmentOverview({
         />
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Readiness to start — this screen's one Hero (Epic 1): the final
+          confirmation gating "Start Warm-up" below. */}
+      <div className={surfaceClass("hero")}>
         <AssessmentSetupConfirmation
           timingMethod={timingMethod}
           onChangeTimingMethod={onChangeTimingMethod}

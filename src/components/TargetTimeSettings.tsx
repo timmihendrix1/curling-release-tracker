@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { parseReleaseTime } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 type TargetTimeSettingsProps = {
   targetTime: number;
@@ -32,9 +33,7 @@ export default function TargetTimeSettings({
   }
 
   return (
-    <div
-      className={variant === "card" ? "rounded-2xl bg-white p-6 shadow-lg" : ""}
-    >
+    <div className={variant === "card" ? surfaceClass("hero") : ""}>
       {variant === "card" && (
         <h2 className="text-xl font-semibold text-slate-900">
           Target Time

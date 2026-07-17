@@ -3,6 +3,7 @@
 import type { HistoryAnalysisContext } from "../lib/historyAnalysis";
 import { dateRangeLabel } from "../lib/historyAnalysis";
 import { blockModeLabel, measurementModeLabel } from "../lib/trainingBlocks";
+import { surfaceClass } from "./Surface";
 
 type AnalysisContextSummaryProps = {
   context: HistoryAnalysisContext;
@@ -66,7 +67,7 @@ export default function AnalysisContextSummary({
   }
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-lg">
+    <div className={surfaceClass("utility")}>
       {headline && (
         <p className="text-sm font-semibold text-slate-900">{headline}</p>
       )}

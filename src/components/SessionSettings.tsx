@@ -1,5 +1,7 @@
 "use client";
 
+import { surfaceClass } from "./Surface";
+
 type SessionSettingsProps = {
   title: string;
   notes?: string;
@@ -23,11 +25,7 @@ export default function SessionSettings({
   variant = "card",
 }: SessionSettingsProps) {
   return (
-    <div
-      className={
-        variant === "card" ? "rounded-2xl bg-white p-6 shadow-lg" : ""
-      }
-    >
+    <div className={variant === "card" ? surfaceClass("hero") : ""}>
       {variant === "card" && (
         <h2 className="text-xl font-semibold text-slate-900">
           Session Details

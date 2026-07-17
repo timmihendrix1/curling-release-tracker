@@ -1,3 +1,5 @@
+import { surfaceClass } from "./Surface";
+
 type AssessmentPausedViewProps = {
   progressLabel: string;
   onResume: () => void;
@@ -11,7 +13,7 @@ export default function AssessmentPausedView({
   onAbandon,
 }: AssessmentPausedViewProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass("hero")}>
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
         Assessment paused
       </p>

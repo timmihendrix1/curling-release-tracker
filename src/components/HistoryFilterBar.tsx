@@ -272,7 +272,9 @@ export default function HistoryFilterBar({
 
   return (
     <div className="sticky top-0 z-20 -mx-4 bg-slate-100/95 px-4 pb-3 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
-      <div className="rounded-2xl bg-white p-3 shadow-lg">
+      {/* Utility-level control (Epic 1) — no shadow, so it never competes
+          with the screen's Hero summary below it. */}
+      <div className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="Training Category"

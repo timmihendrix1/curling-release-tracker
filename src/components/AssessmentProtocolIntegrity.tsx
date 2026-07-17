@@ -1,4 +1,5 @@
 import type { ProtocolIntegritySummary } from "../lib/assessment/result";
+import { surfaceClass } from "./Surface";
 
 type AssessmentProtocolIntegrityProps = {
   summary: ProtocolIntegritySummary;
@@ -45,7 +46,7 @@ export default function AssessmentProtocolIntegrity({
   facts.push(`Timing provider: ${PROVIDER_LABELS[summary.timingProviderId] ?? summary.timingProviderId} (${CAPTURE_MODE_LABELS[summary.captureMode] ?? summary.captureMode}).`);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-lg font-semibold text-slate-900">Protocol Integrity</h2>
       <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
         {facts.map((fact) => (

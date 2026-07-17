@@ -1,4 +1,5 @@
 import DashboardCard from "./DashboardCard";
+import { surfaceClass } from "./Surface";
 
 type TrainingOverviewProps = {
   hasAnyTraining: boolean;
@@ -26,10 +27,9 @@ export default function TrainingOverview({
   onOpenAnalyze,
 }: TrainingOverviewProps) {
   return (
-    // Standard Section Card (DESIGN_SYSTEM.md §8.3/§10.2) — deliberately
-    // lighter than TodayPlanCard's primary-task surface, so Home's actual
-    // primary section keeps the strongest visual weight.
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+    // Secondary Surface (Epic 1) — deliberately lighter than TodayPlanCard's
+    // Hero, so Home's actual primary section keeps the strongest visual weight.
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-base font-semibold text-slate-900">
         Training Overview
       </h2>

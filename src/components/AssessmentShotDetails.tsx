@@ -6,6 +6,7 @@ import { formatAssessmentSignedSeconds } from "../lib/assessment/resultFormattin
 import { TARGET_ERROR_CATEGORY_LABELS } from "../lib/chartTheme";
 import { HANDLE_LABELS } from "../lib/chartTheme";
 import { ASSESSMENT_INVALID_REASON_LABELS } from "../lib/assessmentContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentShotDetailsProps = {
   shots: ShotDetailRow[];
@@ -21,7 +22,7 @@ export default function AssessmentShotDetails({ shots, invalidAttempts }: Assess
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className={surfaceClass("secondary")}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}

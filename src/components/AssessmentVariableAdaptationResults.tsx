@@ -5,6 +5,7 @@ import {
   formatAssessmentSignedSeconds,
 } from "../lib/assessment/resultFormatting";
 import { ASSESSMENT_VARIABLE_ADAPTATION_RESTRAINT_NOTE } from "../lib/assessmentResultContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentVariableAdaptationResultsProps = {
   result: VariableAdaptationResult;
@@ -15,7 +16,7 @@ export default function AssessmentVariableAdaptationResults({
   result,
 }: AssessmentVariableAdaptationResultsProps) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-lg font-semibold text-slate-900">{result.name}</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_VARIABLE_ADAPTATION_RESTRAINT_NOTE}</p>
 

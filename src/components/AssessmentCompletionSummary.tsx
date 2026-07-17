@@ -2,6 +2,7 @@ import { computeCategoryMetrics, computeRawAssessmentMetrics } from "../lib/asse
 import { countInvalidAttempts, countProtocolDeviations } from "../lib/assessment/progress";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { formatSigned } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 type AssessmentCompletionSummaryProps = {
   run: AssessmentRun;
@@ -40,7 +41,8 @@ export default function AssessmentCompletionSummary({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Completion and immediate outcome — this screen's one Hero (Epic 1). */}
+      <div className={surfaceClass("hero")}>
         <h1 className="text-xl font-semibold text-slate-900">Assessment complete</h1>
         <p className="mt-1 text-sm text-slate-600">
           {run.completedAt ? new Date(run.completedAt).toLocaleDateString() : ""} · Release Time
@@ -58,7 +60,8 @@ export default function AssessmentCompletionSummary({
         </ul>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Primary supporting content (Epic 1). */}
+      <div className={surfaceClass("primary")}>
         <h2 className="text-sm font-semibold text-slate-900">Raw summary</h2>
         <div className="mt-3 grid grid-cols-3 gap-3 text-center">
           <div>
@@ -82,7 +85,8 @@ export default function AssessmentCompletionSummary({
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Secondary — visibly lighter than Raw summary (Epic 1). */}
+      <div className={surfaceClass("secondary")}>
         <h2 className="text-sm font-semibold text-slate-900">
           Category summary <span className="text-slate-400">(under {thresholdLabel})</span>
         </h2>

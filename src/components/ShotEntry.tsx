@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatReleaseTime, parseReleaseTime } from "../lib/timeInput";
 import type { Handle, ShotType } from "../types";
+import { surfaceClass } from "./Surface";
 
 export type ShotEntryTarget = {
   value: number;
@@ -18,9 +19,19 @@ type ShotEntryProps = {
     targetTimeOverride?: number
   ) => void;
   target: ShotEntryTarget;
+  /**
+   * "hero" (default) when this is the active capture task; "primary" when
+   * Auto Capture is running and this becomes the secondary/fallback entry
+   * path — see TrackerApp.tsx's Active Training surface hierarchy.
+   */
+  level?: "hero" | "primary";
 };
 
-export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
+export default function ShotEntry({
+  onAddShot,
+  target,
+  level = "hero",
+}: ShotEntryProps) {
   const [inputValue, setInputValue] = useState("");
   const [handle, setHandle] = useState<Handle>("in");
   const [shotType, setShotType] = useState<ShotType>("draw");
@@ -69,10 +80,10 @@ export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
   }
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass(level)}>
       <h2 className="text-xl font-semibold text-slate-900">Add Shot</h2>
 
-      <div className="mt-4 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-4")}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-slate-700">
             Target for Next Shot

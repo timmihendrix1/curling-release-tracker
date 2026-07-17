@@ -6,6 +6,7 @@ import {
   formatAssessmentSignedSeconds,
 } from "../lib/assessment/resultFormatting";
 import { ASSESSMENT_HANDLE_COMPARISON_EXPLANATION, ASSESSMENT_HANDLE_GROUPING_NOTE } from "../lib/assessmentResultContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentHandleComparisonProps = {
   comparison: HandleComparison;
@@ -16,7 +17,7 @@ export default function AssessmentHandleComparison({ comparison }: AssessmentHan
   const { in: inResult, out: outResult } = comparison;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-lg font-semibold text-slate-900">Handle Comparison</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_HANDLE_GROUPING_NOTE}</p>
 

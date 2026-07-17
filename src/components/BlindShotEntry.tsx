@@ -17,6 +17,7 @@ import {
 import { formatReleaseTime, formatSigned, parseReleaseTime } from "../lib/timeInput";
 import type { Handle, ShotType } from "../types";
 import type { ShotEntryTarget } from "./ShotEntry";
+import { surfaceClass } from "./Surface";
 
 type BlindShotEntryProps = {
   onAddShot: (
@@ -148,12 +149,12 @@ export default function BlindShotEntry({
     : target.value;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass("hero")}>
       <h2 className="text-xl font-semibold text-slate-900">
         Blind Weight Shot
       </h2>
 
-      <div className="mt-4 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-4")}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-slate-700">Target</p>
 
@@ -256,7 +257,7 @@ export default function BlindShotEntry({
 
       {draft.phase === "measure" && draft.predictedTime !== undefined && (
         <>
-          <div className="mt-4 rounded-xl bg-slate-100 p-4">
+          <div className={surfaceClass("inset", "mt-4")}>
             <p className="text-sm text-slate-500">Prediction locked</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">
               {formatReleaseTime(draft.predictedTime)}
@@ -347,7 +348,7 @@ export default function BlindShotEntry({
                 />
               </div>
 
-              <div className="mt-2 rounded-xl bg-slate-100 p-4">
+              <div className={surfaceClass("inset", "mt-2")}>
                 <p className="text-sm text-slate-500">Prediction Error</p>
                 <p className="mt-1 text-xl font-semibold text-slate-900">
                   {formatSigned(predictionErrorValue)}s
@@ -399,7 +400,7 @@ type ReviewMetricProps = {
 
 function ReviewMetric({ label, value }: ReviewMetricProps) {
   return (
-    <div className="rounded-xl bg-slate-100 p-4">
+    <div className={surfaceClass("inset")}>
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
     </div>

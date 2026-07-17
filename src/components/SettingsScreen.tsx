@@ -1,3 +1,5 @@
+import { surfaceClass } from "./Surface";
+
 type SettingsScreenProps = {
   hasHistory: boolean;
   onExportHistoryCsv: () => void;
@@ -19,10 +21,10 @@ export default function SettingsScreen({
 }: SettingsScreenProps) {
   return (
     <div className="space-y-4">
-      {/* Standard section card — the page-level PageHeader above already
-          identifies this screen as "Settings", so this no longer repeats
-          that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
-      <div className="rounded-2xl bg-white p-5 shadow-lg">
+      {/* Settings' one Hero (Epic 1) — the page-level PageHeader above
+          already identifies this screen as "Settings", so this no longer
+          repeats that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
+      <div className={surfaceClass("hero")}>
         <h2 className="text-lg font-semibold text-slate-900">
           Data Management
         </h2>

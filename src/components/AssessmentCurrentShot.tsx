@@ -1,6 +1,7 @@
 import type { Handle } from "../types";
 import type { TargetErrorCategory } from "../lib/accuracyThresholds";
 import { formatSigned } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 export type AssessmentLastResult = {
   actualTime: number;
@@ -42,7 +43,8 @@ export default function AssessmentCurrentShot({
   lastResult,
 }: AssessmentCurrentShotProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // The Hero of Assessment Execution (Epic 1) — the Current Planned Shot.
+    <div className={surfaceClass("hero")}>
       <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
         {phase === "warmup" ? "Warm-up" : blockName ?? "Scored"}
       </p>

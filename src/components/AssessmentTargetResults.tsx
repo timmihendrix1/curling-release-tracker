@@ -5,6 +5,7 @@ import {
   formatAssessmentSignedSeconds,
 } from "../lib/assessment/resultFormatting";
 import { ASSESSMENT_TARGET_AGGREGATION_EXPLANATION } from "../lib/assessmentResultContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentTargetResultsProps = {
   targets: TargetResult[];
@@ -13,7 +14,7 @@ type AssessmentTargetResultsProps = {
 /** Fast/Medium/Slow Delivery breakdown, combining every block including Variable Adaptation. See Phase C brief section 7. */
 export default function AssessmentTargetResults({ targets }: AssessmentTargetResultsProps) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-lg font-semibold text-slate-900">Target Results</h2>
       <p className="mt-1 text-xs text-slate-500">{ASSESSMENT_TARGET_AGGREGATION_EXPLANATION}</p>
 

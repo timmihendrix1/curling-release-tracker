@@ -12,6 +12,7 @@ import {
   assessmentCategoryExplanation,
 } from "../lib/assessmentResultContent";
 import DashboardCard from "./DashboardCard";
+import { surfaceClass } from "./Surface";
 
 type AssessmentCoreMetricsProps = {
   result: AssessmentResultView;
@@ -28,8 +29,10 @@ export default function AssessmentCoreMetrics({ result }: AssessmentCoreMetricsP
   const { raw, category, activeThresholdSet } = result;
 
   return (
+    // Core metrics are the Result Screen's first supporting tier — clearly
+    // beneath the Hero Summary, still above the detailed breakdowns (Epic 1).
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("primary")}>
         <h2 className="text-lg font-semibold text-slate-900">Core Metrics</h2>
         <p className="mt-1 text-xs text-slate-500">Threshold-independent — never affected by the analysis threshold below.</p>
 
@@ -52,7 +55,7 @@ export default function AssessmentCoreMetrics({ result }: AssessmentCoreMetricsP
         </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("primary")}>
         <h2 className="text-lg font-semibold text-slate-900">
           Category Metrics <span className="text-sm font-normal text-slate-500">under {accuracyThresholdSetLabel(activeThresholdSet)}</span>
         </h2>

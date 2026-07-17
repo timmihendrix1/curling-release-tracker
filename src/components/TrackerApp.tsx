@@ -17,6 +17,7 @@ import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
 import SettingsScreen from "./SettingsScreen";
 import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
+import { surfaceClass } from "./Surface";
 import TargetTimeSettings from "./TargetTimeSettings";
 import TimingSimulatorPanel, {
   type SimulatorDiagnosticEntry,
@@ -798,6 +799,13 @@ export default function TrackerApp() {
     ? analyzeShots(filteredActiveBlockShots, activeBlockAccuracyThresholds)
     : null;
 
+  // Whichever capture path is actually in progress is the screen's Hero; the
+  // other stays available as a Primary (non-Hero) fallback (Epic 1: exactly
+  // one Hero per screen — see docs/DESIGN_SYSTEM.md §10.1).
+  const autoCaptureIsActive = isCaptureSequenceActive(
+    currentSession.captureSequence
+  );
+
   const activeBlockMap = activeBlock
     ? new Map([[activeBlock.id, activeBlock]])
     : new Map();
@@ -1554,22 +1562,33 @@ export default function TrackerApp() {
       {activeView === "train" && (
         <>
           {!activeBlock || !activeBlockAnalysis ? (
-            <>
-              <SessionSettings
-                title={currentSession.title}
-                notes={currentSession.notes}
-                onChangeTitle={handleChangeSessionTitle}
-                onChangeNotes={handleChangeSessionNotes}
-              />
+            // One Hero setup surface — Session Details and the Training
+            // Block form are two sections of the same task ("set up and
+            // start training"), grouped by a divider rather than stacked as
+            // two equal-weight cards (Epic 1: remove the literal Card ↓
+            // Card pattern; DESIGN_SYSTEM.md §10.1/§10.6).
+            <div className={surfaceClass("hero")}>
+              <h2 className="text-xl font-semibold text-slate-900">
+                Session Details
+              </h2>
 
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              <div className="mt-4">
+                <SessionSettings
+                  variant="bare"
+                  title={currentSession.title}
+                  notes={currentSession.notes}
+                  onChangeTitle={handleChangeSessionTitle}
+                  onChangeNotes={handleChangeSessionNotes}
+                />
+              </div>
+
+              <div className="mt-6 border-t border-slate-100 pt-4">
                 <h2 className="text-xl font-semibold text-slate-900">
                   Set Up Training Block
                 </h2>
 
                 <p className="mt-2 text-sm text-slate-600">
-                  Configure the first training block for this
-                  session.
+                  Configure the first training block for this session.
                 </p>
 
                 <div className="mt-4">
@@ -1579,10 +1598,12 @@ export default function TrackerApp() {
                   />
                 </div>
               </div>
-            </>
+            </div>
           ) : (
             <>
-              <div className="rounded-2xl bg-white p-4 shadow-lg">
+              {/* Essential context, not the Hero — the current target/capture
+                  task below carries the strongest surface (Epic 1). */}
+              <div className={surfaceClass("primary")}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1659,12 +1680,13 @@ export default function TrackerApp() {
                   <ShotEntry
                     onAddShot={handleAddShot}
                     target={shotEntryTarget}
+                    level={autoCaptureIsActive ? "primary" : "hero"}
                   />
                 )
               )}
 
               {activeBlock.mode === "blind" ? (
-                <div className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">
+                <div className={`${surfaceClass("inset")} text-sm text-slate-600`}>
                   Auto Capture isn&apos;t available for Blind Weight yet —
                   prediction must be locked before an automatic reading could be
                   applied. Use the manual Blind Weight flow above.
@@ -1687,6 +1709,7 @@ export default function TrackerApp() {
                     onUndo={handleUndoLastCapturedShot}
                     onManualResult={handleManualCaptureResult}
                     isDevEnvironment={IS_DEV}
+                    level={autoCaptureIsActive ? "hero" : "primary"}
                   />
 
                   {IS_DEV && (
@@ -1699,7 +1722,7 @@ export default function TrackerApp() {
                 </>
               )}
 
-              <div className="rounded-xl bg-slate-100 p-3">
+              <div className={surfaceClass("utility")}>
                 <p className="text-sm font-medium text-slate-700">
                   Filter
                 </p>
@@ -1759,7 +1782,8 @@ export default function TrackerApp() {
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              {/* Live analytics — supporting, not the Hero (Epic 1). */}
+              <div className={surfaceClass("secondary")}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-slate-900">
                     Dashboard
@@ -1816,8 +1840,10 @@ export default function TrackerApp() {
 
               <ReleaseTrendChart shots={filteredActiveBlockShots} />
 
-              {/* Primary live chart — see docs/SYSTEM_ARCHITECTURE.md's
-                  Current Session information hierarchy. */}
+              {/* Most important live chart — see docs/SYSTEM_ARCHITECTURE.md's
+                  Current Session information hierarchy. Still a Secondary
+                  Surface (ChartCard's default): it supports the Hero above,
+                  it doesn't compete with it (Epic 1). */}
               <TargetErrorChart
                 points={targetErrorByShotData}
                 thresholds={activeBlockAccuracyThresholds}
@@ -1839,7 +1865,7 @@ export default function TrackerApp() {
               {activeBlock.mode === "fixed" &&
               !hasMultipleTargetTimes(targetVsActualScatterData) ? (
                 <details className="group">
-                  <summary className="cursor-pointer rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-lg marker:content-none group-open:rounded-b-none group-open:shadow-none">
+                  <summary className="cursor-pointer rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
                     Target vs. Actual (single target — tap to expand)
                   </summary>
                   <TargetActualScatterChart
@@ -1854,7 +1880,8 @@ export default function TrackerApp() {
                 />
               )}
 
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              {/* Shot history — visibly steps back from the Hero (Epic 1). */}
+              <div className={surfaceClass("secondary")}>
                 <h2 className="text-xl font-semibold text-slate-900">
                   Current Shots
                 </h2>
@@ -1867,7 +1894,7 @@ export default function TrackerApp() {
                     return (
                       <div
                         key={shot.id}
-                        className="rounded-xl bg-slate-100 p-4"
+                        className={surfaceClass("inset")}
                       >
                         {isEditing ? (
                           <div className="space-y-3">
@@ -2051,8 +2078,8 @@ export default function TrackerApp() {
                   Target Time / Session Name / Notes setup form after the
                   analytics area — the athlete opens it explicitly via Edit
                   Details when they actually need to change something. */}
-              <details className="group rounded-2xl bg-white shadow-lg">
-                <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 marker:content-none">
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
                   <span className="flex items-center justify-between gap-2">
                     <span>
                       Edit Details — {currentSession.title || "Untitled Session"}
@@ -2227,8 +2254,9 @@ export default function TrackerApp() {
 
           {historyAnalysisContext.totalShotCount > 0 && (
             <>
-              {/* 3. Key Progress Summary */}
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              {/* 3. Key Progress Summary — the screen's one Hero (Epic 1):
+                  the dominant "what did I learn" answer for this selection. */}
+              <div className={surfaceClass("hero")}>
                 <h2 className="text-xl font-semibold text-slate-900">
                   Key Progress Summary
                 </h2>
@@ -2285,8 +2313,9 @@ export default function TrackerApp() {
           )}
 
           {/* 8. Blocks and Sessions — detail/navigation list onto the same
-              central selection; it never dominates the analysis above. */}
-          <div className="rounded-2xl bg-white p-6 shadow-lg">
+              central selection; it never dominates the analysis above
+              (Epic 1: history visibly steps back). */}
+          <div className={surfaceClass("secondary")}>
             <div className="flex items-start justify-between gap-4">
               <h2 className="text-xl font-semibold text-slate-900">
                 Blocks and Sessions
@@ -2324,7 +2353,7 @@ export default function TrackerApp() {
                 return (
                   <div
                     key={session.id}
-                    className="rounded-xl bg-slate-100 p-4"
+                    className={surfaceClass("inset")}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <button

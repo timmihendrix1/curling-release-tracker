@@ -30,6 +30,7 @@ import AssessmentThresholdControl from "./AssessmentThresholdControl";
 import AssessmentTrendChart from "./AssessmentTrendChart";
 import AssessmentVariableAdaptationResults from "./AssessmentVariableAdaptationResults";
 import ConfirmModal from "./ConfirmModal";
+import { surfaceClass } from "./Surface";
 
 type AssessmentResultScreenProps = {
   run: AssessmentRun;
@@ -151,7 +152,8 @@ export default function AssessmentResultScreen({
 
       <AssessmentResultSummary result={result} />
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Threshold context — visible but not equally dominant (Epic 1). */}
+      <div className={surfaceClass("primary")}>
         <AssessmentThresholdControl
           mode={analysisMode}
           onChangeMode={setAnalysisMode}
@@ -178,7 +180,7 @@ export default function AssessmentResultScreen({
 
       <AssessmentShotDetails shots={shotRows} invalidAttempts={invalidAttemptRows} />
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className={surfaceClass("secondary")}>
         <h2 className="text-lg font-semibold text-slate-900">Compare With Another Run</h2>
 
         {eligibleCandidates.length === 0 ? (

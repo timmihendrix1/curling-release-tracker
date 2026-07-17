@@ -16,6 +16,7 @@ import type { AssessmentRun } from "../lib/assessment/types";
 import { ASSESSMENT_DELETE_RUN_EXPLANATION } from "../lib/assessmentResultContent";
 import AssessmentHistoryItem from "./AssessmentHistoryItem";
 import ConfirmModal from "./ConfirmModal";
+import { surfaceClass } from "./Surface";
 
 type AssessmentAnalyzeProps = {
   assessmentState: AssessmentPersistedState;
@@ -55,7 +56,7 @@ export default function AssessmentAnalyze({
 
   if (completedRuns.length === 0 && incompleteRuns.length === 0 && !activeCurrentRun) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("hero")}>
         <h2 className="text-lg font-semibold text-slate-900">No completed assessments yet.</h2>
         <p className="mt-1 text-sm text-slate-600">
           Complete the Release Time Core Assessment to build your assessment history.
@@ -77,7 +78,8 @@ export default function AssessmentAnalyze({
   return (
     <div className="space-y-4">
       {latest && latestRaw && latestCategory && (
-        <div className="rounded-2xl bg-white p-6 shadow-lg">
+        // This screen's one Hero (Epic 1).
+        <div className={surfaceClass("hero")}>
           <h2 className="text-lg font-semibold text-slate-900">Latest Completed Assessment</h2>
           <p className="mt-1 text-sm text-slate-600">
             {latest.templateSnapshot.name} v{latest.templateVersion} ·{" "}
@@ -127,7 +129,7 @@ export default function AssessmentAnalyze({
       )}
 
       {activeCurrentRun && (
-        <div className="rounded-2xl bg-amber-50 p-4 shadow-lg ring-1 ring-amber-200">
+        <div className="rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
           <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Active Assessment Run</p>
           <p className="mt-1 text-sm text-slate-700">This run is still in progress and not yet part of your history.</p>
           <button
@@ -140,7 +142,8 @@ export default function AssessmentAnalyze({
         </div>
       )}
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* History is clearly secondary — never equal to the Hero above (Epic 1). */}
+      <div className={surfaceClass("secondary")}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Assessment History</h2>
           {allArchivedRuns.length > 0 && (

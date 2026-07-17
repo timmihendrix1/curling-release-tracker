@@ -13,6 +13,7 @@ import AssessmentBlockTransition from "./AssessmentBlockTransition";
 import AssessmentCurrentShot, { type AssessmentLastResult } from "./AssessmentCurrentShot";
 import AssessmentInvalidAttemptDialog from "./AssessmentInvalidAttemptDialog";
 import AssessmentProgress from "./AssessmentProgress";
+import { surfaceClass } from "./Surface";
 
 export type PendingBlockTransition = {
   completedBlockName?: string;
@@ -73,7 +74,7 @@ export default function AssessmentExecution({
 }: AssessmentExecutionProps) {
   if (pendingWarmupComplete) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("hero")}>
         <p className="text-sm font-medium text-emerald-700">Warm-up complete</p>
         <p className="mt-2 text-sm text-slate-600">
           All six warm-up stones are done. Scored attempts start now.
@@ -117,7 +118,9 @@ export default function AssessmentExecution({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-4 shadow-lg">
+      {/* Supporting status/progress — not the Hero (Epic 1: Current Planned
+          Shot below carries the strongest surface). */}
+      <div className={surfaceClass("primary")}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Release Time Core Assessment</p>

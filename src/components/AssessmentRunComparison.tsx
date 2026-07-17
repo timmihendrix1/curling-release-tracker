@@ -4,6 +4,7 @@ import { formatPercentagePointDelta, formatSecondsDelta } from "../lib/assessmen
 import { ASSESSMENT_COMPARISON_THRESHOLD_EXPLANATION } from "../lib/assessmentResultContent";
 import type { AccuracyThresholdSet } from "../lib/assessment/types";
 import AssessmentComparisonEligibilityNotice from "./AssessmentComparisonEligibilityNotice";
+import { surfaceClass } from "./Surface";
 
 type AssessmentRunComparisonProps = {
   comparison: AssessmentRunComparisonData;
@@ -62,7 +63,8 @@ export default function AssessmentRunComparison({
   comparisonThresholdSet,
 }: AssessmentRunComparisonProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // Comparison content must not compete with the current result (Epic 1).
+    <div className={surfaceClass("secondary")}>
       <h2 className="text-lg font-semibold text-slate-900">Run Comparison</h2>
 
       <AssessmentComparisonEligibilityNotice

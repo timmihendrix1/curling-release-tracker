@@ -8,6 +8,7 @@ import { computeRawAssessmentMetrics } from "../lib/assessment/metrics";
 import { RELEASE_TIME_CORE_ASSESSMENT_V1 } from "../lib/assessment/templates";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { formatAssessmentSeconds } from "../lib/assessment/resultFormatting";
+import { surfaceClass } from "./Surface";
 
 type AssessmentLandingProps = {
   currentRun: AssessmentRun | null;
@@ -63,6 +64,8 @@ export default function AssessmentLanding({
       {/* The page-level PageHeader (TrackerApp.tsx) already identifies this
           screen as "Assess" with a one-line description, so this no longer
           repeats that heading (DESIGN_SYSTEM.md §32 Priority 2). */}
+      {/* An in-progress run is this screen's Hero — the same "real, current
+          state takes precedence" rule as Home's TodayPlanCard (Epic 1). */}
       {hasActiveRun && currentRun && (
         <div className="rounded-2xl bg-amber-50 p-4 shadow-lg ring-1 ring-amber-200">
           <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
@@ -90,7 +93,9 @@ export default function AssessmentLanding({
         </div>
       )}
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* The Hero when nothing is already in progress; otherwise a Primary
+          supporting surface beneath the active-run Hero above (Epic 1). */}
+      <div className={surfaceClass(hasActiveRun ? "primary" : "hero")}>
         <h2 className="text-lg font-semibold text-slate-900">{template.name}</h2>
         <p className="mt-1 text-sm text-slate-600">
           Measure delivery-speed reproduction, range and adaptation across both handles.
@@ -129,7 +134,7 @@ export default function AssessmentLanding({
       </div>
 
       {latestCompletedRun && onViewLatestResult && (
-        <div className="rounded-2xl bg-white p-4 shadow-lg">
+        <div className={surfaceClass("secondary")}>
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Latest Completed Assessment</p>
           <p className="mt-1 text-sm font-semibold text-slate-900">
             {latestCompletedRun.completedAt ? new Date(latestCompletedRun.completedAt).toLocaleDateString() : ""}
