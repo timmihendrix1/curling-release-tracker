@@ -48,9 +48,58 @@ An athlete may belong to different teams throughout their career.
 
 ## Training Plan
 
-A structured programme consisting of one or more training sessions.
+**[Implemented — Version 1]** A reusable, ordered configuration of Plan Steps — not
+training data. See `docs/TRAINING_SYSTEM_AND_PLANS.md` (the authoritative product/
+domain specification) and `docs/adr/0012-training-plans-domain-and-execution-model.md`.
 
-Training plans define what should be trained over time.
+Starting a Training Plan creates one Training Session, in which each Plan Step becomes
+one preconfigured Training Block (`src/lib/trainingPlans/`, `TrainingPlan` in
+`src/types/index.ts`). Editing or deleting a Training Plan never changes a Session
+already started or completed from it — an execution holds its own deep-copied
+snapshot of the plan's steps, never a live reference back to the saved plan.
+
+Persisted independently of `currentSession`/`sessionHistory`, under its own
+`localStorage` key. Not a calendar, coaching engine, or seasonal planning system in
+Version 1.
+
+---
+
+## Training Plan Step / Release Timing Plan Step
+
+**[Implemented — Version 1]** One ordered unit inside a Training Plan
+(`TrainingPlanStep`, currently an alias of `ReleaseTimingPlanStep` — the only step type
+Version 1 implements, kept as its own discriminated type so a future step type, e.g. a
+Rotation or Assessment Plan Step, can be added without redefining this one). Configures
+a future Training Block's mode, measurement mode, target configuration, Number of
+Stones (`ShotCountCompletion`), and Handle Strategy. A Plan Step is a template; the
+Training Block created from it (via `mapPlanStepToTrainingBlockInput`) is a runtime
+entity with its own generated id — the Plan Step's own id is never reused as the
+Block's id.
+
+---
+
+## Handle Strategy
+
+**[Implemented — Version 1]** How a Plan Step expects Handle to behave across its
+shots: Free (no preselect — today's classic manual-entry behavior), Fixed (In or Out),
+or Alternating (starting In or Out). Preselects the expected handle for the next shot
+but never locks it — the athlete may always override for one shot, and the shot
+actually saved always records the handle actually used, never the planned one. See
+`resolveExpectedHandle` (`src/lib/trainingPlans/handleStrategy.ts`), which uses the
+same shots-saved-parity logic as `captureSequence.ts`'s Capture Sequence alternation.
+
+---
+
+## Plan Execution
+
+**[Implemented — Version 1]** `Session.planExecution` — attached only to a Session
+started from a Training Plan; absent from every Quick Start session. Holds a deep
+copy of each Plan Step taken at start time (`PlanExecutionStepSnapshot`) plus which
+step is active and which steps' Training Blocks have been created so far (Training
+Blocks are created lazily, one at a time, as each step is reached — never all upfront).
+Step completion, and plan completion, are always derived from the active step's block's
+actual saved shots (`isActiveStepComplete`/`isPlanComplete`,
+`src/lib/trainingPlans/progress.ts`) — never a separately stored/cached flag.
 
 ---
 
@@ -768,6 +817,38 @@ recommendations, not validated sporting standards (same posture as Smart Random'
 ranges — see "No fabricated precision" in `PRODUCT_DIRECTION_AND_PRINCIPLES.md`).
 Unrelated to Blind Weight's Prediction Accuracy, which has no threshold concept.
 
+## Accuracy Tolerance Profile
+
+*[Implemented]* `src/lib/accuracyToleranceProfiles/` — a reusable, named
+`{ id, name, onTarget, acceptable, createdAt, updatedAt }` configuration aid an
+athlete saves under Settings > Accuracy Tolerances, so the same Custom Accuracy
+Tolerance values don't need retyping for every Training Block, Training Plan
+Step, or (see "Deferred" below) Assessment setup. A profile only ever *helps
+select* a pair of Accuracy Thresholds — it is never itself the authoritative
+value a Session, Training Block, or Training Plan Step is judged against.
+Selecting a profile copies its current numeric values into the configuration
+being created; nothing downstream stores a live reference back to the profile,
+so editing or deleting a profile later never changes an already-configured
+Training Block, Training Plan Step, active Session, completed Session, or
+historical analytics — the same "snapshot, never mutated" discipline
+`AccuracyThresholds` itself already uses (ADR-0008). Persisted independently of
+Sessions/Training Plans, under its own `localStorage` key and schema version
+(`src/lib/accuracyToleranceProfiles/persistence.ts`,
+`migration.ts`) — malformed profile data fails safely to an empty state and
+never invalidates Session or Training Plan data.
+
+## Default Profile
+
+`AccuracyToleranceProfilesState.defaultProfileId` — one authoritative reference
+to at most one Accuracy Tolerance Profile, rather than every profile carrying
+its own independently-settable "is default" flag (which could otherwise disagree
+with itself). Prefills a *brand-new* Training Block/Plan Step's Custom Accuracy
+Tolerance fields with that profile's values; never overrides an
+already-configured value, and never forces the athlete out of a built-in
+Standard/Tight preset into Custom. Deleting the current default profile clears
+this reference (`null`) rather than silently promoting another saved profile —
+the athlete must explicitly choose a new default afterward.
+
 ## On Target / Acceptable / Major Miss
 
 The three mutually exclusive Target Accuracy categories a shot's absolute Target Error
@@ -828,6 +909,40 @@ generates the next target within a per-block configured range (`smartRandomMin`/
 
 A Target Source (`variableTargetMode`/`blindTargetMode: "manual"`). A human enters the
 next target before each shot; the last-used value stays as an editable starting point.
+
+## Smart Random Profile
+
+*[Implemented]* `src/lib/smartRandomProfiles/` — a reusable, named
+`{ id, name, measurementMode, min, max, createdAt, updatedAt }` configuration aid an
+athlete saves under Settings > Smart Random Profiles, so the same range doesn't need
+retyping for every Variable Weight or Blind Weight exercise using Smart Random. Reuses
+the exact existing `SmartRandomRange` shape (`min`/`max`) rather than inventing new
+field names, and reuses `isSmartRandomAvailable`/`validateSmartRandomRange`
+(`src/lib/variableTargets.ts`) unchanged for validation — a profile can only ever be
+created for Back-Hog, since Smart Random has no validated range for any other
+Measurement Mode. A profile only ever *helps select* a range; it is never itself the
+authoritative value a Training Block or Training Plan Step generates targets from.
+Selecting a profile copies its current `min`/`max` into the configuration being built;
+nothing downstream stores a live reference back to the profile, so editing or deleting
+a profile later never changes an already-configured Training Block, Training Plan
+Step, active Session, or historical analytics — the same "snapshot, never mutated"
+discipline `AccuracyThresholds` and Accuracy Tolerance Profiles already use. Note:
+Smart Random's step size (0.05s) and repeat-avoidance memory are **not** part of a
+profile, or configurable at all — they remain the fixed implementation constants they
+already were (`SMART_RANDOM_STEP`, `NORMAL_REPEAT_AVOIDANCE_MEMORY`,
+`LARGE_JUMP_REPEAT_AVOIDANCE_MEMORY` in `src/lib/variableTargets.ts`); a profile only
+ever varies the range.
+
+## Default Smart Random Profile
+
+`SmartRandomProfilesState.defaultProfileId` — one authoritative reference to at most
+one Smart Random Profile (Version 1 needs only one, not a per-Measurement-Mode map,
+since Smart Random is only ever available for one Measurement Mode today). Prefills a
+*brand-new* Variable/Blind Weight configuration's Smart Random range when Smart Random
+is already the selected target source; never activates Smart Random on its own, never
+overrides an already-configured value, and never bypasses Measurement Mode
+restrictions. Deleting the current default profile clears this reference (`null`)
+rather than silently promoting another saved profile.
 
 ## Target Source
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
 import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
 import AssessmentAnalyze from "./AssessmentAnalyze";
@@ -17,6 +18,8 @@ import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
 import SettingsScreen from "./SettingsScreen";
 import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
+import type { SmartRandomProfileFormValue } from "./SmartRandomProfileForm";
+import SmartRandomProfilesScreen from "./SmartRandomProfilesScreen";
 import { surfaceClass } from "./Surface";
 import TargetTimeSettings from "./TargetTimeSettings";
 import TimingSimulatorPanel, {
@@ -30,6 +33,9 @@ import ShotQualityTrendChart from "./ShotQualityTrendChart";
 import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
+import TrainLanding from "./TrainLanding";
+import TrainingPlanProgress from "./TrainingPlanProgress";
+import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
 import type {
@@ -40,6 +46,7 @@ import type {
   ShotType,
   TimingResult,
   TrainingBlock,
+  TrainingPlan,
 } from "../types";
 import type { AssessmentRun } from "../lib/assessment/types";
 
@@ -129,7 +136,61 @@ import {
   getNextShotTarget,
   measurementModeLabel,
   variableTargetModeLabel,
+  type NewBlockInput,
 } from "../lib/trainingBlocks";
+import { migrateAccuracyToleranceProfilesState } from "../lib/accuracyToleranceProfiles/migration";
+import {
+  ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
+  createEmptyAccuracyToleranceProfilesState,
+  serializeAccuracyToleranceProfilesState,
+  type AccuracyToleranceProfilesState,
+} from "../lib/accuracyToleranceProfiles/persistence";
+import {
+  addAccuracyToleranceProfile,
+  buildAccuracyToleranceProfile,
+  deleteAccuracyToleranceProfile,
+  duplicateAccuracyToleranceProfile,
+  replaceAccuracyToleranceProfile,
+  setDefaultAccuracyToleranceProfile,
+  type AccuracyToleranceProfileInput,
+} from "../lib/accuracyToleranceProfiles/profiles";
+import { migrateSmartRandomProfilesState } from "../lib/smartRandomProfiles/migration";
+import {
+  SMART_RANDOM_PROFILES_STORAGE_KEY,
+  createEmptySmartRandomProfilesState,
+  serializeSmartRandomProfilesState,
+  type SmartRandomProfilesState,
+} from "../lib/smartRandomProfiles/persistence";
+import {
+  addSmartRandomProfile,
+  buildSmartRandomProfile,
+  deleteSmartRandomProfile,
+  duplicateSmartRandomProfile,
+  replaceSmartRandomProfile,
+  setDefaultSmartRandomProfile,
+} from "../lib/smartRandomProfiles/profiles";
+import { advanceToNextPlanStep, startPlanExecution } from "../lib/trainingPlans/execution";
+import { resolveExpectedHandle } from "../lib/trainingPlans/handleStrategy";
+import { mapPlanStepToTrainingBlockInput } from "../lib/trainingPlans/mapping";
+import { migrateTrainingPlans } from "../lib/trainingPlans/migration";
+import {
+  addPlan,
+  deletePlan,
+  duplicatePlan,
+  serializeTrainingPlansState,
+  TRAINING_PLANS_SCHEMA_VERSION,
+  TRAINING_PLANS_STORAGE_KEY,
+  updatePlan,
+  type TrainingPlansPersistedState,
+} from "../lib/trainingPlans/persistence";
+import {
+  getActiveStepSnapshot,
+  getPlanProgressSummary,
+  isActiveStepComplete,
+  isFinalStep,
+  isPlanComplete,
+  isPlanExecutionActive,
+} from "../lib/trainingPlans/progress";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
 
@@ -164,6 +225,8 @@ const SESSION_HISTORY_STORAGE_KEY =
   "curling-release-tracker-session-history";
 const HISTORY_FILTERS_STORAGE_KEY =
   "curling-release-tracker-history-filters";
+// TRAINING_PLANS_STORAGE_KEY lives in src/lib/trainingPlans/persistence.ts —
+// its own key, independent of Session/Session History (see ADR-0012).
 
 type ConfirmAction = {
   title: string;
@@ -220,6 +283,37 @@ export default function TrackerApp() {
   const [sessionHistory, setSessionHistory] = useState<
     Session[]
   >([]);
+
+  // The Training Plan library — its own persisted domain, independent of
+  // currentSession/sessionHistory (see docs/TRAINING_SYSTEM_AND_PLANS.md
+  // section 37 and ADR-0012). An active/completed execution lives entirely on
+  // Session.planExecution, never here.
+  const [trainingPlans, setTrainingPlans] = useState<TrainingPlan[]>([]);
+
+  // Accuracy Tolerance Profiles — a small, independent persisted domain (its own
+  // localStorage key, its own migration). A profile only ever helps *select*
+  // On Target/Acceptable values; TrainingBlock/ReleaseTimingBlockConfiguration
+  // always store the actual resolved numbers, never a live profile reference.
+  const [accuracyToleranceProfilesState, setAccuracyToleranceProfilesState] =
+    useState<AccuracyToleranceProfilesState>(
+      createEmptyAccuracyToleranceProfilesState()
+    );
+  const [
+    showAccuracyToleranceProfilesManager,
+    setShowAccuracyToleranceProfilesManager,
+  ] = useState(false);
+
+  // Smart Random Profiles — a small, independent persisted domain (its own
+  // localStorage key, its own migration). A profile only ever helps *select*
+  // a Smart Random range; TrainingBlock/ReleaseTimingBlockConfiguration always
+  // store the actual smartRandomMin/smartRandomMax numbers, never a live
+  // profile reference.
+  const [smartRandomProfilesState, setSmartRandomProfilesState] =
+    useState<SmartRandomProfilesState>(createEmptySmartRandomProfilesState());
+  const [
+    showSmartRandomProfilesManager,
+    setShowSmartRandomProfilesManager,
+  ] = useState(false);
 
   const [historyFilters, setHistoryFilters] = useState<HistoryAnalysisFilters>(
     createDefaultHistoryFilters()
@@ -756,6 +850,48 @@ export default function TrackerApp() {
     }
 
     setAssessmentState(finalAssessment);
+
+    // --- Training Plan library (its own key, own migration path — ADR-0012) ---
+    const savedTrainingPlans = localStorage.getItem(TRAINING_PLANS_STORAGE_KEY);
+    let rawTrainingPlans: unknown = null;
+    try {
+      rawTrainingPlans = savedTrainingPlans ? JSON.parse(savedTrainingPlans) : null;
+    } catch {
+      rawTrainingPlans = null;
+    }
+    setTrainingPlans(migrateTrainingPlans(rawTrainingPlans).plans);
+
+    // --- Accuracy Tolerance Profiles (its own key, own migration path) ---
+    const savedAccuracyToleranceProfiles = localStorage.getItem(
+      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY
+    );
+    let rawAccuracyToleranceProfiles: unknown = null;
+    try {
+      rawAccuracyToleranceProfiles = savedAccuracyToleranceProfiles
+        ? JSON.parse(savedAccuracyToleranceProfiles)
+        : null;
+    } catch {
+      rawAccuracyToleranceProfiles = null;
+    }
+    setAccuracyToleranceProfilesState(
+      migrateAccuracyToleranceProfilesState(rawAccuracyToleranceProfiles)
+    );
+
+    // --- Smart Random Profiles (its own key, own migration path) ---
+    const savedSmartRandomProfiles = localStorage.getItem(
+      SMART_RANDOM_PROFILES_STORAGE_KEY
+    );
+    let rawSmartRandomProfiles: unknown = null;
+    try {
+      rawSmartRandomProfiles = savedSmartRandomProfiles
+        ? JSON.parse(savedSmartRandomProfiles)
+        : null;
+    } catch {
+      rawSmartRandomProfiles = null;
+    }
+    setSmartRandomProfilesState(
+      migrateSmartRandomProfilesState(rawSmartRandomProfiles)
+    );
   }, []);
 
   useEffect(() => {
@@ -788,6 +924,28 @@ export default function TrackerApp() {
       serializeAssessmentPersistedState(assessmentState)
     );
   }, [assessmentState]);
+
+  useEffect(() => {
+    const state: TrainingPlansPersistedState = {
+      schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
+      plans: trainingPlans,
+    };
+    localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, serializeTrainingPlansState(state));
+  }, [trainingPlans]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
+      serializeAccuracyToleranceProfilesState(accuracyToleranceProfilesState)
+    );
+  }, [accuracyToleranceProfilesState]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SMART_RANDOM_PROFILES_STORAGE_KEY,
+      serializeSmartRandomProfilesState(smartRandomProfilesState)
+    );
+  }, [smartRandomProfilesState]);
 
   if (!currentSession) {
     return null;
@@ -845,6 +1003,52 @@ export default function TrackerApp() {
             activeBlock.blindTargetMode === "smart-random"),
       }
     : null;
+
+  // --- Training Plan execution (derived, never separately persisted UI
+  // state — see ADR-0012). isPlanExecutionActive is false whenever the
+  // athlete has navigated away from the plan's current block (e.g. manually
+  // started a new Training Block instead of Continue/Finish) — the plan
+  // progress/transition UI simply stops rendering in that case rather than
+  // guessing which block it should apply to.
+  const planExecution = currentSession.planExecution;
+  const isTrainingPlanActive = planExecution
+    ? isPlanExecutionActive(currentSession, planExecution)
+    : false;
+  const activePlanStepSnapshot =
+    planExecution && isTrainingPlanActive
+      ? getActiveStepSnapshot(planExecution)
+      : undefined;
+  const isActivePlanStepComplete =
+    planExecution && isTrainingPlanActive
+      ? isActiveStepComplete(currentSession, planExecution)
+      : false;
+  const isActivePlanStepFinal = planExecution ? isFinalStep(planExecution) : false;
+  const isTrainingPlanComplete =
+    planExecution && isTrainingPlanActive
+      ? isPlanComplete(currentSession, planExecution)
+      : false;
+  const trainingPlanProgressSummary =
+    planExecution && isTrainingPlanActive
+      ? getPlanProgressSummary(currentSession, planExecution)
+      : null;
+  const nextPlanStepLabel =
+    planExecution && !isActivePlanStepFinal
+      ? blockModeLabel(
+          planExecution.steps[planExecution.activeStepIndex + 1].step.configuration
+            .mode
+        )
+      : null;
+  // Preselected (never locked) handle for the next shot — undefined means
+  // Free, today's unchanged behavior. Re-derived every render from the
+  // number of shots already saved in this step's block, so it always follows
+  // the plan's own sequence regardless of any prior one-shot override.
+  const shotEntryPresetHandle =
+    isTrainingPlanActive && activePlanStepSnapshot
+      ? resolveExpectedHandle(
+          activePlanStepSnapshot.step.handleStrategy,
+          activeBlockShots.length
+        )
+      : undefined;
 
   // Single available Training Category/Measurement Mode is auto-selected;
   // multiple options keep whatever was previously chosen (persisted above) or
@@ -1215,8 +1419,12 @@ export default function TrackerApp() {
   // combination and throws a clear error for an invalid one. TrainingSetup's
   // own UI already prevents submitting such a combination, so this is only a
   // defensive backstop — but a setCurrentSession updater must never throw,
-  // so we validate/construct outside of it first.
-  function tryCreateTrainingBlock(value: TrainingSetupValue) {
+  // so we validate/construct outside of it first. Accepts NewBlockInput
+  // (rather than TrainingSetupValue) so the same defensive path also covers
+  // blocks created from a Training Plan Step via
+  // mapPlanStepToTrainingBlockInput — every TrainingSetupValue already
+  // satisfies NewBlockInput's shape.
+  function tryCreateTrainingBlock(value: NewBlockInput) {
     try {
       return createTrainingBlock(value);
     } catch (error) {
@@ -1261,6 +1469,247 @@ export default function TrackerApp() {
     setShowNewBlockModal(false);
   }
 
+  /** Upserts a Training Plan into the library by id — create or rename/re-edit alike. */
+  function handleSaveTrainingPlan(plan: TrainingPlan) {
+    setTrainingPlans((current) => {
+      const library: TrainingPlansPersistedState = {
+        schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
+        plans: current,
+      };
+
+      if (current.some((existing) => existing.id === plan.id)) {
+        const result = updatePlan(library, plan);
+        return result.ok ? result.value.plans : current;
+      }
+
+      return addPlan(library, plan).plans;
+    });
+  }
+
+  /**
+   * Removes only the reusable plan definition — never a Session already
+   * started from it (see docs/TRAINING_SYSTEM_AND_PLANS.md section 20).
+   * TrainingPlansLibrary already confirms this destructive action itself.
+   */
+  function handleDeleteTrainingPlan(planId: string) {
+    setTrainingPlans(
+      (current) =>
+        deletePlan(
+          { schemaVersion: TRAINING_PLANS_SCHEMA_VERSION, plans: current },
+          planId
+        ).plans
+    );
+  }
+
+  function handleDuplicateTrainingPlan(plan: TrainingPlan) {
+    const copy = duplicatePlan(plan);
+    setTrainingPlans(
+      (current) =>
+        addPlan(
+          { schemaVersion: TRAINING_PLANS_SCHEMA_VERSION, plans: current },
+          copy
+        ).plans
+    );
+  }
+
+  /**
+   * Starts a Training Plan: creates step 0's TrainingBlock through the exact
+   * same validated path as "New Training Block" (tryCreateTrainingBlock),
+   * then attaches the plan-execution snapshot in the very same atomic session
+   * update — never two separate setCurrentSession calls, so the session is
+   * never briefly missing one half of the pair. See ADR-0012.
+   */
+  function handleStartTrainingPlan(plan: TrainingPlan) {
+    const firstStep = plan.steps[0];
+    if (!firstStep) return;
+
+    const blockInput = mapPlanStepToTrainingBlockInput(firstStep);
+    if (!tryCreateTrainingBlock(blockInput)) return;
+
+    setCurrentSession((session) => {
+      if (!session) return session;
+
+      const withBlock = addTrainingBlock(session, blockInput);
+      return {
+        ...withBlock,
+        planExecution: startPlanExecution(plan, withBlock.activeBlockId),
+      };
+    });
+
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setEntryMode("manual");
+  }
+
+  function handleCreateAccuracyToleranceProfile(
+    input: AccuracyToleranceProfileInput
+  ) {
+    const outcome = buildAccuracyToleranceProfile(input, new Date().toISOString());
+    if (!outcome.ok) {
+      alert(outcome.error.message);
+      return;
+    }
+    setAccuracyToleranceProfilesState((current) =>
+      addAccuracyToleranceProfile(current, outcome.value)
+    );
+  }
+
+  /** Never rewrites `id`/`createdAt` — only name/values and `updatedAt` change. */
+  function handleUpdateAccuracyToleranceProfile(
+    profileId: string,
+    input: Omit<AccuracyToleranceProfileInput, "id" | "createdAt">
+  ) {
+    setAccuracyToleranceProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const outcome = buildAccuracyToleranceProfile(
+        { ...input, id: existing.id, createdAt: existing.createdAt },
+        new Date().toISOString()
+      );
+      if (!outcome.ok) {
+        alert(outcome.error.message);
+        return current;
+      }
+
+      const result = replaceAccuracyToleranceProfile(current, outcome.value);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  function handleDuplicateAccuracyToleranceProfile(profileId: string) {
+    setAccuracyToleranceProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const copy = duplicateAccuracyToleranceProfile(
+        existing,
+        new Date().toISOString()
+      );
+      return addAccuracyToleranceProfile(current, copy);
+    });
+  }
+
+  function handleDeleteAccuracyToleranceProfile(profileId: string) {
+    setAccuracyToleranceProfilesState((current) =>
+      deleteAccuracyToleranceProfile(current, profileId)
+    );
+  }
+
+  function handleSetDefaultAccuracyToleranceProfile(profileId: string | null) {
+    setAccuracyToleranceProfilesState((current) => {
+      const result = setDefaultAccuracyToleranceProfile(current, profileId);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  // Smart Random has no validated range for any Measurement Mode other than
+  // Back-Hog (isSmartRandomAvailable) — the profile form never offers a
+  // Measurement Mode choice, so every profile created here is explicitly
+  // "back-hog"; buildSmartRandomProfile still re-validates this rather than
+  // trusting the caller.
+  function handleCreateSmartRandomProfile(value: SmartRandomProfileFormValue) {
+    const outcome = buildSmartRandomProfile(
+      { ...value, measurementMode: "back-hog" },
+      new Date().toISOString()
+    );
+    if (!outcome.ok) {
+      alert(outcome.error.message);
+      return;
+    }
+    setSmartRandomProfilesState((current) =>
+      addSmartRandomProfile(current, outcome.value)
+    );
+  }
+
+  /** Never rewrites `id`/`createdAt`/`measurementMode` — only the range and `updatedAt` change. */
+  function handleUpdateSmartRandomProfile(
+    profileId: string,
+    value: SmartRandomProfileFormValue
+  ) {
+    setSmartRandomProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const outcome = buildSmartRandomProfile(
+        {
+          ...value,
+          id: existing.id,
+          measurementMode: existing.measurementMode,
+          createdAt: existing.createdAt,
+        },
+        new Date().toISOString()
+      );
+      if (!outcome.ok) {
+        alert(outcome.error.message);
+        return current;
+      }
+
+      const result = replaceSmartRandomProfile(current, outcome.value);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  function handleDuplicateSmartRandomProfile(profileId: string) {
+    setSmartRandomProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const copy = duplicateSmartRandomProfile(existing, new Date().toISOString());
+      return addSmartRandomProfile(current, copy);
+    });
+  }
+
+  function handleDeleteSmartRandomProfile(profileId: string) {
+    setSmartRandomProfilesState((current) =>
+      deleteSmartRandomProfile(current, profileId)
+    );
+  }
+
+  function handleSetDefaultSmartRandomProfile(profileId: string | null) {
+    setSmartRandomProfilesState((current) => {
+      const result = setDefaultSmartRandomProfile(current, profileId);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  /**
+   * Advances a Training Plan execution to its next step — same composition as
+   * handleStartTrainingPlan: atomically creates the next TrainingBlock and
+   * stamps its id onto the execution snapshot in one session update. A no-op
+   * if the plan execution isn't actually driving the current active block
+   * (see isPlanExecutionActive) or there is no next step.
+   */
+  function handleContinueToNextPlanStep() {
+    const session = currentSession;
+    const planExecution = session?.planExecution;
+    if (!session || !planExecution || !isPlanExecutionActive(session, planExecution)) {
+      return;
+    }
+
+    const nextIndex = planExecution.activeStepIndex + 1;
+    const nextStep = planExecution.steps[nextIndex]?.step;
+    if (!nextStep) return;
+
+    const blockInput = mapPlanStepToTrainingBlockInput(nextStep);
+    if (!tryCreateTrainingBlock(blockInput)) return;
+
+    setCurrentSession((current) => {
+      if (!current || !current.planExecution) return current;
+
+      const withBlock = addTrainingBlock(current, blockInput);
+      return {
+        ...withBlock,
+        planExecution: advanceToNextPlanStep(
+          current.planExecution,
+          withBlock.activeBlockId
+        ),
+      };
+    });
+
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setEntryMode("manual");
+  }
+
   function handleStartNewSession() {
     guardLeavingActiveWork(
       hasUnsavedBlindDraft
@@ -1295,6 +1744,15 @@ export default function TrackerApp() {
         });
       }
     );
+  }
+
+  /**
+   * A completed Training Plan's "Finish Training" action is simply this same
+   * existing session-completion path — plan completion introduces no new
+   * session-archiving logic of its own (see ADR-0012).
+   */
+  function handleFinishPlannedTraining() {
+    handleStartNewSession();
   }
 
   /**
@@ -1569,50 +2027,92 @@ export default function TrackerApp() {
           hasHistory={sessionHistory.length > 0}
           onExportHistoryCsv={() => exportHistoryToCsv(sessionHistory)}
           onClearHistory={handleClearSessionHistory}
+          accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+          defaultAccuracyToleranceProfileId={
+            accuracyToleranceProfilesState.defaultProfileId
+          }
+          onManageAccuracyTolerances={() =>
+            setShowAccuracyToleranceProfilesManager(true)
+          }
+          smartRandomProfiles={smartRandomProfilesState.profiles}
+          defaultSmartRandomProfileId={smartRandomProfilesState.defaultProfileId}
+          onManageSmartRandomProfiles={() =>
+            setShowSmartRandomProfilesManager(true)
+          }
         />
       )}
 
       {activeView === "train" && (
         <>
           {!activeBlock || !activeBlockAnalysis ? (
-            // One Hero setup surface, composed around the actual decision
-            // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
-            // Train Information Priority — training objective and
-            // configuration first, session naming last as the clearly
-            // optional detail it is (compositional redesign, not a
-            // Session-card-then-Block-card stack).
-            <div className={surfaceClass("hero")}>
-              <h2 className="text-xl font-semibold text-slate-900">
-                Set Up Training Block
-              </h2>
+            // Quick Start (below) preserves the exact existing hero, unchanged
+            // — Training Plans is a second, equally-reachable entry path
+            // alongside it, not a replacement (spec section 21/22).
+            <TrainLanding
+              quickStartContent={
+                // One Hero setup surface, composed around the actual decision
+                // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+                // Train Information Priority — training objective and
+                // configuration first, session naming last as the clearly
+                // optional detail it is (compositional redesign, not a
+                // Session-card-then-Block-card stack).
+                <div className={surfaceClass("hero")}>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Set Up Training Block
+                  </h2>
 
-              <p className="mt-2 text-sm text-slate-600">
-                Choose what you&apos;re training, then start.
-              </p>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Choose what you&apos;re training, then start.
+                  </p>
 
-              <div className="mt-5">
-                <TrainingSetup
-                  submitLabel="Start Training"
-                  onSubmit={handleCreateFirstBlock}
-                />
-              </div>
+                  <div className="mt-5">
+                    <TrainingSetup
+                      submitLabel="Start Training"
+                      onSubmit={handleCreateFirstBlock}
+                      accuracyToleranceProfiles={
+                        accuracyToleranceProfilesState.profiles
+                      }
+                      defaultAccuracyToleranceProfileId={
+                        accuracyToleranceProfilesState.defaultProfileId
+                      }
+                      smartRandomProfiles={smartRandomProfilesState.profiles}
+                      defaultSmartRandomProfileId={
+                        smartRandomProfilesState.defaultProfileId
+                      }
+                    />
+                  </div>
 
-              <div className="mt-6 border-t border-slate-100 pt-4">
-                <label className="text-xs font-medium text-slate-500">
-                  Session name <span className="font-normal">(optional)</span>
-                </label>
+                  <div className="mt-6 border-t border-slate-100 pt-4">
+                    <label className="text-xs font-medium text-slate-500">
+                      Session name <span className="font-normal">(optional)</span>
+                    </label>
 
-                <div className="mt-2">
-                  <SessionSettings
-                    variant="bare"
-                    title={currentSession.title}
-                    notes={currentSession.notes}
-                    onChangeTitle={handleChangeSessionTitle}
-                    onChangeNotes={handleChangeSessionNotes}
-                  />
+                    <div className="mt-2">
+                      <SessionSettings
+                        variant="bare"
+                        title={currentSession.title}
+                        notes={currentSession.notes}
+                        onChangeTitle={handleChangeSessionTitle}
+                        onChangeNotes={handleChangeSessionNotes}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              }
+              plans={trainingPlans}
+              onSavePlan={handleSaveTrainingPlan}
+              onDeletePlan={handleDeleteTrainingPlan}
+              onDuplicatePlan={handleDuplicateTrainingPlan}
+              onStartPlan={handleStartTrainingPlan}
+              accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+              defaultAccuracyToleranceProfileId={
+                accuracyToleranceProfilesState.defaultProfileId
+              }
+              smartRandomProfiles={smartRandomProfilesState.profiles}
+              defaultSmartRandomProfileId={
+                smartRandomProfilesState.defaultProfileId
+              }
+            />
           ) : (
             <>
               {/* Essential context, not the Hero — the current target/capture
@@ -1682,6 +2182,37 @@ export default function TrackerApp() {
                 </div>
               </div>
 
+              {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
+                <TrainingPlanProgress
+                  sourcePlanName={planExecution.sourcePlanName}
+                  summary={trainingPlanProgressSummary}
+                />
+              )}
+
+              {isTrainingPlanActive &&
+                isActivePlanStepComplete &&
+                planExecution &&
+                activePlanStepSnapshot &&
+                (isTrainingPlanComplete ? (
+                  <TrainingPlanStepTransition
+                    kind="plan-complete"
+                    totalPlannedStones={trainingPlanProgressSummary?.totalPlannedShots ?? 0}
+                    totalActualStones={trainingPlanProgressSummary?.totalActualShots ?? 0}
+                    onFinish={handleFinishPlannedTraining}
+                  />
+                ) : (
+                  nextPlanStepLabel && (
+                    <TrainingPlanStepTransition
+                      kind="continue"
+                      completedStepLabel={blockModeLabel(
+                        activePlanStepSnapshot.step.configuration.mode
+                      )}
+                      nextStepLabel={nextPlanStepLabel}
+                      onContinue={handleContinueToNextPlanStep}
+                    />
+                  )
+                ))}
+
               {activeBlock.mode === "blind" ? (
                 <>
                   {shotEntryTarget && (
@@ -1690,6 +2221,7 @@ export default function TrackerApp() {
                       onAddShot={handleAddShot}
                       target={shotEntryTarget}
                       onDraftStateChange={setHasUnsavedBlindDraft}
+                      presetHandle={shotEntryPresetHandle}
                     />
                   )}
 
@@ -1746,6 +2278,7 @@ export default function TrackerApp() {
                       onAddShot={handleAddShot}
                       target={shotEntryTarget}
                       level={autoCaptureIsActive ? "primary" : "hero"}
+                      presetHandle={shotEntryPresetHandle}
                     />
                   )}
 
@@ -2500,6 +3033,12 @@ export default function TrackerApp() {
                           ).toLocaleDateString()}
                         </p>
 
+                        {session.planExecution && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Started from: {session.planExecution.sourcePlanName}
+                          </p>
+                        )}
+
                         <p className="mt-2 text-xs font-medium text-slate-700">
                           {expandedSessions[
                             session.id
@@ -2604,6 +3143,38 @@ export default function TrackerApp() {
           onCancel={() => setShowNewBlockModal(false)}
           outgoingBlock={activeBlock}
           outgoingBlockShots={activeBlockShots}
+          accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+          defaultAccuracyToleranceProfileId={
+            accuracyToleranceProfilesState.defaultProfileId
+          }
+          smartRandomProfiles={smartRandomProfilesState.profiles}
+          defaultSmartRandomProfileId={smartRandomProfilesState.defaultProfileId}
+        />
+      )}
+
+      {showAccuracyToleranceProfilesManager && (
+        <AccuracyToleranceProfilesScreen
+          profiles={accuracyToleranceProfilesState.profiles}
+          defaultProfileId={accuracyToleranceProfilesState.defaultProfileId}
+          onCreate={handleCreateAccuracyToleranceProfile}
+          onUpdate={handleUpdateAccuracyToleranceProfile}
+          onDuplicate={handleDuplicateAccuracyToleranceProfile}
+          onDelete={handleDeleteAccuracyToleranceProfile}
+          onSetDefault={handleSetDefaultAccuracyToleranceProfile}
+          onClose={() => setShowAccuracyToleranceProfilesManager(false)}
+        />
+      )}
+
+      {showSmartRandomProfilesManager && (
+        <SmartRandomProfilesScreen
+          profiles={smartRandomProfilesState.profiles}
+          defaultProfileId={smartRandomProfilesState.defaultProfileId}
+          onCreate={handleCreateSmartRandomProfile}
+          onUpdate={handleUpdateSmartRandomProfile}
+          onDuplicate={handleDuplicateSmartRandomProfile}
+          onDelete={handleDeleteSmartRandomProfile}
+          onSetDefault={handleSetDefaultSmartRandomProfile}
+          onClose={() => setShowSmartRandomProfilesManager(false)}
         />
       )}
 

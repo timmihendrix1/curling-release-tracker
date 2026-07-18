@@ -29,15 +29,18 @@ type BlindShotEntryProps = {
   ) => void;
   target: ShotEntryTarget;
   onDraftStateChange: (hasUnsavedProgress: boolean) => void;
+  /** See ShotEntry.tsx's presetHandle prop — identical meaning and behavior. */
+  presetHandle?: Handle;
 };
 
 export default function BlindShotEntry({
   onAddShot,
   target,
   onDraftStateChange,
+  presetHandle,
 }: BlindShotEntryProps) {
   const [draft, setDraft] = useState<BlindShotDraft>(INITIAL_BLIND_SHOT_DRAFT);
-  const [handle, setHandle] = useState<Handle>("in");
+  const [handle, setHandle] = useState<Handle>(presetHandle ?? "in");
   const [predictedInput, setPredictedInput] = useState("");
   const [measuredInput, setMeasuredInput] = useState("");
   const [manualTargetInput, setManualTargetInput] = useState(
@@ -52,6 +55,17 @@ export default function BlindShotEntry({
   if (target.value !== lastSeenTargetValue) {
     setLastSeenTargetValue(target.value);
     setManualTargetInput(target.value.toFixed(2));
+  }
+
+  // Same pattern, for the Training Plan Handle Strategy preselection — see
+  // ShotEntry.tsx's identical block for the full rationale.
+  const [lastSeenPresetHandle, setLastSeenPresetHandle] = useState(presetHandle);
+
+  if (presetHandle !== lastSeenPresetHandle) {
+    setLastSeenPresetHandle(presetHandle);
+    if (presetHandle !== undefined) {
+      setHandle(presetHandle);
+    }
   }
 
   const [lastSeenPhase, setLastSeenPhase] = useState(draft.phase);
@@ -140,7 +154,7 @@ export default function BlindShotEntry({
 
     setPredictedInput("");
     setMeasuredInput("");
-    setHandle("in");
+    setHandle(presetHandle ?? "in");
     updateDraft(INITIAL_BLIND_SHOT_DRAFT);
   }
 

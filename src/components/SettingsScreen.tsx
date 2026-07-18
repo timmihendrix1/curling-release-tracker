@@ -1,9 +1,17 @@
+import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
+import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { surfaceClass } from "./Surface";
 
 type SettingsScreenProps = {
   hasHistory: boolean;
   onExportHistoryCsv: () => void;
   onClearHistory: () => void;
+  accuracyToleranceProfiles: AccuracyToleranceProfile[];
+  defaultAccuracyToleranceProfileId: string | null;
+  onManageAccuracyTolerances: () => void;
+  smartRandomProfiles: SmartRandomProfile[];
+  defaultSmartRandomProfileId: string | null;
+  onManageSmartRandomProfiles: () => void;
 };
 
 /**
@@ -18,11 +26,90 @@ export default function SettingsScreen({
   hasHistory,
   onExportHistoryCsv,
   onClearHistory,
+  accuracyToleranceProfiles,
+  defaultAccuracyToleranceProfileId,
+  onManageAccuracyTolerances,
+  smartRandomProfiles,
+  defaultSmartRandomProfileId,
+  onManageSmartRandomProfiles,
 }: SettingsScreenProps) {
+  const defaultProfile =
+    accuracyToleranceProfiles.find(
+      (profile) => profile.id === defaultAccuracyToleranceProfileId
+    ) ?? null;
+
+  const defaultSmartRandomProfile =
+    smartRandomProfiles.find(
+      (profile) => profile.id === defaultSmartRandomProfileId
+    ) ?? null;
+
   return (
     <div className="space-y-4">
-      {/* Settings' one Hero (Epic 1) — the page-level PageHeader above
-          already identifies this screen as "Settings", so this no longer
+      {/* Reusable configuration aid, not app-wide data management — its own
+          card so "Manage Accuracy Tolerances" reads as a distinct action from
+          Data Management's export/clear below. */}
+      <div className={surfaceClass("hero")}>
+        <h2 className="text-lg font-semibold text-slate-900">
+          Accuracy Tolerances
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-600">
+          Save reusable On Target / Acceptable tolerance profiles you can select
+          instead of retyping them for every Training Block or Plan Step.
+        </p>
+
+        <p className="mt-3 text-sm text-slate-600">
+          {accuracyToleranceProfiles.length === 0
+            ? "No profiles saved yet."
+            : `${accuracyToleranceProfiles.length} profile${
+                accuracyToleranceProfiles.length === 1 ? "" : "s"
+              } saved${defaultProfile ? ` · Default: ${defaultProfile.name}` : ""}`}
+        </p>
+
+        <button
+          type="button"
+          onClick={onManageAccuracyTolerances}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+        >
+          Manage Accuracy Tolerances
+        </button>
+      </div>
+
+      {/* Same "reusable configuration aid" grouping as Accuracy Tolerances
+          above, its own card since the two are independent domains. */}
+      <div className={surfaceClass("hero")}>
+        <h2 className="text-lg font-semibold text-slate-900">
+          Smart Random Profiles
+        </h2>
+
+        <p className="mt-1 text-sm text-slate-600">
+          Save reusable Smart Random ranges you can select instead of
+          re-entering them for every Variable Weight or Blind Weight exercise.
+        </p>
+
+        <p className="mt-3 text-sm text-slate-600">
+          {smartRandomProfiles.length === 0
+            ? "No profiles saved yet."
+            : `${smartRandomProfiles.length} profile${
+                smartRandomProfiles.length === 1 ? "" : "s"
+              } saved${
+                defaultSmartRandomProfile
+                  ? ` · Default: ${defaultSmartRandomProfile.name}`
+                  : ""
+              }`}
+        </p>
+
+        <button
+          type="button"
+          onClick={onManageSmartRandomProfiles}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+        >
+          Manage Smart Random Profiles
+        </button>
+      </div>
+
+      {/* Settings' Data Management Hero (Epic 1) — the page-level PageHeader
+          above already identifies this screen as "Settings", so this no longer
           repeats that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
       <div className={surfaceClass("hero")}>
         <h2 className="text-lg font-semibold text-slate-900">

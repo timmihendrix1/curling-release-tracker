@@ -1,0 +1,129 @@
+import { describe, expect, it } from "vitest";
+import { isPlanExecutable, isStepExecutable, validatePlan, validatePlanStep } from "../validation";
+import { buildPlan, buildStep } from "./testHelpers";
+
+describe("isStepExecutable", () => {
+  it("is true for a valid Fixed Weight step", () => {
+    expect(isStepExecutable(buildStep())).toBe(true);
+  });
+
+  it("is false when the completion count is not a positive integer", () => {
+    expect(
+      isStepExecutable(buildStep({ completion: { type: "shot-count", value: 0 } }))
+    ).toBe(false);
+    expect(
+      isStepExecutable(buildStep({ completion: { type: "shot-count", value: -3 } }))
+    ).toBe(false);
+  });
+
+  it("is false for Hog-Hog + Smart Random — never fabricates a Hog-Hog range", () => {
+    const step = buildStep({
+      configuration: {
+        name: "",
+        mode: "variable",
+        measurementMode: "hog-hog",
+        targetTime: 3.75,
+        variableTargetMode: "smart-random",
+        blindTargetMode: "fixed",
+        smartRandomMin: 2.5,
+        smartRandomMax: 4.5,
+        accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+      },
+    });
+
+    expect(isStepExecutable(step)).toBe(false);
+  });
+
+  it("is true for Hog-Hog + Coach/Manual (Smart Random restriction doesn't apply)", () => {
+    const step = buildStep({
+      configuration: {
+        name: "",
+        mode: "variable",
+        measurementMode: "hog-hog",
+        targetTime: 3.75,
+        variableTargetMode: "manual",
+        blindTargetMode: "fixed",
+        smartRandomMin: 2.5,
+        smartRandomMax: 4.5,
+        accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+      },
+    });
+
+    expect(isStepExecutable(step)).toBe(true);
+  });
+
+  it("is false for an invalid Smart Random range", () => {
+    const step = buildStep({
+      configuration: {
+        name: "",
+        mode: "variable",
+        measurementMode: "back-hog",
+        targetTime: 3.75,
+        variableTargetMode: "smart-random",
+        blindTargetMode: "fixed",
+        smartRandomMin: 4.5,
+        smartRandomMax: 2.5,
+        accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+      },
+    });
+
+    expect(isStepExecutable(step)).toBe(false);
+  });
+});
+
+describe("isPlanExecutable", () => {
+  it("is false for a plan with no steps", () => {
+    expect(isPlanExecutable(buildPlan({ steps: [] }))).toBe(false);
+  });
+
+  it("is false if any single step is unexecutable, even if others are valid", () => {
+    const invalidStep = buildStep({
+      configuration: {
+        name: "",
+        mode: "variable",
+        measurementMode: "hog-hog",
+        targetTime: 3.75,
+        variableTargetMode: "smart-random",
+        blindTargetMode: "fixed",
+        smartRandomMin: 2.5,
+        smartRandomMax: 4.5,
+        accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+      },
+    });
+
+    expect(isPlanExecutable(buildPlan({ steps: [buildStep(), invalidStep] }))).toBe(false);
+  });
+
+  it("is true when every step is executable", () => {
+    expect(isPlanExecutable(buildPlan({ steps: [buildStep(), buildStep()] }))).toBe(true);
+  });
+});
+
+describe("validatePlan", () => {
+  it("rejects an unnamed plan", () => {
+    const result = validatePlan(buildPlan({ name: "  " }));
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a plan with no steps", () => {
+    const result = validatePlan(buildPlan({ steps: [] }));
+    expect(result.ok).toBe(false);
+  });
+
+  it("accepts a valid, named, non-empty plan", () => {
+    const result = validatePlan(buildPlan());
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("validatePlanStep", () => {
+  it("returns an explanatory error for an invalid step", () => {
+    const result = validatePlanStep(
+      buildStep({ completion: { type: "shot-count", value: 0 } })
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("invalid_step");
+    }
+  });
+});

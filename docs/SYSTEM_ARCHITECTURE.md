@@ -1819,6 +1819,272 @@ this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on de
   Framework" section. None of these were in scope for Phase C by design (see
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` sections 2/20).
 
+## Training Plans (Implemented — Version 1)
+
+See `docs/TRAINING_SYSTEM_AND_PLANS.md` for the authoritative product/domain
+specification this section only summarizes at an architecture-snapshot level, and
+`docs/adr/0012-training-plans-domain-and-execution-model.md` for the reasoning behind
+the decisions below.
+
+### Current state
+
+- Training Plans live entirely inside the existing `"train"` `ActiveView` — no new
+  navigation item. `TrainLanding.tsx` (mounted only when there is no active block)
+  offers Quick Start (the pre-existing hero, unchanged) and Training Plans as two
+  equally-reachable entry paths.
+- A Training Plan (`TrainingPlan`/`TrainingPlanStep`/`ReleaseTimingPlanStep`/
+  `HandleStrategy`/`ShotCountCompletion`/`ReleaseTimingBlockConfiguration`, all in
+  `src/types/index.ts` — see ADR-0012 Decision 2 for why they live centrally rather
+  than in their own `trainingPlans/types.ts`) is persisted independently of
+  `currentSession`/`sessionHistory`, under its own `localStorage` key
+  (`curling-release-tracker-training-plans`, `src/lib/trainingPlans/persistence.ts`).
+- Starting a plan attaches `Session.planExecution?: PlanExecutionState` — a deep-copied
+  snapshot of the plan's steps taken at start time, plus which step is active and
+  which steps' `TrainingBlock`s have been created so far. A later edit or deletion of
+  the source `TrainingPlan` can never affect this snapshot (spec invariant #2).
+- Each step's `TrainingBlock` is created lazily, via the existing `addTrainingBlock`
+  (`src/lib/trainingBlocks.ts`) — exactly when the athlete starts the plan or taps
+  Continue — never all up front (ADR-0012 Decision 1). `handleAddShot` and Auto
+  Capture's shot-save path are completely unchanged; a plan-driven block is an
+  ordinary `TrainingBlock`.
+
+### Domain (`src/lib/trainingPlans/`)
+
+- `mapping.ts` — `mapPlanStepToTrainingBlockInput(step): NewBlockInput`, the one
+  boundary translating a Plan Step template into `trainingBlocks.ts`'s existing block-
+  creation input (spec section 40). Never re-validates; validation lives in
+  `validation.ts`.
+- `validation.ts` — `isStepExecutable`/`isPlanExecutable`/`validatePlanStep`/
+  `validatePlan`, reusing `isSmartRandomAvailable`/`validateSmartRandomRange`
+  (`variableTargets.ts`) directly rather than a second interpretation of "valid".
+  Distinguishes "readable" (loads without crashing) from "executable" (safe to start)
+  per spec section 53 — an unexecutable plan stays visible with an Edit action, Start
+  disabled.
+- `handleStrategy.ts` — `resolveExpectedHandle(strategy, shotsSavedInBlock)`, using the
+  same alternation parity math as `captureSequence.ts`'s `computeNextCaptureHandle`
+  (`shotsSaved % 2`), applied to classic manual entry instead of a Capture Sequence's
+  `capturedShotCount`. `handleStrategyToCaptureHandleMode` maps a Handle Strategy onto
+  `CaptureHandleMode` so a plan-driven block's Auto Capture setup can be pre-filled
+  (still fully overridable).
+- `progress.ts` — pure, derived-only functions: `isPlanExecutionActive` (true only
+  when `session.activeBlockId` matches the active step's stored `blockId`, which
+  itself resolves to a real block — false, never a crash or a guess, if a manual "New
+  Training Block" interrupted the plan, or the reference is corrupt), `isActiveStepComplete`,
+  `isFinalStep`, `isPlanComplete`, `getPlanProgressSummary`. Progression is always
+  keyed by the snapshot's stored `blockId`, never `session.blocks` array position
+  (ADR-0012 Decision 6).
+- `execution.ts` — `startPlanExecution(plan, firstBlockId)` (deep-copies every step;
+  never a live reference back into the saved plan) and
+  `advanceToNextPlanStep(planExecution, newBlockId)`. Neither function creates a
+  `TrainingBlock` itself — the caller (`TrackerApp.tsx`) creates the block first via
+  the existing `addTrainingBlock`, then calls these to update the execution snapshot,
+  in one atomic session update (never two separate `setCurrentSession` calls).
+- `persistence.ts` / `migration.ts` — the Training Plan *library*'s own root state,
+  pure state-shape functions (`addPlan`/`updatePlan`/`deletePlan`/`duplicatePlan`), and
+  its own migration (`migrateTrainingPlans`) — field-by-field repair style (like
+  `sessionMigration.ts`'s block backfill), since a `TrainingPlan`'s fields are mostly
+  independent scalars. An unexecutable step's sport-specific configuration is never
+  silently coerced into a fabricated-valid combination.
+- `errors.ts` — the same `Outcome<T>`/`ok`/`err` discriminated-union convention as
+  `src/lib/assessment/errors.ts`.
+
+### `Session.planExecution` migration (`sessionMigration.ts`)
+
+Unlike the plan library above, `Session.planExecution` follows Assessment's
+discard-the-whole-record style, not `sessionMigration.ts`'s general field-by-field
+repair style — its cross-field invariants (`activeStepIndex` validly indexes `steps`;
+every step at or before it has a `blockId` resolving to a real, already-migrated
+block; every step after it has none) are too strict to safely patch in isolation. A
+structurally invalid `planExecution` is discarded entirely (`undefined`); `blocks`/
+`shots` (the real training data) are migrated independently, before this runs, and are
+never affected by a corrupt or missing `planExecution`. See ADR-0012 Decision 4 and
+`sessionMigration.test.ts`'s "planExecution (Training Plans)" suite for the covered
+cases (active/completed execution reload, legacy sessions without one, and four
+distinct malformed shapes).
+
+### UI (`src/components/`)
+
+`TrainLanding.tsx` (Quick Start vs. Training Plans chooser, owning its own
+library/editor/start-review sub-navigation locally — TrackerApp only learns about a
+plan being started/saved/duplicated/deleted), `TrainingPlansLibrary.tsx` (list +
+Start/Edit/Duplicate/Delete + empty state), `TrainingPlanEditor.tsx` (name/description
++ ordered step list with Move Up/Down, no drag-and-drop),
+`TrainingPlanStepEditor.tsx` (reuses `TrainingSetup.tsx` unmodified for the block-
+scoped fields, converting its `TrainingSetupValue` output to/from the domain's
+`ReleaseTimingBlockConfiguration` locally — the persisted type is never derived from
+the component's form-value export, see ADR-0012 Decision 3 — plus Number of Stones and
+a Handle Strategy selector), `TrainingPlanStartReview.tsx` (pre-start summary),
+`TrainingPlanProgress.tsx` (compact "Step X of Y · Shot N of M", visually secondary to
+active capture), and `TrainingPlanStepTransition.tsx` (two mutually exclusive states —
+"Continue to next step" mid-plan, or a distinct "Plan complete" / Finish Training once
+the final step's count is reached; the latter reuses the existing
+`handleStartNewSession` session-archiving path, introducing no new completion logic —
+ADR-0012 Decision 5).
+
+`ShotEntry.tsx`/`BlindShotEntry.tsx` gained one optional prop, `presetHandle?: Handle`
+(undefined ⇒ unchanged behavior): when present, a render-time state-adjustment (same
+pattern already used for the editable-target input, not a `useEffect`) resyncs the
+locally-selected handle whenever the prop changes — the athlete may still override it
+for one shot; the next shot's preselect follows the plan's own sequence regardless.
+
+### Scope (Version 1)
+
+Not built: Skip Step, drag-and-drop step reordering, scheduling/calendar, coach/team
+features, cloud sync, shared/marketplace plans, adaptive plans, Assessment Plan Steps,
+a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface beyond a
+single "Started from: {plan name}" label on the session summary — see
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
+
+## Accuracy Tolerance Profiles (Implemented)
+
+A small, independent persisted domain (`src/lib/accuracyToleranceProfiles/`) letting
+an athlete save reusable, named Accuracy Tolerance values (`AccuracyToleranceProfile:
+{ id, name, onTarget, acceptable, createdAt, updatedAt }`) and select one wherever
+Custom Accuracy Tolerance is already configured, instead of retyping the same On
+Target / Acceptable pair for every Training Block, Training Plan Step, or Quick Start
+session. See "Accuracy Tolerance Profile" and "Default Profile" in
+`docs/DOMAIN_GLOSSARY.md`.
+
+**Core principle — a profile helps select, it never becomes a live dependency.**
+Selecting a profile copies its current `onTarget`/`acceptable` values into whichever
+`TrainingSetupValue`/`ReleaseTimingBlockConfiguration`/`TrainingBlock.accuracyThresholds`
+is being built at that moment (a plain `{ onTarget, acceptable }` object, same shape
+`AccuracyThresholds` already uses) — no persisted type anywhere stores a profile id or
+any other live reference back to a profile. This is a stricter version of the same
+discipline ADR-0008 already established for `TrainingBlock.accuracyThresholds` itself:
+editing or deleting a profile can never retroactively change an already-configured
+Training Block, Training Plan Step, active Session, completed Session, or historical
+analytics, because nothing downstream ever re-reads the profile after the values were
+copied.
+
+**Domain and validation (`src/lib/accuracyToleranceProfiles/profiles.ts`)** — reuses
+`validateAccuracyThresholds` from `src/lib/accuracyThresholds.ts` directly (no second
+definition of a valid On Target/Acceptable pair): `buildAccuracyToleranceProfile`
+validates both the profile name (non-empty, ≤40 characters) and the thresholds before
+ever constructing a profile. `duplicateAccuracyToleranceProfile` generates a new id and
+an athlete-visible "(Copy)" name suffix; `deleteAccuracyToleranceProfile` removes a
+profile and, if it was the current default, clears `defaultProfileId` to `null` rather
+than silently promoting another saved profile to default (the athlete must explicitly
+choose a new one) — the same "no fabricated value migration/deletion can't know" posture
+as everywhere else in this codebase.
+
+**Persistence and migration** — its own `localStorage` key
+(`curling-release-tracker-accuracy-tolerance-profiles`) and schema version, loaded/saved
+by `TrackerApp.tsx` following the exact one-effect-per-key pattern already used for
+Session/Assessment/Training Plan data, and deliberately not coupled to
+`sessionMigration.ts` or `src/lib/trainingPlans/migration.ts`.
+`migrateAccuracyToleranceProfilesState` (`src/lib/accuracyToleranceProfiles/migration.ts`)
+resolves an unknown/future schema version or any structurally invalid top-level shape to
+a safe, empty state (never guess-migrated); an individual structurally-invalid profile is
+dropped without invalidating the rest of the list (quarantine style, like
+`src/lib/assessment/migration.ts` — a profile has no cross-field invariants worth a
+field-by-field repair); a `defaultProfileId` that no longer resolves to a surviving
+profile is cleared to `null`. Malformed profile data can never invalidate a Session or
+Training Plan, since this module never reads or writes either of their storage keys.
+
+**UI integration** — `AccuracyToleranceProfileSelector.tsx` is the one shared "pick a
+saved profile, or enter a one-off Custom value" control, rendered inside
+`TrainingSetup.tsx`'s existing Custom Accuracy Tolerance branch. Because Quick Start
+(`TrackerApp.tsx`), New Training Block (`NewTrainingBlock.tsx`), and the Training Plan
+Step Editor (`TrainingPlanStepEditor.tsx`) all already render `TrainingSetup.tsx`
+unmodified (see "Training Plans" above and ADR-0012), adding the two new
+`accuracyToleranceProfiles`/`defaultAccuracyToleranceProfileId` props to `TrainingSetup`
+and threading them down from `TrackerApp` covers all three surfaces without any
+per-surface logic. A default profile only prefills a **brand-new** configuration's
+Custom fields (never an already-configured block/step being edited, and never the
+top-level Standard/Tight/Custom choice itself — see "Default Profile" in the glossary).
+Settings > Accuracy Tolerances (`AccuracyToleranceProfilesScreen.tsx` +
+`AccuracyToleranceProfileForm.tsx`, opened from a new section in `SettingsScreen.tsx`) is
+the main management location: create/edit/duplicate/delete/set-default, following the
+same full-screen-modal convention `NewTrainingBlock.tsx`/`TrainingPlanStepEditor.tsx`
+already use, with delete confirmed via the existing shared `ConfirmModal`.
+
+**Deferred (see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`):** Assessment setup
+(`AssessmentThresholdSelector.tsx`/`AssessmentOverview.tsx`/`AssessScreen.tsx`) already
+lets an athlete enter a user-configurable Custom Accuracy Tolerance before a Run starts,
+so it was in scope per the product spec — not wired up in this pass to avoid touching
+`AssessScreen.tsx`'s carefully-integrated capture-ownership/navigation-guard logic
+(ADR-0011) as a side effect of an unrelated feature.
+
+## Smart Random Profiles (Implemented)
+
+A small, independent persisted domain (`src/lib/smartRandomProfiles/`), the same shape
+as Accuracy Tolerance Profiles above, letting an athlete save reusable, named Smart
+Random ranges (`SmartRandomProfile: { id, name, measurementMode, min, max, createdAt,
+updatedAt }`) and select one wherever Smart Random is the selected target source,
+instead of retyping the same Minimum/Maximum Target Time for every Variable Weight or
+Blind Weight exercise. See "Smart Random Profile" and "Default Smart Random Profile" in
+`docs/DOMAIN_GLOSSARY.md`.
+
+**Scope decision, confirmed with the product owner before implementation:** auditing
+`src/lib/variableTargets.ts` found that Smart Random's step size (always `0.05s`) and
+its two-tier repeat-avoidance memory (`NORMAL_REPEAT_AVOIDANCE_MEMORY`/
+`LARGE_JUMP_REPEAT_AVOIDANCE_MEMORY`) are fixed implementation constants today, not
+per-block configurable settings — the code explicitly documents the step as "Not
+user-configurable." A Smart Random Profile therefore stores only what is actually
+configurable today: Measurement Mode and the Minimum/Maximum range. Making step/memory
+genuinely configurable would be a real target-generation-algorithm change, which is
+explicitly out of scope for this feature.
+
+**Core principle — a profile helps select, it never becomes a live dependency.**
+Identical discipline to Accuracy Tolerance Profiles: selecting a profile copies its
+current `min`/`max` into whichever `TrainingSetupValue`/`ReleaseTimingBlockConfiguration`/
+`TrainingBlock.smartRandomMin`/`smartRandomMax` is being built at that moment — no
+persisted type anywhere stores a profile id. Editing or deleting a profile can never
+retroactively change an already-configured Training Block, Training Plan Step, active
+Session, completed Session, or historical analytics, because nothing downstream ever
+re-reads the profile after the values were copied; target generation itself
+(`generateSmartRandomTarget`, `advanceBlockTarget`) is completely unmodified and has no
+awareness that profiles exist.
+
+**Domain and validation (`src/lib/smartRandomProfiles/profiles.ts`)** — reuses
+`isSmartRandomAvailable`/`validateSmartRandomRange` from `src/lib/variableTargets.ts`
+directly (no second definition of a valid range or Measurement Mode restriction):
+`buildSmartRandomProfile` rejects any Measurement Mode Smart Random has no validated
+range for (today, anything but Back-Hog) before a profile can ever be saved — a
+Hog-Hog profile can never exist, so it can never later be silently applied in the
+wrong measurement context. `duplicateSmartRandomProfile`/`deleteSmartRandomProfile`
+follow the exact same "(Copy)" naming and "clear the default reference, never
+silently promote another profile" rules as Accuracy Tolerance Profiles.
+
+**Persistence and migration** — its own `localStorage` key
+(`curling-release-tracker-smart-random-profiles`) and schema version, loaded/saved by
+`TrackerApp.tsx` following the same one-effect-per-key pattern as every other
+independent persisted domain, deliberately not coupled to `sessionMigration.ts` or
+`src/lib/trainingPlans/migration.ts`. `migrateSmartRandomProfilesState`
+(`src/lib/smartRandomProfiles/migration.ts`) resolves an unknown/future schema version
+or any structurally invalid top-level shape to a safe, empty state; an individual
+structurally-invalid profile (including any Hog-Hog or otherwise Smart-Random-unavailable
+Measurement Mode, or a range failing `validateSmartRandomRange`) is dropped without
+invalidating the rest of the list; a `defaultProfileId` that no longer resolves to a
+surviving profile is cleared to `null`.
+
+**UI integration** — `SmartRandomProfileSelector.tsx` is the one shared "pick a saved
+profile, or enter a one-off Custom range" control, rendered inside `TrainingSetup.tsx`'s
+existing Smart Random range section (renamed "Smart Random Settings"), gated on the
+same pre-existing `showSmartRandomRange` boolean (`effectiveTargetMode ===
+"smart-random" && smartRandomAvailable`) — the selector can therefore never appear for
+Fixed, Manual, or an unsupported Hog-Hog combination without any new visibility logic.
+Because Quick Start, New Training Block, and the Training Plan Step Editor all already
+render `TrainingSetup.tsx` unmodified, adding `smartRandomProfiles`/
+`defaultSmartRandomProfileId` props to `TrainingSetup` and threading them down from
+`TrackerApp` covers Variable Weight and Blind Weight Quick Start, New Training Block,
+and the Plan Step Editor without any per-surface logic. The selector additionally
+filters offered profiles to the form's current Measurement Mode, so a profile can never
+be applied in the wrong measurement context even defensively. A default profile only
+prefills a **brand-new** configuration's range when Smart Random is already the
+selected target source (never activates Smart Random on its own, never overrides an
+already-configured block/step being edited). Settings > Smart Random Profiles
+(`SmartRandomProfilesScreen.tsx` + `SmartRandomProfileForm.tsx`, opened from a new
+section in `SettingsScreen.tsx`) is the main management location, following the exact
+same list/form/delete-confirmation pattern as `AccuracyToleranceProfilesScreen.tsx`;
+Measurement Mode is shown as a fixed, read-only "Backline – Hog" in the form rather than
+a picker, since there is currently only one valid choice.
+
+**Deferred (see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`):** "Save current settings as a
+profile" from within the selector itself, and Hog-Hog Smart Random support (an
+[Open decision] independent of this feature — see ADR-0004).
+
 ## Module responsibilities / architecture boundaries (Implemented)
 
 ### UI components (`src/components/`)
@@ -1887,6 +2153,13 @@ this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on de
 | `AssessmentTrendChart.tsx` | (Phase C) MAE/Bias/SD/On-Target trend across protocol-compatible completed runs of the same Template+Version, one shared Comparison Threshold |
 | `AssessmentAnalyze.tsx` | (Phase C) Analyze → Assessments landing: Latest Completed Assessment, separate Completed/Incomplete history, empty state, CSV export |
 | `AssessmentHistoryItem.tsx` | (Phase C) One history row (completed or incomplete), with View/Delete actions |
+| `TrainLanding.tsx` | Train's "no active block" landing — Quick Start (unchanged hero) vs. Training Plans, owning the plans library/editor/start-review sub-navigation locally |
+| `TrainingPlansLibrary.tsx` | Plan list — summary (steps/stones/mode composition), Start/Edit/Duplicate/Delete, empty state; Start disabled with an inline note for an unexecutable plan |
+| `TrainingPlanEditor.tsx` | Create/edit a plan — name, optional description, ordered step list with Move Up/Down/Duplicate/Delete, "Add Step" |
+| `TrainingPlanStepEditor.tsx` | Configures one Release Timing Plan Step — wraps `TrainingSetup.tsx` unmodified, adding Number of Stones and a Free/Fixed/Alternating Handle Strategy selector |
+| `TrainingPlanStartReview.tsx` | Pre-start summary (ordered steps, stones, handle strategy, total) + Start Training |
+| `TrainingPlanProgress.tsx` | Compact "Step X of Y · Shot N of M" during execution — visually secondary to active shot capture |
+| `TrainingPlanStepTransition.tsx` | "Continue to next step" mid-plan, or a distinct "Plan complete" + Finish Training on the final step — never both at once |
 
 ### Domain and logic modules (`src/lib/`)
 
@@ -1939,6 +2212,23 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 | `result.ts` | (Phase C) Derived, non-persisted Result view: block/target/handle/Variable-Adaptation breakdowns, Protocol Integrity summary, comparison-ineligibility copy, `AssessmentResultView`, `compareAssessmentRuns`, `buildAssessmentTrendSeries`, `resolveAnalysisThresholdSet` |
 | `resultFormatting.ts` | (Phase C) Shared display formatting (percent/seconds/signed/percentage-point-delta) for Result-screen components — kept out of JSX |
 | `export.ts` | (Phase C) `buildAssessmentCsv`/`exportAssessmentRunsToCsv` — one row per attempt; deliberately its own file, never merged with Training's `src/lib/export.ts` |
+
+### Training Plan domain modules (`src/lib/trainingPlans/`)
+
+A new persisted domain (see "Training Plans" above and ADR-0012) — its types live
+centrally in `src/types/index.ts` rather than in this folder, deliberately, to avoid
+an import cycle back into that file.
+
+| Module | Responsibility |
+|---|---|
+| `mapping.ts` | `mapPlanStepToTrainingBlockInput` — the one Plan-Step-to-Block-input translation boundary |
+| `validation.ts` | `isStepExecutable`/`isPlanExecutable`/`validatePlanStep`/`validatePlan`, reusing `variableTargets.ts`'s Smart Random rules directly |
+| `handleStrategy.ts` | `resolveExpectedHandle`/`handleStrategyToCaptureHandleMode` — the manual-entry and Auto-Capture-preset counterparts of `captureSequence.ts`'s alternation logic |
+| `progress.ts` | Pure, derived plan-execution state: `isPlanExecutionActive`, `isActiveStepComplete`, `isFinalStep`, `isPlanComplete`, `getPlanProgressSummary` |
+| `execution.ts` | `startPlanExecution`/`advanceToNextPlanStep` — build/advance a `PlanExecutionState` snapshot; never creates a `TrainingBlock` itself |
+| `persistence.ts` | The Training Plan library's own root state and CRUD (`addPlan`/`updatePlan`/`deletePlan`/`duplicatePlan`), pure state-shape functions only |
+| `migration.ts` | `migrateTrainingPlans` — field-by-field repair of the plan library, distinct from `Session.planExecution`'s own migration in `sessionMigration.ts` |
+| `errors.ts` | The `TrainingPlanOutcome<T>`/`ok`/`err` convention, matching `src/lib/assessment/errors.ts` |
 
 ### Orchestration — `TrackerApp.tsx`
 

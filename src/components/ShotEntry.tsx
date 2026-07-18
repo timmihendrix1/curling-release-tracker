@@ -25,15 +25,26 @@ type ShotEntryProps = {
    * path — see TrackerApp.tsx's Active Training surface hierarchy.
    */
   level?: "hero" | "primary";
+  /**
+   * The handle a Training Plan step's Handle Strategy expects for the next
+   * shot (see src/lib/trainingPlans/handleStrategy.ts's resolveExpectedHandle).
+   * Undefined means Free — no preselect, today's unchanged behavior. When
+   * present, it preselects the handle but never locks it: the athlete may
+   * still tap the other handle for this one shot, and the shot actually saved
+   * always reflects whatever is selected at Add Shot time (see
+   * docs/TRAINING_SYSTEM_AND_PLANS.md section 13).
+   */
+  presetHandle?: Handle;
 };
 
 export default function ShotEntry({
   onAddShot,
   target,
   level = "hero",
+  presetHandle,
 }: ShotEntryProps) {
   const [inputValue, setInputValue] = useState("");
-  const [handle, setHandle] = useState<Handle>("in");
+  const [handle, setHandle] = useState<Handle>(presetHandle ?? "in");
   const [shotType, setShotType] = useState<ShotType>("draw");
   const [manualTargetInput, setManualTargetInput] = useState(
     target.value.toFixed(2)
@@ -49,6 +60,20 @@ export default function ShotEntry({
   if (target.value !== lastSeenTargetValue) {
     setLastSeenTargetValue(target.value);
     setManualTargetInput(target.value.toFixed(2));
+  }
+
+  // Same render-adjustment pattern as the target above: whenever the parent
+  // recomputes the expected handle (typically right after a shot is saved,
+  // since the strategy is derived from shots-saved-so-far), the preselection
+  // resyncs. A one-shot override the athlete made for the previous shot is
+  // never "sticky" — the next shot always starts from the plan's own sequence.
+  const [lastSeenPresetHandle, setLastSeenPresetHandle] = useState(presetHandle);
+
+  if (presetHandle !== lastSeenPresetHandle) {
+    setLastSeenPresetHandle(presetHandle);
+    if (presetHandle !== undefined) {
+      setHandle(presetHandle);
+    }
   }
 
   function handleAddShot() {

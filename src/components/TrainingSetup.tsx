@@ -8,11 +8,13 @@ import {
   validateAccuracyThresholds,
   type AccuracyThresholdPreset,
 } from "../lib/accuracyThresholds";
+import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { accuracyThresholdsSetupExplanation } from "../lib/analyticsExplanations";
 import {
   measurementModeExplanation,
   trainingCategoryExplanation,
 } from "../lib/helpContent";
+import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { parseReleaseTime } from "../lib/timeInput";
 import {
   blindTargetModeLabel,
@@ -33,7 +35,9 @@ import type {
   MeasurementMode,
   VariableTargetMode,
 } from "../types";
+import AccuracyToleranceProfileSelector from "./AccuracyToleranceProfileSelector";
 import InfoButton from "./InfoButton";
+import SmartRandomProfileSelector from "./SmartRandomProfileSelector";
 
 export type TrainingSetupValue = {
   name: string;
@@ -90,6 +94,20 @@ type TrainingSetupProps = {
   submitLabel: string;
   onSubmit: (value: TrainingSetupValue) => void;
   onCancel?: () => void;
+  /** Saved Accuracy Tolerance Profiles the athlete can pick from under Custom. */
+  accuracyToleranceProfiles?: AccuracyToleranceProfile[];
+  /** Prefills a brand-new configuration's Custom values; ignored when editing an
+   * existing block/step (its own stored values always win — see the Accuracy
+   * Tolerance Profiles product principle: a profile never overrides an
+   * already-configured value). */
+  defaultAccuracyToleranceProfileId?: string | null;
+  /** Saved Smart Random Profiles the athlete can pick from wherever Smart
+   * Random is the selected target source. */
+  smartRandomProfiles?: SmartRandomProfile[];
+  /** Prefills a brand-new Smart Random configuration's range; ignored when
+   * editing an existing block/step, same principle as
+   * defaultAccuracyToleranceProfileId above. */
+  defaultSmartRandomProfileId?: string | null;
 };
 
 const BLOCK_MODES: BlockMode[] = ["fixed", "variable", "blind"];
@@ -116,7 +134,37 @@ export default function TrainingSetup({
   submitLabel,
   onSubmit,
   onCancel,
+  accuracyToleranceProfiles = [],
+  defaultAccuracyToleranceProfileId = null,
+  smartRandomProfiles = [],
+  defaultSmartRandomProfileId = null,
 }: TrainingSetupProps) {
+  // Only relevant for prefilling a brand-new configuration (see the prop doc
+  // comment above) — an existing block/step's own stored thresholds always win.
+  const defaultToleranceProfile =
+    !initialValue?.accuracyThresholds && defaultAccuracyToleranceProfileId
+      ? (accuracyToleranceProfiles.find(
+          (profile) => profile.id === defaultAccuracyToleranceProfileId
+        ) ?? null)
+      : null;
+
+  // Only relevant for prefilling a brand-new Smart Random configuration; an
+  // already-configured block/step's own stored range always wins. Also only
+  // considered when the default profile's Measurement Mode matches this
+  // configuration's starting Measurement Mode — a profile can never be
+  // applied in the wrong measurement context.
+  const defaultSmartRandomProfile =
+    initialValue?.smartRandomMin === undefined &&
+    initialValue?.smartRandomMax === undefined &&
+    defaultSmartRandomProfileId
+      ? (smartRandomProfiles.find(
+          (profile) =>
+            profile.id === defaultSmartRandomProfileId &&
+            profile.measurementMode ===
+              (initialValue?.measurementMode ?? "back-hog")
+        ) ?? null)
+      : null;
+
   const [name, setName] = useState(initialValue?.name ?? "");
   const [mode, setMode] = useState<BlockMode>(initialValue?.mode ?? "fixed");
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>(
@@ -132,29 +180,74 @@ export default function TrainingSetup({
   const [targetTimeInput, setTargetTimeInput] = useState(
     (initialValue?.targetTime ?? 3.75).toFixed(2)
   );
+  // null = "Custom for this exercise" (a one-off range, the pre-existing
+  // behavior); a profile id means the range fields are currently showing
+  // that profile's values. Never persisted — see SmartRandomProfileSelector.
+  const [selectedSmartRandomProfileId, setSelectedSmartRandomProfileId] =
+    useState<string | null>(defaultSmartRandomProfile?.id ?? null);
   const [minTargetTimeInput, setMinTargetTimeInput] = useState(
-    (initialValue?.smartRandomMin ?? DEFAULT_SMART_RANDOM_MIN).toFixed(2)
+    (
+      initialValue?.smartRandomMin ??
+      defaultSmartRandomProfile?.min ??
+      DEFAULT_SMART_RANDOM_MIN
+    ).toFixed(2)
   );
   const [maxTargetTimeInput, setMaxTargetTimeInput] = useState(
-    (initialValue?.smartRandomMax ?? DEFAULT_SMART_RANDOM_MAX).toFixed(2)
+    (
+      initialValue?.smartRandomMax ??
+      defaultSmartRandomProfile?.max ??
+      DEFAULT_SMART_RANDOM_MAX
+    ).toFixed(2)
   );
+
+  function handleSelectSmartRandomProfile(profileId: string | null) {
+    setSelectedSmartRandomProfileId(profileId);
+
+    if (profileId) {
+      const profile = smartRandomProfiles.find((p) => p.id === profileId);
+      if (profile) {
+        setMinTargetTimeInput(profile.min.toFixed(2));
+        setMaxTargetTimeInput(profile.max.toFixed(2));
+      }
+    }
+  }
 
   const [accuracyThresholdPreset, setAccuracyThresholdPreset] =
     useState<AccuracyThresholdPreset>(
       detectAccuracyThresholdPreset(initialValue?.accuracyThresholds)
     );
+  // null = "Custom for this exercise" (a one-off value, the pre-existing
+  // behavior); a profile id means Custom's fields are currently showing that
+  // profile's values. Never persisted — see AccuracyToleranceProfileSelector.
+  const [selectedToleranceProfileId, setSelectedToleranceProfileId] = useState<
+    string | null
+  >(defaultToleranceProfile?.id ?? null);
   const [customOnTargetInput, setCustomOnTargetInput] = useState(
     (
       initialValue?.accuracyThresholds?.onTarget ??
+      defaultToleranceProfile?.onTarget ??
       STANDARD_ACCURACY_THRESHOLDS.onTarget
     ).toFixed(2)
   );
   const [customAcceptableInput, setCustomAcceptableInput] = useState(
     (
       initialValue?.accuracyThresholds?.acceptable ??
+      defaultToleranceProfile?.acceptable ??
       STANDARD_ACCURACY_THRESHOLDS.acceptable
     ).toFixed(2)
   );
+
+  function handleSelectToleranceProfile(profileId: string | null) {
+    setSelectedToleranceProfileId(profileId);
+
+    if (profileId) {
+      const profile = accuracyToleranceProfiles.find((p) => p.id === profileId);
+      if (profile) {
+        setCustomOnTargetInput(profile.onTarget.toFixed(2));
+        setCustomAcceptableInput(profile.acceptable.toFixed(2));
+      }
+    }
+  }
 
   const customAccuracyThresholdsValidation =
     accuracyThresholdPreset === "custom"
@@ -394,48 +487,21 @@ export default function TrainingSetup({
             s
           </p>
         ) : (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-500">On Target (±s)</label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={customOnTargetInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (/^[0-9.,]*$/.test(value)) {
-                    setCustomOnTargetInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500">
-                Acceptable (±s)
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={customAcceptableInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (/^[0-9.,]*$/.test(value)) {
-                    setCustomAcceptableInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              />
-            </div>
-
-            {customAccuracyThresholdsValidation?.valid === false && (
-              <p className="col-span-2 text-xs text-red-600">
-                {customAccuracyThresholdsValidation.error}
-              </p>
-            )}
+          <div className="mt-2">
+            <AccuracyToleranceProfileSelector
+              profiles={accuracyToleranceProfiles}
+              selectedProfileId={selectedToleranceProfileId}
+              onSelectProfile={handleSelectToleranceProfile}
+              onTargetInput={customOnTargetInput}
+              acceptableInput={customAcceptableInput}
+              onChangeOnTargetInput={setCustomOnTargetInput}
+              onChangeAcceptableInput={setCustomAcceptableInput}
+              errorMessages={
+                customAccuracyThresholdsValidation?.valid === false
+                  ? [customAccuracyThresholdsValidation.error]
+                  : undefined
+              }
+            />
           </div>
         )}
       </div>
@@ -519,63 +585,26 @@ export default function TrainingSetup({
       {showSmartRandomRange && (
         <div>
           <label className="text-sm font-medium text-slate-700">
-            Target Range
+            Smart Random Settings
           </label>
 
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-500">
-                Minimum Target Time
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={minTargetTimeInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const isValidInput = /^[0-9.,]*$/.test(value);
-
-                  if (isValidInput) {
-                    setMinTargetTimeInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500">
-                Maximum Target Time
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={maxTargetTimeInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const isValidInput = /^[0-9.,]*$/.test(value);
-
-                  if (isValidInput) {
-                    setMaxTargetTimeInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
+          <div className="mt-2">
+            <SmartRandomProfileSelector
+              profiles={smartRandomProfiles}
+              measurementMode={measurementMode}
+              selectedProfileId={selectedSmartRandomProfileId}
+              onSelectProfile={handleSelectSmartRandomProfile}
+              minInput={minTargetTimeInput}
+              maxInput={maxTargetTimeInput}
+              onChangeMinInput={setMinTargetTimeInput}
+              onChangeMaxInput={setMaxTargetTimeInput}
+              errorMessages={
+                smartRandomRangeValidation?.valid === false
+                  ? [smartRandomRangeValidation.error]
+                  : undefined
+              }
+            />
           </div>
-
-          {smartRandomRangeValidation?.valid === false ? (
-            <p className="mt-2 text-xs text-red-600">
-              {smartRandomRangeValidation.error}
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">
-              Targets vary within this range. The app usually avoids large
-              jumps between consecutive shots.
-            </p>
-          )}
         </div>
       )}
 
