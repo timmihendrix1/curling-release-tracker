@@ -9,13 +9,19 @@ import {
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
 import { countInvalidAttempts, countProtocolDeviations } from "../lib/assessment/progress";
-import { accuracyThresholdSetLabel } from "../lib/assessment/result";
+import {
+  accuracyThresholdSetLabel,
+  buildAssessmentTrendInsight,
+  buildAssessmentTrendSeries,
+  findProtocolCompatibleRuns,
+} from "../lib/assessment/result";
 import { formatAssessmentPercent, formatAssessmentSeconds, formatAssessmentSignedSeconds } from "../lib/assessment/resultFormatting";
 import { exportAssessmentRunsToCsv } from "../lib/assessment/export";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { ASSESSMENT_DELETE_RUN_EXPLANATION } from "../lib/assessmentResultContent";
 import AssessmentHistoryItem from "./AssessmentHistoryItem";
 import ConfirmModal from "./ConfirmModal";
+import { surfaceClass } from "./Surface";
 
 type AssessmentAnalyzeProps = {
   assessmentState: AssessmentPersistedState;
@@ -55,7 +61,7 @@ export default function AssessmentAnalyze({
 
   if (completedRuns.length === 0 && incompleteRuns.length === 0 && !activeCurrentRun) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("hero")}>
         <h2 className="text-lg font-semibold text-slate-900">No completed assessments yet.</h2>
         <p className="mt-1 text-sm text-slate-600">
           Complete the Release Time Core Assessment to build your assessment history.
@@ -74,10 +80,54 @@ export default function AssessmentAnalyze({
   const latestRaw = latest ? computeRawAssessmentMetrics(latest) : null;
   const latestCategory = latest ? computeCategoryMetrics(latest, latest.thresholdSnapshot.values) : null;
 
+  // "What should I learn from this?" ahead of the raw metrics below — the
+  // same key-takeaway-first pattern as Analyze → Training (Epic 2). Reuses
+  // the Result screen's own comparison-eligibility rules, so it only ever
+  // compares runs already judged protocol-compatible; never a new domain
+  // computation of its own.
+  const trendInsight = latest
+    ? buildAssessmentTrendInsight(
+        buildAssessmentTrendSeries(
+          [latest, ...findProtocolCompatibleRuns(completedRuns, latest)],
+          latest.thresholdSnapshot,
+          latest.id
+        )
+      )
+    : null;
+
   return (
     <div className="space-y-4">
+      {/* An in-progress run is more relevant than a past result — same
+          "real, current state leads" rule as Home and Assess Landing
+          (compositional redesign, not just restyling: this reorders which
+          section is the Hero based on what's actually happening). */}
+      {activeCurrentRun && (
+        <div className={surfaceClass("hero")}>
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Active Assessment Run</p>
+          <p className="mt-1 text-sm text-slate-700">This run is still in progress and not yet part of your history.</p>
+          <button
+            type="button"
+            onClick={onResumeCurrent}
+            className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700 sm:w-auto"
+          >
+            Resume Assessment
+          </button>
+        </div>
+      )}
+
       {latest && latestRaw && latestCategory && (
-        <div className="rounded-2xl bg-white p-6 shadow-lg">
+        <div className={surfaceClass(activeCurrentRun ? "primary" : "hero")}>
+          {trendInsight && (
+            <div className="mb-4 border-b border-slate-100 pb-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                What should I learn from this?
+              </p>
+              <p className="mt-2 text-lg font-semibold text-slate-900">
+                {trendInsight.headline}
+              </p>
+            </div>
+          )}
+
           <h2 className="text-lg font-semibold text-slate-900">Latest Completed Assessment</h2>
           <p className="mt-1 text-sm text-slate-600">
             {latest.templateSnapshot.name} v{latest.templateVersion} ·{" "}
@@ -126,21 +176,8 @@ export default function AssessmentAnalyze({
         </div>
       )}
 
-      {activeCurrentRun && (
-        <div className="rounded-2xl bg-amber-50 p-4 shadow-lg ring-1 ring-amber-200">
-          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">Active Assessment Run</p>
-          <p className="mt-1 text-sm text-slate-700">This run is still in progress and not yet part of your history.</p>
-          <button
-            type="button"
-            onClick={onResumeCurrent}
-            className="mt-3 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
-          >
-            Resume Assessment
-          </button>
-        </div>
-      )}
-
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* History is clearly secondary — never equal to the Hero above (Epic 1). */}
+      <div className={surfaceClass("secondary")}>
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Assessment History</h2>
           {allArchivedRuns.length > 0 && (

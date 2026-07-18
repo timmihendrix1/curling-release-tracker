@@ -3,6 +3,7 @@ import { addInvalidAttempt } from "../attempts";
 import { getCurrentPlannedShot } from "../progress";
 import {
   buildAssessmentResultView,
+  buildAssessmentTrendInsight,
   buildAssessmentTrendSeries,
   buildInvalidAttemptRows,
   buildProtocolIntegritySummary,
@@ -350,5 +351,34 @@ describe("comparison and trends", () => {
     const points = buildAssessmentTrendSeries([completed, incomplete], standardAssessmentThresholdSet());
     expect(points).toHaveLength(1);
     expect(points[0].runId).toBe(completed.id);
+  });
+});
+
+describe("buildAssessmentTrendInsight", () => {
+  it("returns null with fewer than two trend points", () => {
+    const run = buildCompletedRun({ completedAt: "2026-01-01T00:00:00.000Z" });
+    const points = buildAssessmentTrendSeries([run], standardAssessmentThresholdSet());
+    expect(buildAssessmentTrendInsight(points)).toBeNull();
+  });
+
+  it("leads with a fallen Major Miss rate when it improved the most", () => {
+    const earlier = buildCompletedRun({
+      completedAt: "2026-01-01T00:00:00.000Z",
+      scoredShotBuilder: (shot) => ({ measuredTime: shot.targetTime + 0.3 }),
+    });
+    const later = buildCompletedRun({ completedAt: "2026-02-01T00:00:00.000Z" });
+
+    const points = buildAssessmentTrendSeries([earlier, later], standardAssessmentThresholdSet());
+    const insight = buildAssessmentTrendInsight(points);
+    expect(insight?.headline).toMatch(/Major Miss rate has fallen/);
+  });
+
+  it("reports a steady message when nothing changed meaningfully", () => {
+    const a = buildCompletedRun({ completedAt: "2026-01-01T00:00:00.000Z" });
+    const b = buildCompletedRun({ completedAt: "2026-02-01T00:00:00.000Z" });
+
+    const points = buildAssessmentTrendSeries([a, b], standardAssessmentThresholdSet());
+    const insight = buildAssessmentTrendInsight(points);
+    expect(insight?.headline).toMatch(/steady/i);
   });
 });

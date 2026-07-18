@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
+import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
 import AssessmentAnalyze from "./AssessmentAnalyze";
 import AssessmentResultScreen from "./AssessmentResultScreen";
@@ -9,12 +11,16 @@ import BlindShotEntry from "./BlindShotEntry";
 import ConfirmModal from "./ConfirmModal";
 import DashboardCard from "./DashboardCard";
 import HomeScreen from "./HomeScreen";
+import PageHeader from "./PageHeader";
 import NewTrainingBlock from "./NewTrainingBlock";
 import PrimaryNavigation from "./PrimaryNavigation";
 import ReleaseTrendChart from "./ReleaseTrendChart";
 import SessionSettings from "./SessionSettings";
 import SettingsScreen from "./SettingsScreen";
 import ShotEntry, { type ShotEntryTarget } from "./ShotEntry";
+import type { SmartRandomProfileFormValue } from "./SmartRandomProfileForm";
+import SmartRandomProfilesScreen from "./SmartRandomProfilesScreen";
+import { surfaceClass } from "./Surface";
 import TargetTimeSettings from "./TargetTimeSettings";
 import TimingSimulatorPanel, {
   type SimulatorDiagnosticEntry,
@@ -27,6 +33,9 @@ import ShotQualityTrendChart from "./ShotQualityTrendChart";
 import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
+import TrainLanding from "./TrainLanding";
+import TrainingPlanProgress from "./TrainingPlanProgress";
+import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
 import type {
@@ -37,6 +46,7 @@ import type {
   ShotType,
   TimingResult,
   TrainingBlock,
+  TrainingPlan,
 } from "../types";
 import type { AssessmentRun } from "../lib/assessment/types";
 
@@ -84,11 +94,11 @@ import {
   createSimulatorTimingProvider,
 } from "../lib/simulatorTimingProvider";
 import {
-  hasMultipleTargetTimes,
   hasUniformThresholds,
   prepareTargetErrorByShotData,
   prepareTargetVsActualScatterData,
 } from "../lib/chartData";
+import { buildTrainingInsight } from "../lib/trainingInsight";
 import {
   aggregateTargetAccuracyAcrossBlocks,
   buildHistoryAnalysisContext,
@@ -126,9 +136,88 @@ import {
   getNextShotTarget,
   measurementModeLabel,
   variableTargetModeLabel,
+  type NewBlockInput,
 } from "../lib/trainingBlocks";
+import { migrateAccuracyToleranceProfilesState } from "../lib/accuracyToleranceProfiles/migration";
+import {
+  ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
+  createEmptyAccuracyToleranceProfilesState,
+  serializeAccuracyToleranceProfilesState,
+  type AccuracyToleranceProfilesState,
+} from "../lib/accuracyToleranceProfiles/persistence";
+import {
+  addAccuracyToleranceProfile,
+  buildAccuracyToleranceProfile,
+  deleteAccuracyToleranceProfile,
+  duplicateAccuracyToleranceProfile,
+  replaceAccuracyToleranceProfile,
+  setDefaultAccuracyToleranceProfile,
+  type AccuracyToleranceProfileInput,
+} from "../lib/accuracyToleranceProfiles/profiles";
+import { migrateSmartRandomProfilesState } from "../lib/smartRandomProfiles/migration";
+import {
+  SMART_RANDOM_PROFILES_STORAGE_KEY,
+  createEmptySmartRandomProfilesState,
+  serializeSmartRandomProfilesState,
+  type SmartRandomProfilesState,
+} from "../lib/smartRandomProfiles/persistence";
+import {
+  addSmartRandomProfile,
+  buildSmartRandomProfile,
+  deleteSmartRandomProfile,
+  duplicateSmartRandomProfile,
+  replaceSmartRandomProfile,
+  setDefaultSmartRandomProfile,
+} from "../lib/smartRandomProfiles/profiles";
+import { advanceToNextPlanStep, startPlanExecution } from "../lib/trainingPlans/execution";
+import { resolveExpectedHandle } from "../lib/trainingPlans/handleStrategy";
+import { mapPlanStepToTrainingBlockInput } from "../lib/trainingPlans/mapping";
+import { migrateTrainingPlans } from "../lib/trainingPlans/migration";
+import {
+  addPlan,
+  deletePlan,
+  duplicatePlan,
+  serializeTrainingPlansState,
+  TRAINING_PLANS_SCHEMA_VERSION,
+  TRAINING_PLANS_STORAGE_KEY,
+  updatePlan,
+  type TrainingPlansPersistedState,
+} from "../lib/trainingPlans/persistence";
+import {
+  getActiveStepSnapshot,
+  getPlanProgressSummary,
+  isActiveStepComplete,
+  isFinalStep,
+  isPlanComplete,
+  isPlanExecutionActive,
+} from "../lib/trainingPlans/progress";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
+
+// Compact contextual header copy for every functional screen (DESIGN_SYSTEM.md
+// §9.2) — Home keeps the full AppHeader product identity instead, see the
+// activeView switch below.
+const FUNCTIONAL_PAGE_HEADERS: Record<
+  Exclude<ActiveView, "home">,
+  { title: string; description: string }
+> = {
+  train: {
+    title: "Train",
+    description: "Set up a session and record release times as you throw.",
+  },
+  assess: {
+    title: "Assess",
+    description: "Run the Release Time Core Assessment and review results.",
+  },
+  analyze: {
+    title: "Analyze",
+    description: "Review training and assessment history.",
+  },
+  settings: {
+    title: "Settings",
+    description: "Manage local data and app preferences.",
+  },
+};
 
 const CURRENT_SESSION_STORAGE_KEY =
   "curling-release-tracker-current-session";
@@ -136,6 +225,8 @@ const SESSION_HISTORY_STORAGE_KEY =
   "curling-release-tracker-session-history";
 const HISTORY_FILTERS_STORAGE_KEY =
   "curling-release-tracker-history-filters";
+// TRAINING_PLANS_STORAGE_KEY lives in src/lib/trainingPlans/persistence.ts —
+// its own key, independent of Session/Session History (see ADR-0012).
 
 type ConfirmAction = {
   title: string;
@@ -193,6 +284,37 @@ export default function TrackerApp() {
     Session[]
   >([]);
 
+  // The Training Plan library — its own persisted domain, independent of
+  // currentSession/sessionHistory (see docs/TRAINING_SYSTEM_AND_PLANS.md
+  // section 37 and ADR-0012). An active/completed execution lives entirely on
+  // Session.planExecution, never here.
+  const [trainingPlans, setTrainingPlans] = useState<TrainingPlan[]>([]);
+
+  // Accuracy Tolerance Profiles — a small, independent persisted domain (its own
+  // localStorage key, its own migration). A profile only ever helps *select*
+  // On Target/Acceptable values; TrainingBlock/ReleaseTimingBlockConfiguration
+  // always store the actual resolved numbers, never a live profile reference.
+  const [accuracyToleranceProfilesState, setAccuracyToleranceProfilesState] =
+    useState<AccuracyToleranceProfilesState>(
+      createEmptyAccuracyToleranceProfilesState()
+    );
+  const [
+    showAccuracyToleranceProfilesManager,
+    setShowAccuracyToleranceProfilesManager,
+  ] = useState(false);
+
+  // Smart Random Profiles — a small, independent persisted domain (its own
+  // localStorage key, its own migration). A profile only ever helps *select*
+  // a Smart Random range; TrainingBlock/ReleaseTimingBlockConfiguration always
+  // store the actual smartRandomMin/smartRandomMax numbers, never a live
+  // profile reference.
+  const [smartRandomProfilesState, setSmartRandomProfilesState] =
+    useState<SmartRandomProfilesState>(createEmptySmartRandomProfilesState());
+  const [
+    showSmartRandomProfilesManager,
+    setShowSmartRandomProfilesManager,
+  ] = useState(false);
+
   const [historyFilters, setHistoryFilters] = useState<HistoryAnalysisFilters>(
     createDefaultHistoryFilters()
   );
@@ -200,6 +322,15 @@ export default function TrackerApp() {
   const [blockFilter, setBlockFilter] = useState(
     DEFAULT_SHOT_FILTER
   );
+
+  // Which entry mode the athlete is currently looking at when idle — once a
+  // capture sequence is actually running/paused, its own live status takes
+  // over regardless of this choice (compositional redesign: Manual Entry and
+  // Auto Capture are two alternative ways to do the same task, not two
+  // permanently-stacked panels — see docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md
+  // §17's "Auto Capture configuration should not permanently occupy the main
+  // execution area").
+  const [entryMode, setEntryMode] = useState<"manual" | "auto">("manual");
 
   const [showNewBlockModal, setShowNewBlockModal] =
     useState(false);
@@ -719,6 +850,48 @@ export default function TrackerApp() {
     }
 
     setAssessmentState(finalAssessment);
+
+    // --- Training Plan library (its own key, own migration path — ADR-0012) ---
+    const savedTrainingPlans = localStorage.getItem(TRAINING_PLANS_STORAGE_KEY);
+    let rawTrainingPlans: unknown = null;
+    try {
+      rawTrainingPlans = savedTrainingPlans ? JSON.parse(savedTrainingPlans) : null;
+    } catch {
+      rawTrainingPlans = null;
+    }
+    setTrainingPlans(migrateTrainingPlans(rawTrainingPlans).plans);
+
+    // --- Accuracy Tolerance Profiles (its own key, own migration path) ---
+    const savedAccuracyToleranceProfiles = localStorage.getItem(
+      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY
+    );
+    let rawAccuracyToleranceProfiles: unknown = null;
+    try {
+      rawAccuracyToleranceProfiles = savedAccuracyToleranceProfiles
+        ? JSON.parse(savedAccuracyToleranceProfiles)
+        : null;
+    } catch {
+      rawAccuracyToleranceProfiles = null;
+    }
+    setAccuracyToleranceProfilesState(
+      migrateAccuracyToleranceProfilesState(rawAccuracyToleranceProfiles)
+    );
+
+    // --- Smart Random Profiles (its own key, own migration path) ---
+    const savedSmartRandomProfiles = localStorage.getItem(
+      SMART_RANDOM_PROFILES_STORAGE_KEY
+    );
+    let rawSmartRandomProfiles: unknown = null;
+    try {
+      rawSmartRandomProfiles = savedSmartRandomProfiles
+        ? JSON.parse(savedSmartRandomProfiles)
+        : null;
+    } catch {
+      rawSmartRandomProfiles = null;
+    }
+    setSmartRandomProfilesState(
+      migrateSmartRandomProfilesState(rawSmartRandomProfiles)
+    );
   }, []);
 
   useEffect(() => {
@@ -752,6 +925,28 @@ export default function TrackerApp() {
     );
   }, [assessmentState]);
 
+  useEffect(() => {
+    const state: TrainingPlansPersistedState = {
+      schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
+      plans: trainingPlans,
+    };
+    localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, serializeTrainingPlansState(state));
+  }, [trainingPlans]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
+      serializeAccuracyToleranceProfilesState(accuracyToleranceProfilesState)
+    );
+  }, [accuracyToleranceProfilesState]);
+
+  useEffect(() => {
+    localStorage.setItem(
+      SMART_RANDOM_PROFILES_STORAGE_KEY,
+      serializeSmartRandomProfilesState(smartRandomProfilesState)
+    );
+  }, [smartRandomProfilesState]);
+
   if (!currentSession) {
     return null;
   }
@@ -770,6 +965,13 @@ export default function TrackerApp() {
   const activeBlockAnalysis = activeBlock && activeBlockAccuracyThresholds
     ? analyzeShots(filteredActiveBlockShots, activeBlockAccuracyThresholds)
     : null;
+
+  // Whichever capture path is actually in progress is the screen's Hero; the
+  // other stays available as a Primary (non-Hero) fallback (Epic 1: exactly
+  // one Hero per screen — see docs/DESIGN_SYSTEM.md §10.1).
+  const autoCaptureIsActive = isCaptureSequenceActive(
+    currentSession.captureSequence
+  );
 
   const activeBlockMap = activeBlock
     ? new Map([[activeBlock.id, activeBlock]])
@@ -801,6 +1003,52 @@ export default function TrackerApp() {
             activeBlock.blindTargetMode === "smart-random"),
       }
     : null;
+
+  // --- Training Plan execution (derived, never separately persisted UI
+  // state — see ADR-0012). isPlanExecutionActive is false whenever the
+  // athlete has navigated away from the plan's current block (e.g. manually
+  // started a new Training Block instead of Continue/Finish) — the plan
+  // progress/transition UI simply stops rendering in that case rather than
+  // guessing which block it should apply to.
+  const planExecution = currentSession.planExecution;
+  const isTrainingPlanActive = planExecution
+    ? isPlanExecutionActive(currentSession, planExecution)
+    : false;
+  const activePlanStepSnapshot =
+    planExecution && isTrainingPlanActive
+      ? getActiveStepSnapshot(planExecution)
+      : undefined;
+  const isActivePlanStepComplete =
+    planExecution && isTrainingPlanActive
+      ? isActiveStepComplete(currentSession, planExecution)
+      : false;
+  const isActivePlanStepFinal = planExecution ? isFinalStep(planExecution) : false;
+  const isTrainingPlanComplete =
+    planExecution && isTrainingPlanActive
+      ? isPlanComplete(currentSession, planExecution)
+      : false;
+  const trainingPlanProgressSummary =
+    planExecution && isTrainingPlanActive
+      ? getPlanProgressSummary(currentSession, planExecution)
+      : null;
+  const nextPlanStepLabel =
+    planExecution && !isActivePlanStepFinal
+      ? blockModeLabel(
+          planExecution.steps[planExecution.activeStepIndex + 1].step.configuration
+            .mode
+        )
+      : null;
+  // Preselected (never locked) handle for the next shot — undefined means
+  // Free, today's unchanged behavior. Re-derived every render from the
+  // number of shots already saved in this step's block, so it always follows
+  // the plan's own sequence regardless of any prior one-shot override.
+  const shotEntryPresetHandle =
+    isTrainingPlanActive && activePlanStepSnapshot
+      ? resolveExpectedHandle(
+          activePlanStepSnapshot.step.handleStrategy,
+          activeBlockShots.length
+        )
+      : undefined;
 
   // Single available Training Category/Measurement Mode is auto-selected;
   // multiple options keep whatever was previously chosen (persisted above) or
@@ -837,6 +1085,10 @@ export default function TrackerApp() {
   const historyTargetAccuracy = aggregateTargetAccuracyAcrossBlocks(
     historyAnalysisContext.blocks
   );
+  // Analyze's opening "what should I learn" sentence — computed only from
+  // the same selection every other History surface reads from, never a
+  // separate query (Epic 2: insight before raw metrics).
+  const trainingInsight = buildTrainingInsight(historyAnalysisContext.blocks);
   const historyFullAnalysis = analyzeShots(
     historyAnalysisContext.shots,
     historyThresholds
@@ -1167,8 +1419,12 @@ export default function TrackerApp() {
   // combination and throws a clear error for an invalid one. TrainingSetup's
   // own UI already prevents submitting such a combination, so this is only a
   // defensive backstop — but a setCurrentSession updater must never throw,
-  // so we validate/construct outside of it first.
-  function tryCreateTrainingBlock(value: TrainingSetupValue) {
+  // so we validate/construct outside of it first. Accepts NewBlockInput
+  // (rather than TrainingSetupValue) so the same defensive path also covers
+  // blocks created from a Training Plan Step via
+  // mapPlanStepToTrainingBlockInput — every TrainingSetupValue already
+  // satisfies NewBlockInput's shape.
+  function tryCreateTrainingBlock(value: NewBlockInput) {
     try {
       return createTrainingBlock(value);
     } catch (error) {
@@ -1213,6 +1469,247 @@ export default function TrackerApp() {
     setShowNewBlockModal(false);
   }
 
+  /** Upserts a Training Plan into the library by id — create or rename/re-edit alike. */
+  function handleSaveTrainingPlan(plan: TrainingPlan) {
+    setTrainingPlans((current) => {
+      const library: TrainingPlansPersistedState = {
+        schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
+        plans: current,
+      };
+
+      if (current.some((existing) => existing.id === plan.id)) {
+        const result = updatePlan(library, plan);
+        return result.ok ? result.value.plans : current;
+      }
+
+      return addPlan(library, plan).plans;
+    });
+  }
+
+  /**
+   * Removes only the reusable plan definition — never a Session already
+   * started from it (see docs/TRAINING_SYSTEM_AND_PLANS.md section 20).
+   * TrainingPlansLibrary already confirms this destructive action itself.
+   */
+  function handleDeleteTrainingPlan(planId: string) {
+    setTrainingPlans(
+      (current) =>
+        deletePlan(
+          { schemaVersion: TRAINING_PLANS_SCHEMA_VERSION, plans: current },
+          planId
+        ).plans
+    );
+  }
+
+  function handleDuplicateTrainingPlan(plan: TrainingPlan) {
+    const copy = duplicatePlan(plan);
+    setTrainingPlans(
+      (current) =>
+        addPlan(
+          { schemaVersion: TRAINING_PLANS_SCHEMA_VERSION, plans: current },
+          copy
+        ).plans
+    );
+  }
+
+  /**
+   * Starts a Training Plan: creates step 0's TrainingBlock through the exact
+   * same validated path as "New Training Block" (tryCreateTrainingBlock),
+   * then attaches the plan-execution snapshot in the very same atomic session
+   * update — never two separate setCurrentSession calls, so the session is
+   * never briefly missing one half of the pair. See ADR-0012.
+   */
+  function handleStartTrainingPlan(plan: TrainingPlan) {
+    const firstStep = plan.steps[0];
+    if (!firstStep) return;
+
+    const blockInput = mapPlanStepToTrainingBlockInput(firstStep);
+    if (!tryCreateTrainingBlock(blockInput)) return;
+
+    setCurrentSession((session) => {
+      if (!session) return session;
+
+      const withBlock = addTrainingBlock(session, blockInput);
+      return {
+        ...withBlock,
+        planExecution: startPlanExecution(plan, withBlock.activeBlockId),
+      };
+    });
+
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setEntryMode("manual");
+  }
+
+  function handleCreateAccuracyToleranceProfile(
+    input: AccuracyToleranceProfileInput
+  ) {
+    const outcome = buildAccuracyToleranceProfile(input, new Date().toISOString());
+    if (!outcome.ok) {
+      alert(outcome.error.message);
+      return;
+    }
+    setAccuracyToleranceProfilesState((current) =>
+      addAccuracyToleranceProfile(current, outcome.value)
+    );
+  }
+
+  /** Never rewrites `id`/`createdAt` — only name/values and `updatedAt` change. */
+  function handleUpdateAccuracyToleranceProfile(
+    profileId: string,
+    input: Omit<AccuracyToleranceProfileInput, "id" | "createdAt">
+  ) {
+    setAccuracyToleranceProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const outcome = buildAccuracyToleranceProfile(
+        { ...input, id: existing.id, createdAt: existing.createdAt },
+        new Date().toISOString()
+      );
+      if (!outcome.ok) {
+        alert(outcome.error.message);
+        return current;
+      }
+
+      const result = replaceAccuracyToleranceProfile(current, outcome.value);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  function handleDuplicateAccuracyToleranceProfile(profileId: string) {
+    setAccuracyToleranceProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const copy = duplicateAccuracyToleranceProfile(
+        existing,
+        new Date().toISOString()
+      );
+      return addAccuracyToleranceProfile(current, copy);
+    });
+  }
+
+  function handleDeleteAccuracyToleranceProfile(profileId: string) {
+    setAccuracyToleranceProfilesState((current) =>
+      deleteAccuracyToleranceProfile(current, profileId)
+    );
+  }
+
+  function handleSetDefaultAccuracyToleranceProfile(profileId: string | null) {
+    setAccuracyToleranceProfilesState((current) => {
+      const result = setDefaultAccuracyToleranceProfile(current, profileId);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  // Smart Random has no validated range for any Measurement Mode other than
+  // Back-Hog (isSmartRandomAvailable) — the profile form never offers a
+  // Measurement Mode choice, so every profile created here is explicitly
+  // "back-hog"; buildSmartRandomProfile still re-validates this rather than
+  // trusting the caller.
+  function handleCreateSmartRandomProfile(value: SmartRandomProfileFormValue) {
+    const outcome = buildSmartRandomProfile(
+      { ...value, measurementMode: "back-hog" },
+      new Date().toISOString()
+    );
+    if (!outcome.ok) {
+      alert(outcome.error.message);
+      return;
+    }
+    setSmartRandomProfilesState((current) =>
+      addSmartRandomProfile(current, outcome.value)
+    );
+  }
+
+  /** Never rewrites `id`/`createdAt`/`measurementMode` — only the range and `updatedAt` change. */
+  function handleUpdateSmartRandomProfile(
+    profileId: string,
+    value: SmartRandomProfileFormValue
+  ) {
+    setSmartRandomProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const outcome = buildSmartRandomProfile(
+        {
+          ...value,
+          id: existing.id,
+          measurementMode: existing.measurementMode,
+          createdAt: existing.createdAt,
+        },
+        new Date().toISOString()
+      );
+      if (!outcome.ok) {
+        alert(outcome.error.message);
+        return current;
+      }
+
+      const result = replaceSmartRandomProfile(current, outcome.value);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  function handleDuplicateSmartRandomProfile(profileId: string) {
+    setSmartRandomProfilesState((current) => {
+      const existing = current.profiles.find((profile) => profile.id === profileId);
+      if (!existing) return current;
+
+      const copy = duplicateSmartRandomProfile(existing, new Date().toISOString());
+      return addSmartRandomProfile(current, copy);
+    });
+  }
+
+  function handleDeleteSmartRandomProfile(profileId: string) {
+    setSmartRandomProfilesState((current) =>
+      deleteSmartRandomProfile(current, profileId)
+    );
+  }
+
+  function handleSetDefaultSmartRandomProfile(profileId: string | null) {
+    setSmartRandomProfilesState((current) => {
+      const result = setDefaultSmartRandomProfile(current, profileId);
+      return result.ok ? result.value : current;
+    });
+  }
+
+  /**
+   * Advances a Training Plan execution to its next step — same composition as
+   * handleStartTrainingPlan: atomically creates the next TrainingBlock and
+   * stamps its id onto the execution snapshot in one session update. A no-op
+   * if the plan execution isn't actually driving the current active block
+   * (see isPlanExecutionActive) or there is no next step.
+   */
+  function handleContinueToNextPlanStep() {
+    const session = currentSession;
+    const planExecution = session?.planExecution;
+    if (!session || !planExecution || !isPlanExecutionActive(session, planExecution)) {
+      return;
+    }
+
+    const nextIndex = planExecution.activeStepIndex + 1;
+    const nextStep = planExecution.steps[nextIndex]?.step;
+    if (!nextStep) return;
+
+    const blockInput = mapPlanStepToTrainingBlockInput(nextStep);
+    if (!tryCreateTrainingBlock(blockInput)) return;
+
+    setCurrentSession((current) => {
+      if (!current || !current.planExecution) return current;
+
+      const withBlock = addTrainingBlock(current, blockInput);
+      return {
+        ...withBlock,
+        planExecution: advanceToNextPlanStep(
+          current.planExecution,
+          withBlock.activeBlockId
+        ),
+      };
+    });
+
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setEntryMode("manual");
+  }
+
   function handleStartNewSession() {
     guardLeavingActiveWork(
       hasUnsavedBlindDraft
@@ -1247,6 +1744,15 @@ export default function TrackerApp() {
         });
       }
     );
+  }
+
+  /**
+   * A completed Training Plan's "Finish Training" action is simply this same
+   * existing session-completion path — plan completion introduces no new
+   * session-archiving logic of its own (see ADR-0012).
+   */
+  function handleFinishPlannedTraining() {
+    handleStartNewSession();
   }
 
   /**
@@ -1478,7 +1984,16 @@ export default function TrackerApp() {
   }
 
   return (
-    <div className="space-y-4 pb-24 sm:pb-4">
+    <div className="app-content-clearance space-y-4">
+      {activeView === "home" ? (
+        <AppHeader />
+      ) : (
+        <PageHeader
+          title={FUNCTIONAL_PAGE_HEADERS[activeView].title}
+          description={FUNCTIONAL_PAGE_HEADERS[activeView].description}
+        />
+      )}
+
       <PrimaryNavigation activeView={activeView} onNavigate={handleNavigate} />
 
       {viewingAssessmentResultRunId && resolvedAssessmentResultRun && (
@@ -1512,41 +2027,97 @@ export default function TrackerApp() {
           hasHistory={sessionHistory.length > 0}
           onExportHistoryCsv={() => exportHistoryToCsv(sessionHistory)}
           onClearHistory={handleClearSessionHistory}
+          accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+          defaultAccuracyToleranceProfileId={
+            accuracyToleranceProfilesState.defaultProfileId
+          }
+          onManageAccuracyTolerances={() =>
+            setShowAccuracyToleranceProfilesManager(true)
+          }
+          smartRandomProfiles={smartRandomProfilesState.profiles}
+          defaultSmartRandomProfileId={smartRandomProfilesState.defaultProfileId}
+          onManageSmartRandomProfiles={() =>
+            setShowSmartRandomProfilesManager(true)
+          }
         />
       )}
 
       {activeView === "train" && (
         <>
           {!activeBlock || !activeBlockAnalysis ? (
-            <>
-              <SessionSettings
-                title={currentSession.title}
-                notes={currentSession.notes}
-                onChangeTitle={handleChangeSessionTitle}
-                onChangeNotes={handleChangeSessionNotes}
-              />
+            // Quick Start (below) preserves the exact existing hero, unchanged
+            // — Training Plans is a second, equally-reachable entry path
+            // alongside it, not a replacement (spec section 21/22).
+            <TrainLanding
+              quickStartContent={
+                // One Hero setup surface, composed around the actual decision
+                // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+                // Train Information Priority — training objective and
+                // configuration first, session naming last as the clearly
+                // optional detail it is (compositional redesign, not a
+                // Session-card-then-Block-card stack).
+                <div className={surfaceClass("hero")}>
+                  <h2 className="text-xl font-semibold text-slate-900">
+                    Set Up Training Block
+                  </h2>
 
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Set Up Training Block
-                </h2>
+                  <p className="mt-2 text-sm text-slate-600">
+                    Choose what you&apos;re training, then start.
+                  </p>
 
-                <p className="mt-2 text-sm text-slate-600">
-                  Configure the first training block for this
-                  session.
-                </p>
+                  <div className="mt-5">
+                    <TrainingSetup
+                      submitLabel="Start Training"
+                      onSubmit={handleCreateFirstBlock}
+                      accuracyToleranceProfiles={
+                        accuracyToleranceProfilesState.profiles
+                      }
+                      defaultAccuracyToleranceProfileId={
+                        accuracyToleranceProfilesState.defaultProfileId
+                      }
+                      smartRandomProfiles={smartRandomProfilesState.profiles}
+                      defaultSmartRandomProfileId={
+                        smartRandomProfilesState.defaultProfileId
+                      }
+                    />
+                  </div>
 
-                <div className="mt-4">
-                  <TrainingSetup
-                    submitLabel="Start Training"
-                    onSubmit={handleCreateFirstBlock}
-                  />
+                  <div className="mt-6 border-t border-slate-100 pt-4">
+                    <label className="text-xs font-medium text-slate-500">
+                      Session name <span className="font-normal">(optional)</span>
+                    </label>
+
+                    <div className="mt-2">
+                      <SessionSettings
+                        variant="bare"
+                        title={currentSession.title}
+                        notes={currentSession.notes}
+                        onChangeTitle={handleChangeSessionTitle}
+                        onChangeNotes={handleChangeSessionNotes}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </>
+              }
+              plans={trainingPlans}
+              onSavePlan={handleSaveTrainingPlan}
+              onDeletePlan={handleDeleteTrainingPlan}
+              onDuplicatePlan={handleDuplicateTrainingPlan}
+              onStartPlan={handleStartTrainingPlan}
+              accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+              defaultAccuracyToleranceProfileId={
+                accuracyToleranceProfilesState.defaultProfileId
+              }
+              smartRandomProfiles={smartRandomProfilesState.profiles}
+              defaultSmartRandomProfileId={
+                smartRandomProfilesState.defaultProfileId
+              }
+            />
           ) : (
             <>
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              {/* Essential context, not the Hero — the current target/capture
+                  task below carries the strongest surface (Epic 1). */}
+              <div className={surfaceClass("primary")}>
                 <div className="flex items-start justify-between gap-4">
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -1598,56 +2169,139 @@ export default function TrackerApp() {
                     </p>
                   </div>
 
+                  {/* Secondary action — kept visually subordinate to the
+                      block identity beside it and to the primary shot-entry
+                      action below (DESIGN_SYSTEM.md §19.1/§12.2). */}
                   <button
                     type="button"
                     onClick={handleOpenNewBlockModal}
-                    className="whitespace-nowrap rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+                    className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
                   >
                     New Training Block
                   </button>
                 </div>
               </div>
 
-              {shotEntryTarget && activeBlock.mode === "blind" ? (
-                <BlindShotEntry
-                  key={`${activeBlock.id}-${blindDraftResetToken}`}
-                  onAddShot={handleAddShot}
-                  target={shotEntryTarget}
-                  onDraftStateChange={setHasUnsavedBlindDraft}
+              {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
+                <TrainingPlanProgress
+                  sourcePlanName={planExecution.sourcePlanName}
+                  summary={trainingPlanProgressSummary}
                 />
-              ) : (
-                shotEntryTarget && (
-                  <ShotEntry
-                    onAddShot={handleAddShot}
-                    target={shotEntryTarget}
-                  />
-                )
               )}
 
+              {isTrainingPlanActive &&
+                isActivePlanStepComplete &&
+                planExecution &&
+                activePlanStepSnapshot &&
+                (isTrainingPlanComplete ? (
+                  <TrainingPlanStepTransition
+                    kind="plan-complete"
+                    totalPlannedStones={trainingPlanProgressSummary?.totalPlannedShots ?? 0}
+                    totalActualStones={trainingPlanProgressSummary?.totalActualShots ?? 0}
+                    onFinish={handleFinishPlannedTraining}
+                  />
+                ) : (
+                  nextPlanStepLabel && (
+                    <TrainingPlanStepTransition
+                      kind="continue"
+                      completedStepLabel={blockModeLabel(
+                        activePlanStepSnapshot.step.configuration.mode
+                      )}
+                      nextStepLabel={nextPlanStepLabel}
+                      onContinue={handleContinueToNextPlanStep}
+                    />
+                  )
+                ))}
+
               {activeBlock.mode === "blind" ? (
-                <div className="rounded-2xl bg-slate-100 p-4 text-sm text-slate-600">
-                  Auto Capture isn&apos;t available for Blind Weight yet —
-                  prediction must be locked before an automatic reading could be
-                  applied. Use the manual Blind Weight flow above.
-                </div>
+                <>
+                  {shotEntryTarget && (
+                    <BlindShotEntry
+                      key={`${activeBlock.id}-${blindDraftResetToken}`}
+                      onAddShot={handleAddShot}
+                      target={shotEntryTarget}
+                      onDraftStateChange={setHasUnsavedBlindDraft}
+                      presetHandle={shotEntryPresetHandle}
+                    />
+                  )}
+
+                  <p className="px-1 text-xs text-slate-500">
+                    Auto Capture isn&apos;t available for Blind Weight yet —
+                    prediction must be locked before an automatic reading
+                    could be applied.
+                  </p>
+                </>
               ) : (
                 <>
-                  <AutoCapture
-                    activeBlock={activeBlock}
-                    captureSequence={currentSession.captureSequence}
-                    currentTargetTime={getNextShotTarget(activeBlock)}
-                    manualHandle={captureManualHandle}
-                    onChangeManualHandle={setCaptureManualHandle}
-                    manualTargetInput={captureManualTargetInput}
-                    onChangeManualTargetInput={setCaptureManualTargetInput}
-                    lastCaptureMessage={lastCaptureMessage}
-                    onStart={handleStartCaptureSequence}
-                    onPause={handlePauseCaptureSequence}
-                    onResume={handleResumeCaptureSequence}
-                    onCancel={handleCancelCaptureSequence}
-                    onUndo={handleUndoLastCapturedShot}
-                    onManualResult={handleManualCaptureResult}
-                  />
+                  {/* Manual Entry and Auto Capture are two ways to do the
+                      same task, not two permanently-stacked panels — a
+                      segmented choice while idle; once a sequence is
+                      actually running/paused, its own live status takes
+                      over and speaks for itself (compositional redesign). */}
+                  {!autoCaptureIsActive && (
+                    <div
+                      role="tablist"
+                      aria-label="Shot entry method"
+                      className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+                    >
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={entryMode === "manual"}
+                        onClick={() => setEntryMode("manual")}
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                          entryMode === "manual"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        Manual Entry
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={entryMode === "auto"}
+                        onClick={() => setEntryMode("auto")}
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                          entryMode === "auto"
+                            ? "bg-slate-900 text-white"
+                            : "text-slate-700 hover:bg-slate-200"
+                        }`}
+                      >
+                        Auto Capture
+                      </button>
+                    </div>
+                  )}
+
+                  {shotEntryTarget && (autoCaptureIsActive || entryMode === "manual") && (
+                    <ShotEntry
+                      onAddShot={handleAddShot}
+                      target={shotEntryTarget}
+                      level={autoCaptureIsActive ? "primary" : "hero"}
+                      presetHandle={shotEntryPresetHandle}
+                    />
+                  )}
+
+                  {(autoCaptureIsActive || entryMode === "auto") && (
+                    <AutoCapture
+                      activeBlock={activeBlock}
+                      captureSequence={currentSession.captureSequence}
+                      currentTargetTime={getNextShotTarget(activeBlock)}
+                      manualHandle={captureManualHandle}
+                      onChangeManualHandle={setCaptureManualHandle}
+                      manualTargetInput={captureManualTargetInput}
+                      onChangeManualTargetInput={setCaptureManualTargetInput}
+                      lastCaptureMessage={lastCaptureMessage}
+                      onStart={handleStartCaptureSequence}
+                      onPause={handlePauseCaptureSequence}
+                      onResume={handleResumeCaptureSequence}
+                      onCancel={handleCancelCaptureSequence}
+                      onUndo={handleUndoLastCapturedShot}
+                      onManualResult={handleManualCaptureResult}
+                      isDevEnvironment={IS_DEV}
+                      level={autoCaptureIsActive ? "hero" : "primary"}
+                    />
+                  )}
 
                   {IS_DEV && (
                     <TimingSimulatorPanel
@@ -1659,70 +2313,15 @@ export default function TrackerApp() {
                 </>
               )}
 
-              <div className="rounded-2xl bg-white p-4 shadow-lg">
-                <p className="text-sm font-medium text-slate-700">
-                  Filter
-                </p>
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["in", "Inhandle"],
-                      ["out", "Outhandle"],
-                    ] as [HandleFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setBlockFilter((filter) => ({
-                          ...filter,
-                          handle: value,
-                        }))
-                      }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-slate-200 text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="mt-2 grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["all", "Total"],
-                      ["draw", "Draw"],
-                      ["takeout", "Takeout"],
-                    ] as [ShotTypeFilter, string][]
-                  ).map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setBlockFilter((filter) => ({
-                          ...filter,
-                          shotType: value,
-                        }))
-                      }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
-                          ? "bg-slate-900 text-white"
-                          : "bg-slate-200 text-slate-700"
-                        }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
+              {/* Live Summary — filter, live metrics and shot history are
+                  one continuous "how am I doing so far" reading, not three
+                  stacked cards (compositional redesign: IA doc's Active
+                  Training priority groups Session Progress/Live Summary
+                  together, below the current task above). */}
+              <div className={surfaceClass("secondary")}>
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-semibold text-slate-900">
-                    Dashboard
+                    Live Summary
                   </h2>
 
                   <p className="text-xs text-slate-500">
@@ -1731,84 +2330,188 @@ export default function TrackerApp() {
                   </p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <DashboardCard
-                    label="Average"
-                    value={formatReleaseTime(
-                      activeBlockAnalysis.average
-                    )}
-                  />
+                <div className={`${surfaceClass("utility")} mt-3`}>
+                  <p className="text-sm font-medium text-slate-700">
+                    Filter
+                  </p>
 
-                  <DashboardCard
-                    label="Release SD"
-                    value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
-                      3
-                    )}
-                  />
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["all", "Total"],
+                        ["in", "In Handle"],
+                        ["out", "Out Handle"],
+                      ] as [HandleFilter, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setBlockFilter((filter) => ({
+                            ...filter,
+                            handle: value,
+                          }))
+                        }
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-700"
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
-                  <TargetAccuracyDashboardCards
-                    targetAccuracy={activeBlockAnalysis.targetAccuracy}
-                    measurementMode={activeBlock.measurementMode}
-                    thresholds={
-                      activeBlockAccuracyThresholds ??
-                      resolveAccuracyThresholds(undefined)
-                    }
-                  />
-
-                  {activeBlock.mode === "blind" && (
-                    <PredictionDashboardCards
-                      analysis={activeBlockAnalysis}
-                    />
-                  )}
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        ["all", "Total"],
+                        ["draw", "Draw"],
+                        ["takeout", "Takeout"],
+                      ] as [ShotTypeFilter, string][]
+                    ).map(([value, label]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() =>
+                          setBlockFilter((filter) => ({
+                            ...filter,
+                            shotType: value,
+                          }))
+                        }
+                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
+                            ? "bg-slate-900 text-white"
+                            : "bg-white text-slate-700"
+                          }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {activeBlockAnalysis.count === 0 ? (
+                  // One compact group-level empty state rather than a false
+                  // "Average 0.00s"/"Release SD 0.000" plus several repeated
+                  // "Not enough shots" cards (DESIGN_SYSTEM.md §21.2/§25.1).
+                  <p className="mt-4 text-sm text-slate-500">
+                    {filteredActiveBlockShots.length === activeBlockShots.length
+                      ? "Add a shot to begin the live summary."
+                      : "No shots match this filter yet."}
+                  </p>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {/* Not every KPI deserves equal weight (Epic 2): Average
+                        Error is the one number the eye should go to first,
+                        with Bias/On Target/Major Misses as compact
+                        supporting context right beside it. */}
+                    <TargetAccuracyDashboardCards
+                      variant="hero"
+                      targetAccuracy={activeBlockAnalysis.targetAccuracy}
+                      measurementMode={activeBlock.measurementMode}
+                      thresholds={
+                        activeBlockAccuracyThresholds ??
+                        resolveAccuracyThresholds(undefined)
+                      }
+                    />
+
+                    {activeBlock.mode === "blind" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <PredictionDashboardCards
+                          analysis={activeBlockAnalysis}
+                        />
+                      </div>
+                    )}
+
+                    {/* Quietly-supporting figures — same data, lower visual
+                        weight, kept in view rather than hidden (this is a
+                        secondary surface already; the tiering happens
+                        within it, not behind another click). */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <DashboardCard
+                        label="Average"
+                        value={formatReleaseTime(
+                          activeBlockAnalysis.average
+                        )}
+                      />
+
+                      <DashboardCard
+                        label="Release SD"
+                        value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
+                          3
+                        )}
+                      />
+
+                      <TargetAccuracyDashboardCards
+                        variant="supporting"
+                        targetAccuracy={activeBlockAnalysis.targetAccuracy}
+                        measurementMode={activeBlock.measurementMode}
+                        thresholds={
+                          activeBlockAccuracyThresholds ??
+                          resolveAccuracyThresholds(undefined)
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
-              <ReleaseTrendChart shots={filteredActiveBlockShots} />
+              {/* Detailed Analytics comes right after Live Summary — before
+                  Recent Shots/Edit Shots/Session Actions, matching the IA
+                  doc's Active Training priority (Live Summary, then Detailed
+                  Analytics) and closing this gap: editing tools must never
+                  outrank analysis in the reading order. */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>Detailed Analytics</span>
+                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+                  </span>
+                </summary>
 
-              {/* Primary live chart — see docs/SYSTEM_ARCHITECTURE.md's
-                  Current Session information hierarchy. */}
-              <TargetErrorChart
-                points={targetErrorByShotData}
-                thresholds={activeBlockAccuracyThresholds}
-                measurementMode={activeBlock.measurementMode}
-                context="current"
-              />
+                <div className="space-y-4 border-t border-slate-100 p-4">
+                  <ReleaseTrendChart shots={filteredActiveBlockShots} />
 
-              {activeBlockAnalysis && (
-                <HandleAnalysisSection
-                  boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
-                  comparison={activeBlockAnalysis.handleAccuracy}
-                />
-              )}
+                  <TargetErrorChart
+                    points={targetErrorByShotData}
+                    thresholds={activeBlockAccuracyThresholds}
+                    measurementMode={activeBlock.measurementMode}
+                    context="current"
+                  />
 
-              {/* Scatterplot is prominent for Variable Weight; collapsed by
-                  default (secondary) for Fixed Weight with only one target,
-                  since there is little to see beyond consistency at that
-                  single weight. */}
-              {activeBlock.mode === "fixed" &&
-              !hasMultipleTargetTimes(targetVsActualScatterData) ? (
-                <details className="group">
-                  <summary className="cursor-pointer rounded-2xl bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-lg marker:content-none group-open:rounded-b-none group-open:shadow-none">
-                    Target vs. Actual (single target — tap to expand)
-                  </summary>
+                  {activeBlockAnalysis && (
+                    <HandleAnalysisSection
+                      boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
+                      comparison={activeBlockAnalysis.handleAccuracy}
+                    />
+                  )}
+
                   <TargetActualScatterChart
                     points={targetVsActualScatterData}
                     explanation={targetVsActualExplanation("current")}
                   />
-                </details>
-              ) : (
-                <TargetActualScatterChart
-                  points={targetVsActualScatterData}
-                  explanation={targetVsActualExplanation("current")}
-                />
-              )}
+                </div>
+              </details>
 
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
-                <h2 className="text-xl font-semibold text-slate-900">
-                  Current Shots
-                </h2>
+              {/* Recent Shots — and its inline Edit/Delete controls — is a
+                  correction tool, not the primary analysis surface, so it
+                  stays collapsed by default and below Detailed Analytics
+                  ("Editing previous shots is an exception workflow.
+                  Monitoring performance is the primary workflow."). */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>
+                      Recent Shots ({filteredActiveBlockShots.length})
+                    </span>
+                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+                  </span>
+                </summary>
 
-                <div className="mt-4 space-y-2">
+                <div className="border-t border-slate-100 p-4">
+                  <div className="space-y-2">
                   {filteredActiveBlockShots.map((shot) => {
                     const isEditing =
                       editingShot?.id === shot.id;
@@ -1816,7 +2519,7 @@ export default function TrackerApp() {
                     return (
                       <div
                         key={shot.id}
-                        className="rounded-xl bg-slate-100 p-4"
+                        className={surfaceClass("inset")}
                       >
                         {isEditing ? (
                           <div className="space-y-3">
@@ -1992,31 +2695,53 @@ export default function TrackerApp() {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
-              </div>
+              </details>
 
-              {(activeBlock.mode === "fixed" ||
-                (activeBlock.mode === "blind" &&
-                  activeBlock.blindTargetMode === "fixed")) && (
-                <TargetTimeSettings
-                  key={activeBlock.id}
-                  targetTime={activeBlock.targetTime}
-                  onChangeTargetTime={
-                    handleChangeActiveBlockTargetTime
-                  }
-                />
-              )}
+              {/* Session Details During Execution (DESIGN_SYSTEM.md §19.6):
+                  collapsed by default rather than repeating the entire
+                  Target Time / Session Name / Notes setup form after the
+                  analytics area — the athlete opens it explicitly via Edit
+                  Details when they actually need to change something. */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-center justify-between gap-2">
+                    <span>
+                      Edit Details — {currentSession.title || "Untitled Session"}
+                    </span>
+                    <span className="text-xs text-slate-400 group-open:hidden">
+                      Show
+                    </span>
+                    <span className="hidden text-xs text-slate-400 group-open:inline">
+                      Hide
+                    </span>
+                  </span>
+                </summary>
 
-              <SessionSettings
-                title={currentSession.title}
-                notes={currentSession.notes}
-                onChangeTitle={
-                  handleChangeSessionTitle
-                }
-                onChangeNotes={
-                  handleChangeSessionNotes
-                }
-              />
+                <div className="space-y-4 border-t border-slate-100 p-4">
+                  {(activeBlock.mode === "fixed" ||
+                    (activeBlock.mode === "blind" &&
+                      activeBlock.blindTargetMode === "fixed")) && (
+                    <TargetTimeSettings
+                      key={activeBlock.id}
+                      variant="bare"
+                      targetTime={activeBlock.targetTime}
+                      onChangeTargetTime={
+                        handleChangeActiveBlockTargetTime
+                      }
+                    />
+                  )}
+
+                  <SessionSettings
+                    variant="bare"
+                    title={currentSession.title}
+                    notes={currentSession.notes}
+                    onChangeTitle={handleChangeSessionTitle}
+                    onChangeNotes={handleChangeSessionNotes}
+                  />
+                </div>
+              </details>
 
               <button
                 type="button"
@@ -2082,44 +2807,47 @@ export default function TrackerApp() {
 
       {activeView === "analyze" && (
         <>
-          <div className="rounded-2xl bg-white p-4 shadow-lg">
-            <h2 className="text-xl font-semibold text-slate-900">Analyze</h2>
-            <p className="text-sm text-slate-500">History &amp; Analytics</p>
-
-            {/* Training / Assessments are distinct domain concepts (Training
-                Sessions vs. Assessment Runs) that happen to share this one
-                Analyze destination — see
-                docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
-                Integration section. Switching tabs never resets the other
-                tab's filters/state (each keeps its own independent state). */}
-            <div role="tablist" aria-label="Analyze section" className="mt-3 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={analyzeTab === "training"}
-                onClick={() => setAnalyzeTab("training")}
-                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                  analyzeTab === "training"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                Training
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={analyzeTab === "assessments"}
-                onClick={() => setAnalyzeTab("assessments")}
-                className={`rounded-xl px-3 py-3 text-sm font-medium transition ${
-                  analyzeTab === "assessments"
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                }`}
-              >
-                Assessments
-              </button>
-            </div>
+          {/* Training / Assessments are distinct domain concepts (Training
+              Sessions vs. Assessment Runs) that happen to share this one
+              Analyze destination — see
+              docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
+              Integration section. Switching tabs never resets the other
+              tab's filters/state (each keeps its own independent state).
+              Rendered as an inline segmented control (Level 1 subtle
+              surface, DESIGN_SYSTEM.md §13) — the page-level PageHeader
+              above already identifies this screen as "Analyze", so this no
+              longer repeats that title in its own card. */}
+          <div
+            role="tablist"
+            aria-label="Analyze section"
+            className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analyzeTab === "training"}
+              onClick={() => setAnalyzeTab("training")}
+              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                analyzeTab === "training"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Training
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={analyzeTab === "assessments"}
+              onClick={() => setAnalyzeTab("assessments")}
+              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                analyzeTab === "assessments"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Assessments
+            </button>
           </div>
 
           {analyzeTab === "assessments" && assessmentState && (
@@ -2147,14 +2875,36 @@ export default function TrackerApp() {
             sessions={sessionHistory}
           />
 
-          {/* 2. Analysis Context */}
-          <AnalysisContextSummary context={historyAnalysisContext} />
-
-          {historyAnalysisContext.totalShotCount > 0 && (
+          {historyAnalysisContext.totalShotCount > 0 ? (
             <>
-              {/* 3. Key Progress Summary */}
-              <div className="rounded-2xl bg-white p-6 shadow-lg">
-                <h2 className="text-xl font-semibold text-slate-900">
+              {/* 1. The one Hero on this screen answers "what should I learn
+                  from this training?" before any metric — a key-takeaway
+                  sentence, not a dashboard (Epic 2:
+                  docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+                  Analyze hierarchy: "Key takeaway" precedes "Summary
+                  metrics"). "What am I looking at" stays directly above it —
+                  context the takeaway needs to be read correctly, not a
+                  metric itself. */}
+              <div className={surfaceClass("hero")}>
+                <AnalysisContextSummary context={historyAnalysisContext} variant="bare" />
+
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    What should I learn from this?
+                  </p>
+
+                  <p className="mt-2 text-lg font-semibold text-slate-900">
+                    {trainingInsight
+                      ? trainingInsight.headline
+                      : "Complete another comparable block to see whether your results are changing."}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. Summary metrics — demoted beneath the takeaway rather
+                  than leading the screen (a standard, not a Hero, surface). */}
+              <div className={surfaceClass("primary")}>
+                <h2 className="text-sm font-semibold text-slate-500">
                   Key Progress Summary
                 </h2>
 
@@ -2172,46 +2922,58 @@ export default function TrackerApp() {
               </div>
 
               {effectiveHistoryFilters.measurementMode && (
-                <>
-                  {/* 4. Progress Metric Chart */}
-                  <ProgressMetricChart
-                    entries={historyAnalysisContext.progressEntries}
-                    measurementMode={effectiveHistoryFilters.measurementMode}
-                  />
-
-                  {/* 5. Shot Quality Over Time */}
-                  <ShotQualityTrendChart
-                    entries={historyAnalysisContext.progressEntries}
-                    measurementMode={effectiveHistoryFilters.measurementMode}
-                  />
-                </>
+                // 4. The featured primary trend — one chart answering "is my
+                // release becoming more consistent", ahead of the other
+                // charts (MOBUX §19: "primary trend" is its own tier, before
+                // "accuracy and bias").
+                <ProgressMetricChart
+                  entries={historyAnalysisContext.progressEntries}
+                  measurementMode={effectiveHistoryFilters.measurementMode}
+                />
               )}
 
-              {/* 6. Target vs Actual Scatterplot — across every comparable
-                  block/session in the selection, shot-level, never reduced
-                  to block averages. */}
-              <TargetActualScatterChart
-                points={historyScatterPoints}
-                explanation={targetVsActualExplanation("history")}
-                notices={historyScatterNotices}
-              />
+              {/* 5-7. Detailed Analysis — accuracy/bias, target and handle
+                  questions grouped under one open section instead of three
+                  more same-weight chart cards (compositional redesign). */}
+              <div>
+                <h3 className="px-1 text-sm font-semibold text-slate-500">
+                  Detailed Analysis
+                </h3>
 
-              {/* 7. Handle Analysis */}
-              <HandleAnalysisSection
-                boxPlots={computeHandleTargetErrorBoxPlots(
-                  historyAnalysisContext.shots
-                )}
-                comparison={computeHandleAccuracyComparison(
-                  historyAnalysisContext.shots,
-                  historyThresholds
-                )}
-              />
+                <div className="mt-3 space-y-4">
+                  {effectiveHistoryFilters.measurementMode && (
+                    <ShotQualityTrendChart
+                      entries={historyAnalysisContext.progressEntries}
+                      measurementMode={effectiveHistoryFilters.measurementMode}
+                    />
+                  )}
+
+                  <TargetActualScatterChart
+                    points={historyScatterPoints}
+                    explanation={targetVsActualExplanation("history")}
+                    notices={historyScatterNotices}
+                  />
+
+                  <HandleAnalysisSection
+                    boxPlots={computeHandleTargetErrorBoxPlots(
+                      historyAnalysisContext.shots
+                    )}
+                    comparison={computeHandleAccuracyComparison(
+                      historyAnalysisContext.shots,
+                      historyThresholds
+                    )}
+                  />
+                </div>
+              </div>
             </>
+          ) : (
+            <AnalysisContextSummary context={historyAnalysisContext} />
           )}
 
           {/* 8. Blocks and Sessions — detail/navigation list onto the same
-              central selection; it never dominates the analysis above. */}
-          <div className="rounded-2xl bg-white p-6 shadow-lg">
+              central selection; it never dominates the analysis above
+              (Epic 1: history visibly steps back). */}
+          <div className={surfaceClass("secondary")}>
             <div className="flex items-start justify-between gap-4">
               <h2 className="text-xl font-semibold text-slate-900">
                 Blocks and Sessions
@@ -2249,7 +3011,7 @@ export default function TrackerApp() {
                 return (
                   <div
                     key={session.id}
-                    className="rounded-xl bg-slate-100 p-4"
+                    className={surfaceClass("inset")}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <button
@@ -2270,6 +3032,12 @@ export default function TrackerApp() {
                             session.date
                           ).toLocaleDateString()}
                         </p>
+
+                        {session.planExecution && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Started from: {session.planExecution.sourcePlanName}
+                          </p>
+                        )}
 
                         <p className="mt-2 text-xs font-medium text-slate-700">
                           {expandedSessions[
@@ -2375,6 +3143,38 @@ export default function TrackerApp() {
           onCancel={() => setShowNewBlockModal(false)}
           outgoingBlock={activeBlock}
           outgoingBlockShots={activeBlockShots}
+          accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
+          defaultAccuracyToleranceProfileId={
+            accuracyToleranceProfilesState.defaultProfileId
+          }
+          smartRandomProfiles={smartRandomProfilesState.profiles}
+          defaultSmartRandomProfileId={smartRandomProfilesState.defaultProfileId}
+        />
+      )}
+
+      {showAccuracyToleranceProfilesManager && (
+        <AccuracyToleranceProfilesScreen
+          profiles={accuracyToleranceProfilesState.profiles}
+          defaultProfileId={accuracyToleranceProfilesState.defaultProfileId}
+          onCreate={handleCreateAccuracyToleranceProfile}
+          onUpdate={handleUpdateAccuracyToleranceProfile}
+          onDuplicate={handleDuplicateAccuracyToleranceProfile}
+          onDelete={handleDeleteAccuracyToleranceProfile}
+          onSetDefault={handleSetDefaultAccuracyToleranceProfile}
+          onClose={() => setShowAccuracyToleranceProfilesManager(false)}
+        />
+      )}
+
+      {showSmartRandomProfilesManager && (
+        <SmartRandomProfilesScreen
+          profiles={smartRandomProfilesState.profiles}
+          defaultProfileId={smartRandomProfilesState.defaultProfileId}
+          onCreate={handleCreateSmartRandomProfile}
+          onUpdate={handleUpdateSmartRandomProfile}
+          onDuplicate={handleDuplicateSmartRandomProfile}
+          onDelete={handleDeleteSmartRandomProfile}
+          onSetDefault={handleSetDefaultSmartRandomProfile}
+          onClose={() => setShowSmartRandomProfilesManager(false)}
         />
       )}
 
@@ -2415,46 +3215,65 @@ function HistoryBlockPanel({
 }: HistoryBlockPanelProps) {
   const analysis = analyzeShots(shots, thresholds);
   const blockMap = new Map([[block.id, block]]);
+  const onTargetPercent =
+    analysis.targetAccuracy.shotCount > 0
+      ? Math.round((analysis.targetAccuracy.onTargetRate ?? 0) * 100)
+      : null;
 
   return (
-    <div className="rounded-xl bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold text-slate-900">
-            {block.name}
-          </p>
+    // Compact row with on-demand detail, not a second full dashboard per
+    // block (Epic 2 / audit finding: session expansion previously repeated
+    // the entire aggregate analysis for every block underneath it).
+    <details className="group rounded-xl bg-white">
+      <summary className="cursor-pointer list-none rounded-xl p-4 marker:content-none">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-slate-900">
+              {block.name}
+            </p>
 
-          <p className="mt-1 text-xs text-slate-500">
-            {blockModeLabel(block.mode)}
-            {block.mode === "variable" && block.variableTargetMode && (
-              <> ({variableTargetModeLabel(block.variableTargetMode)})</>
-            )}
-            {block.mode === "blind" && block.blindTargetMode && (
-              <> ({blindTargetModeLabel(block.blindTargetMode)})</>
-            )}{" "}
-            · {measurementModeLabel(block.measurementMode)}
-            {(block.mode === "fixed" ||
-              (block.mode === "blind" && block.blindTargetMode === "fixed")) && (
-              <> · Target {block.targetTime.toFixed(2)}s</>
-            )}
-            {(block.variableTargetMode === "smart-random" ||
-              block.blindTargetMode === "smart-random") &&
-              block.smartRandomMin !== undefined &&
-              block.smartRandomMax !== undefined && (
-                <>
-                  {" "}
-                  · Range {block.smartRandomMin.toFixed(2)}s–
-                  {block.smartRandomMax.toFixed(2)}s
-                </>
+            <p className="mt-1 text-xs text-slate-500">
+              {blockModeLabel(block.mode)}
+              {block.mode === "variable" && block.variableTargetMode && (
+                <> ({variableTargetModeLabel(block.variableTargetMode)})</>
               )}
-          </p>
+              {block.mode === "blind" && block.blindTargetMode && (
+                <> ({blindTargetModeLabel(block.blindTargetMode)})</>
+              )}{" "}
+              · {measurementModeLabel(block.measurementMode)}
+              {(block.mode === "fixed" ||
+                (block.mode === "blind" && block.blindTargetMode === "fixed")) && (
+                <> · Target {block.targetTime.toFixed(2)}s</>
+              )}
+              {(block.variableTargetMode === "smart-random" ||
+                block.blindTargetMode === "smart-random") &&
+                block.smartRandomMin !== undefined &&
+                block.smartRandomMax !== undefined && (
+                  <>
+                    {" "}
+                    · Range {block.smartRandomMin.toFixed(2)}s–
+                    {block.smartRandomMax.toFixed(2)}s
+                  </>
+                )}
+            </p>
+          </div>
+
+          <div className="whitespace-nowrap text-right text-xs text-slate-500">
+            <p>
+              {shots.length} shot{shots.length === 1 ? "" : "s"}
+              {onTargetPercent !== null && <> · {onTargetPercent}% on target</>}
+            </p>
+            <p className="mt-1 font-medium text-slate-700 group-open:hidden">
+              Show detail
+            </p>
+            <p className="mt-1 hidden font-medium text-slate-700 group-open:block">
+              Hide detail
+            </p>
+          </div>
         </div>
+      </summary>
 
-        <p className="whitespace-nowrap text-xs text-slate-500">
-          {shots.length} shot{shots.length === 1 ? "" : "s"}
-        </p>
-      </div>
-
+      <div className="border-t border-slate-100 p-4">
       {describeCaptureBreakdown(shots) && (
         <p className="mt-1 text-xs text-slate-500">
           Captured automatically: {describeCaptureBreakdown(shots)}
@@ -2531,7 +3350,8 @@ function HistoryBlockPanel({
           </div>
         ))}
       </div>
-    </div>
+      </div>
+    </details>
   );
 }
 

@@ -2,6 +2,7 @@ import { computeCategoryMetrics, computeRawAssessmentMetrics } from "../lib/asse
 import { countInvalidAttempts, countProtocolDeviations } from "../lib/assessment/progress";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { formatSigned } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 type AssessmentCompletionSummaryProps = {
   run: AssessmentRun;
@@ -40,7 +41,10 @@ export default function AssessmentCompletionSummary({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* "Assessment complete" and its numbers are one continuous story, not
+          three stacked cards of decreasing size (compositional redesign) —
+          this screen's one Hero. */}
+      <div className={surfaceClass("hero")}>
         <h1 className="text-xl font-semibold text-slate-900">Assessment complete</h1>
         <p className="mt-1 text-sm text-slate-600">
           {run.completedAt ? new Date(run.completedAt).toLocaleDateString() : ""} · Release Time
@@ -56,54 +60,54 @@ export default function AssessmentCompletionSummary({
             / ±{run.thresholdSnapshot.values.acceptable.toFixed(2)}s)
           </li>
         </ul>
-      </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-sm font-semibold text-slate-900">Raw summary</h2>
-        <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-xs text-slate-500">MAE</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {raw.meanAbsoluteError !== null ? `${raw.meanAbsoluteError.toFixed(3)}s` : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Bias</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {raw.bias !== null ? `${formatSigned(raw.bias)}s` : "—"}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Std. Dev.</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {raw.standardDeviation !== null ? `${raw.standardDeviation.toFixed(3)}s` : "—"}
-            </p>
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h2 className="text-sm font-semibold text-slate-900">Raw summary</h2>
+          <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-xs text-slate-500">MAE</p>
+              <p className="text-lg font-semibold text-slate-900">
+                {raw.meanAbsoluteError !== null ? `${raw.meanAbsoluteError.toFixed(3)}s` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Bias</p>
+              <p className="text-lg font-semibold text-slate-900">
+                {raw.bias !== null ? `${formatSigned(raw.bias)}s` : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Std. Dev.</p>
+              <p className="text-lg font-semibold text-slate-900">
+                {raw.standardDeviation !== null ? `${raw.standardDeviation.toFixed(3)}s` : "—"}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-sm font-semibold text-slate-900">
-          Category summary <span className="text-slate-400">(under {thresholdLabel})</span>
-        </h2>
-        <div className="mt-3 grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-xs text-slate-500">On Target</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {formatPercent(category.onTargetRate)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Acceptable</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {formatPercent(category.acceptableRate)}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-slate-500">Major Miss</p>
-            <p className="text-lg font-semibold text-slate-900">
-              {formatPercent(category.majorMissRate)}
-            </p>
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <h2 className="text-sm font-semibold text-slate-500">
+            Category summary <span className="font-normal">(under {thresholdLabel})</span>
+          </h2>
+          <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-xs text-slate-500">On Target</p>
+              <p className="text-base font-semibold text-slate-900">
+                {formatPercent(category.onTargetRate)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Acceptable</p>
+              <p className="text-base font-semibold text-slate-900">
+                {formatPercent(category.acceptableRate)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Major Miss</p>
+              <p className="text-base font-semibold text-slate-900">
+                {formatPercent(category.majorMissRate)}
+              </p>
+            </div>
           </div>
         </div>
       </div>

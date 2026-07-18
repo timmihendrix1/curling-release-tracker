@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatReleaseTime, parseReleaseTime } from "../lib/timeInput";
 import type { Handle, ShotType } from "../types";
+import { surfaceClass } from "./Surface";
 
 export type ShotEntryTarget = {
   value: number;
@@ -18,11 +19,32 @@ type ShotEntryProps = {
     targetTimeOverride?: number
   ) => void;
   target: ShotEntryTarget;
+  /**
+   * "hero" (default) when this is the active capture task; "primary" when
+   * Auto Capture is running and this becomes the secondary/fallback entry
+   * path — see TrackerApp.tsx's Active Training surface hierarchy.
+   */
+  level?: "hero" | "primary";
+  /**
+   * The handle a Training Plan step's Handle Strategy expects for the next
+   * shot (see src/lib/trainingPlans/handleStrategy.ts's resolveExpectedHandle).
+   * Undefined means Free — no preselect, today's unchanged behavior. When
+   * present, it preselects the handle but never locks it: the athlete may
+   * still tap the other handle for this one shot, and the shot actually saved
+   * always reflects whatever is selected at Add Shot time (see
+   * docs/TRAINING_SYSTEM_AND_PLANS.md section 13).
+   */
+  presetHandle?: Handle;
 };
 
-export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
+export default function ShotEntry({
+  onAddShot,
+  target,
+  level = "hero",
+  presetHandle,
+}: ShotEntryProps) {
   const [inputValue, setInputValue] = useState("");
-  const [handle, setHandle] = useState<Handle>("in");
+  const [handle, setHandle] = useState<Handle>(presetHandle ?? "in");
   const [shotType, setShotType] = useState<ShotType>("draw");
   const [manualTargetInput, setManualTargetInput] = useState(
     target.value.toFixed(2)
@@ -38,6 +60,20 @@ export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
   if (target.value !== lastSeenTargetValue) {
     setLastSeenTargetValue(target.value);
     setManualTargetInput(target.value.toFixed(2));
+  }
+
+  // Same render-adjustment pattern as the target above: whenever the parent
+  // recomputes the expected handle (typically right after a shot is saved,
+  // since the strategy is derived from shots-saved-so-far), the preselection
+  // resyncs. A one-shot override the athlete made for the previous shot is
+  // never "sticky" — the next shot always starts from the plan's own sequence.
+  const [lastSeenPresetHandle, setLastSeenPresetHandle] = useState(presetHandle);
+
+  if (presetHandle !== lastSeenPresetHandle) {
+    setLastSeenPresetHandle(presetHandle);
+    if (presetHandle !== undefined) {
+      setHandle(presetHandle);
+    }
   }
 
   function handleAddShot() {
@@ -69,10 +105,10 @@ export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
   }
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass(level)}>
       <h2 className="text-xl font-semibold text-slate-900">Add Shot</h2>
 
-      <div className="mt-4 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-4")}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-slate-700">
             Target for Next Shot
@@ -101,7 +137,7 @@ export default function ShotEntry({ onAddShot, target }: ShotEntryProps) {
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400"
           />
         ) : (
-          <p className="mt-1 text-2xl font-semibold text-slate-900">
+          <p className="mt-1 text-3xl font-semibold text-slate-900">
             {formatReleaseTime(target.value)}
           </p>
         )}

@@ -6,10 +6,13 @@ import { formatAssessmentSignedSeconds } from "../lib/assessment/resultFormattin
 import { TARGET_ERROR_CATEGORY_LABELS } from "../lib/chartTheme";
 import { HANDLE_LABELS } from "../lib/chartTheme";
 import { ASSESSMENT_INVALID_REASON_LABELS } from "../lib/assessmentContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentShotDetailsProps = {
   shots: ShotDetailRow[];
   invalidAttempts: InvalidAttemptRow[];
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 /**
@@ -17,11 +20,11 @@ type AssessmentShotDetailsProps = {
  * reclassify action, per the completed-run immutability rule). See Phase C
  * brief section 10.
  */
-export default function AssessmentShotDetails({ shots, invalidAttempts }: AssessmentShotDetailsProps) {
+export default function AssessmentShotDetails({ shots, invalidAttempts, variant = "card" }: AssessmentShotDetailsProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}

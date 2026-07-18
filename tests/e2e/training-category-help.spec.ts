@@ -8,7 +8,9 @@ test("Training Category Help: Fixed, Variable and Blind Weight each explain purp
   await goToTrain(page);
   await page.waitForSelector("text=Set Up Training Block");
 
-  // Fixed Weight is selected by default on the first Setup screen.
+  // Fixed Weight is selected by default on the first Setup screen — one
+  // shared Info button describes whichever Training Mode is selected
+  // (DESIGN_SYSTEM.md §13.1), rather than a per-segment icon.
   await page.getByRole("button", { name: "About Fixed Weight" }).click();
   await expect(page.getByRole("dialog", { name: "Fixed Weight" })).toBeVisible();
   await expect(
@@ -19,6 +21,7 @@ test("Training Category Help: Fixed, Variable and Blind Weight each explain purp
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
+  await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "About Variable Weight" }).click();
   await expect(page.getByRole("dialog", { name: "Variable Weight" })).toBeVisible();
   await expect(
@@ -26,6 +29,7 @@ test("Training Category Help: Fixed, Variable and Blind Weight each explain purp
   ).toBeVisible();
   await page.keyboard.press("Escape");
 
+  await page.getByRole("button", { name: "Blind Weight", exact: true }).click();
   await page.getByRole("button", { name: "About Blind Weight" }).click();
   const blindDialog = page.getByRole("dialog", { name: "Blind Weight" });
   await expect(blindDialog).toBeVisible();
@@ -38,8 +42,7 @@ test("Training Category Help: Fixed, Variable and Blind Weight each explain purp
   await page.keyboard.press("Escape");
 
   // Opening/closing Info popovers never affected the actual selection —
-  // Training Mode selection still works normally afterward.
-  await page.getByRole("button", { name: "Blind Weight", exact: true }).click();
+  // Blind Weight (selected above) is still what gets submitted.
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
   await page.waitForSelector("text=Active Training Block");
 });
@@ -56,13 +59,13 @@ test("Measurement Mode Help: Backline – Hog and Hog – Hog explain the differ
   await expect(page.getByText(/more weight/)).toBeVisible();
   await page.keyboard.press("Escape");
 
+  await page.getByRole("button", { name: "Hog – Hog", exact: true }).click();
   await page.getByRole("button", { name: "About Hog – Hog" }).click();
   await expect(page.getByRole("dialog", { name: "Hog – Hog" })).toBeVisible();
   await expect(page.getByText(/never be mixed or compared directly/)).toBeVisible();
   await page.keyboard.press("Escape");
 
   // Selecting Measurement Mode still works after reading both explanations.
-  await page.getByRole("button", { name: "Hog – Hog", exact: true }).click();
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
   await page.waitForSelector("text=Active Training Block");
 });
@@ -88,6 +91,7 @@ test("Mobile viewport (390x844): Training Category Info popover is fully readabl
   await goToTrain(page);
   await page.waitForSelector("text=Set Up Training Block");
 
+  await page.getByRole("button", { name: "Blind Weight", exact: true }).click();
   await page.getByRole("button", { name: "About Blind Weight" }).click();
   await expect(page.getByRole("dialog", { name: "Blind Weight" })).toBeVisible();
   await expect(

@@ -2,15 +2,21 @@
 
 import { useState } from "react";
 import { parseReleaseTime } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 type TargetTimeSettingsProps = {
   targetTime: number;
   onChangeTargetTime: (targetTime: number) => void;
+  /** "bare" strips the outer surface for use inside another container
+   * (the collapsible Edit Details section) so it never nests a card inside
+   * a card — see SessionSettings' equivalent variant. */
+  variant?: "card" | "bare";
 };
 
 export default function TargetTimeSettings({
   targetTime,
   onChangeTargetTime,
+  variant = "card",
 }: TargetTimeSettingsProps) {
   const [inputValue, setInputValue] = useState(targetTime.toFixed(2));
 
@@ -27,10 +33,12 @@ export default function TargetTimeSettings({
   }
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
-      <h2 className="text-xl font-semibold text-slate-900">
-        Target Time
-      </h2>
+    <div className={variant === "card" ? surfaceClass("hero") : ""}>
+      {variant === "card" && (
+        <h2 className="text-xl font-semibold text-slate-900">
+          Target Time
+        </h2>
+      )}
 
       <p className="mt-2 text-sm text-slate-600">
         Set the target release time for the active training block.

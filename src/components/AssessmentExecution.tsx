@@ -1,5 +1,6 @@
 import type { Handle } from "../types";
 import {
+  calculateBlockProgress,
   calculateScoredProgress,
   calculateWarmupProgress,
   getCurrentBlock,
@@ -13,6 +14,7 @@ import AssessmentBlockTransition from "./AssessmentBlockTransition";
 import AssessmentCurrentShot, { type AssessmentLastResult } from "./AssessmentCurrentShot";
 import AssessmentInvalidAttemptDialog from "./AssessmentInvalidAttemptDialog";
 import AssessmentProgress from "./AssessmentProgress";
+import { surfaceClass } from "./Surface";
 
 export type PendingBlockTransition = {
   completedBlockName?: string;
@@ -73,7 +75,7 @@ export default function AssessmentExecution({
 }: AssessmentExecutionProps) {
   if (pendingWarmupComplete) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("hero")}>
         <p className="text-sm font-medium text-emerald-700">Warm-up complete</p>
         <p className="mt-2 text-sm text-slate-600">
           All six warm-up stones are done. Scored attempts start now.
@@ -106,6 +108,8 @@ export default function AssessmentExecution({
   const block = getCurrentBlock(run);
   const scoredProgress = calculateScoredProgress(run);
   const warmupProgress = calculateWarmupProgress(run);
+  const blockProgress = block ? calculateBlockProgress(run, block) : null;
+  const totalBlockCount = run.templateSnapshot.blocks.length;
 
   if (!currentShot) {
     return null;
@@ -117,7 +121,13 @@ export default function AssessmentExecution({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl bg-white p-4 shadow-lg">
+      {/* Compose around the protocol itself: current phase/progress and the
+          current planned shot are one continuous "where am I, what's next"
+          unit during execution, not two stacked cards (compositional
+          redesign — see docs/MOBILE_UX_AND_DESIGN_PRINCIPLES.md §18 and
+          docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
+          Assessment Information Priority). This is the screen's one Hero. */}
+      <div className={surfaceClass("hero")}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-900">Release Time Core Assessment</p>
@@ -125,7 +135,7 @@ export default function AssessmentExecution({
               {inWarmup
                 ? "Warm-up"
                 : block
-                  ? `Block ${block.sequenceIndex + 1} of 4 · ${block.name}`
+                  ? `Block ${block.sequenceIndex + 1} of ${totalBlockCount} · ${block.name}`
                   : "Scored"}{" "}
               · Threshold: {thresholdLabel(run)}
             </p>
@@ -135,14 +145,14 @@ export default function AssessmentExecution({
               type="button"
               onClick={onOpenProtocol}
               aria-label="View protocol"
-              className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
+              className="min-h-11 min-w-11 rounded-full bg-slate-100 px-3 text-xs font-medium text-slate-600 hover:bg-slate-200"
             >
               Protocol
             </button>
             <button
               type="button"
               onClick={onPause}
-              className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
+              className="min-h-11 min-w-11 rounded-full bg-slate-100 px-3 text-xs font-medium text-slate-600 hover:bg-slate-200"
             >
               Pause
             </button>
@@ -153,24 +163,36 @@ export default function AssessmentExecution({
           {inWarmup ? (
             <AssessmentProgress label="Warm-up" completed={warmupProgress.completed} total={warmupProgress.total} />
           ) : (
-            <AssessmentProgress
-              label="Overall progress"
-              completed={scoredProgress.completed}
-              total={scoredProgress.total}
-            />
+            <>
+              {block && blockProgress && (
+                <AssessmentProgress
+                  label={`This block (${block.name})`}
+                  completed={blockProgress.completed}
+                  total={blockProgress.total}
+                />
+              )}
+              <AssessmentProgress
+                label="Overall progress"
+                completed={scoredProgress.completed}
+                total={scoredProgress.total}
+              />
+            </>
           )}
         </div>
-      </div>
 
-      <AssessmentCurrentShot
-        phase={inWarmup ? "warmup" : "scored"}
-        blockName={block?.name}
-        targetTime={currentShot.targetTime}
-        expectedHandle={currentShot.expectedHandle}
-        executedHandle={executedHandle}
-        onChangeExecutedHandle={onChangeExecutedHandle}
-        lastResult={lastResult}
-      />
+        <div className="mt-5 border-t border-slate-100 pt-4">
+          <AssessmentCurrentShot
+            variant="bare"
+            phase={inWarmup ? "warmup" : "scored"}
+            blockName={block?.name}
+            targetTime={currentShot.targetTime}
+            expectedHandle={currentShot.expectedHandle}
+            executedHandle={executedHandle}
+            onChangeExecutedHandle={onChangeExecutedHandle}
+            lastResult={lastResult}
+          />
+        </div>
+      </div>
 
       <AssessmentAttemptEntry
         onSubmitManualTime={onSubmitManualTime}

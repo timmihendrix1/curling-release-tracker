@@ -43,12 +43,15 @@ export default function AssessmentSetupConfirmation({
             <button
               type="button"
               onClick={() => onChangeTimingMethod("manual")}
+              // Selection, not an action — distinct from the primary Start
+              // Warm-up button's solid dark treatment (DESIGN_SYSTEM.md §13.1).
               className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
                 timingMethod === "manual"
-                  ? "bg-slate-900 text-white"
+                  ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
+              {timingMethod === "manual" && <span aria-hidden="true">✓ </span>}
               Manual entry
             </button>
             <button
@@ -56,10 +59,11 @@ export default function AssessmentSetupConfirmation({
               onClick={() => onChangeTimingMethod("simulator")}
               className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
                 timingMethod === "simulator"
-                  ? "bg-slate-900 text-white"
+                  ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
             >
+              {timingMethod === "simulator" && <span aria-hidden="true">✓ </span>}
               Timing Simulator (dev)
             </button>
           </div>

@@ -3,6 +3,7 @@ import {
   ASSESSMENT_GUIDED_INTRODUCTION_BLOCKS,
   ASSESSMENT_WHY_STRUCTURE,
 } from "../lib/assessmentContent";
+import { surfaceClass } from "./Surface";
 
 type AssessmentGuidedIntroductionProps = {
   onContinue: (dontShowAgain: boolean) => void;
@@ -25,7 +26,7 @@ export default function AssessmentGuidedIntroduction({
   const [dontShowAgain, setDontShowAgain] = useState(false);
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass("hero")}>
       <h2 className="text-xl font-semibold text-slate-900">How this assessment works</h2>
       <p className="mt-2 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
 

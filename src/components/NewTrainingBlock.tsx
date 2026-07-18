@@ -1,7 +1,9 @@
 "use client";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
+import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { analyzeShots } from "../lib/analytics";
+import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { formatReleaseTime, formatSigned } from "../lib/timeInput";
 import type { Shot, TrainingBlock } from "../types";
 import DashboardCard from "./DashboardCard";
@@ -13,6 +15,10 @@ type NewTrainingBlockProps = {
   onCancel: () => void;
   outgoingBlock: TrainingBlock;
   outgoingBlockShots: Shot[];
+  accuracyToleranceProfiles?: AccuracyToleranceProfile[];
+  defaultAccuracyToleranceProfileId?: string | null;
+  smartRandomProfiles?: SmartRandomProfile[];
+  defaultSmartRandomProfileId?: string | null;
 };
 
 export default function NewTrainingBlock({
@@ -20,6 +26,10 @@ export default function NewTrainingBlock({
   onCancel,
   outgoingBlock,
   outgoingBlockShots,
+  accuracyToleranceProfiles = [],
+  defaultAccuracyToleranceProfileId = null,
+  smartRandomProfiles = [],
+  defaultSmartRandomProfileId = null,
 }: NewTrainingBlockProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4">
@@ -51,6 +61,10 @@ export default function NewTrainingBlock({
             submitLabel="Start Block"
             onSubmit={onCreate}
             onCancel={onCancel}
+            accuracyToleranceProfiles={accuracyToleranceProfiles}
+            defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
+            smartRandomProfiles={smartRandomProfiles}
+            defaultSmartRandomProfileId={defaultSmartRandomProfileId}
           />
         </div>
       </div>

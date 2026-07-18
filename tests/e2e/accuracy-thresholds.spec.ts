@@ -95,6 +95,11 @@ test("Target Error Chart: shows the zero line, positive/negative bars, and a too
     await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
   }
 
+  // Every chart is grouped under one collapsed-by-default Detailed Analytics
+  // disclosure (compositional redesign — see TrackerApp.tsx's Active
+  // Training composition).
+  await page.getByText("Detailed Analytics").click();
+
   await expect(page.getByText("Target Error by Shot")).toBeVisible();
   await expect(
     page.getByText("Am I hitting my target, and is my miss systematic?")
@@ -115,6 +120,8 @@ test("Scatterplot: legend toggles In/Out visibility without mutating underlying 
     await shotEntry.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
     await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
   }
+
+  await page.getByText("Detailed Analytics").click();
 
   await expect(page.getByText("Target vs. Actual")).toBeVisible();
 
@@ -153,6 +160,7 @@ test("Mobile viewport (390x844): Dashboard and charts render without horizontal 
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
   await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
 
+  await page.getByText("Detailed Analytics").click();
   await expect(page.getByText("Target Error by Shot")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(

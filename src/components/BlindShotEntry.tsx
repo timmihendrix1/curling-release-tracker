@@ -17,6 +17,7 @@ import {
 import { formatReleaseTime, formatSigned, parseReleaseTime } from "../lib/timeInput";
 import type { Handle, ShotType } from "../types";
 import type { ShotEntryTarget } from "./ShotEntry";
+import { surfaceClass } from "./Surface";
 
 type BlindShotEntryProps = {
   onAddShot: (
@@ -28,15 +29,18 @@ type BlindShotEntryProps = {
   ) => void;
   target: ShotEntryTarget;
   onDraftStateChange: (hasUnsavedProgress: boolean) => void;
+  /** See ShotEntry.tsx's presetHandle prop — identical meaning and behavior. */
+  presetHandle?: Handle;
 };
 
 export default function BlindShotEntry({
   onAddShot,
   target,
   onDraftStateChange,
+  presetHandle,
 }: BlindShotEntryProps) {
   const [draft, setDraft] = useState<BlindShotDraft>(INITIAL_BLIND_SHOT_DRAFT);
-  const [handle, setHandle] = useState<Handle>("in");
+  const [handle, setHandle] = useState<Handle>(presetHandle ?? "in");
   const [predictedInput, setPredictedInput] = useState("");
   const [measuredInput, setMeasuredInput] = useState("");
   const [manualTargetInput, setManualTargetInput] = useState(
@@ -51,6 +55,17 @@ export default function BlindShotEntry({
   if (target.value !== lastSeenTargetValue) {
     setLastSeenTargetValue(target.value);
     setManualTargetInput(target.value.toFixed(2));
+  }
+
+  // Same pattern, for the Training Plan Handle Strategy preselection — see
+  // ShotEntry.tsx's identical block for the full rationale.
+  const [lastSeenPresetHandle, setLastSeenPresetHandle] = useState(presetHandle);
+
+  if (presetHandle !== lastSeenPresetHandle) {
+    setLastSeenPresetHandle(presetHandle);
+    if (presetHandle !== undefined) {
+      setHandle(presetHandle);
+    }
   }
 
   const [lastSeenPhase, setLastSeenPhase] = useState(draft.phase);
@@ -139,7 +154,7 @@ export default function BlindShotEntry({
 
     setPredictedInput("");
     setMeasuredInput("");
-    setHandle("in");
+    setHandle(presetHandle ?? "in");
     updateDraft(INITIAL_BLIND_SHOT_DRAFT);
   }
 
@@ -148,12 +163,12 @@ export default function BlindShotEntry({
     : target.value;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass("hero")}>
       <h2 className="text-xl font-semibold text-slate-900">
         Blind Weight Shot
       </h2>
 
-      <div className="mt-4 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-4")}>
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-slate-700">Target</p>
 
@@ -179,7 +194,7 @@ export default function BlindShotEntry({
             className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400"
           />
         ) : (
-          <p className="mt-1 text-2xl font-semibold text-slate-900">
+          <p className="mt-1 text-3xl font-semibold text-slate-900">
             {formatReleaseTime(targetTimeForDisplay)}
           </p>
         )}
@@ -256,7 +271,7 @@ export default function BlindShotEntry({
 
       {draft.phase === "measure" && draft.predictedTime !== undefined && (
         <>
-          <div className="mt-4 rounded-xl bg-slate-100 p-4">
+          <div className={surfaceClass("inset", "mt-4")}>
             <p className="text-sm text-slate-500">Prediction locked</p>
             <p className="mt-1 text-2xl font-semibold text-slate-900">
               {formatReleaseTime(draft.predictedTime)}
@@ -347,7 +362,7 @@ export default function BlindShotEntry({
                 />
               </div>
 
-              <div className="mt-2 rounded-xl bg-slate-100 p-4">
+              <div className={surfaceClass("inset", "mt-2")}>
                 <p className="text-sm text-slate-500">Prediction Error</p>
                 <p className="mt-1 text-xl font-semibold text-slate-900">
                   {formatSigned(predictionErrorValue)}s
@@ -399,7 +414,7 @@ type ReviewMetricProps = {
 
 function ReviewMetric({ label, value }: ReviewMetricProps) {
   return (
-    <div className="rounded-xl bg-slate-100 p-4">
+    <div className={surfaceClass("inset")}>
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-xl font-semibold text-slate-900">{value}</p>
     </div>

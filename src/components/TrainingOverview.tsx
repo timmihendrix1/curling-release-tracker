@@ -1,10 +1,17 @@
 import DashboardCard from "./DashboardCard";
+import { surfaceClass } from "./Surface";
 
 type TrainingOverviewProps = {
   hasAnyTraining: boolean;
   lastTrainingLabel: string;
   totalSessions: number;
   onOpenAnalyze: () => void;
+  /**
+   * "bare" strips the outer surface so HomeScreen can compose this together
+   * with DeviceStatusCard inside one shared section instead of two
+   * separately-boxed cards (compositional redesign).
+   */
+  variant?: "card" | "bare";
 };
 
 /**
@@ -24,10 +31,11 @@ export default function TrainingOverview({
   lastTrainingLabel,
   totalSessions,
   onOpenAnalyze,
+  variant = "card",
 }: TrainingOverviewProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
-      <h2 className="text-xl font-semibold text-slate-900">
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
+      <h2 className="text-base font-semibold text-slate-900">
         Training Overview
       </h2>
 

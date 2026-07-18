@@ -25,12 +25,22 @@ test.describe("Completion to Full Results", () => {
 
     await expect(page.getByRole("heading", { name: "Release Time Core Assessment" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Core Metrics" })).toBeVisible();
+    await expect(page.getByText(/Original Run Thresholds:/).first()).toBeVisible();
+
+    // Block/Target/Handle/Variable Adaptation/Protocol Integrity now live
+    // behind one collapsed "Full Breakdown" disclosure (Epic 2: one-tap
+    // detail, not automatic reading).
+    await page.getByText("Full Breakdown").click();
     await expect(page.getByRole("heading", { name: "Block Results" })).toBeVisible();
+    // Target Results and Handle Comparison lead with the same visual charts
+    // Train/Analyze already use for the identical question (Epic 3: reuse
+    // existing charts instead of Assessment-specific tables-only presentation).
+    await expect(page.getByRole("heading", { name: "Target Error by Shot" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Target Results" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Handle Boxplot" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Handle Comparison" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Variable Adaptation" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Protocol Integrity" })).toBeVisible();
-    await expect(page.getByText(/Original Run Thresholds:/).first()).toBeVisible();
   });
 
   test("Back returns to the Assess Landing without losing the archived run", async ({ page }) => {
@@ -52,17 +62,21 @@ test.describe("Threshold Switching", () => {
     await completeFullAssessment(page);
     await page.getByRole("button", { name: "View Full Results" }).click();
 
-    // The whole "Core Metrics" card is threshold-independent — its full text
-    // (including MAE/Bias/Std. Dev.) must stay byte-identical across every
-    // Analysis Threshold switch, unlike the separate "Category Metrics" card.
-    const coreMetricsCard = page.getByRole("heading", { name: "Core Metrics" }).locator("xpath=..");
-    const maeBefore = await coreMetricsCard.textContent();
+    // Core Metrics (MAE/Bias/Std. Dev.) is threshold-independent — its tile
+    // row must stay byte-identical across every Analysis Threshold switch,
+    // unlike Category Metrics further down the same merged surface (see
+    // AssessmentCoreMetrics.tsx's compositional redesign: Core and Category
+    // Metrics are now one Primary surface, not two separate cards).
+    const coreMetricsTiles = page
+      .getByRole("heading", { name: "Core Metrics" })
+      .locator("xpath=following-sibling::div[1]");
+    const maeBefore = await coreMetricsTiles.textContent();
 
     const analysisControl = page.getByRole("radiogroup", { name: "Analysis Threshold Set" });
     await analysisControl.getByRole("radio", { name: "Standard" }).click();
     await analysisControl.getByRole("radio", { name: "Tight" }).click();
 
-    const maeAfter = await coreMetricsCard.textContent();
+    const maeAfter = await coreMetricsTiles.textContent();
     expect(maeAfter).toBe(maeBefore);
   });
 
@@ -90,14 +104,14 @@ test.describe("Analyze Assessments", () => {
     await page.getByRole("button", { name: "Done" }).click();
 
     await goToAnalyze(page);
-    await expect(page.getByText("History & Analytics")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Training" })).toHaveAttribute("aria-selected", "true");
 
     await page.getByRole("tab", { name: "Assessments" }).click();
     await expect(page.getByRole("heading", { name: "Latest Completed Assessment" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Assessment History" })).toBeVisible();
 
     await page.getByRole("tab", { name: "Training" }).click();
-    await expect(page.getByText("History & Analytics")).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Training" })).toHaveAttribute("aria-selected", "true");
   });
 
   test("View Results from Analyze opens the correct run's Result Screen", async ({ page }) => {
@@ -133,6 +147,10 @@ test.describe("Run Comparison and Trends", () => {
     await page.waitForSelector("text=Assessment complete");
 
     await page.getByRole("button", { name: "View Full Results" }).click();
+
+    // Compare & Trends is a separate, collapsed action (Epic 2) once
+    // there's actually something to compare.
+    await page.getByText("Compare & Trends").click();
 
     await expect(page.getByText("This run remains protocol-comparable.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Run Comparison" })).toBeVisible();
@@ -191,6 +209,7 @@ test.describe("Desktop", () => {
 
     await page.getByRole("button", { name: "View Full Results" }).click();
     await expect(page.getByRole("heading", { name: "Core Metrics" })).toBeVisible();
+    await page.getByText("Full Breakdown").click();
     await expect(page.getByRole("heading", { name: "Block Results" })).toBeVisible();
   });
 });

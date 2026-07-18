@@ -546,6 +546,162 @@ not duplicated here.
 
 ---
 
+## Training Plans (v1)
+
+**Implemented.** See `docs/TRAINING_SYSTEM_AND_PLANS.md` for the authoritative product
+and domain model, `docs/SYSTEM_ARCHITECTURE.md`'s "Training Plans" section for the
+architecture-level summary, and `docs/adr/0012-training-plans-domain-and-execution-model.md`
+for the domain-separation, lazy-block-creation, and migration-style decisions.
+
+### Deliberately deferred to keep Version 1 focused
+
+- **Skip Step.** Only "Continue after completion" and "End session early" (the
+  existing Start New Session flow) exist — a dedicated Skip Step action was left out
+  per the spec's own recommended Version 1 decisions (section 63).
+- **Drag-and-drop step reordering.** Explicit Move Up/Down controls only, per spec
+  sections 16/50 — more reliable on mobile, and avoids a drag-and-drop library
+  dependency for a small, usually-short list.
+- **Auto Capture handle preset is best-effort, not exhaustively tested.**
+  `handleStrategyToCaptureHandleMode` pre-fills a plan-driven block's Capture Sequence
+  setup, but the primary, fully-tested path is classic manual entry
+  (`ShotEntry`/`BlindShotEntry`'s `presetHandle` prop). Auto Capture users get the
+  same preset, still fully overridable, but this pairing wasn't a focus of the V1
+  acceptance criteria.
+- **No re-entry after a manual block interrupts an active plan.** If the athlete taps
+  "New Training Block" instead of the plan's own Continue/Finish action,
+  `isPlanExecutionActive` becomes false and the plan progress/transition UI simply
+  stops rendering for that session — the plan's own execution state isn't lost or
+  corrupted, but there's no "resume the plan" action to return to it. A real ask for
+  this would need a small explicit re-entry affordance, not built speculatively.
+- **Unsaved Plan Editor navigation loss isn't guarded.** Unlike the Blind-draft/
+  Capture-Sequence/Assessment-Run guards `guardLeavingActiveWork` composes, navigating
+  away (e.g. tapping Home) while mid-edit in `TrainingPlanEditor`/`TrainingPlanStepEditor`
+  has no confirmation — same category of gap as Session Settings' notes field, not a
+  new one. Worth a guard if it becomes a real, reported annoyance.
+- **History/Analyze integration is intentionally minimal.** Only a single "Started
+  from: {plan name}" label on the session summary (`TrackerApp.tsx`'s Blocks and
+  Sessions list) — no new filter, tab, chart, or plan-level analytics (repeated-
+  execution comparison, planned-vs-actual volume, completion consistency), per spec
+  sections 35/36. These are explicit Future Product Opportunities in the spec
+  (section 61), not omissions.
+- **No maximum Number of Stones / step count limit.** The spec (section 49) allows
+  "reasonable technical limits if required" but warns against inventing one without a
+  concrete reason — none exists yet for a plan step, so none was added (contrast
+  Capture Sequence's `MAX_CAPTURE_SHOT_COUNT`, added for a documented typo-guard
+  reason).
+
+### Not built (explicitly out of Version 1 scope, per the spec)
+
+Scheduling/calendars, coach-created or shared/team plans, plan marketplaces,
+AI-generated plans, automatic/performance-based progression, Assessment Plan Steps,
+and non-release-time (rotation/line/sweeping/sensor) Plan Step types — see spec
+section 4. The architecture (a discriminated `TrainingPlanStep` union with only one
+member today) is intended to make adding a new step type additive later, without
+redefining the meaning of existing release-time plans.
+
+---
+
+## Accuracy Tolerance Profiles (v1)
+
+**Implemented.** See `docs/SYSTEM_ARCHITECTURE.md`'s "Accuracy Tolerance Profiles"
+section for the architecture-level summary and `docs/DOMAIN_GLOSSARY.md`'s "Accuracy
+Tolerance Profile"/"Default Profile" entries for the domain concepts.
+
+### Deliberately deferred to keep this feature focused
+
+- **Assessment setup integration.** `AssessmentThresholdSelector.tsx` (used by
+  `AssessmentOverview.tsx`/`AssessScreen.tsx` before a Release Time Core Assessment Run
+  starts) already lets an athlete enter a user-configurable Custom Accuracy Tolerance,
+  so this was in scope per the product spec's "include only if Assessments already
+  support it" condition. Not wired up in this pass: doing so would mean threading
+  `accuracyToleranceProfiles`/`defaultAccuracyToleranceProfileId` through
+  `AssessScreen.tsx` (which owns its own threshold-preset/custom-input state locally,
+  independent of Training's) — a component with careful, already-tuned
+  capture-ownership and navigation-guard integration (ADR-0011). The change would be
+  mechanical (prop threading + reusing the same `AccuracyToleranceProfileSelector`,
+  with Assessment's own stricter `validateThresholdValues` — 0.01s precision, 0.01s–5s
+  range — governing what's actually accepted) but was left out to avoid touching
+  `AssessScreen.tsx` as a side effect of an unrelated feature.
+  **Recommendation:** if requested, add the same two props to
+  `AssessmentOverview.tsx`/`AssessmentThresholdSelector.tsx`, thread them from
+  `TrackerApp.tsx` through `AssessScreen.tsx`, and add one local
+  `selectedToleranceProfileId` state in `AssessmentOverview.tsx` (not persisted,
+  mirroring `TrainingSetup.tsx`'s own local selection state) — no Run/threshold-snapshot
+  domain logic needs to change, since the selector only prefills the Custom input
+  fields already validated and stored via `createAccuracyThresholdSet`.
+- **No reverse profile-matching when editing an existing Training Block/Plan Step.**
+  Opening an already-configured Custom Accuracy Tolerance for editing always starts on
+  "Custom for this exercise" showing its stored values, even if those values happen to
+  match a saved profile exactly — it is never guessed to be "this profile, currently
+  selected." Avoids ambiguity when multiple profiles could match, and floating-point
+  equality comparisons across independently-entered values.
+  **Impact:** low (the athlete can still re-select the matching profile from the
+  dropdown if they want the picker's summary display; the numeric values themselves are
+  correct either way).
+- **No lightweight "manage profiles" shortcut from inside the selector itself.** The
+  product spec allowed this "if it fits the existing navigation pattern" — it doesn't
+  cleanly fit, since `TrainingSetup.tsx` is always reached from a modal or an in-progress
+  Quick Start flow, and navigating to Settings from there would abandon that in-progress
+  setup. Settings > Accuracy Tolerances remains the only management location.
+- **No profile provenance metadata** (`sourceProfileId`/`sourceProfileName`) stored on a
+  `TrainingBlock`/`ReleaseTimingBlockConfiguration`. The product spec allowed this as
+  optional; omitted to avoid a schema/migration change to either type for a purely
+  informational nicety with no other product need yet.
+
+---
+
+## Smart Random Profiles (v1)
+
+**Implemented.** See `docs/SYSTEM_ARCHITECTURE.md`'s "Smart Random Profiles" section
+for the architecture-level summary and `docs/DOMAIN_GLOSSARY.md`'s "Smart Random
+Profile"/"Default Smart Random Profile" entries for the domain concepts.
+
+### Scope decision confirmed before implementation
+
+Auditing `src/lib/variableTargets.ts` found that Smart Random's step size (`0.05s`,
+`SMART_RANDOM_STEP`) and its repeat-avoidance memory
+(`NORMAL_REPEAT_AVOIDANCE_MEMORY`/`LARGE_JUMP_REPEAT_AVOIDANCE_MEMORY`) are fixed
+implementation constants today, not per-block configurable settings — the code
+explicitly comments the step as "Not user-configurable." The original feature request
+described profiles with a per-profile Step and Memory value; this would require
+genuinely extending `generateSmartRandomTarget`/`TrainingBlock`, a real
+target-generation-algorithm change explicitly out of scope for a configuration-reuse
+feature. Confirmed with the product owner: Smart Random Profiles store only Measurement
+Mode and the Minimum/Maximum range — what is actually configurable today. Step and
+memory remain fixed constants, unrelated to any profile.
+
+**Recommendation, if per-profile step/memory is ever genuinely wanted:** treat it as its
+own, separately-scoped product decision (it changes what athletes actually train, not
+just how a range is entered) — extend `TrainingBlock`/`ReleaseTimingBlockConfiguration`
+with explicit new fields, thread them through `generateSmartRandomTarget`, and add a
+dedicated migration/backfill rule, rather than folding it into this profile-reuse
+feature after the fact.
+
+### Deliberately deferred to keep this feature focused
+
+- **"Save current settings as a profile."** The product spec allowed this only if
+  trivial; not implemented, since it would need a name-prompt UI mid-setup-flow with its
+  own validation path, duplicating parts of `SmartRandomProfileForm.tsx` rather than
+  reusing it directly. **Recommendation:** if requested, add a small inline "Save as
+  Profile" affordance next to "Custom for this exercise" that opens
+  `SmartRandomProfileForm.tsx` pre-filled with the current Custom values, reusing the
+  existing `onCreate` handler — no new persistence or validation logic needed.
+- **No lightweight "manage profiles" shortcut from inside the selector itself** — same
+  reasoning as Accuracy Tolerance Profiles: `TrainingSetup.tsx` is always reached from a
+  modal or an in-progress Quick Start flow. Settings > Smart Random Profiles remains the
+  only management location.
+- **No profile provenance metadata** stored on a `TrainingBlock`/
+  `ReleaseTimingBlockConfiguration` — same reasoning as Accuracy Tolerance Profiles.
+- **No reverse profile-matching when editing an existing Training Block/Plan Step** —
+  same reasoning as Accuracy Tolerance Profiles: opening an already-configured Smart
+  Random range for editing always starts on "Custom for this exercise," never guessed to
+  be a currently-selected profile even if the values happen to match one exactly.
+- **Assessment integration not applicable.** The Release Time Core Assessment v1
+  protocol uses fixed targets (3.50s/3.75s/4.00s), never Smart Random — there is no
+  Assessment setup surface for this feature to integrate with.
+
+---
+
 ## Open product decisions
 
 These are not technical debt — they are decisions the product owner / domain expert

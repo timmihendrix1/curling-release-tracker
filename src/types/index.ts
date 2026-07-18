@@ -186,6 +186,105 @@ export type CaptureSequence = {
   lastError?: string;
 };
 
+// --- Training Plans (see docs/TRAINING_SYSTEM_AND_PLANS.md and
+// docs/adr/0012-training-plans-domain-and-execution-model.md) ---
+//
+// These types live centrally, next to TrainingBlock/Shot/CaptureSequence, rather
+// than in a separate src/lib/trainingPlans/types.ts — the same placement already
+// used for CaptureSequence/CaptureStepRecord/CaptureHandleMode even though the logic
+// that operates on them lives in src/lib/captureSequence.ts. Session.planExecution
+// transitively needs ReleaseTimingPlanStep (via PlanExecutionStepSnapshot), so
+// keeping the whole family here avoids any import cycle between this file and
+// src/lib/trainingPlans/*.ts, which only ever import types *from* here.
+
+// For Version 1, every Release Timing Plan Step completes after a fixed number of
+// saved shots. Modeled as a discriminated completion rule (not a bare number) so a
+// future step type can use a different completion kind without redefining this one.
+export type ShotCountCompletion = {
+  type: "shot-count";
+  value: number;
+};
+
+// How the Handle for each shot in a step is expected to behave. Distinct from, but
+// conceptually identical to, CaptureHandleMode's "fixed-in"/"fixed-out"/"alternate" —
+// see resolveExpectedHandle/handleStrategyToCaptureHandleMode in
+// src/lib/trainingPlans/handleStrategy.ts for the mapping between the two.
+export type HandleStrategy =
+  | { type: "free" }
+  | { type: "fixed"; handle: Handle }
+  | { type: "alternating"; startingHandle: Handle };
+
+// The block-scoped configuration a Release Timing Plan Step stores. Structurally
+// close to TrainingSetup.tsx's TrainingSetupValue, but deliberately a separate,
+// domain-owned type — a persisted plan must not depend on a UI component's form-value
+// shape. src/components/TrainingPlanStepEditor.tsx converts between the two locally.
+export type ReleaseTimingBlockConfiguration = {
+  name: string;
+  mode: BlockMode;
+  measurementMode: MeasurementMode;
+  targetTime: number;
+  variableTargetMode: VariableTargetMode;
+  blindTargetMode: BlindTargetMode;
+  smartRandomMin: number;
+  smartRandomMax: number;
+  accuracyThresholds: AccuracyThresholds;
+};
+
+// One ordered unit inside a Training Plan. Version 1 only implements this one step
+// type, but keeps an explicit discriminant (`type`) so future step types (Rotation,
+// Line, Assessment, ...) can be added later without redefining this one — see spec §9.
+export type ReleaseTimingPlanStep = {
+  id: string;
+  type: "release-timing";
+  completion: ShotCountCompletion;
+  handleStrategy: HandleStrategy;
+  configuration: ReleaseTimingBlockConfiguration;
+};
+
+// Version 1: only Release Timing steps exist. Kept as its own alias (rather than
+// using ReleaseTimingPlanStep directly everywhere) so a future union member can be
+// added here without touching every call site.
+export type TrainingPlanStep = ReleaseTimingPlanStep;
+
+// A reusable, ordered configuration — not training data. Persisted independently of
+// currentSession/sessionHistory (its own localStorage key, see
+// src/lib/trainingPlans/persistence.ts). Editing a plan never mutates a Session that
+// was already started or completed from it — see PlanExecutionState below.
+export type TrainingPlan = {
+  id: string;
+  name: string;
+  description?: string;
+  steps: TrainingPlanStep[];
+  createdAt: string;
+  updatedAt: string;
+  schemaVersion: number;
+};
+
+// One step's state within an active/completed plan execution. `step` is a deep copy
+// taken at plan-start time (never a live reference to the saved TrainingPlan) — this
+// is what makes a later plan edit or deletion incapable of affecting an
+// already-started or completed Session. `blockId` is set only once this step's
+// TrainingBlock has actually been created (lazy creation — see ADR-0012); a step with
+// no blockId yet hasn't been reached. Progression always looks blocks up by this id,
+// never by array position (session.blocks[i] is never assumed to equal steps[i]).
+export type PlanExecutionStepSnapshot = {
+  step: ReleaseTimingPlanStep;
+  blockId?: string;
+};
+
+// Attached to a Session when it was started from a Training Plan. Absent for every
+// Quick Start session. `activeStepIndex` always indexes a real entry in `steps`
+// (0..steps.length-1) — there is no separate "plan complete" index value; plan
+// completion is a derived condition (final step's block has reached its planned shot
+// count), not a stored one. See src/lib/trainingPlans/progress.ts.
+export type PlanExecutionState = {
+  sourcePlanId: string;
+  sourcePlanName: string;
+  sourcePlanUpdatedAt?: string;
+  steps: PlanExecutionStepSnapshot[];
+  activeStepIndex: number;
+};
+
 export type Session = {
   id: string;
   title: string;
@@ -197,4 +296,7 @@ export type Session = {
   // At most one at a time, for the current session only — see
   // docs/adr/0006-capture-sequences-share-the-timing-result-boundary.md.
   captureSequence?: CaptureSequence;
+  // Set only when this Session was started from a Training Plan. See
+  // docs/TRAINING_SYSTEM_AND_PLANS.md and docs/adr/0012.
+  planExecution?: PlanExecutionState;
 };

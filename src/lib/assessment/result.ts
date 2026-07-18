@@ -652,3 +652,54 @@ export function buildAssessmentTrendSeries(
       metrics: buildAssessmentResultView(run, comparisonThresholdSet).overall,
     }));
 }
+
+/** Smallest change worth reporting as a takeaway — below this reads as noise. */
+const ASSESSMENT_MAJOR_MISS_RATE_EPSILON = 0.05; // 5 percentage points
+const ASSESSMENT_MAE_EPSILON = 0.02; // seconds
+
+/**
+ * Analyze → Assessments' "what should I learn" opening sentence — the same
+ * Level-1 "what happened" fact-first comparison as Training's key takeaway
+ * (docs/COACHING_PRINCIPLES.md), but built only from `buildAssessmentTrendSeries`
+ * output: it never re-derives comparison eligibility itself, so it can only
+ * ever compare runs the Result screen's own comparison rules already judged
+ * protocol-compatible. Returns null when there's nothing yet to compare.
+ */
+export function buildAssessmentTrendInsight(
+  points: AssessmentTrendPoint[]
+): { headline: string } | null {
+  if (points.length < 2) return null;
+
+  const earliest = points[0].metrics;
+  const latest = points[points.length - 1].metrics;
+
+  if (earliest.majorMissRate !== null && latest.majorMissRate !== null) {
+    const delta = latest.majorMissRate - earliest.majorMissRate;
+    if (Math.abs(delta) >= ASSESSMENT_MAJOR_MISS_RATE_EPSILON) {
+      const from = Math.round(earliest.majorMissRate * 100);
+      const to = Math.round(latest.majorMissRate * 100);
+      return {
+        headline:
+          delta < 0
+            ? `Your Major Miss rate has fallen from ${from}% to ${to}% across your last ${points.length} comparable assessments.`
+            : `Your Major Miss rate has risen from ${from}% to ${to}% across your last ${points.length} comparable assessments.`,
+      };
+    }
+  }
+
+  if (earliest.meanAbsoluteError !== null && latest.meanAbsoluteError !== null) {
+    const delta = latest.meanAbsoluteError - earliest.meanAbsoluteError;
+    if (Math.abs(delta) >= ASSESSMENT_MAE_EPSILON) {
+      return {
+        headline:
+          delta < 0
+            ? `Your Average Error has improved from ${earliest.meanAbsoluteError.toFixed(2)}s to ${latest.meanAbsoluteError.toFixed(2)}s across your last ${points.length} comparable assessments.`
+            : `Your Average Error has moved from ${earliest.meanAbsoluteError.toFixed(2)}s to ${latest.meanAbsoluteError.toFixed(2)}s across your last ${points.length} comparable assessments.`,
+      };
+    }
+  }
+
+  return {
+    headline: `Your results have stayed steady across your last ${points.length} comparable assessments — no clear change yet.`,
+  };
+}

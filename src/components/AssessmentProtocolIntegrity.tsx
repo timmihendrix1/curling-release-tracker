@@ -1,8 +1,11 @@
 import type { ProtocolIntegritySummary } from "../lib/assessment/result";
+import { surfaceClass } from "./Surface";
 
 type AssessmentProtocolIntegrityProps = {
   summary: ProtocolIntegritySummary;
   eligibilityNote?: string;
+  /** "bare" strips the outer surface — see AssessmentResultScreen's shared Breakdown grouping. */
+  variant?: "card" | "bare";
 };
 
 const CAPTURE_MODE_LABELS: Record<string, string> = {
@@ -20,6 +23,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 export default function AssessmentProtocolIntegrity({
   summary,
   eligibilityNote,
+  variant = "card",
 }: AssessmentProtocolIntegrityProps) {
   const facts: string[] = [];
 
@@ -45,7 +49,7 @@ export default function AssessmentProtocolIntegrity({
   facts.push(`Timing provider: ${PROVIDER_LABELS[summary.timingProviderId] ?? summary.timingProviderId} (${CAPTURE_MODE_LABELS[summary.captureMode] ?? summary.captureMode}).`);
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h2 className="text-lg font-semibold text-slate-900">Protocol Integrity</h2>
       <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
         {facts.map((fact) => (

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { parseReleaseTime } from "../lib/timeInput";
+import { surfaceClass } from "./Surface";
 
 type AssessmentAttemptEntryProps = {
   onSubmitManualTime: (value: number) => void;
@@ -47,7 +48,9 @@ export default function AssessmentAttemptEntry({
   const invalidLimitReached = invalidAttemptCount >= maxInvalidAttempts;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // Immediately accessible, essential control — but must not compete with
+    // the Current Planned Shot Hero above it (Epic 1).
+    <div className={surfaceClass("primary")}>
       <p className="text-sm font-medium text-slate-700">Enter measured time</p>
 
       <div className="mt-2 flex gap-2">
@@ -87,7 +90,7 @@ export default function AssessmentAttemptEntry({
           type="button"
           onClick={onOpenInvalidDialog}
           disabled={invalidLimitReached}
-          className="whitespace-nowrap rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-11 whitespace-nowrap rounded-lg bg-red-50 px-3 text-xs font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Mark attempt invalid
         </button>

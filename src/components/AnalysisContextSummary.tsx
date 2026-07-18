@@ -3,9 +3,19 @@
 import type { HistoryAnalysisContext } from "../lib/historyAnalysis";
 import { dateRangeLabel } from "../lib/historyAnalysis";
 import { blockModeLabel, measurementModeLabel } from "../lib/trainingBlocks";
+import { surfaceClass } from "./Surface";
 
 type AnalysisContextSummaryProps = {
   context: HistoryAnalysisContext;
+  /**
+   * "bare" strips the outer surface so this merges directly into the top of
+   * the Key Progress Summary Hero when there's data to summarize — "what am
+   * I looking at" and "what does it show" are one continuous answer, not
+   * two stacked cards (compositional redesign). Standalone "utility" is
+   * still used for the empty-selection state, where this is the only thing
+   * on screen.
+   */
+  variant?: "utility" | "bare";
 };
 
 function formatDateSpan(context: HistoryAnalysisContext): string {
@@ -31,6 +41,7 @@ function formatDateSpan(context: HistoryAnalysisContext): string {
  */
 export default function AnalysisContextSummary({
   context,
+  variant = "utility",
 }: AnalysisContextSummaryProps) {
   const { filters } = context;
 
@@ -66,7 +77,7 @@ export default function AnalysisContextSummary({
   }
 
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-lg">
+    <div className={variant === "utility" ? surfaceClass("utility") : ""}>
       {headline && (
         <p className="text-sm font-semibold text-slate-900">{headline}</p>
       )}

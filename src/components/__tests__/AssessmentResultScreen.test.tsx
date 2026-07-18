@@ -43,14 +43,33 @@ describe("AssessmentResultScreen", () => {
 
     expect(screen.getByRole("heading", { name: "Release Time Core Assessment" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Core Metrics" })).toBeInTheDocument();
+    // Block/Target/Handle/Variable Adaptation/Protocol Integrity/Shot Details
+    // now live behind one collapsed "Full Breakdown" disclosure (Epic 2:
+    // one-tap detail, not automatic reading) — still present, just not the
+    // first thing rendered.
+    expect(screen.getByText("Full Breakdown")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Block Results" })).toBeInTheDocument();
+    // Target Results and Handle Comparison now lead with the same visual
+    // charts Train/Analyze already use for the identical question, ahead of
+    // their own KPI tables (Epic 3: reuse existing charts instead of
+    // Assessment-specific tables-only presentation).
+    expect(screen.getByRole("heading", { name: "Target Error by Shot" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Target Results" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Handle Boxplot" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Handle Comparison" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Variable Adaptation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Protocol Integrity" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Shot Details" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Compare With Another Run" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Development Trends" })).toBeInTheDocument();
+
+    // A single run has nothing yet to compare against or trend across, so
+    // Compare & Trends collapses to one compact note instead of a full
+    // selector and an empty chart (audit finding: the comparison selector
+    // previously rendered even with nothing to compare).
+    expect(
+      screen.getByText(/Complete another comparable assessment to compare results/)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Compare With Another Run" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Development Trends" })).not.toBeInTheDocument();
   });
 
   it("switching Original → Tight recalculates category metrics but never the raw metrics or the run's own threshold snapshot", () => {
@@ -107,9 +126,6 @@ describe("AssessmentResultScreen", () => {
     const run = buildCompletedRun();
     render(<AssessmentResultScreen run={run} history={[run]} onBack={() => {}} onDeleteRun={() => {}} />);
 
-    expect(
-      screen.getByText("No other protocol-compatible completed run exists yet to compare against.")
-    ).toBeInTheDocument();
     expect(screen.getByText(/Complete another comparable assessment/)).toBeInTheDocument();
   });
 

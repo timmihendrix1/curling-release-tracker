@@ -7,9 +7,16 @@
  * See docs/BROWER_INTEGRATION_STATUS.md and
  * docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md.
  */
-export default function DeviceStatusCard() {
+import { surfaceClass } from "./Surface";
+
+type DeviceStatusCardProps = {
+  /** "bare" strips the outer surface — see TrainingOverview's identical variant. */
+  variant?: "card" | "bare";
+};
+
+export default function DeviceStatusCard({ variant = "card" }: DeviceStatusCardProps) {
   return (
-    <div className="rounded-2xl bg-white p-4 shadow-lg">
+    <div className={variant === "card" ? surfaceClass("secondary") : ""}>
       <h3 className="text-sm font-semibold text-slate-700">Devices</h3>
       <p className="mt-1 text-sm text-slate-900">Manual Timing</p>
       <p className="mt-1 text-xs text-slate-500">

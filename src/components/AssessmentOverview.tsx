@@ -11,6 +11,7 @@ import AssessmentSetupConfirmation, {
 } from "./AssessmentSetupConfirmation";
 import AssessmentSetupDiagram from "./AssessmentSetupDiagram";
 import AssessmentThresholdSelector from "./AssessmentThresholdSelector";
+import { surfaceClass } from "./Surface";
 
 type AssessmentOverviewProps = {
   thresholdPreset: AccuracyThresholdPreset;
@@ -28,6 +29,8 @@ type AssessmentOverviewProps = {
   onOpenProtocol: () => void;
   onShowIntroduction: () => void;
   canStart: boolean;
+  /** Shown beneath the disabled Start Warm-up button — the missing requirement, not just a refusal. */
+  startBlockedReason: string | null;
   trainingConflictMessage: string | null;
   onStartWarmup: () => void;
   onBack: () => void;
@@ -58,6 +61,7 @@ export default function AssessmentOverview({
   onOpenProtocol,
   onShowIntroduction,
   canStart,
+  startBlockedReason,
   trainingConflictMessage,
   onStartWarmup,
   onBack,
@@ -72,7 +76,12 @@ export default function AssessmentOverview({
         ← Back to Assess
       </button>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      {/* Compose around the protocol itself: identity, required threshold
+          decision and the final readiness confirmation are three sections
+          of ONE setup task, not three competing cards (compositional
+          redesign — see docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md
+          section 23 and this screen's IA purpose, "readiness to start"). */}
+      <div className={surfaceClass("hero")}>
         <h1 className="text-xl font-semibold text-slate-900">
           {template.name} <span className="text-slate-400">v{template.version}</span>
         </h1>
@@ -105,51 +114,62 @@ export default function AssessmentOverview({
             View full protocol
           </button>
         </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <AssessmentThresholdSelector
+            preset={thresholdPreset}
+            onChangePreset={onChangeThresholdPreset}
+            customOnTargetInput={customOnTargetInput}
+            customAcceptableInput={customAcceptableInput}
+            onChangeCustomOnTargetInput={onChangeCustomOnTargetInput}
+            onChangeCustomAcceptableInput={onChangeCustomAcceptableInput}
+            customValidation={customValidation}
+          />
+        </div>
+
+        <div className="mt-6 border-t border-slate-100 pt-5">
+          <AssessmentSetupConfirmation
+            timingMethod={timingMethod}
+            onChangeTimingMethod={onChangeTimingMethod}
+            showSimulatorOption={showSimulatorOption}
+            confirmed={setupConfirmed}
+            onChangeConfirmed={onChangeSetupConfirmed}
+          />
+
+          <details className="mt-3 group">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700 marker:content-none">
+              View setup diagram
+            </summary>
+            <div className="mt-3">
+              <AssessmentSetupDiagram />
+            </div>
+          </details>
+        </div>
       </div>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <h2 className="text-sm font-semibold text-slate-900">What this assessment measures</h2>
-        <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-          {ASSESSMENT_WHAT_IT_MEASURES.map((line) => (
-            <li key={line}>{line}</li>
-          ))}
-        </ul>
-        <p className="mt-3 text-xs text-slate-500">{ASSESSMENT_WHAT_IT_DOES_NOT_MEASURE}</p>
+      {/* Reference material, not a required setup step — collapsed by
+          default (progressive disclosure). */}
+      <details className="group rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium text-slate-700 marker:content-none">
+          <span className="flex items-center justify-between gap-2">
+            <span>What this assessment measures</span>
+            <span className="text-xs text-slate-400 group-open:hidden">Show</span>
+            <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
+          </span>
+        </summary>
 
-        <h2 className="mt-4 text-sm font-semibold text-slate-900">Why this structure</h2>
-        <p className="mt-1 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
-      </div>
+        <div className="border-t border-slate-100 px-4 py-3">
+          <ul className="list-disc space-y-1 pl-4 text-sm text-slate-600">
+            {ASSESSMENT_WHAT_IT_MEASURES.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-slate-500">{ASSESSMENT_WHAT_IT_DOES_NOT_MEASURE}</p>
 
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <AssessmentThresholdSelector
-          preset={thresholdPreset}
-          onChangePreset={onChangeThresholdPreset}
-          customOnTargetInput={customOnTargetInput}
-          customAcceptableInput={customAcceptableInput}
-          onChangeCustomOnTargetInput={onChangeCustomOnTargetInput}
-          onChangeCustomAcceptableInput={onChangeCustomAcceptableInput}
-          customValidation={customValidation}
-        />
-      </div>
-
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
-        <AssessmentSetupConfirmation
-          timingMethod={timingMethod}
-          onChangeTimingMethod={onChangeTimingMethod}
-          showSimulatorOption={showSimulatorOption}
-          confirmed={setupConfirmed}
-          onChangeConfirmed={onChangeSetupConfirmed}
-        />
-
-        <details className="mt-3 group">
-          <summary className="cursor-pointer text-sm font-medium text-slate-700 marker:content-none">
-            View setup diagram
-          </summary>
-          <div className="mt-3">
-            <AssessmentSetupDiagram />
-          </div>
-        </details>
-      </div>
+          <h2 className="mt-4 text-sm font-semibold text-slate-900">Why this structure</h2>
+          <p className="mt-1 text-sm text-slate-600">{ASSESSMENT_WHY_STRUCTURE}</p>
+        </div>
+      </details>
 
       {trainingConflictMessage && (
         <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800 ring-1 ring-amber-200">
@@ -165,6 +185,10 @@ export default function AssessmentOverview({
       >
         Start Warm-up
       </button>
+
+      {!canStart && startBlockedReason && (
+        <p className="text-center text-xs text-slate-500">{startBlockedReason}</p>
+      )}
     </div>
   );
 }

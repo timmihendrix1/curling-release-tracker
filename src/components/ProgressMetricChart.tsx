@@ -113,6 +113,9 @@ export default function ProgressMetricChart({
       notices={notices}
       isEmpty={isEmpty}
       emptyMessage="Not enough completed blocks yet for a progress trend."
+      // Analyze's featured "primary trend" (MOBUX §19's Analyze hierarchy) —
+      // one step above the other, equally-secondary charts below it.
+      level="primary"
     >
       <div className="mb-3 flex flex-wrap gap-2">
         {METRIC_OPTIONS.map((option) => (

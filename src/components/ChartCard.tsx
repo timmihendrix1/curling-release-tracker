@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import type { AnalyticsExplanation } from "../lib/analyticsExplanations";
 import InfoButton from "./InfoButton";
+import { surfaceClass, type SurfaceLevel } from "./Surface";
 
 type ChartCardProps = {
   title: string;
@@ -18,6 +19,12 @@ type ChartCardProps = {
   notices?: string[];
   isEmpty?: boolean;
   emptyMessage?: string;
+  /**
+   * Charts are supporting analytics, not the screen's Hero — defaults to
+   * "secondary" (Epic 1, Visual Hierarchy) so every chart visibly steps
+   * back from whatever Hero surface the screen has chosen.
+   */
+  level?: Extract<SurfaceLevel, "primary" | "secondary">;
   children: ReactNode;
 };
 
@@ -34,10 +41,11 @@ export default function ChartCard({
   notices,
   isEmpty = false,
   emptyMessage = "Not enough shots yet.",
+  level = "secondary",
   children,
 }: ChartCardProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass(level)}>
       {/* A <header>, not a <div> — several existing tests scope a card by
           "the innermost div containing this title", and a <div> wrapper here
           would shadow that with a title-only div that doesn't contain the

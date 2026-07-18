@@ -6,8 +6,14 @@ import type {
   CaptureSequence,
   CaptureSequenceStatus,
   CaptureStepRecord,
+  HandleStrategy,
   MeasurementMode,
+  PlanExecutionState,
+  PlanExecutionStepSnapshot,
+  ReleaseTimingBlockConfiguration,
+  ReleaseTimingPlanStep,
   Session,
+  ShotCountCompletion,
   Shot,
   ShotType,
   TimingProviderType,
@@ -474,6 +480,133 @@ function backfillPendingTargets(
   });
 }
 
+function isValidHandleStrategy(value: unknown): value is HandleStrategy {
+  if (!isRecord(value)) return false;
+  if (value.type === "free") return true;
+  if (value.type === "fixed") return value.handle === "in" || value.handle === "out";
+  if (value.type === "alternating") {
+    return value.startingHandle === "in" || value.startingHandle === "out";
+  }
+  return false;
+}
+
+function isValidShotCountCompletion(value: unknown): value is ShotCountCompletion {
+  return (
+    isRecord(value) &&
+    value.type === "shot-count" &&
+    typeof value.value === "number" &&
+    Number.isInteger(value.value) &&
+    value.value > 0
+  );
+}
+
+function isValidReleaseTimingBlockConfiguration(
+  value: unknown
+): value is ReleaseTimingBlockConfiguration {
+  if (!isRecord(value)) return false;
+  if (!isRecord(value.accuracyThresholds)) return false;
+
+  return (
+    typeof value.name === "string" &&
+    VALID_BLOCK_MODES.includes(value.mode as BlockMode) &&
+    VALID_MEASUREMENT_MODES.includes(value.measurementMode as MeasurementMode) &&
+    typeof value.targetTime === "number" &&
+    VALID_VARIABLE_TARGET_MODES.includes(
+      value.variableTargetMode as VariableTargetMode
+    ) &&
+    VALID_BLIND_TARGET_MODES.includes(value.blindTargetMode as BlindTargetMode) &&
+    typeof value.smartRandomMin === "number" &&
+    typeof value.smartRandomMax === "number" &&
+    typeof value.accuracyThresholds.onTarget === "number" &&
+    typeof value.accuracyThresholds.acceptable === "number"
+  );
+}
+
+function isValidReleaseTimingPlanStep(
+  value: unknown
+): value is ReleaseTimingPlanStep {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    value.type === "release-timing" &&
+    isValidShotCountCompletion(value.completion) &&
+    isValidHandleStrategy(value.handleStrategy) &&
+    isValidReleaseTimingBlockConfiguration(value.configuration)
+  );
+}
+
+/**
+ * `Session.planExecution` has strict cross-field invariants — `activeStepIndex` must
+ * validly index `steps`; every step at or before `activeStepIndex` must carry a
+ * `blockId` that resolves to a real, already-migrated block; every step after it must
+ * not have one yet (lazy block creation — see docs/adr/0012) — much closer to
+ * AssessmentRun's invariants than to a TrainingBlock's independently-optional fields.
+ * So, unlike `migrateBlocks`/`migrateShots`'s field-by-field repair style, a
+ * structurally invalid `planExecution` is discarded whole rather than partially
+ * repaired: patching one field in isolation (e.g. clamping an out-of-range
+ * `activeStepIndex`) risks silently attributing the wrong block to the wrong step.
+ * Discarding only ever loses the plan-progress *decoration* on a Session — `blocks`/
+ * `shots` (the actual training data) are migrated independently, before this runs,
+ * and are never affected by a corrupt or missing `planExecution`.
+ */
+function migratePlanExecution(
+  raw: Record<string, unknown>,
+  blockIds: Set<string>
+): PlanExecutionState | undefined {
+  if (!isRecord(raw.planExecution)) return undefined;
+  const rawExecution = raw.planExecution;
+
+  if (
+    typeof rawExecution.sourcePlanId !== "string" ||
+    typeof rawExecution.sourcePlanName !== "string" ||
+    !Array.isArray(rawExecution.steps) ||
+    rawExecution.steps.length === 0 ||
+    typeof rawExecution.activeStepIndex !== "number" ||
+    !Number.isInteger(rawExecution.activeStepIndex) ||
+    rawExecution.activeStepIndex < 0 ||
+    rawExecution.activeStepIndex >= rawExecution.steps.length
+  ) {
+    return undefined;
+  }
+
+  const activeStepIndex = rawExecution.activeStepIndex;
+  const steps: PlanExecutionStepSnapshot[] = [];
+
+  for (let index = 0; index < rawExecution.steps.length; index += 1) {
+    const rawSnapshot = rawExecution.steps[index];
+
+    if (!isRecord(rawSnapshot) || !isValidReleaseTimingPlanStep(rawSnapshot.step)) {
+      return undefined;
+    }
+
+    const blockId =
+      typeof rawSnapshot.blockId === "string" ? rawSnapshot.blockId : undefined;
+
+    if (index <= activeStepIndex) {
+      // Every step at or before the active one must already have a real block —
+      // lazy creation means a step only becomes active once its block exists.
+      if (!blockId || !blockIds.has(blockId)) return undefined;
+    } else if (blockId !== undefined) {
+      // A not-yet-reached step must not have a block yet — this can't be
+      // repaired by guessing which of the two is wrong.
+      return undefined;
+    }
+
+    steps.push({ step: rawSnapshot.step, blockId });
+  }
+
+  return {
+    sourcePlanId: rawExecution.sourcePlanId,
+    sourcePlanName: rawExecution.sourcePlanName,
+    sourcePlanUpdatedAt:
+      typeof rawExecution.sourcePlanUpdatedAt === "string"
+        ? rawExecution.sourcePlanUpdatedAt
+        : undefined,
+    steps,
+    activeStepIndex,
+  };
+}
+
 export function migrateSession(raw: unknown): Session {
   const source = isRecord(raw) ? raw : {};
 
@@ -491,6 +624,7 @@ export function migrateSession(raw: unknown): Session {
       : fallbackBlockId;
 
   const captureSequence = migrateCaptureSequence(source, id, blockIds, shots);
+  const planExecution = migratePlanExecution(source, blockIds);
 
   return {
     id,
@@ -501,6 +635,7 @@ export function migrateSession(raw: unknown): Session {
     activeBlockId,
     shots,
     captureSequence,
+    planExecution,
   };
 }
 

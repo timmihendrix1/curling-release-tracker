@@ -1,3 +1,5 @@
+import { surfaceClass } from "./Surface";
+
 type TodayPlanCardProps = {
   onStartTraining: () => void;
   /** True if an active (non-terminal) Assessment Run exists — never an invented/scheduled assessment, only a real in-progress one (see docs/adr/0011). */
@@ -21,7 +23,8 @@ export default function TodayPlanCard({
   onResumeAssessment,
 }: TodayPlanCardProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // Home's one Hero (Epic 1).
+    <div className={surfaceClass("hero")}>
       <h2 className="text-xl font-semibold text-slate-900">Today&apos;s Plan</h2>
 
       <p className="mt-2 text-sm text-slate-600">No scheduled session.</p>

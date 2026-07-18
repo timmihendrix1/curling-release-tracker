@@ -8,11 +8,13 @@ import {
   validateAccuracyThresholds,
   type AccuracyThresholdPreset,
 } from "../lib/accuracyThresholds";
+import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { accuracyThresholdsSetupExplanation } from "../lib/analyticsExplanations";
 import {
   measurementModeExplanation,
   trainingCategoryExplanation,
 } from "../lib/helpContent";
+import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { parseReleaseTime } from "../lib/timeInput";
 import {
   blindTargetModeLabel,
@@ -33,7 +35,9 @@ import type {
   MeasurementMode,
   VariableTargetMode,
 } from "../types";
+import AccuracyToleranceProfileSelector from "./AccuracyToleranceProfileSelector";
 import InfoButton from "./InfoButton";
+import SmartRandomProfileSelector from "./SmartRandomProfileSelector";
 
 export type TrainingSetupValue = {
   name: string;
@@ -90,6 +94,20 @@ type TrainingSetupProps = {
   submitLabel: string;
   onSubmit: (value: TrainingSetupValue) => void;
   onCancel?: () => void;
+  /** Saved Accuracy Tolerance Profiles the athlete can pick from under Custom. */
+  accuracyToleranceProfiles?: AccuracyToleranceProfile[];
+  /** Prefills a brand-new configuration's Custom values; ignored when editing an
+   * existing block/step (its own stored values always win — see the Accuracy
+   * Tolerance Profiles product principle: a profile never overrides an
+   * already-configured value). */
+  defaultAccuracyToleranceProfileId?: string | null;
+  /** Saved Smart Random Profiles the athlete can pick from wherever Smart
+   * Random is the selected target source. */
+  smartRandomProfiles?: SmartRandomProfile[];
+  /** Prefills a brand-new Smart Random configuration's range; ignored when
+   * editing an existing block/step, same principle as
+   * defaultAccuracyToleranceProfileId above. */
+  defaultSmartRandomProfileId?: string | null;
 };
 
 const BLOCK_MODES: BlockMode[] = ["fixed", "variable", "blind"];
@@ -116,7 +134,37 @@ export default function TrainingSetup({
   submitLabel,
   onSubmit,
   onCancel,
+  accuracyToleranceProfiles = [],
+  defaultAccuracyToleranceProfileId = null,
+  smartRandomProfiles = [],
+  defaultSmartRandomProfileId = null,
 }: TrainingSetupProps) {
+  // Only relevant for prefilling a brand-new configuration (see the prop doc
+  // comment above) — an existing block/step's own stored thresholds always win.
+  const defaultToleranceProfile =
+    !initialValue?.accuracyThresholds && defaultAccuracyToleranceProfileId
+      ? (accuracyToleranceProfiles.find(
+          (profile) => profile.id === defaultAccuracyToleranceProfileId
+        ) ?? null)
+      : null;
+
+  // Only relevant for prefilling a brand-new Smart Random configuration; an
+  // already-configured block/step's own stored range always wins. Also only
+  // considered when the default profile's Measurement Mode matches this
+  // configuration's starting Measurement Mode — a profile can never be
+  // applied in the wrong measurement context.
+  const defaultSmartRandomProfile =
+    initialValue?.smartRandomMin === undefined &&
+    initialValue?.smartRandomMax === undefined &&
+    defaultSmartRandomProfileId
+      ? (smartRandomProfiles.find(
+          (profile) =>
+            profile.id === defaultSmartRandomProfileId &&
+            profile.measurementMode ===
+              (initialValue?.measurementMode ?? "back-hog")
+        ) ?? null)
+      : null;
+
   const [name, setName] = useState(initialValue?.name ?? "");
   const [mode, setMode] = useState<BlockMode>(initialValue?.mode ?? "fixed");
   const [measurementMode, setMeasurementMode] = useState<MeasurementMode>(
@@ -132,29 +180,74 @@ export default function TrainingSetup({
   const [targetTimeInput, setTargetTimeInput] = useState(
     (initialValue?.targetTime ?? 3.75).toFixed(2)
   );
+  // null = "Custom for this exercise" (a one-off range, the pre-existing
+  // behavior); a profile id means the range fields are currently showing
+  // that profile's values. Never persisted — see SmartRandomProfileSelector.
+  const [selectedSmartRandomProfileId, setSelectedSmartRandomProfileId] =
+    useState<string | null>(defaultSmartRandomProfile?.id ?? null);
   const [minTargetTimeInput, setMinTargetTimeInput] = useState(
-    (initialValue?.smartRandomMin ?? DEFAULT_SMART_RANDOM_MIN).toFixed(2)
+    (
+      initialValue?.smartRandomMin ??
+      defaultSmartRandomProfile?.min ??
+      DEFAULT_SMART_RANDOM_MIN
+    ).toFixed(2)
   );
   const [maxTargetTimeInput, setMaxTargetTimeInput] = useState(
-    (initialValue?.smartRandomMax ?? DEFAULT_SMART_RANDOM_MAX).toFixed(2)
+    (
+      initialValue?.smartRandomMax ??
+      defaultSmartRandomProfile?.max ??
+      DEFAULT_SMART_RANDOM_MAX
+    ).toFixed(2)
   );
+
+  function handleSelectSmartRandomProfile(profileId: string | null) {
+    setSelectedSmartRandomProfileId(profileId);
+
+    if (profileId) {
+      const profile = smartRandomProfiles.find((p) => p.id === profileId);
+      if (profile) {
+        setMinTargetTimeInput(profile.min.toFixed(2));
+        setMaxTargetTimeInput(profile.max.toFixed(2));
+      }
+    }
+  }
 
   const [accuracyThresholdPreset, setAccuracyThresholdPreset] =
     useState<AccuracyThresholdPreset>(
       detectAccuracyThresholdPreset(initialValue?.accuracyThresholds)
     );
+  // null = "Custom for this exercise" (a one-off value, the pre-existing
+  // behavior); a profile id means Custom's fields are currently showing that
+  // profile's values. Never persisted — see AccuracyToleranceProfileSelector.
+  const [selectedToleranceProfileId, setSelectedToleranceProfileId] = useState<
+    string | null
+  >(defaultToleranceProfile?.id ?? null);
   const [customOnTargetInput, setCustomOnTargetInput] = useState(
     (
       initialValue?.accuracyThresholds?.onTarget ??
+      defaultToleranceProfile?.onTarget ??
       STANDARD_ACCURACY_THRESHOLDS.onTarget
     ).toFixed(2)
   );
   const [customAcceptableInput, setCustomAcceptableInput] = useState(
     (
       initialValue?.accuracyThresholds?.acceptable ??
+      defaultToleranceProfile?.acceptable ??
       STANDARD_ACCURACY_THRESHOLDS.acceptable
     ).toFixed(2)
   );
+
+  function handleSelectToleranceProfile(profileId: string | null) {
+    setSelectedToleranceProfileId(profileId);
+
+    if (profileId) {
+      const profile = accuracyToleranceProfiles.find((p) => p.id === profileId);
+      if (profile) {
+        setCustomOnTargetInput(profile.onTarget.toFixed(2));
+        setCustomAcceptableInput(profile.acceptable.toFixed(2));
+      }
+    }
+  }
 
   const customAccuracyThresholdsValidation =
     accuracyThresholdPreset === "custom"
@@ -266,75 +359,83 @@ export default function TrainingSetup({
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Block Name
-        </label>
-
-        <input
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="e.g. Draw Weight Practice"
-          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium text-slate-700">
-          Training Mode
-        </label>
+        {/* Training objective comes first — the IA's #1 priority question
+            for Train is "what kind of training am I about to do?", not the
+            block's name (compositional redesign — see
+            docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's Train
+            Information Priority). One shared Info action for the whole
+            control group, describing
+            whichever Training Mode is currently selected, rather than a
+            cramped per-segment info icon on every button (DESIGN_SYSTEM.md
+            §13.1's preferred alternative). */}
+        <header className="flex items-center">
+          <span className="text-sm font-medium text-slate-700">
+            Training Mode
+          </span>
+          <InfoButton explanation={trainingCategoryExplanation(mode)} />
+        </header>
 
         <div className="mt-2 grid grid-cols-3 gap-2">
           {BLOCK_MODES.map((blockMode) => (
-            // The Info button is a sibling of the selection button, not
-            // nested inside it — a <button> inside a <button> would be
-            // invalid HTML, and clicking the info icon must never also
-            // select this Training Mode.
-            <div key={blockMode} className="relative">
-              <button
-                type="button"
-                onClick={() => setMode(blockMode)}
-                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
-                  mode === blockMode
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                {blockModeLabel(blockMode)}
-              </button>
-              <span className="absolute right-1 top-1">
-                <InfoButton explanation={trainingCategoryExplanation(blockMode)} />
-              </span>
-            </div>
+            <button
+              key={blockMode}
+              type="button"
+              onClick={() => setMode(blockMode)}
+              className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
+                mode === blockMode
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {blockModeLabel(blockMode)}
+            </button>
           ))}
         </div>
+
+        <p className="mt-1.5 text-xs text-slate-500">
+          {trainingCategoryExplanation(mode).shortDescription}
+        </p>
       </div>
 
       <div>
-        <label className="text-sm font-medium text-slate-700">
-          Measurement Mode
-        </label>
+        <header className="flex items-center">
+          <span className="text-sm font-medium text-slate-700">
+            Measurement Mode
+          </span>
+          <InfoButton explanation={measurementModeExplanation(measurementMode)} />
+        </header>
 
         <div className="mt-2 grid grid-cols-2 gap-2">
           {MEASUREMENT_MODES.map((mm) => (
-            <div key={mm} className="relative">
-              <button
-                type="button"
-                onClick={() => setMeasurementMode(mm)}
-                className={`w-full rounded-xl px-3 py-3 pr-7 text-sm font-medium transition ${
-                  measurementMode === mm
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                {measurementModeLabel(mm)}
-              </button>
-              <span className="absolute right-1 top-1">
-                <InfoButton explanation={measurementModeExplanation(mm)} />
-              </span>
-            </div>
+            <button
+              key={mm}
+              type="button"
+              onClick={() => setMeasurementMode(mm)}
+              className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
+                measurementMode === mm
+                  ? "bg-slate-900 text-white"
+                  : "bg-slate-200 text-slate-700"
+              }`}
+            >
+              {measurementModeLabel(mm)}
+            </button>
           ))}
         </div>
+
+        <p className="mt-1.5 text-xs text-slate-500">
+          {measurementModeExplanation(measurementMode).shortDescription}
+        </p>
+      </div>
+
+      {/* Target Configuration group — Block Name/Training Mode/Measurement
+          Mode above are the Training Block decision; everything from here
+          down is the Target Configuration decision (DESIGN_SYSTEM.md §15.5).
+          A divider and section title separate the two within one form,
+          rather than a second major card for a few related fields. */}
+      <div className="border-t border-slate-200 pt-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Target Configuration
+        </h3>
       </div>
 
       <div>
@@ -386,48 +487,21 @@ export default function TrainingSetup({
             s
           </p>
         ) : (
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-500">On Target (±s)</label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={customOnTargetInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (/^[0-9.,]*$/.test(value)) {
-                    setCustomOnTargetInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500">
-                Acceptable (±s)
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={customAcceptableInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  if (/^[0-9.,]*$/.test(value)) {
-                    setCustomAcceptableInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-              />
-            </div>
-
-            {customAccuracyThresholdsValidation?.valid === false && (
-              <p className="col-span-2 text-xs text-red-600">
-                {customAccuracyThresholdsValidation.error}
-              </p>
-            )}
+          <div className="mt-2">
+            <AccuracyToleranceProfileSelector
+              profiles={accuracyToleranceProfiles}
+              selectedProfileId={selectedToleranceProfileId}
+              onSelectProfile={handleSelectToleranceProfile}
+              onTargetInput={customOnTargetInput}
+              acceptableInput={customAcceptableInput}
+              onChangeOnTargetInput={setCustomOnTargetInput}
+              onChangeAcceptableInput={setCustomAcceptableInput}
+              errorMessages={
+                customAccuracyThresholdsValidation?.valid === false
+                  ? [customAccuracyThresholdsValidation.error]
+                  : undefined
+              }
+            />
           </div>
         )}
       </div>
@@ -511,63 +585,26 @@ export default function TrainingSetup({
       {showSmartRandomRange && (
         <div>
           <label className="text-sm font-medium text-slate-700">
-            Target Range
+            Smart Random Settings
           </label>
 
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs text-slate-500">
-                Minimum Target Time
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={minTargetTimeInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const isValidInput = /^[0-9.,]*$/.test(value);
-
-                  if (isValidInput) {
-                    setMinTargetTimeInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-slate-500">
-                Maximum Target Time
-              </label>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                value={maxTargetTimeInput}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  const isValidInput = /^[0-9.,]*$/.test(value);
-
-                  if (isValidInput) {
-                    setMaxTargetTimeInput(value);
-                  }
-                }}
-                className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
-              />
-            </div>
+          <div className="mt-2">
+            <SmartRandomProfileSelector
+              profiles={smartRandomProfiles}
+              measurementMode={measurementMode}
+              selectedProfileId={selectedSmartRandomProfileId}
+              onSelectProfile={handleSelectSmartRandomProfile}
+              minInput={minTargetTimeInput}
+              maxInput={maxTargetTimeInput}
+              onChangeMinInput={setMinTargetTimeInput}
+              onChangeMaxInput={setMaxTargetTimeInput}
+              errorMessages={
+                smartRandomRangeValidation?.valid === false
+                  ? [smartRandomRangeValidation.error]
+                  : undefined
+              }
+            />
           </div>
-
-          {smartRandomRangeValidation?.valid === false ? (
-            <p className="mt-2 text-xs text-red-600">
-              {smartRandomRangeValidation.error}
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">
-              Targets vary within this range. The app usually avoids large
-              jumps between consecutive shots.
-            </p>
-          )}
         </div>
       )}
 
@@ -595,6 +632,23 @@ export default function TrainingSetup({
           />
         </div>
       )}
+
+      {/* Optional detail, deliberately last — naming a block is lower
+          priority than deciding what to train (IA doc's "Optional details",
+          priority 4 of 4). */}
+      <div className="border-t border-slate-100 pt-4">
+        <label className="text-xs font-medium text-slate-500">
+          Block Name <span className="font-normal">(optional)</span>
+        </label>
+
+        <input
+          type="text"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="e.g. Draw Weight Practice"
+          className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400"
+        />
+      </div>
 
       <div className="flex gap-2 pt-2">
         {onCancel && (

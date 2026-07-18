@@ -1114,3 +1114,210 @@ describe("migrateSession — Accuracy Thresholds backfill", () => {
     expect(twice).toEqual(once);
   });
 });
+
+describe("migrateSession — planExecution (Training Plans)", () => {
+  function releaseTimingStep(id: string) {
+    return {
+      id,
+      type: "release-timing",
+      completion: { type: "shot-count", value: 8 },
+      handleStrategy: { type: "alternating", startingHandle: "in" },
+      configuration: {
+        name: "Fixed Weight",
+        mode: "fixed",
+        measurementMode: "back-hog",
+        targetTime: 3.75,
+        variableTargetMode: "smart-random",
+        blindTargetMode: "fixed",
+        smartRandomMin: 2.5,
+        smartRandomMax: 4.5,
+        accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+      },
+    };
+  }
+
+  function blockFor(id: string) {
+    return {
+      id,
+      name: "Plan Block",
+      mode: "fixed",
+      measurementMode: "back-hog",
+      targetTime: 3.75,
+      createdAt: "2024-01-01T00:00:00.000Z",
+    };
+  }
+
+  it("survives reload with an in-progress plan execution (not yet on the final step)", () => {
+    const raw = {
+      id: "s-plan-1",
+      blocks: [blockFor("block-1"), blockFor("block-2")],
+      activeBlockId: "block-2",
+      shots: [],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        sourcePlanUpdatedAt: "2024-01-01T00:00:00.000Z",
+        activeStepIndex: 1,
+        steps: [
+          { step: releaseTimingStep("step-1"), blockId: "block-1" },
+          { step: releaseTimingStep("step-2"), blockId: "block-2" },
+          { step: releaseTimingStep("step-3") },
+        ],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+
+    expect(migrated.planExecution).toBeDefined();
+    expect(migrated.planExecution?.sourcePlanName).toBe("Release Consistency");
+    expect(migrated.planExecution?.activeStepIndex).toBe(1);
+    expect(migrated.planExecution?.steps[0].blockId).toBe("block-1");
+    expect(migrated.planExecution?.steps[1].blockId).toBe("block-2");
+    expect(migrated.planExecution?.steps[2].blockId).toBeUndefined();
+  });
+
+  it("survives reload for a completed plan execution (active step is the final one)", () => {
+    const raw = {
+      id: "s-plan-2",
+      blocks: [blockFor("block-1"), blockFor("block-2")],
+      activeBlockId: "block-2",
+      shots: [],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        activeStepIndex: 1,
+        steps: [
+          { step: releaseTimingStep("step-1"), blockId: "block-1" },
+          { step: releaseTimingStep("step-2"), blockId: "block-2" },
+        ],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+
+    expect(migrated.planExecution?.activeStepIndex).toBe(1);
+    expect(migrated.planExecution?.steps).toHaveLength(2);
+    expect(migrated.planExecution?.steps[1].blockId).toBe("block-2");
+
+    // Readable from history exactly the same way — migrateSessionHistory just
+    // maps migrateSession over the array, so no separate assertion is needed
+    // beyond confirming this single-session path is correct.
+  });
+
+  it("leaves planExecution undefined for a legacy Session that never had one", () => {
+    const raw = {
+      id: "s-plan-3",
+      blocks: [blockFor("block-1")],
+      activeBlockId: "block-1",
+      shots: [],
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution).toBeUndefined();
+  });
+
+  it("discards a malformed planExecution (activeStepIndex out of bounds) without affecting blocks/shots", () => {
+    const raw = {
+      id: "s-plan-4",
+      blocks: [blockFor("block-1")],
+      activeBlockId: "block-1",
+      shots: [
+        {
+          id: "shot-1",
+          blockId: "block-1",
+          shotNumber: 1,
+          releaseTime: 3.8,
+          targetTime: 3.75,
+          handle: "in",
+          createdAt: "2024-01-01T00:00:01.000Z",
+        },
+      ],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        activeStepIndex: 5,
+        steps: [{ step: releaseTimingStep("step-1"), blockId: "block-1" }],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution).toBeUndefined();
+    expect(migrated.blocks).toHaveLength(1);
+    expect(migrated.shots).toHaveLength(1);
+  });
+
+  it("discards a malformed planExecution (blockId points at a non-existent block)", () => {
+    const raw = {
+      id: "s-plan-5",
+      blocks: [blockFor("block-1")],
+      activeBlockId: "block-1",
+      shots: [],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        activeStepIndex: 0,
+        steps: [{ step: releaseTimingStep("step-1"), blockId: "block-does-not-exist" }],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution).toBeUndefined();
+    expect(migrated.blocks).toHaveLength(1);
+  });
+
+  it("discards a malformed planExecution (steps is not an array)", () => {
+    const raw = {
+      id: "s-plan-6",
+      blocks: [blockFor("block-1")],
+      activeBlockId: "block-1",
+      shots: [],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        activeStepIndex: 0,
+        steps: "not-an-array",
+      },
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution).toBeUndefined();
+    expect(migrated.blocks).toHaveLength(1);
+  });
+
+  it("discards a malformed planExecution (planExecution itself is not an object)", () => {
+    const raw = {
+      id: "s-plan-7",
+      blocks: [blockFor("block-1")],
+      activeBlockId: "block-1",
+      shots: [],
+      planExecution: "not-an-object",
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution).toBeUndefined();
+    expect(migrated.blocks).toHaveLength(1);
+  });
+
+  it("is idempotent for a Session with an active planExecution", () => {
+    const raw = {
+      id: "s-plan-8",
+      blocks: [blockFor("block-1"), blockFor("block-2")],
+      activeBlockId: "block-2",
+      shots: [],
+      planExecution: {
+        sourcePlanId: "plan-1",
+        sourcePlanName: "Release Consistency",
+        activeStepIndex: 1,
+        steps: [
+          { step: releaseTimingStep("step-1"), blockId: "block-1" },
+          { step: releaseTimingStep("step-2"), blockId: "block-2" },
+          { step: releaseTimingStep("step-3") },
+        ],
+      },
+    };
+
+    const once = migrateSession(raw);
+    const twice = migrateSession(JSON.parse(JSON.stringify(once)));
+    expect(twice).toEqual(once);
+  });
+});

@@ -12,6 +12,7 @@ import { HANDLE_LABELS } from "../lib/chartTheme";
 import type { Handle } from "../types";
 import HandleBoxPlot from "./HandleBoxPlot";
 import HandleErrorBarChart from "./HandleErrorBarChart";
+import { surfaceClass } from "./Surface";
 
 type HandleAnalysisSectionProps = {
   boxPlots: HandleTargetErrorBoxPlots;
@@ -34,7 +35,7 @@ export default function HandleAnalysisSection({
 
   if (availableHandles.length === 0) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass("secondary")}>
         <h2 className="text-xl font-semibold text-slate-900">
           Handle Analysis
         </h2>

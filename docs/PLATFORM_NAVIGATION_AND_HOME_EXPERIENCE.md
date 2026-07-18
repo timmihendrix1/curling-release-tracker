@@ -39,6 +39,11 @@ deliberately narrows this:
   section. The Assessment product and domain model this screen implements is defined in
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — read it before any further
   Assess implementation work, alongside this document.
+- **Training Plans (Version 1) are now implemented inside Train** — no new
+  navigation item: `TrainLanding.tsx` offers Quick Start (unchanged) and Training
+  Plans as two entry paths within the existing `"train"` view, per
+  `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
+  Plans" section.
 - **Coach and Team** appear on Home as visually secondary "Coming soon"
   placeholders, per this document's own Home structure below.
 - **Schedule** likewise appears as "Coming soon" — no scheduling/calendar data model

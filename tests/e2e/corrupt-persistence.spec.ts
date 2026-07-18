@@ -144,6 +144,7 @@ test("a capture sequence referencing a non-existent block is discarded, but exis
   await expect(page.getByText("1 shot total")).toBeVisible();
   // No stale/broken sequence surfaces — the Start Auto Capture form shows, not a
   // "Previous capture" summary referencing data that no longer makes sense.
+  await page.getByRole("tab", { name: "Auto Capture" }).click();
   await expect(page.getByText("Start Auto Capture")).toBeVisible();
   await expect(page.getByText(/Previous capture/)).toHaveCount(0);
 });

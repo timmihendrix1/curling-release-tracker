@@ -31,6 +31,9 @@ test("two simulator results fired in the same tick are both captured, in order, 
   await clickQuickValuesSynchronously(page, ["3.50s", "3.75s"]);
 
   await expect(page.getByText("2 / 4 shots")).toBeVisible();
+  // Recent Shots is collapsed by default (Epic 2: editing/reviewing past
+  // shots is an exception workflow, not the primary "how am I doing" read).
+  await page.getByText(/Recent Shots/).click();
   await expect(page.getByText("#1 · In", { exact: false })).toBeVisible();
   await expect(page.getByText("#2 · Out", { exact: false })).toBeVisible();
   await expect(page.getByText("3.50", { exact: false }).first()).toBeVisible();
@@ -47,6 +50,7 @@ test("three simulator results fired without any await between dispatches all lan
   await clickQuickValuesSynchronously(page, ["3.50s", "3.75s", "4.00s"]);
 
   await expect(page.getByText("3 / 5 shots")).toBeVisible();
+  await page.getByText(/Recent Shots/).click();
   await expect(page.getByText("#1 ·", { exact: false })).toBeVisible();
   await expect(page.getByText("#2 ·", { exact: false })).toBeVisible();
   await expect(page.getByText("#3 ·", { exact: false })).toBeVisible();

@@ -13,6 +13,7 @@ import type {
   ShotType,
   TrainingBlock,
 } from "../types";
+import { surfaceClass } from "./Surface";
 
 export type AutoCaptureStartConfig = {
   expectedShotCount: number;
@@ -36,6 +37,17 @@ type AutoCaptureProps = {
   onCancel: () => void;
   onUndo: () => void;
   onManualResult: (value: number) => void;
+  /** Only true in development builds — the Simulator itself never renders
+   * otherwise, so this description shouldn't mention it to production
+   * users either (DESIGN_SYSTEM.md: no dev-only explanations in production). */
+  isDevEnvironment?: boolean;
+  /**
+   * "hero" when a capture sequence is actively running (this is then the
+   * current capture task), "primary" (default) while idle/configuring and
+   * Shot Entry is the active hero — see TrackerApp.tsx's Active Training
+   * surface hierarchy.
+   */
+  level?: "hero" | "primary";
 };
 
 const HANDLE_MODES: CaptureHandleMode[] = ["manual", "fixed-in", "fixed-out", "alternate"];
@@ -68,6 +80,8 @@ export default function AutoCapture({
   onCancel,
   onUndo,
   onManualResult,
+  isDevEnvironment = false,
+  level = "primary",
 }: AutoCaptureProps) {
   const [shotCountInput, setShotCountInput] = useState(
     String(DEFAULT_CAPTURE_SHOT_COUNT)
@@ -139,12 +153,13 @@ export default function AutoCapture({
 
   if (!isActive) {
     return (
-      <div className="rounded-2xl bg-white p-6 shadow-lg">
+      <div className={surfaceClass(level)}>
         <h2 className="text-xl font-semibold text-slate-900">Auto Capture</h2>
 
         <p className="mt-2 text-sm text-slate-600">
-          Have a timing result (or the Simulator, in development mode) automatically
-          save each shot as it comes in.
+          {isDevEnvironment
+            ? "Have a timing result (or the Simulator, in development mode) automatically save each shot as it comes in."
+            : "Have a timing result automatically save each shot as it comes in."}
         </p>
 
         {captureSequence?.status === "completed" && (
@@ -281,7 +296,7 @@ export default function AutoCapture({
 
   // Active: ready / running / paused
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass(level)}>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-xl font-semibold text-slate-900">Auto Capture</h2>
 
@@ -300,7 +315,7 @@ export default function AutoCapture({
         {captureSequence!.capturedShotCount} / {captureSequence!.expectedShotCount} shots
       </p>
 
-      <div className="mt-3 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-3")}>
         <p className="text-sm text-slate-500">Current Target</p>
 
         {isVariableManualTarget ? (
@@ -317,7 +332,7 @@ export default function AutoCapture({
             className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900"
           />
         ) : (
-          <p className="mt-1 text-2xl font-semibold text-slate-900">
+          <p className="mt-1 text-3xl font-semibold text-slate-900">
             {currentTargetTime.toFixed(2)}s
           </p>
         )}
@@ -421,12 +436,14 @@ export default function AutoCapture({
         Undo Last Captured Shot
       </button>
 
-      <div className="mt-4 rounded-xl bg-slate-100 p-4">
+      <div className={surfaceClass("inset", "mt-4")}>
         <p className="text-sm font-medium text-slate-700">Add Result Manually</p>
         <p className="mt-1 text-xs text-slate-500">
           {captureSequence!.status === "paused"
             ? "Resume the sequence to add a result manually."
-            : "Works even if the simulator is off or a real device isn't connected."}
+            : isDevEnvironment
+              ? "Works even if the simulator is off or a real device isn't connected."
+              : "Works even if a real device isn't connected."}
         </p>
 
         <div className="mt-2 flex gap-2">

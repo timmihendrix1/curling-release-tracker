@@ -1,3 +1,5 @@
+import { surfaceClass } from "./Surface";
+
 type AssessmentBlockTransitionProps = {
   completedBlockName?: string;
   nextBlockName: string;
@@ -19,7 +21,7 @@ export default function AssessmentBlockTransition({
   onContinue,
 }: AssessmentBlockTransitionProps) {
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    <div className={surfaceClass("hero")}>
       {completedBlockName && (
         <p className="text-sm font-medium text-emerald-700">{completedBlockName} complete</p>
       )}

@@ -1,7 +1,16 @@
+import type { ReactNode } from "react";
 import { accuracyThresholdSetLabel, type AssessmentResultView } from "../lib/assessment/result";
+import { surfaceClass } from "./Surface";
 
 type AssessmentResultSummaryProps = {
   result: AssessmentResultView;
+  /**
+   * The Analysis Threshold control renders inside this same Hero, directly
+   * beneath the run's own facts — choosing which threshold to view the
+   * result through is part of understanding the one result, not a separate
+   * task (compositional redesign).
+   */
+  children?: ReactNode;
 };
 
 const MEASUREMENT_MODE_LABELS: Record<string, string> = {
@@ -10,11 +19,12 @@ const MEASUREMENT_MODE_LABELS: Record<string, string> = {
 };
 
 /** The header card of a Result Screen — see docs' Phase C brief section 3 "Summary". */
-export default function AssessmentResultSummary({ result }: AssessmentResultSummaryProps) {
+export default function AssessmentResultSummary({ result, children }: AssessmentResultSummaryProps) {
   const { run, activeThresholdSet, protocolIntegrity } = result;
 
   return (
-    <div className="rounded-2xl bg-white p-6 shadow-lg">
+    // The Result Screen's one Hero (Epic 1).
+    <div className={surfaceClass("hero")}>
       <h1 className="text-xl font-semibold text-slate-900">{run.templateSnapshot.name}</h1>
       <p className="mt-1 text-sm text-slate-600">
         Version {run.templateVersion} ·{" "}
@@ -40,6 +50,8 @@ export default function AssessmentResultSummary({ result }: AssessmentResultSumm
           {activeThresholdSet.values.onTarget.toFixed(2)}s / ±{activeThresholdSet.values.acceptable.toFixed(2)}s)
         </p>
       </div>
+
+      {children && <div className="mt-5 border-t border-slate-100 pt-4">{children}</div>}
     </div>
   );
 }

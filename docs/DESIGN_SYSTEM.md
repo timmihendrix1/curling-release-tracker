@@ -958,6 +958,26 @@ Examples:
 
 ---
 
+## 10.7 Shared Implementation Primitive
+
+`src/components/Surface.tsx` is the one shared implementation of this section's
+hierarchy — it does not define a new hierarchy, it gives 10.1–10.4 a single
+reusable component instead of copy-pasted Tailwind strings.
+
+| `level` prop | Maps to | Use |
+| --- | --- | --- |
+| `hero` | 10.1 Primary Task Surface | exactly one per screen |
+| `primary` | 10.2 Standard Section Card | essential supporting content/controls |
+| `secondary` | Secondary Surface (Visual Language) | analytics, context, history that steps back |
+| `inset` | 10.3 Inset Panel | low-emphasis panel nested inside another surface |
+| `utility` | 8.2 Level 1 — Subtle Surface | filters, metadata, compact status rows |
+
+10.5 Grouped Row List and 10.6 Inline Section remain open layout — they are
+deliberately not part of `Surface`, since they exist precisely to avoid a
+contained surface.
+
+---
+
 # 11. Navigation
 
 Users must always understand:

@@ -59,4 +59,24 @@ describe("PrimaryNavigation", () => {
       expect(button.className).toMatch(/focus-visible:ring/);
     }
   });
+
+  it("respects the iOS safe-area inset and floats clear of the device edge on mobile", () => {
+    render(<PrimaryNavigation activeView="home" onNavigate={() => {}} />);
+
+    const mobileBar = screen.getByTestId("primary-nav-mobile");
+    expect(mobileBar.className).toMatch(/env\(safe-area-inset-bottom\)/);
+    // Inset from the edges and floating above the very bottom, not five
+    // buttons flush against the device edge (DESIGN_SYSTEM.md §11.2).
+    expect(mobileBar.className).toMatch(/inset-x-3/);
+    expect(mobileBar.className).not.toMatch(/inset-x-0/);
+  });
+
+  it("gives every mobile nav button an approximately 44px touch target", () => {
+    render(<PrimaryNavigation activeView="home" onNavigate={() => {}} />);
+
+    const mobileBar = screen.getByTestId("primary-nav-mobile");
+    for (const button of mobileBar.querySelectorAll("button")) {
+      expect(button.className).toMatch(/min-h-11/);
+    }
+  });
 });
