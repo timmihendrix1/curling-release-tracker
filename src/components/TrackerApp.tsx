@@ -764,6 +764,11 @@ export default function TrackerApp() {
 
     if (savedSession) {
       const loadedSession = migrateSession(JSON.parse(savedSession));
+      // A lazy useState initializer would read localStorage during SSR and cause a
+      // hydration mismatch, so this load intentionally setState()s from the mount
+      // effect body instead (see CLAUDE.md's working rules and
+      // docs/TECHNICAL_DEBT_AND_ROADMAP.md).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentSession(loadedSession);
 
       // Home is the normal entry point (see docs/adr/0009), except for the one
