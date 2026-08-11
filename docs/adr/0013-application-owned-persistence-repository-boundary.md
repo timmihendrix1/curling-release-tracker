@@ -5,13 +5,20 @@
 Proposed. Not implemented. Requires product-owner review before acceptance. See
 `docs/PERSISTENCE_BOUNDARY_DESIGN.md` for the full design this ADR summarizes.
 
-**Revision 1** (this version): responds to the product-owner architecture review recorded
-in `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`. The most consequential change: Decision 1
-below no longer includes a composed, cross-key session-archiving method — Phase 1 is
-strictly behavior-preserving, including today's exact session-archiving write order and
-its current lack of deduplication (see the design doc's Section 6). This revision also
-adds explicit decisions for hydration safety (5) and the error model (6), neither of which
-existed in the original proposal.
+**Revision 1** responded to the product-owner architecture review recorded in
+`PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: Decision 1 was revised to no longer include a
+composed, cross-key session-archiving method — Phase 1 is strictly behavior-preserving,
+including today's exact session-archiving write order and its current lack of
+deduplication (design doc §6) — and Decisions 5 (hydration safety) and 6 (error model)
+were added.
+
+**Revision 2** (this version) corrects an unsafe conflation identified in
+`PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`: Revision 1's Decision 6 treated a genuine storage
+read failure identically to normal absence, which — combined with Decision 5's
+then-boolean hydration flag — would have let default state be persisted over already-
+stored data once hydration "completed," even when it completed via a failed read.
+Decisions 5 and 6 are both revised below to keep "a load settled" and "writes are enabled"
+explicitly distinct.
 
 ## Context
 
@@ -36,10 +43,14 @@ that had to be settled before that phase could be designed:
    migration/validation" — i.e., what is actually shared, and what must not be?
 3. What is the smallest seam that keeps a future sync layer possible later without
    designing that layer, or leaking cloud/identity concepts into local domain types, now?
-4. (Added in this revision, from product-owner review) How does making repository reads
+4. (Added in Revision 1, from product-owner review) How does making repository reads
    and writes asynchronous avoid introducing new risk — defaults overwriting stored data,
    dropped timing-provider results, or an undisclosed change to session-archiving
    behavior — that today's fully-synchronous code does not have?
+5. (Added in this revision) How does the design avoid a *narrower* version of the same
+   problem — a genuine storage read failure being treated as if it were normal absence,
+   letting the application initialize and later persist default state over data that was
+   never actually confirmed missing?
 
 ## Decision
 
@@ -86,9 +97,10 @@ make that change, disclosed or not, without its own separate decision (design do
 
 ### 3. An initial `localStorage` adapter preserving current behavior exactly
 
-Introduce one shared `StorageAdapter` interface (`get(key): Promise<string | null>`,
-`set(key, value): Promise<void>`) — the only component that knows about a specific browser
-storage mechanism, and, per Decision 6, the only component that classifies its exceptions.
+Introduce one shared `StorageAdapter` interface (`get(key): Promise<DomainLoadResult<string
+| null>>`, `set(key, value): Promise<PersistenceWriteResult>`) — the only component that
+knows about a specific browser storage mechanism, and, per Decision 6, the only component
+that classifies its exceptions.
 Its first implementation wraps `localStorage` directly, synchronously under the hood, but
 returns `Promise`s from day one so no caller-visible signature change is needed when a
 second implementation is introduced later. `remove` is deliberately omitted — no code
@@ -117,39 +129,51 @@ reaches IndexedDB, and never deleting the `localStorage` copy automatically afte
 successful read. **This revision adds an explicit gate**: retaining `localStorage` is not,
 by itself, a safe rollback once the application begins writing new data to IndexedDB only
 — a separately approved activation-and-rollback design is required before that cutover,
-with the exact mechanism deferred (design doc §10, step 6).
+with the exact mechanism deferred (design doc §10, step 4).
 
-### 5. Hydration must not introduce new risk when reads become asynchronous
+### 5. Hydration uses three explicit states, not one boolean — writes require success, not merely settling
 
-Each of the six `TrackerApp`-orchestrated domains (all but `AssessmentPreferencesRepository`,
-which needs none) gets a per-domain hydration flag: `false` until the domain's `load*`
-call resolves and its state is set, `true` from then on for the rest of the session's
-lifetime. Every save effect is gated on its domain's flag; the Timing Simulator's
-subscription effect is gated on `sessionHydrated` specifically, so no timing result can be
-processed before the session is ready. Every `load*` call always resolves (Decision 6), so
-hydration always completes deliberately — absence, malformed data, and a genuine storage
-failure all resolve to the domain's documented default rather than leaving hydration
-pending. A cancellation guard prevents a late-resolving load from updating state after
-unmount. See design doc §7 for the complete mechanism, rationale, and required tests. This
-decision exists because it did not exist in the original proposal, and its absence would
-have widened an already-latent, currently-negligible risk (defaults overwriting stored
-data on the first render; a timing result arriving before `sessionRef` is populated) into
-a real one, purely as a side effect of making repository calls asynchronous.
+**Revised in this revision.** Each of the six `TrackerApp`-orchestrated domains (all but
+`AssessmentPreferencesRepository`, which needs none) tracks a per-domain
+`DomainHydrationState`: `"loading"` until the domain's `load*` call resolves; `"ready"` if
+it resolved with a real value, normal absence, or repaired/quarantined data (all
+safe-to-persist, per Decision 6); `"write_protected"` if it resolved with a genuine
+storage read failure. Every save effect is gated on `state === "ready"` **specifically** —
+not merely "no longer loading." The Timing Simulator's subscription effect is gated the
+same way, so no timing result can be processed unless the session domain reached
+`"ready"`, not merely finished attempting to load. A cancellation guard prevents a
+late-resolving load from updating state after unmount, regardless of which state it would
+have set. See design doc §7 for the complete mechanism, rationale, and required tests.
 
-### 6. One small, adapter-classified error model; reads never fail
+This decision did not exist in the original proposal (a gap Revision 1 closed) and, in
+Revision 1's form, still treated a read failure as equivalent to a successful settle —
+this revision closes that: a `"write_protected"` domain never has its save effect enabled,
+so a display-only fallback value is never persisted merely because the domain finished
+attempting to load.
 
-Every repository write method returns `Promise<PersistenceWriteResult>`, a three-variant
-shape (`storage_unavailable` | `quota_exceeded` | `unknown`) — see design doc §8. The
-`StorageAdapter`, and only the `StorageAdapter`, translates `DOMException`,
-`QuotaExceededError`, and any IndexedDB-specific transaction error into this shape; no
-repository contains browser-exception-sniffing logic. Every repository read method
-(`load*`) always resolves, never rejects — a genuine storage-layer read failure is treated
-identically to "nothing stored," falling back to the domain's own documented absence
-value. This decision exists because the original proposal named the error-handling
-*pattern* (reuse the existing `Outcome`/`ok`/`err` style) without naming a concrete shape
-or assigning classification responsibility, which — if implemented literally — would have
-required all seven repositories to duplicate browser-specific exception knowledge,
-contradicting this ADR's own stated separation of concerns.
+### 6. Read and write results are distinct types; reads never reject but can now report failure
+
+**Revised in this revision.** Every repository write method returns
+`Promise<PersistenceWriteResult>`, a three-variant shape (`storage_unavailable` |
+`quota_exceeded` | `unknown`) — see design doc §8.1. Every repository read method (`load*`)
+returns `Promise<DomainLoadResult<T>>` — **not**, as Revision 1 had it, a bare
+`Promise<T>` — a two-variant shape distinguishing `{ status: "ready", value }` (a real
+value, normal absence, or domain-repaired data — all treated alike, exactly as today) from
+`{ status: "read_failed", fallback, error }` (a genuine storage-layer failure, with
+`error` drawn from a narrower, read-specific vocabulary: `storage_unavailable` | `unknown`
+— see design doc §8.2). `load*` still never rejects — a read failure resolves to
+`"read_failed"` rather than throwing — but it is no longer indistinguishable from success.
+The `StorageAdapter`, and only the `StorageAdapter`, translates `DOMException`,
+`QuotaExceededError`, and any IndexedDB-specific transaction error into either shape; no
+repository contains browser-exception-sniffing logic.
+
+This decision's Revision 1 form ("reads never fail," full stop) is exactly what the
+product-owner review identified as unsafe: it let a read failure produce a value
+indistinguishable from confirmed absence, which Decision 5's then-boolean flag would then
+mark safe to persist. This revision's two-variant read result, combined with Decision 5's
+three-state hydration, closes that gap while preserving the original goal (no
+`DOMException`/`QuotaExceededError`/IndexedDB-specific error ever reaches a repository or
+the UI, and no repository duplicates browser-specific exception knowledge).
 
 ### 7. A future sync layer above local persistence, never direct UI-to-cloud persistence
 
@@ -176,9 +200,19 @@ placeholder") for a capability that may not ship for a long time.
   or safer-ordered archive operation remains available as a separate, future, explicitly
   approved decision (design doc §6.4) — this ADR does not foreclose it, only defers it.
 - **Repository-level browser-exception classification (implied by the original proposal's
-  under-specified error-handling recommendation).** Rejected in this revision: it would
-  duplicate browser-specific knowledge across all seven repositories and contradict the
-  adapter's role as the sole component aware of the underlying storage mechanism.
+  under-specified error-handling recommendation).** Rejected: it would duplicate
+  browser-specific knowledge across all seven repositories and contradict the adapter's
+  role as the sole component aware of the underlying storage mechanism.
+- **Treating a genuine read failure identically to normal absence (Revision 1's
+  approach).** Rejected in this revision: it lets default state be initialized and later
+  persisted over data that was never actually confirmed missing, purely because a read
+  attempt failed rather than genuinely finding nothing. A two-variant read result
+  (Decision 6) and a three-state hydration model (Decision 5) replace it.
+- **Designing automatic retry or recovery UX for a `"write_protected"` domain now.**
+  Rejected for this pass: no current code has automatic-retry behavior for anything, and
+  introducing one here would exceed this ADR's scope. Write-protection itself is
+  mandatory; retry/recovery UX remains a deferred, future implementation decision (design
+  doc §7.1, §7.5).
 - **Merge the three `assessmentPreferences.ts` keys into one JSON object under one key.**
   Rejected: the task constraints explicitly forbid changing any existing `localStorage`
   key or stored shape; this ADR only proposes a code-organization grouping, not a
@@ -201,16 +235,23 @@ placeholder") for a capability that may not ship for a long time.
   acceptance criterion.
 - Every existing migration/validation function is reused unchanged; none are rewritten,
   replaced, or merged by this decision.
-- Six new per-domain hydration flags and their accompanying save-effect guards are
-  introduced (Decision 5) — this generalizes a guard that already exists, ad hoc, for 2 of
-  7 domains today, to all 6 relevant domains uniformly. This closes a real, currently
-  latent (synchronous-code-only) risk; it does not change any domain's steady-state
-  persisted value.
-- A contract-test suite, staged explicitly (design doc §11), becomes required
-  infrastructure before or alongside the `TrackerApp.tsx` call-site replacement.
+- Six new per-domain `DomainHydrationState` values and their accompanying save-effect
+  guards are introduced (Decision 5) — this generalizes a guard that already exists, ad
+  hoc, for 2 of 7 domains today, to all 6 relevant domains uniformly, and is strictly
+  narrower than a boolean guard would be (it also blocks writes for a domain that
+  finished loading via failure, not just one still loading). This closes a real,
+  currently latent (synchronous-code-only) risk; it does not change any domain's
+  steady-state persisted value on the success path.
+- A contract-test suite, staged explicitly (design doc §11) with characterization tests
+  required to precede any production wiring change, becomes required infrastructure
+  before the `TrackerApp.tsx` call-site replacement — not "before or alongside," which
+  Revision 1 left ambiguous.
 - An architecture-enforcement test against unapproved direct storage access is required
-  during implementation (design doc §11, stage 6) — no longer an optional, indefinitely
+  during implementation (design doc §11, step 7) — no longer an optional, indefinitely
   deferred follow-up, per binding product-owner decision.
+- A domain that experiences a genuine read failure remains write-protected for the
+  remainder of the session unless a future, separately-designed retry mechanism changes
+  that — this ADR does not authorize any automatic retry.
 - **Migration impact on existing data: none in this pass.** No key, shape, or migration
   rule changes; this ADR only introduces a new code-organization boundary around access to
   already-existing keys, plus the hydration-safety guard described above.
@@ -246,8 +287,11 @@ See `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §13 for the full list with reasoning.
    cleanup step.
 4. The exact IndexedDB activation-and-rollback mechanism (dual-write, feature-flagged
    cutover, or otherwise) required before IndexedDB becomes the authoritative write target
-   (design doc §10, step 6).
-5. Anything about sync metadata, conflict resolution, revisions, or identity — explicitly
+   (design doc §10, step 4).
+5. Any automatic-retry or recovery UX for a `"write_protected"` domain — mandatory
+   write-protection itself is resolved by this ADR (Decision 5); what, if anything,
+   automatically retries a failed read is not.
+6. Anything about sync metadata, conflict resolution, revisions, or identity — explicitly
    out of scope for this ADR and deferred to the cloud/login spike
    (`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §17.1).
 

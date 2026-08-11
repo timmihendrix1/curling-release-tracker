@@ -6,15 +6,21 @@ adapter, and no change to any existing `localStorage` key, stored shape, or migr
 behavior exists in this pass. See `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`
 §18, "Phase 1: Persistence boundary."
 
-**Revision 1** (this version): responds to the product-owner architecture review recorded
-in `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md` and the accompanying binding decisions in
-`PERSISTENCE_BOUNDARY_REVISION_REPORT.md`. The most consequential change: the original
-draft's `SessionRepository.archiveCurrentToHistory` method is removed — Phase 1 is
-strictly behavior-preserving, including the exact current write order and the current
-lack of session-history deduplication (see Section 6). This revision also completes all
-seven repository contracts (Section 5), adds a concrete hydration design (Section 7), a
-concrete error model (Section 8), and clarifies adapter/transaction and rollback framing
-(Sections 9–10).
+**Revision 1** responded to the product-owner architecture review recorded in
+`PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
+`SessionRepository.archiveCurrentToHistory` method was removed — Phase 1 is strictly
+behavior-preserving, including the exact current write order and the current lack of
+session-history deduplication (Section 6) — and all seven repository contracts were
+completed (Section 5).
+
+**Revision 2** (this version) corrects an unsafe conflation Revision 1 still contained,
+identified in `PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`: a genuine storage read failure was
+treated identically to normal absence, which would let default state be persisted over
+already-stored data once hydration "completed" and writes were enabled. This revision
+introduces an explicit, application-owned read-result type distinct from the write-result
+type (Section 8), a three-state hydration model that keeps a domain read-only whenever its
+load genuinely failed (Section 7), and a corrected implementation sequence that puts
+characterization tests strictly before any production wiring change (Section 11).
 
 ## 1. Purpose and scope
 
@@ -266,10 +272,12 @@ treatment and Section 9 for why no adapter-level primitive in this design can ex
 multi-key atomicity either.
 
 **Error handling and corrupted-data handling**: a repository's read path never throws or
-rejects, for *any* reason — see Section 8 for the complete, revised error model
-(corrupted/malformed data degrades exactly as today, per domain; a genuine storage-layer
-read failure also degrades to the domain's own absence/default value, rather than
-propagating).
+rejects, for *any* reason — see Section 8 for the complete, revised read/write result
+model. Corrupted or malformed data degrades exactly as today, per domain, and is **not**
+distinguished from normal absence (both are safe to persist going forward). A genuine
+storage-layer read failure **is** distinguished from both — it resolves to a
+`read_failed` outcome carrying a safe fallback value for display purposes only; that
+outcome must not be treated as if the domain were successfully hydrated (Section 7).
 
 **Concurrency assumptions**: unchanged from today — single-tab, no multi-tab
 synchronization, no `storage` event listening, last-write-wins if two tabs happen to write
@@ -296,11 +304,16 @@ generally, and applies uniformly to every method in every repository in this sec
 is not restated per method.
 
 Every write method returns `Promise<PersistenceWriteResult>` (defined in Section 8) rather
-than `Promise<void>` or a bare rejected `Promise` — this is the one contract-shape change
-from the original draft, needed to satisfy the error model in Section 8. Every read method
-returns `Promise<T>` and **never rejects, for any reason** — a genuine storage-layer read
-failure (not just malformed data) degrades to the domain's own documented absence/default
-value; see Section 8 for why this is a deliberate, stated choice, not an oversight.
+than `Promise<void>` or a bare rejected `Promise`. Every read method returns
+`Promise<DomainLoadResult<T>>` (also defined in Section 8) rather than a bare `Promise<T>`
+— **this is corrected from Revision 1**, which had every read method resolve directly to
+`T`, collapsing normal absence and malformed/repaired data (both safe to persist) together
+with genuine storage-layer read failures (not safe to persist) into one indistinguishable
+outcome. `DomainLoadResult<T>` keeps that distinction explicit: `{ status: "ready", value }`
+for the first group, `{ status: "read_failed", fallback, error }` for the second. Every
+`load*` method still **never rejects, for any reason** — a genuine read failure resolves
+to the `read_failed` variant rather than throwing; see Section 8 for the full type and
+Section 7 for how hydration consumes it.
 
 ### 5.1 `SessionRepository`
 
@@ -313,22 +326,27 @@ Section 6 for why, and for exactly how `TrackerApp.tsx`'s `handleStartNewSession
 ```typescript
 interface SessionRepository {
   /**
-   * Input: none. Output: the current session, already migrated, or `undefined` if
-   * nothing is stored yet (matches today's absence semantics exactly — callers remain
-   * responsible for calling `createNewSession()` themselves, as `TrackerApp.tsx`'s
-   * current mount effect does).
-   * Malformed/unknown-shape data: never rejects — `migrateSession` already degrades
-   * malformed/partial data to a valid, repaired `Session` (Section 3); a completely
-   * unparseable string is treated the same as "nothing stored." A genuine adapter-level
-   * read failure (Section 8) is likewise treated as "nothing stored."
+   * Input: none. Output: `DomainLoadResult<Session | undefined>` (Section 8).
+   * On `status: "ready"`: `value` is the current session, already migrated, or
+   * `undefined` if nothing is stored yet (matches today's absence semantics exactly —
+   * callers remain responsible for calling `createNewSession()` themselves, as
+   * `TrackerApp.tsx`'s current mount effect does). Malformed/unknown-shape data never
+   * produces `read_failed` — `migrateSession` already degrades malformed/partial data to
+   * a valid, repaired `Session` (Section 3); a completely unparseable string is treated
+   * the same as "nothing stored," both resolving to `status: "ready"`.
+   * On `status: "read_failed"`: a genuine adapter-level read failure (Section 8) — the
+   * fallback is `undefined` (the same value absence would produce), for display purposes
+   * only. Callers/hydration (Section 7) must not treat this as equivalent to `"ready"`.
    * Mutation semantics: read-only, no side effect.
    * Copy semantics: fresh object every call (Section 5's general rule).
    * Atomicity: N/A (single read, single key).
-   * Idempotency: yes — repeated calls with no intervening write return equal values.
-   * Current behavior preserved: yes, exactly (`TrackerApp.tsx:757-780`'s existing
-   * load-then-optionally-create split).
+   * Idempotency: yes — repeated calls with no intervening write return equal results.
+   * Current behavior preserved: yes, exactly, for the `"ready"` path (`TrackerApp.tsx:757-780`'s
+   * existing load-then-optionally-create split); the `"read_failed"` distinction is new
+   * in this revision and has no prior behavior to preserve, since today's synchronous
+   * code has no observable read-failure path at all.
    */
-  loadCurrent(): Promise<Session | undefined>;
+  loadCurrent(): Promise<DomainLoadResult<Session | undefined>>;
 
   /**
    * Input: the full `Session` to persist. Output: a `PersistenceWriteResult` (Section 8).
@@ -345,18 +363,22 @@ interface SessionRepository {
   saveCurrent(session: Session): Promise<PersistenceWriteResult>;
 
   /**
-   * Input: none. Output: the full history list, already migrated. `[]` if nothing is
-   * stored — never `undefined` (this domain's absence value is an empty array, not a
-   * missing object; this is a real, existing asymmetry with `loadCurrent()` and must be
-   * preserved, not smoothed over).
-   * Malformed/unknown-shape data: never rejects — degrades via `migrateSessionHistory`
-   * exactly as today.
+   * Input: none. Output: `DomainLoadResult<Session[]>` (Section 8).
+   * On `status: "ready"`: `value` is the full history list, already migrated. `[]` if
+   * nothing is stored — never `undefined` (this domain's absence value is an empty
+   * array, not a missing object; a real, existing asymmetry with `loadCurrent()`,
+   * preserved, not smoothed over). Malformed/unknown-shape data degrades via
+   * `migrateSessionHistory` exactly as today and also resolves to `"ready"`.
+   * On `status: "read_failed"`: a genuine adapter-level read failure; `fallback` is `[]`,
+   * for display purposes only — not to be treated as "confirmed empty history."
    * Copy semantics: fresh array every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly (`TrackerApp.tsx:761-763`).
+   * Current behavior preserved: yes, exactly, for the `"ready"` path
+   * (`TrackerApp.tsx:761-763`); `"read_failed"` is new, with no prior behavior to
+   * preserve.
    */
-  loadHistory(): Promise<Session[]>;
+  loadHistory(): Promise<DomainLoadResult<Session[]>>;
 
   /**
    * Input: the full history list to persist (the caller has already decided its
@@ -386,18 +408,22 @@ Owns key #3. Wraps `sanitizeHistoryFilters`/`sanitizeThresholdComparisonMode`
 ```typescript
 interface HistoryFiltersRepository {
   /**
-   * Input: none. Output: the current filters, already sanitized. Never `undefined` —
-   * absence or a `JSON.parse` failure resolves to `createDefaultHistoryFilters()`
+   * Input: none. Output: `DomainLoadResult<HistoryAnalysisFilters>` (Section 8).
+   * On `status: "ready"`: `value` is the current filters, already sanitized. Absence or
+   * a `JSON.parse` failure resolves to `createDefaultHistoryFilters()`
    * (`historyAnalysis.ts:85-96`), exactly matching `TrackerApp.tsx:793-804`'s existing
-   * try/catch-to-defaults behavior. A malformed `thresholdComparisonMode` sub-field is
-   * independently repaired by `sanitizeThresholdComparisonMode`, exactly as today.
+   * try/catch-to-defaults behavior, and both resolve to `"ready"`. A malformed
+   * `thresholdComparisonMode` sub-field is independently repaired by
+   * `sanitizeThresholdComparisonMode`, exactly as today.
+   * On `status: "read_failed"`: `fallback` is `createDefaultHistoryFilters()`, for
+   * display purposes only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly.
+   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
    */
-  load(): Promise<HistoryAnalysisFilters>;
+  load(): Promise<DomainLoadResult<HistoryAnalysisFilters>>;
 
   /**
    * Input: the full filters object. Output: a `PersistenceWriteResult`.
@@ -434,24 +460,31 @@ type AssessmentLoadResult = {
 
 interface AssessmentRepository {
   /**
-   * Input: none. Output: `{ state, currentRunQuarantined }`. `state` never has an
-   * `undefined`/missing shape — an absent or fully-invalid key resolves to
-   * `createEmptyAssessmentPersistedState()` (`persistence.ts:26-28`), exactly as today.
-   * This asymmetry with `SessionRepository.loadCurrent()` (which CAN return `undefined`)
-   * is intentional and preserved, not smoothed over — it reflects a real, existing
-   * difference in default-value behavior between the two domains.
-   * Malformed/unknown-version data: an individually invalid run is quarantined (dropped),
-   * never partially repaired, exactly as `migrateAssessmentPersistedState` does today; an
-   * unrecognized root `schemaVersion` resolves to the fresh empty state.
+   * Input: none. Output: `DomainLoadResult<AssessmentLoadResult>` (Section 8).
+   * On `status: "ready"`: `value` is `{ state, currentRunQuarantined }`. `state` never
+   * has an `undefined`/missing shape — an absent or fully-invalid key resolves to
+   * `createEmptyAssessmentPersistedState()` (`persistence.ts:26-28`), exactly as today,
+   * and also resolves to `"ready"` (absence and malformed data are not distinguished
+   * from each other, only from a genuine read failure — see below). This asymmetry with
+   * `SessionRepository.loadCurrent()` (which CAN return `undefined` inside a `"ready"`
+   * result) is intentional and preserved, not smoothed over. An individually invalid run
+   * is quarantined (dropped), never partially repaired, exactly as
+   * `migrateAssessmentPersistedState` does today; an unrecognized root `schemaVersion`
+   * resolves to the fresh empty state — still `"ready"`.
+   * On `status: "read_failed"`: `fallback` is `{ state: createEmptyAssessmentPersistedState(),
+   * currentRunQuarantined: false }`, for display purposes only — the app must not assume
+   * no run is actually in progress merely because this read failed.
    * Reload-recovery (forcing a `warmup`/`in_progress` run to `paused`) stays in
-   * application code, operating on this method's return value — it is an existing
-   * domain-function composition (`pauseAssessmentRun`), not a repository concern.
+   * application code, operating on a `"ready"` result's value only — it is an existing
+   * domain-function composition (`pauseAssessmentRun`), not a repository concern, and
+   * must not run against a `"read_failed"` fallback.
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, including the quarantine-notice signal.
+   * Current behavior preserved: yes, including the quarantine-notice signal, for
+   * `"ready"`; `"read_failed"` is new.
    */
-  loadState(): Promise<AssessmentLoadResult>;
+  loadState(): Promise<DomainLoadResult<AssessmentLoadResult>>;
 
   /**
    * Input: the full persisted state. Output: a `PersistenceWriteResult`.
@@ -478,20 +511,24 @@ shape: a **root-level full wipe on version mismatch**, distinct from both
 ```typescript
 interface TrainingPlansRepository {
   /**
-   * Input: none. Output: the plan list, already migrated. `[]` if nothing is stored, if
-   * the root `schemaVersion` doesn't match (`migrateTrainingPlans`'s full-wipe gate,
-   * `migration.ts:159-161`), or if the stored value is fully malformed — never
-   * `undefined`. Within a matching root version, each plan is independently
-   * field-repaired (`migratePlan`, `migration.ts:134-149`); a single structurally broken
-   * plan is dropped without invalidating the rest of the list.
+   * Input: none. Output: `DomainLoadResult<TrainingPlan[]>` (Section 8).
+   * On `status: "ready"`: `value` is the plan list, already migrated. `[]` if nothing is
+   * stored, if the root `schemaVersion` doesn't match (`migrateTrainingPlans`'s
+   * full-wipe gate, `migration.ts:159-161`), or if the stored value is fully malformed —
+   * never `undefined`, and all of these resolve to `"ready"`. Within a matching root
+   * version, each plan is independently field-repaired (`migratePlan`,
+   * `migration.ts:134-149`); a single structurally broken plan is dropped without
+   * invalidating the rest of the list.
+   * On `status: "read_failed"`: `fallback` is `[]`, for display purposes only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh array every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes — matches `TrackerApp.tsx:860`'s existing
-   * `migrateTrainingPlans(rawTrainingPlans).plans` unwrapping exactly.
+   * Current behavior preserved: yes, for `"ready"` — matches `TrackerApp.tsx:860`'s
+   * existing `migrateTrainingPlans(rawTrainingPlans).plans` unwrapping exactly;
+   * `"read_failed"` is new.
    */
-  loadPlans(): Promise<TrainingPlan[]>;
+  loadPlans(): Promise<DomainLoadResult<TrainingPlan[]>>;
 
   /**
    * Input: the full plan list to persist. Output: a `PersistenceWriteResult`.
@@ -519,20 +556,24 @@ fully specified here.
 ```typescript
 interface AccuracyToleranceProfilesRepository {
   /**
-   * Input: none. Output: the full state, already migrated. Never `undefined` — absence,
-   * an unrecognized `schemaVersion`, or a fully-invalid top-level shape resolves to
-   * `createEmptyAccuracyToleranceProfilesState()` (`persistence.ts`). An individually
-   * invalid profile is quarantined (dropped) via `migrateProfile`, never repaired,
-   * without invalidating the rest of the list. A `defaultProfileId` that no longer
-   * resolves to a surviving profile is cleared to `null` — this repair happens *within*
-   * the loaded object, not as a side effect the repository performs separately.
+   * Input: none. Output: `DomainLoadResult<AccuracyToleranceProfilesState>` (Section 8).
+   * On `status: "ready"`: `value` is the full state, already migrated. Never
+   * `undefined` — absence, an unrecognized `schemaVersion`, or a fully-invalid
+   * top-level shape resolves to `createEmptyAccuracyToleranceProfilesState()`
+   * (`persistence.ts`), and all of these resolve to `"ready"`. An individually invalid
+   * profile is quarantined (dropped) via `migrateProfile`, never repaired, without
+   * invalidating the rest of the list. A `defaultProfileId` that no longer resolves to a
+   * surviving profile is cleared to `null` — this repair happens *within* the loaded
+   * object, not as a side effect the repository performs separately.
+   * On `status: "read_failed"`: `fallback` is `createEmptyAccuracyToleranceProfilesState()`,
+   * for display purposes only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly.
+   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
    */
-  loadState(): Promise<AccuracyToleranceProfilesState>;
+  loadState(): Promise<DomainLoadResult<AccuracyToleranceProfilesState>>;
 
   /**
    * Input: the full state object (profiles, `defaultProfileId`, `schemaVersion` all
@@ -562,16 +603,18 @@ specified here.
 ```typescript
 interface SmartRandomProfilesRepository {
   /**
-   * Same absence/malformed/quarantine semantics as
+   * Output: `DomainLoadResult<SmartRandomProfilesState>` (Section 8). Same
+   * `"ready"`-path absence/malformed/quarantine semantics as
    * `AccuracyToleranceProfilesRepository.loadState()` (Section 5.5), plus one additional
    * domain-specific repair: a profile whose `measurementMode` no longer supports Smart
    * Random (per `isSmartRandomAvailable`) is quarantined, never coerced into a fabricated
-   * range — exactly as `migrateSmartRandomProfilesState` does today.
+   * range — exactly as `migrateSmartRandomProfilesState` does today. Same
+   * `"read_failed"` semantics as Section 5.5, with `fallback: createEmptySmartRandomProfilesState()`.
    * Mutation semantics: read-only. Copy semantics: fresh object every call.
    * Atomicity: N/A. Idempotency: yes.
-   * Current behavior preserved: yes, exactly.
+   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
    */
-  loadState(): Promise<SmartRandomProfilesState>;
+  loadState(): Promise<DomainLoadResult<SmartRandomProfilesState>>;
 
   /**
    * Same full-overwrite, whole-object-as-given semantics as
@@ -595,41 +638,52 @@ gate in Section 7 — see that section's note.
 ```typescript
 interface AssessmentPreferencesRepository {
   /**
-   * Input: none. Output: whether the Assess Guided Introduction should be shown.
-   * Absence semantics: `true` (shown) if nothing is stored yet — matches
-   * `getShowAssessmentIntroductionPreference`'s existing `raw === null → true` default
-   * exactly (`assessmentPreferences.ts:19`). Never rejects.
+   * Input: none. Output: `DomainLoadResult<boolean>` (Section 8) — whether the Assess
+   * Guided Introduction should be shown. On `"ready"`: `true` (shown) if nothing is
+   * stored yet — matches `getShowAssessmentIntroductionPreference`'s existing
+   * `raw === null → true` default exactly (`assessmentPreferences.ts:19`). On
+   * `"read_failed"`: `fallback: true`, for display purposes only. Never rejects.
+   * **No write-protection state applies to this repository** (see the note above this
+   * interface) — there is no passive save effect to protect; a `"read_failed"` result
+   * here only means this specific call should be treated as provisional, and a caller
+   * may simply retry on the next relevant interaction if it chooses to.
    * Mutation semantics: read-only. Copy semantics: N/A (primitive).
-   * Atomicity/idempotency: N/A/yes. Current behavior preserved: yes, exactly.
+   * Atomicity/idempotency: N/A/yes. Current behavior preserved: yes, exactly, for
+   * `"ready"`; `"read_failed"` is new.
    */
-  getShowIntroduction(): Promise<boolean>;
+  getShowIntroduction(): Promise<DomainLoadResult<boolean>>;
 
   /** Input: the new value. Output: a `PersistenceWriteResult`. Full overwrite, matches
    * `setShowAssessmentIntroductionPreference` exactly. */
   setShowIntroduction(show: boolean): Promise<PersistenceWriteResult>;
 
   /**
-   * Input: none. Output: the last-selected threshold preset. Absence/invalid-value
-   * semantics: `"standard"` — matches the existing whitelist-check-with-fallback
-   * exactly (`assessmentPreferences.ts:27,33-35`). Never authoritative for an actual
-   * Run's threshold snapshot (documented at `assessmentPreferences.ts:29`) — this
-   * remains a UI-preselection concern only, unchanged.
-   * Mutation semantics: read-only. Current behavior preserved: yes, exactly.
+   * Output: `DomainLoadResult<AccuracyThresholdPreset>`. On `"ready"`: the last-selected
+   * threshold preset, defaulting to `"standard"` on absence or an invalid stored value —
+   * matches the existing whitelist-check-with-fallback exactly
+   * (`assessmentPreferences.ts:27,33-35`). On `"read_failed"`: `fallback: "standard"`.
+   * Never authoritative for an actual Run's threshold snapshot (documented at
+   * `assessmentPreferences.ts:29`) — this remains a UI-preselection concern only,
+   * unchanged. No write-protection state applies, per the note above.
+   * Mutation semantics: read-only. Current behavior preserved: yes, exactly, for
+   * `"ready"`; `"read_failed"` is new.
    */
-  getLastThresholdPreset(): Promise<AccuracyThresholdPreset>;
+  getLastThresholdPreset(): Promise<DomainLoadResult<AccuracyThresholdPreset>>;
 
   /** Input: the new preset. Output: a `PersistenceWriteResult`. Full overwrite, matches
    * `setLastAssessmentThresholdPreset` exactly. */
   setLastThresholdPreset(preset: AccuracyThresholdPreset): Promise<PersistenceWriteResult>;
 
   /**
-   * Input: none. Output: the last-entered custom threshold pair, or `null` if absent or
-   * malformed — matches `getLastAssessmentCustomThreshold`'s existing try/catch +
-   * shape-check exactly (`assessmentPreferences.ts:46-59`). Also never authoritative,
-   * same reasoning as above.
-   * Mutation semantics: read-only. Current behavior preserved: yes, exactly.
+   * Output: `DomainLoadResult<AccuracyThresholds | null>`. On `"ready"`: the
+   * last-entered custom threshold pair, or `null` if absent or malformed — matches
+   * `getLastAssessmentCustomThreshold`'s existing try/catch + shape-check exactly
+   * (`assessmentPreferences.ts:46-59`). On `"read_failed"`: `fallback: null`. Also never
+   * authoritative, same reasoning as above; no write-protection state applies.
+   * Mutation semantics: read-only. Current behavior preserved: yes, exactly, for
+   * `"ready"`; `"read_failed"` is new.
    */
-  getLastCustomThreshold(): Promise<AccuracyThresholds | null>;
+  getLastCustomThreshold(): Promise<DomainLoadResult<AccuracyThresholds | null>>;
 
   /** Input: the new threshold pair. Output: a `PersistenceWriteResult`. Full overwrite,
    * matches `setLastAssessmentCustomThreshold` exactly. */
@@ -653,6 +707,13 @@ interface AssessmentPreferencesRepository {
   contracts describe how existing keys/shapes are accessed, never what they contain.
 - **`SessionRepository` no longer includes `archiveCurrentToHistory`** — see Section 6 for
   the corrected treatment of session archiving.
+- **Every `load*` method now returns `DomainLoadResult<T>`, not a bare `T`** — see
+  Section 8.2. Normal absence and malformed/repaired data are still folded into one
+  outcome (`"ready"`), exactly matching current behavior; a genuine storage read failure
+  is now its own, distinct outcome (`"read_failed"`), which current behavior has no
+  equivalent for (today's fully-synchronous code has no observable read-failure path at
+  all) and which Section 7's hydration design consumes to keep the affected domain
+  write-protected.
 
 ## 6. Session archiving (corrected in this revision)
 
@@ -755,83 +816,130 @@ to "a real asynchronous gap" — and the product-owner decision requires that th
 introduce **no** new risk: no default overwriting stored data, no dropped timing results,
 no unintended rewrites, and no cross-domain contamination.
 
-### 7.1 Mechanism
+**Corrected in this revision (Revision 2)**: the previous version of this section
+collapsed a genuine storage read failure into "hydration completed," which — combined
+with an unconditional "writes enabled once hydrated" rule — would have let default state
+be persisted over already-stored data purely because a *read* failed. That sequence
+(persisted data exists → read fails → application initializes default state → hydration
+"completes" → save effects enable → default state overwrites the real value) is exactly
+the unsafe conflation this revision closes. **"Hydration settled" and "writes enabled" are
+now two different things**, tracked by three explicit states, not one boolean.
+
+### 7.1 Three-state model, per effect-persisted domain
 
 For each of the six domains wired through `TrackerApp.tsx`'s mount/save-effect pattern
-(#1–#7 minus the preferences repository, which is exempt — see 7.5), the application layer
-maintains one boolean **hydration flag** per domain (e.g. `sessionHydrated`,
-`historyFiltersHydrated`, `assessmentHydrated`, `trainingPlansHydrated`,
-`accuracyProfilesHydrated`, `smartRandomProfilesHydrated`). Each flag:
+(#1–#7 minus `AssessmentPreferencesRepository`, which has no mount effect to gate — see
+7.6), the application layer tracks one state value per domain, replacing Revision 1's
+single boolean hydration flag:
 
-1. **Starts `false`.**
-2. Is set to `true` **exactly once**, inside the mount-time load sequence, in the same
-   state-update batch as the corresponding domain state being set to its resolved value
-   (real data, repaired/migrated data, or the domain's own defined default/absence value —
-   Section 5's per-method absence semantics apply unchanged).
-3. **Always eventually becomes `true`** — see 7.3 for why a load "failure" cannot leave a
-   domain stuck un-hydrated.
+```typescript
+type DomainHydrationState = "loading" | "ready" | "write_protected";
+```
 
-Each domain's save effect gains an explicit guard:
+- **`"loading"`** — the initial state, before the domain's `load*()` call resolves.
+- **`"ready"`** — the load resolved with `{ status: "ready", value }` (Section 8): a real
+  stored value, a normal-absence default, or a malformed-data fallback — all three are
+  safe to persist going forward, exactly as today. **Only in this state are the domain's
+  save effects permitted to run.**
+- **`"write_protected"`** — the load resolved with `{ status: "read_failed", fallback,
+  error }` (Section 8): a genuine storage-layer read failure. The domain's state is set to
+  `fallback` **for UI display purposes only**; the domain's save effect stays disabled
+  for the remainder of the session, so nothing — including that same fallback value — is
+  ever written back to storage merely because the read failed. The `error` value is
+  retained (see 7.5) so the UI can report or later attempt recovery, though no automatic
+  retry is designed here (no current code has automatic-retry behavior for anything, and
+  this document does not introduce it; recovery UX is an implementation-time decision,
+  write-protection while unretried is not).
+
+Each domain's save effect gains an explicit guard using this state, not a boolean:
 
 ```js
-if (!sessionHydrated) return;
+if (sessionHydrationState !== "ready") return;
 // ...existing save logic, unchanged...
 ```
 
 This generalizes the ad hoc guard that already exists for exactly 2 of 7 domains today
 (`if (!currentSession) return;`, `if (!assessmentState) return;`) into a uniform rule
 applied to all 6 relevant domains, closing the write-guard gap identified in Section 2.1
-for the other 4. **This is not a change to any domain's steady-state persisted value** — a
-hydrated domain's save effect behaves exactly as today; the guard only prevents a write
-from firing *before* hydration completes, which today's synchronous load already
-prevented in practice (Section 2.1) and which an asynchronous load would not, absent this
-guard.
+for the other 4 — **and** it is strictly narrower than Revision 1's `if (!hydrated)
+return;` guard, because `"write_protected"` is a third state that guard could not express.
+This is not a change to any domain's steady-state persisted value on the success path — a
+`"ready"` domain's save effect behaves exactly as today.
 
-### 7.2 Preventing defaults from overwriting stored data
+### 7.2 Required behavior per load outcome
 
-Directly satisfied by 7.1's guard: no domain's save effect can fire with its React state
-still at its **initial default** value, because the guard is closed until hydration
-completes — and hydration only completes once the *loaded* value (not the initial default)
-has been set. This closes the exact risk identified in Section 2.1: today, `sessionHistory`,
-`historyFilters`, `trainingPlans`, `accuracyToleranceProfilesState`, and
-`smartRandomProfilesState` all have unguarded save effects that fire with their initial
-default (`[]` or an empty-state object) on the very first render, before the mount
-effect's corrected `setState` has been processed — self-correcting today only because
-everything happens synchronously. The hydration guard makes this safe unconditionally,
-regardless of how long the load takes.
+- **Successful value load** (`"ready"`, a real stored value): initialize the domain's
+  state to that value, set `DomainHydrationState` to `"ready"`, permit writes.
+- **Normal absence** (`"ready"`, nothing was stored): initialize the domain's existing
+  default/empty state (Section 5's per-method absence semantics, unchanged), set state to
+  `"ready"`, permit writes — identical treatment to the previous bullet, since both are
+  safe to persist and today's code never distinguishes them either.
+- **Malformed or unsupported stored data** (`"ready"`, via the domain's existing repair/
+  quarantine/discard policy): apply that policy exactly as today, set state to `"ready"`,
+  and permit writes **of the resulting fallback specifically where current behavior
+  already permits persisting it** — e.g. `TrainingPlansRepository`'s full-wipe-to-`[]` on
+  a `schemaVersion` mismatch is already, today, something the existing save effect would
+  happily re-persist as `[]` on the next write; this design changes nothing about that.
+  This is a "ready" outcome, not a "read_failed" one, per the task's own instruction that
+  malformed data and unknown schema versions "are not raw storage-access failures."
+- **Storage read failure** (`"read_failed"`): complete loading for UI purposes — the
+  domain's state becomes the `fallback` value and the domain is no longer `"loading"` —
+  but set `DomainHydrationState` to `"write_protected"`, **not** `"ready"`. The save
+  effect's guard (7.1) keeps it disabled. This is the one outcome Revision 1 handled
+  incorrectly (it set the equivalent of `"ready"` here).
 
-### 7.3 Timing providers cannot emit processable results before the session is ready
+### 7.3 Preventing defaults from overwriting stored data
+
+Two independent protections, both required:
+
+1. **Against the ordinary "default fires before load resolves" race** (Section 2.1's
+   write-guard note): the `"loading"` state blocks all writes exactly as `"write_protected"`
+   does — a save effect's guard is `!== "ready"`, so both `"loading"` and
+   `"write_protected"` block it. No domain's save effect can fire with its React state
+   still at its initial default value, because the guard is closed until the state
+   becomes `"ready"` specifically.
+2. **Against a read failure being mistaken for a safe-to-persist default** (this revision's
+   correction): per 7.2, a read failure never produces `"ready"`. Even though the
+   in-memory state is set to a default-shaped `fallback` value for display, the domain
+   stays `"write_protected"` — so that same fallback is never the thing that gets written
+   back to storage, and any genuinely persisted data from before the failed read remains
+   untouched in storage until a successful read (an implementation-time retry mechanism,
+   not designed here) actually confirms what should replace it.
+
+### 7.4 Timing providers require successful session readiness, not merely a finished attempt
 
 The Timing Simulator's subscription effect (`TrackerApp.tsx:730`, declared *before* the
 session-load effect at `:756`) must not call `simulatorProvider.start()` until
-`sessionHydrated` is `true`. Concretely: the effect's body is gated
-(`if (!sessionHydrated) return;`), and `sessionHydrated` is added to its dependency array,
-so the effect re-runs once hydration completes and performs the real subscribe+start at
-that point — never before. A future real hardware `TimingProvider` must follow the same
-gate.
+`sessionHydrationState === "ready"` **specifically** — not merely "no longer `\"loading\"`."
+Concretely: the effect's body is gated (`if (sessionHydrationState !== "ready") return;`),
+and `sessionHydrationState` is added to its dependency array, so the effect re-runs each
+time that state changes and performs the real subscribe+start only on the transition into
+`"ready"` — never on a transition into `"write_protected"`, and never before either
+transition. A future real hardware `TimingProvider` must follow the same gate.
 
-This closes the risk identified in the product-owner review: `processIncomingTimingResult`
-reads `sessionRef.current` and silently drops a result if it's `null`
-(`TrackerApp.tsx:586-587`) — today this window is negligible (pure synchronous JS between
-simulator-start and session-load); under an asynchronous load, without this gate, it would
-widen into a real, silent-data-loss window. `processIncomingTimingResult`'s existing
-`if (!session) return;` guard remains as defense-in-depth, but the primary fix is: the
-provider is never started early enough for this to matter.
+**This is corrected from Revision 1**, which gated the provider on "hydration completed,"
+a condition that Revision 1's collapsed model made true even after a read failure. Under
+this revision's three-state model, a current-session read failure leaves
+`sessionHydrationState` at `"write_protected"`, so the provider is never started — a
+timing result is never generated as processable input for a session that never actually
+became ready, closing exactly the case the task identified: "timing results must remain
+blocked until the current-session domain is successfully ready, not merely until its read
+attempt has finished."
 
-### 7.4 Deliberate hydration completion on absence, malformed data, and load failure
+`processIncomingTimingResult`'s existing `if (!session) return;` guard
+(`TrackerApp.tsx:586-587`) remains as defense-in-depth, but the primary fix is: the
+provider is never started early enough, in either failure mode, for this to matter.
 
-Per Section 5, every `load*` method **always resolves** — it never rejects, for malformed
-data (existing degrade-to-default behavior, Section 3) or for a genuine adapter-level read
-failure (Section 8 explains why read failures are treated identically to absence). This
-means hydration for a given domain has exactly one path to completion, not a
-success/failure fork: `await repository.loadX()` always returns a value, that value is
-always used to set the domain's state, and the domain's hydration flag always flips to
-`true` immediately afterward, in the same batch. **There is no scenario in which a domain
-is left permanently un-hydrated** — the worst case (a genuine storage failure) still
-completes hydration with the domain's safe in-memory default, exactly as if nothing had
-ever been stored.
+### 7.5 Retained failure information for reporting or recovery
 
-### 7.5 Stale asynchronous completions after unmount are ignored
+Each domain that can enter `"write_protected"` also stores the `PersistenceReadError`
+(Section 8) that caused it — e.g. `sessionReadError: PersistenceReadError | null`,
+alongside `sessionHydrationState`. This is application-owned state the UI may use to show
+a "couldn't load your data" indicator, to disable relevant actions, or (in a future,
+separately-designed retry mechanism) to attempt recovery — none of that UI/recovery
+behavior is designed here; only that the information is not discarded is required now.
+
+### 7.6 Stale asynchronous completions after unmount are ignored
 
 Each domain's mount-time load sequence uses a cancellation guard set in the effect's
 cleanup function:
@@ -839,76 +947,108 @@ cleanup function:
 ```js
 useEffect(() => {
   let cancelled = false;
-  sessionRepository.loadCurrent().then((loaded) => {
+  sessionRepository.loadCurrent().then((result) => {
     if (cancelled) return;
-    setCurrentSession(loaded ?? createNewSession());
-    setSessionHydrated(true);
+    if (result.status === "ready") {
+      setCurrentSession(result.value ?? createNewSession());
+      setSessionHydrationState("ready");
+    } else {
+      setCurrentSession(result.fallback ?? createNewSession());
+      setSessionReadError(result.error);
+      setSessionHydrationState("write_protected");
+    }
   });
   return () => { cancelled = true; };
 }, []);
 ```
 
 A load `Promise` that resolves after the owning component has unmounted (or, in a future
-architecture, after the specific load call is no longer relevant) never calls `setState`.
-This is the standard, minimal pattern for this exact problem and introduces no new
-abstraction.
+architecture, after the specific load call is no longer relevant) never calls `setState`,
+regardless of which branch it would have taken. This is the standard, minimal pattern for
+this exact problem and introduces no new abstraction.
 
 **Exemption for `AssessmentPreferencesRepository`**: its three keys are read on demand
 from `AssessScreen.tsx` at arbitrary interaction points, never from an always-on mount
-effect with a corresponding save effect. There is no hydration flag, no write-guard, and
-no unmount-cancellation concern for this repository — each `get`/`set` call is a single,
-self-contained, already-async-safe operation with no steady-state "hydrated" or
-"un-hydrated" state to speak of.
+effect with a corresponding save effect. There is no `DomainHydrationState`, no
+write-guard, and no unmount-cancellation concern for this repository — each `get`/`set`
+call is a single, self-contained, already-async-safe operation with no steady-state
+"loading"/"ready"/"write_protected" state to speak of (Section 5.7).
 
-### 7.6 First post-hydration render does not cause unintended rewrites
+### 7.7 First post-`"ready"` render does not cause unintended rewrites
 
 The freshly-loaded value is written back to storage on the render immediately following
-hydration, because the domain's state changed (from initial default to loaded value) in
-that same render, and the save effect's dependency array includes that state. **This is
-not new or unintended** — it is exactly what happens today already (the existing
-synchronous load-then-save-effect sequence already re-persists the freshly-migrated value
-immediately after loading it; this is an accepted, harmless, idempotent consequence of the
-one-effect-per-key pattern, not a defect this design introduces or must avoid). What the
-hydration guard prevents is a **different** rewrite: a write of the *stale initial
-default* before the real value has loaded (Section 7.2) — that is the only "unintended
-rewrite" this design is required to close.
+the transition to `"ready"`, because the domain's state changed (from `"loading"`'s
+initial default to the loaded value) in that same render, and the save effect's dependency
+array includes that state. **This is not new or unintended** — it is exactly what happens
+today already (the existing synchronous load-then-save-effect sequence already re-persists
+the freshly-migrated value immediately after loading it; an accepted, harmless, idempotent
+consequence of the one-effect-per-key pattern). What this design prevents is a
+**different** rewrite: a write of the *stale initial default* before the real value has
+loaded, or a write of a *read-failure fallback* mistaken for a safe value (7.3) — those are
+the only "unintended rewrites" this design is required to close.
 
-### 7.7 One domain's failure does not corrupt another domain's hydration
+### 7.8 One domain's failure does not corrupt another domain's hydration
 
-Each domain's load-and-hydrate sequence (7.5's pattern) is independent — six separate
-`useEffect`s, six separate `.then()` continuations, six separate hydration flags. A
-storage-layer failure in one domain's `loadX()` call (Section 8) resolves to that domain's
-own default and flips only that domain's flag; it has no code path that touches any other
-domain's state, effect, or flag. No `Promise.all`/sequential-await chain across domains is
-introduced — each domain's mount effect is independent today (one `useEffect` per
-concern) and stays independent under this design.
+Each domain's load-and-settle sequence (7.6's pattern) is independent — six separate
+`useEffect`s, six separate `.then()` continuations, six separate `DomainHydrationState`
+values. A storage-layer failure in one domain's `loadX()` call (Section 8) moves only that
+domain to `"write_protected"`; it has no code path that touches any other domain's state,
+effect, or hydration value. No `Promise.all`/sequential-await chain across domains is
+introduced — each domain's mount effect is independent today (one `useEffect` per concern)
+and stays independent under this design.
 
-### 7.8 Required integration and E2E tests
+### 7.9 Required integration and E2E tests
 
-- **Overwrite-prevention (integration):** mock a `StorageAdapter` with an artificially
-  delayed `get()`; assert `set()` is never called for that domain's key(s) until after
-  `get()` resolves and the corresponding state update has committed.
-- **Provider-gating (integration):** spy on the (simulated) `TimingProvider.start()`;
-  assert it is never called before `sessionHydrated` becomes `true`, using a delayed
-  `SessionRepository.loadCurrent()` to create an observable window.
-- **Deliberate completion on failure (integration):** mock `loadX()` to reject (or, per
-  Section 8, resolve as if storage were unavailable); assert the domain's hydration flag
-  still becomes `true` and its state becomes the documented default, within a bounded time.
-- **Domain isolation (integration):** mock one domain's `loadX()` to hang indefinitely (or
-  reject) while another domain's resolves normally; assert the second domain hydrates
-  and its save effect becomes active regardless of the first.
-- **Unmount-safety (integration):** unmount the component before a pending `loadX()`
-  resolves; resolve it afterward; assert no `setState`-after-unmount warning and no
-  corresponding `set()` call.
-- **Reload regression (E2E, extends `tests/e2e/reload.spec.ts`):** seed realistic data
-  across all domains, reload, and assert the UI never renders an empty/default view before
-  showing the loaded content, and that no domain's final stored value ever equals its
-  empty/default serialization when real data was seeded.
+Corrected and expanded from Revision 1 to test the three-state model explicitly, per the
+task's required additions:
 
-## 8. Error model
+1. **Normal absence permits initialization and later persistence (integration):** mock a
+   `StorageAdapter.get()` resolving `{ status: "absent" }`-equivalent (Section 8); assert
+   the domain reaches `"ready"` and a subsequent state change is persisted.
+2. **Delayed successful reads cannot be overwritten by defaults (integration):** mock a
+   `StorageAdapter` with an artificially delayed successful `get()`; assert `set()` is
+   never called for that domain's key(s) until after the load resolves and the
+   corresponding state update (to `"ready"` with the real value) has committed.
+3. **A storage read failure settles hydration but keeps the domain write-protected
+   (integration):** mock `loadX()` to resolve `{ status: "read_failed", ... }`; assert the
+   domain leaves `"loading"` (UI-visible state is set) but reaches `"write_protected"`,
+   never `"ready"`, within a bounded time.
+4. **Default state is never persisted after a read failure (integration):** using the
+   same mock as test 3, assert `StorageAdapter.set()` is never called for that domain's
+   key(s) for the remainder of the test, including after further unrelated re-renders.
+5. **One failed domain does not prevent unrelated domains from becoming writable
+   (integration):** mock one domain's `loadX()` to resolve `read_failed` (or hang) while
+   another domain's resolves `"ready"` normally; assert the second domain reaches
+   `"ready"` and its save effect activates regardless of the first.
+6. **The timing provider remains inactive when current-session loading fails
+   (integration):** mock `SessionRepository.loadCurrent()` to resolve `read_failed`; spy on
+   `TimingProvider.start()`; assert it is never called.
+7. **Malformed-data behavior remains domain-specific (integration):** for each domain,
+   write a malformed/legacy payload directly via the adapter and confirm the *existing*
+   repair/discard/quarantine policy still produces a `"ready"` result with the documented
+   repaired value — not a `"read_failed"` result. This is the regression guard for the
+   task's explicit requirement that malformed data and unknown schema versions are not
+   raw storage-access failures.
+8. **Browser exceptions do not escape the adapter boundary (integration):** mock the
+   underlying `localStorage.getItem`/`setItem` to throw `DOMException`/
+   `QuotaExceededError`; assert no repository or hydration code ever observes that
+   exception type — only the typed `PersistenceReadError`/`PersistenceWriteError` shapes
+   (Section 8).
+9. **Unmount-safety (integration, retained from Revision 1):** unmount the component
+   before a pending `loadX()` resolves (either branch); resolve it afterward; assert no
+   `setState`-after-unmount warning and no corresponding `set()` call.
+10. **Reload regression (E2E, extends `tests/e2e/reload.spec.ts`):** seed realistic data
+    across all domains, reload, and assert the UI never renders an empty/default view
+    before showing the loaded content, and that no domain's final stored value ever equals
+    its empty/default serialization when real data was seeded.
 
-**One small, application-owned error shape, used consistently by every write method in
-Section 5** — distinguishing only failures a caller could plausibly handle differently:
+## 8. Error and read-result model
+
+Two small, application-owned result shapes — one for writes (unchanged from Revision 1),
+one for reads (**new in this revision**, correcting Revision 1's unsafe conflation of
+normal absence with genuine read failure).
+
+### 8.1 Write result (unchanged)
 
 ```typescript
 /**
@@ -932,27 +1072,68 @@ caller could reasonably act on differently (e.g. "ask the user to free up space"
 a persistent, storage-is-broken banner"); `unknown` is the required catch-all so nothing
 un-typed ever crosses the boundary.
 
+### 8.2 Read result (new in this revision)
+
+```typescript
+/**
+ * The failure shape a read can produce — a strict subset of PersistenceWriteError,
+ * since "quota exceeded" has no meaning for a read.
+ */
+type PersistenceReadError =
+  | { kind: "storage_unavailable" }
+  | { kind: "unknown"; message: string };
+
+/**
+ * The result every repository load* method resolves to. Consistent with
+ * PersistenceWriteResult's shape and error vocabulary (Section 8.1), but distinguishes
+ * four things a bare Promise<T> could not (this document's task explicitly requires this
+ * distinction, corrected from Revision 1):
+ *   1. a successful read with a real stored value,
+ *   2. normal absence (nothing was stored),
+ *   3. storage unavailable or access blocked,
+ *   4. an unknown storage failure.
+ * Cases 1 and 2 are NOT distinguished from each other at this type's level — both are
+ * folded into `status: "ready"`, because every existing domain migration function already
+ * treats them identically (a real value and "nothing, use the default" both produce a
+ * valid, safe-to-persist domain object; see Section 3). Malformed or unknown-schema-version
+ * data is likewise folded into `"ready"`, via each domain's existing repair/quarantine/
+ * discard policy — it is not a raw storage-access failure and must not be treated as one.
+ * Cases 3 and 4 ARE distinguished from 1/2, and from each other (via `error.kind`), because
+ * they are the one distinction Revision 1 incorrectly collapsed away.
+ */
+type DomainLoadResult<T> =
+  | { status: "ready"; value: T }
+  | { status: "read_failed"; fallback: T; error: PersistenceReadError };
+```
+
+`fallback` is intentionally named differently from `value` — the type itself documents
+that a `"read_failed"` result's payload is for display only, never for persistence (see
+Section 7 for how hydration enforces this at the write-guard level, not just by naming
+convention).
+
+### 8.3 Classification responsibility
+
 **The `StorageAdapter` — and only the `StorageAdapter` — classifies raw browser
-exceptions into this shape.** This is stated explicitly to resolve an inconsistency the
-product-owner review identified: Section 4.A names the adapter as "the only component that
+exceptions into either shape.** Section 4.A names the adapter as "the only component that
 knows about a specific browser storage mechanism," so the adapter, not each of the seven
 repositories, is responsible for recognizing `DOMException`/`QuotaExceededError`/any future
-IndexedDB-specific transaction error and translating it into one of the three variants
-above before the rejection ever reaches a repository. A repository's write method simply
-propagates whatever `PersistenceWriteResult`-shaped rejection reason the adapter produced
-(or wraps a resolved value into `{ ok: true }` on success) — **no repository contains any
-`instanceof DOMException` check or equivalent.** `DOMException`, `QuotaExceededError`, and
-any IndexedDB-specific transaction error type never escape the `StorageAdapter`.
+IndexedDB-specific transaction error and translating it into `PersistenceWriteError` (for
+`set`) or `PersistenceReadError` (for `get`) before either call ever resolves. A
+repository's method simply propagates whatever result shape the adapter produced — **no
+repository contains any `instanceof DOMException` check or equivalent.** `DOMException`,
+`QuotaExceededError`, and any IndexedDB-specific transaction error type never escape the
+`StorageAdapter` (Section 9).
 
-**Read paths never produce this error type at all.** Per Section 5's general rule, every
-`load*` method always resolves. A genuine storage-layer read failure (the adapter's `get`
-call itself failing, as distinct from the *data* being malformed) is treated identically to
-"nothing stored" — the repository falls back to the domain's own documented absence value.
-This is a deliberate, accepted tradeoff: it loses the ability to distinguish "nothing
-stored" from "storage is broken right now" at the read path, in exchange for guaranteeing
-hydration always completes deliberately (Section 7.4) and the app never blocks on a broken
-read. A future diagnostic/telemetry hook could observe this distinction without changing
-the repository contract — out of scope here.
+### 8.4 Why reads never reject, but now can still "fail"
+
+Every `load*` method still **always resolves — it never rejects, for any reason.** This is
+unchanged from Revision 1. What changed is what a "failed" read resolves *to*: Revision 1
+resolved it to the domain's plain default value, indistinguishable from normal absence
+(`Promise<T>`); this revision resolves it to `{ status: "read_failed", fallback, error }`
+(`Promise<DomainLoadResult<T>>`), explicitly distinguishable. This preserves the original
+goal (hydration always completes deliberately, Section 7.2) while closing the gap the
+product-owner review identified: "hydration completed" no longer silently means "safe to
+write."
 
 ## 9. Adapter and transactions
 
@@ -960,22 +1141,29 @@ the repository contract — out of scope here.
 /**
  * The only component in this design that knows about a specific browser storage
  * mechanism, and the only component that classifies its exceptions (Section 8).
+ * Both methods always resolve — neither ever rejects — consistent with each other.
  */
 interface StorageAdapter {
-  /** Never rejects for "not found" (`null`) or for malformed stored data — only for a
-   * genuine storage-layer failure, translated to `PersistenceWriteError`'s shape by the
-   * adapter itself (though, per Section 8, repositories never surface a read failure as
-   * an error — they fall back to the domain default; the adapter's classification exists
-   * so a repository *could* distinguish this in the future without an adapter change). */
-  get(key: string): Promise<string | null>;
+  /**
+   * `T = string | null` in `DomainLoadResult` (Section 8.2): `{ status: "ready", value:
+   * null }` means the key genuinely does not exist (matches `localStorage.getItem`'s
+   * `null` exactly); `{ status: "ready", value: "..." }` means a string is stored,
+   * whatever its content — malformed-JSON handling happens one layer up, in the
+   * repository, not here. `{ status: "read_failed", fallback: null, error }` means a
+   * genuine storage-layer failure (e.g. a browser blocking storage access entirely) —
+   * **corrected from Revision 1**, which had this method reject and be silently treated
+   * as `null` by the caller; that conflation is exactly what this revision removes.
+   */
+  get(key: string): Promise<DomainLoadResult<string | null>>;
 
   /** Full overwrite, matching `localStorage.setItem`'s existing contract. Resolves once
-   * durable per the backend's own guarantee. Rejects with a `PersistenceWriteError`
-   * (Section 8) on a genuine failure — including a synchronous `localStorage.setItem`
-   * throw (e.g. Safari private-mode `QuotaExceededError`), which the `localStorage`
-   * implementation of this interface must catch and convert into a rejected `Promise`,
-   * never let propagate as an uncaught synchronous exception. */
-  set(key: string, value: string): Promise<void>;
+   * durable per the backend's own guarantee, to `{ ok: true }`. Resolves — never
+   * rejects — to `{ ok: false, error }` (`PersistenceWriteError`, Section 8.1) on a
+   * genuine failure — including a synchronous `localStorage.setItem` throw (e.g. Safari
+   * private-mode `QuotaExceededError`), which the `localStorage` implementation of this
+   * interface must catch and convert into that resolved shape, never let propagate as an
+   * uncaught synchronous exception. */
+  set(key: string, value: string): Promise<PersistenceWriteResult>;
 }
 ```
 
@@ -1012,28 +1200,29 @@ authorized by this document.
 
 ## 10. Migration path to IndexedDB (staged; documentation only in this pass)
 
-1. **Introduce repository boundaries, retain the `localStorage` backend.** Implement
-   `StorageAdapter` (Section 9) wrapping `localStorage`. Implement all 7 repositories
-   (Section 5), each calling the *existing, unchanged* migration functions. Replace
-   `TrackerApp.tsx`'s direct `localStorage.getItem`/`setItem` call sites with the
-   corresponding repository calls, wired through the hydration design (Section 7) — this
-   is the only runtime-behavior-relevant step in the whole migration path, and it must
-   produce **zero visible behavior change** beyond the hydration-safety guard itself
-   (Section 7.1's note on why that guard is not a behavior change).
-2. **Contract-test the new repositories** (Section 11) before or alongside step 1's
-   `TrackerApp.tsx` call-site replacement.
-3. **Introduce an IndexedDB adapter behind the same `StorageAdapter` interface** (or a
+**This section covers Phase 2 (IndexedDB) only.** The Phase 1 (`localStorage`-backed
+repository boundary, including hydration and testing) sequence is now specified once,
+authoritatively, in Section 11 — this section no longer restates or overlaps with it,
+resolving an ordering ambiguity in Revision 1 that could be read as permitting
+`TrackerApp.tsx` wiring changes (its old step 1) before characterization tests existed
+(its old step 2, "before or alongside"). Phase 2 begins only after Section 11's sequence
+is complete.
+
+1. **Introduce an IndexedDB adapter behind the same `StorageAdapter` interface** (or a
    richer one, per Section 9's "may later expand" note). No repository or domain-logic
    code changes — only a second adapter implementation is added.
-4. **Migrate existing browser data without loss.** On first load under the IndexedDB
+2. **Migrate existing browser data without loss.** On first load under the IndexedDB
    adapter, for each of the 10 keys: read the existing `localStorage` value (still
    present, untouched), run it through the *same* existing migration function used today,
    write the migrated result into IndexedDB, and — critically — **do not delete the
-   `localStorage` copy yet** (see step 5).
-5. **Verify migrated data before considering cleanup of legacy storage.** A separate,
+   `localStorage` copy yet** (see step 3). If the `localStorage` read itself fails
+   (Section 8.2's `"read_failed"`), that key's migration is skipped and retried on a later
+   load, per the same write-protection principle as Section 7 — a failed read must never
+   be treated as "confirmed nothing to migrate."
+3. **Verify migrated data before considering cleanup of legacy storage.** A separate,
    later step, never an automatic consequence of a successful first read.
-6. **Before IndexedDB becomes the authoritative write target, obtain a separately
-   approved activation-and-rollback design.** Retaining legacy `localStorage` (step 4) is
+4. **Before IndexedDB becomes the authoritative write target, obtain a separately
+   approved activation-and-rollback design.** Retaining legacy `localStorage` (step 2) is
    **not, by itself, a safe rollback strategy once the application starts writing new
    data to IndexedDB only** — any record created *after* that cutover exists solely in
    IndexedDB, so rolling back to an older, `localStorage`-only build would make that
@@ -1045,7 +1234,7 @@ authorized by this document.
 
 ### 10.1 Explicit handling of each required migration risk
 
-- **Interrupted migrations.** Per-key migration (step 4) must be independently retryable:
+- **Interrupted migrations.** Per-key migration (step 2) must be independently retryable:
   if the browser closes mid-migration after key #3 but before key #4, the next load must
   detect that #4 is not yet migrated and migrate it, without re-migrating #1-#3 in a way
   that could duplicate or corrupt already-migrated data. This requires each per-key
@@ -1073,9 +1262,9 @@ authorized by this document.
   functions already handle; the migration step runs that same function before data ever
   reaches IndexedDB.
 - **Downgrade behavior.** Not solved by this design — an explicit open question (Section
-  13). As long as step 4's `localStorage` copy is retained and step 6's activation
+  13). As long as step 2's `localStorage` copy is retained and step 4's activation
   decision has not yet made IndexedDB the sole write target, an older build can keep
-  reading `localStorage` unaffected. Once IndexedDB becomes authoritative (step 6), full
+  reading `localStorage` unaffected. Once IndexedDB becomes authoritative (step 4), full
   downgrade safety requires whatever mechanism that separate decision specifies.
 - **Validation before legacy-data deletion.** Required, not optional: before any
   `localStorage` key is deleted, the corresponding IndexedDB data must be read back and
@@ -1090,53 +1279,76 @@ authorized by this document.
   unchanged, for the same reason: the migration step always calls each domain's existing
   function, never a new generic one.
 
-## 11. Testing sequence
+## 11. Implementation and testing sequence
 
-Six distinct, explicitly ordered stages — resolving the sequencing ambiguity the
-product-owner review identified in the original draft (which conflated "characterize old
-behavior" with "contract-test the new repository shape," when no repository shape exists
-yet at the point the first characterization tests are written):
+**This is the single, authoritative sequence for Phase 1** (the `localStorage`-backed
+repository boundary). Revision 1 had two separately numbered lists (an old Section 10
+"migration path" starting with `TrackerApp.tsx` wiring, and an old Section 11 "testing
+sequence" starting with characterization tests) whose relative order was never stated
+explicitly enough to rule out reading them as concurrent or wiring-first. **This revision
+states plainly: characterization tests must be written and passing before any production
+call site — `TrackerApp.tsx`, `AssessScreen.tsx`, or any other current direct-storage
+call site — is touched.** Eight explicitly ordered steps:
 
-1. **Characterization tests for current direct-storage behavior.** Written against
-   `TrackerApp.tsx` **as it exists today** — real component tests (React Testing Library,
-   as the existing `TrackerApp.*.test.tsx` suite already does), asserting today's actual
-   `localStorage` reads/writes, effect order, and guard behavior (including the
-   write-order finding in Section 6.1 and the unguarded-effect finding in Section 2.1).
-   These run against the *current* code, before any repository exists, and capture the
-   baseline this whole effort must not silently change.
-2. **Repository contract tests for the new `localStorage`-backed repositories.** Written
-   against the Section 5 interfaces once they exist — a distinct, new test suite, not a
-   re-run of stage 1's tests. Stage 1's captured expectations are *ported* into stage 2's
-   assertions (same behavior, expressed against the new interface), not executed as the
-   same test code against two different backends.
-3. **The same stage-2 contracts, run unmodified against a future IndexedDB
-   implementation.** Only possible because Section 5's contracts are defined entirely in
-   terms of domain objects and `Promise`s, never `localStorage`-specific behavior. A test
-   that only passes against one backend has found either a real behavioral difference (a
-   bug in the newer backend) or a wrong assumption in the test itself.
-4. **Hydration and wiring integration tests** (Section 7.8) — verifying the hydration
-   guard, provider-gating, unmount-safety, and domain-isolation properties, which have no
-   equivalent in stage 1 (today's code has no asynchronous hydration to test).
-5. **E2E persistence regressions** — extending `tests/e2e/reload.spec.ts` and
-   `tests/e2e/corrupt-persistence.spec.ts` to exercise the full, real browser stack against
-   the repository-backed implementation, confirming stage 1's characterized behavior still
-   holds end-to-end.
-6. **Architecture-enforcement test against unapproved direct storage access.** Required
-   during implementation (not deferred, per the binding product-owner decision): a
+1. **Add characterization tests around the existing direct-storage behavior.** Written
+   against `TrackerApp.tsx`/`AssessScreen.tsx` **as they exist today** — real component
+   tests (React Testing Library, as the existing `TrackerApp.*.test.tsx` suite already
+   does), asserting today's actual `localStorage` reads/writes, effect order, and guard
+   behavior (including the write-order finding in Section 6.1 and the unguarded-effect
+   finding in Section 2.1). These must exist and pass **before step 4** touches any
+   production wiring, and they run against the *current* code, before any repository
+   exists, capturing the baseline this whole effort must not silently change.
+2. **Implement `StorageAdapter`** (Section 9) wrapping `localStorage`, including its
+   `DomainLoadResult`/`PersistenceWriteResult`-returning contract (Section 8) and browser-
+   exception classification (Section 8.3). No production call site changes yet.
+3. **Implement all seven repositories and their contract tests** (Section 5), each calling
+   the *existing, unchanged* domain migration functions, each tested per Section 11.9's
+   per-domain checklist below. Still no production call site changes — these are new
+   modules, not yet wired to `TrackerApp.tsx`/`AssessScreen.tsx`.
+4. **Introduce hydration state and repository wiring.** Only now does `TrackerApp.tsx`'s
+   direct `localStorage.getItem`/`setItem` call sites get replaced with repository calls,
+   wired through the three-state hydration model (Section 7) — this is the first step
+   that changes any production call site, and step 1's characterization tests must be
+   green immediately beforehand.
+5. **Run hydration and integration tests** (Section 7.9) — verifying the three-state
+   model, provider-gating, write-protection-after-read-failure, unmount-safety, and
+   domain-isolation properties, which have no equivalent in step 1 (today's code has no
+   asynchronous hydration to test).
+6. **Replace remaining approved direct-storage access** — any call site not already
+   covered by step 4 (e.g. `AssessScreen.tsx`'s direct `assessmentPreferences.ts`
+   getter/setter calls, replaced with `AssessmentPreferencesRepository` calls).
+7. **Add or finalize the architecture-enforcement test** (Section 13, decision 8): a
    static-analysis or lint-based test asserting no file outside the approved
    `StorageAdapter`/repository modules references `localStorage`/`indexedDB` directly.
-   Still not built in this documentation-only pass — this section records that it is
-   required as part of the implementation task, not an optional later follow-up.
+   Required as part of this implementation task, not an optional later follow-up — not
+   built in this documentation-only pass, but its place in the sequence (after wiring
+   exists to enforce, before declaring the work done) is fixed here.
+8. **Run the full unit and E2E suites** — the existing 833-unit/72-e2e baseline plus every
+   test added in steps 1, 3, and 5, plus E2E persistence regressions extending
+   `tests/e2e/reload.spec.ts` and `tests/e2e/corrupt-persistence.spec.ts` against the
+   repository-backed implementation, confirming step 1's characterized behavior still
+   holds end-to-end. Nothing in this sequence is complete until this step is green.
 
-Each domain (all 7 repositories) requires coverage at stages 1-3 for: empty storage, a
+Steps 2–3 introduce no production behavior change (new, unwired modules); step 4 is the
+only step with production-behavior risk, which is why steps 1 (characterization) and 3
+(contract tests) must both precede it. A future IndexedDB implementation later runs the
+*same* step-3 contract tests unmodified, per Section 9's "internal adapter capabilities may
+expand" note — that is a Phase 2 activity (Section 10), not part of this eight-step
+sequence.
+
+### 11.9 Per-domain coverage checklist (steps 1, 3, 5, 8)
+
+Each domain (all 7 repositories) requires coverage for: empty storage/normal absence, a
 valid round trip, an update, the domain's actual reset/clear semantics, a malformed
-payload, current migration behavior (including the `blocks`/`blocks: []` case for domains
-#1-#2), an unknown schema version where applicable (#4-#7), isolation from other domains,
-and failed-write behavior (Section 8). At minimum, dedicated stage-1/2/3 coverage is
-required for current session, session history, Assessment, and `HistoryFiltersRepository`
-(standing in for "settings"), per the task's explicit requirement — but this applies
-uniformly to all 7, not just those four, since a boundary proven correct for 4 of 7
-domains is not yet trustworthy for the other 3.
+payload (asserting `"ready"`, not `"read_failed"` — Section 7.9, test 7), current
+migration behavior (including the `blocks`/`blocks: []` case for domains #1-#2), an
+unknown schema version where applicable (#4-#7), isolation from other domains, failed-write
+behavior (Section 8.1), and — new in this revision — a genuine read failure specifically
+(asserting `"read_failed"`, write-protection, and no persisted default — Section 7.9,
+tests 1-4). At minimum, dedicated coverage is required for current session, session
+history, Assessment, and `HistoryFiltersRepository` (standing in for "settings"), per the
+task's explicit requirement — but this applies uniformly to all 7, not just those four,
+since a boundary proven correct for 4 of 7 domains is not yet trustworthy for the other 3.
 
 ## 12. Future sync compatibility (seam only — not a sync protocol)
 
@@ -1222,27 +1434,43 @@ one (Section 6.4).
 
 ### 7. How repository errors should be exposed without coupling the UI to browser APIs
 
-**Resolved: the three-variant `PersistenceWriteError`/`PersistenceWriteResult` shape**
-(Section 8), classified exclusively by the `StorageAdapter`.
+**Resolved: the three-variant `PersistenceWriteError`/`PersistenceWriteResult` shape for
+writes, plus the distinct `PersistenceReadError`/`DomainLoadResult<T>` shape for reads**
+(Section 8), both classified exclusively by the `StorageAdapter`.
 
 ### 8. How to prevent React components from bypassing the persistence boundary
 
 **Resolved: an architecture-enforcement test is required during implementation**
-(Section 11, stage 6) — no longer an optional, indefinitely-deferred follow-up. The test
+(Section 11, step 7) — no longer an optional, indefinitely-deferred follow-up. The test
 itself is not written in this documentation-only pass.
 
-### 9. What must be decided now vs. what should remain deferred
+### 9. Whether normal absence and a genuine storage read failure may be treated alike
+
+**Resolved: no — they are explicitly distinct outcomes.** Added in this revision,
+correcting Revision 1's collapse of the two into one "always resolves to a plain default"
+read contract. Absence, malformed data, and unknown-schema-version data all resolve to
+`DomainLoadResult`'s `"ready"` status (all three were already, correctly, treated alike by
+this codebase's existing migration functions); a genuine storage-layer read failure
+resolves to `"read_failed"` instead, and the hydration design (Section 7) keeps the
+affected domain write-protected until a successful read occurs — never persisting the
+failure's display-only fallback value. See Section 8 for the type and Section 7 for how
+it's consumed.
+
+### 10. What must be decided now vs. what should remain deferred
 
 **Decided now** (this document's recommendations): the 7-repository grouping; the
-`StorageAdapter` shape; the `Promise`-returning, always-resolving-on-read contract; the
-three-variant error type and adapter-side classification; that `localStorage` deletion is
-never automatic after a first successful migrated read; that session archiving is not
-composed into one repository method in Phase 1; the hydration design (Section 7).
+`StorageAdapter` shape; the `Promise`-returning, always-resolving contract for both reads
+and writes; the write-error and read-error type shapes and adapter-side classification;
+the read/absence distinction (decision 9) and the three-state hydration model that
+consumes it; that `localStorage` deletion is never automatic after a first successful
+migrated read; that session archiving is not composed into one repository method in
+Phase 1; that characterization tests precede production wiring changes (Section 11).
 
 **Explicitly deferred**: per-domain migration-progress tracking's storage location; the
 exact equality-check mechanism for pre-deletion validation; the IndexedDB
-activation-and-rollback mechanism (Section 10, step 6); a transactional/safer-ordered
-session-archive operation and retry deduplication (Section 6.4); downgrade behavior once
+activation-and-rollback mechanism (Section 10, step 4); a transactional/safer-ordered
+session-archive operation and retry deduplication (Section 6.4); any automatic-retry or
+recovery UX for a `"write_protected"` domain (Section 7.1); downgrade behavior once
 IndexedDB becomes authoritative; anything about sync metadata, conflict resolution, or
 identity (Section 12).
 
@@ -1266,4 +1494,7 @@ identity (Section 12).
   product-owner review this revision responds to — see its findings A–J for the full
   evidence trail behind every change in this revision.
 - **`PERSISTENCE_BOUNDARY_REVISION_REPORT.md`** (repository root, untracked) records
-  exactly what changed between the original draft and this revision, for traceability.
+  exactly what changed between the original draft and Revision 1, for traceability.
+- **`PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`** (repository root, untracked) identified the
+  read-failure/absence conflation this Revision 2 corrects, and records what changed
+  between Revision 1 and Revision 2.
