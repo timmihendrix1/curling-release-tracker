@@ -1247,6 +1247,13 @@ do not block cloud, team, coaching, exercise or training-plan implementation:
 - Keep behaviour and visible UI unchanged.
 - Add contract tests for current session, session history, assessments and settings.
 
+**Design proposed, not yet implemented:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` and
+`docs/adr/0013-application-owned-persistence-repository-boundary.md` (Status: Proposed)
+cover the full inventory (10 keys across 7 domains, re-verified against the current code),
+the repository/adapter boundary, the staged migration path into a later IndexedDB adapter,
+and the contract-test strategy for this phase. Product-owner review of that ADR is
+required before implementation begins.
+
 ### Phase 2: IndexedDB migration
 
 - Implement IndexedDB repositories.

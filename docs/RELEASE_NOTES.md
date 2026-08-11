@@ -16,10 +16,8 @@ Phase 0).
 **Production URL:** https://curling-release-tracker.vercel.app/
 
 **Production branch:** `main`. Confirmed: GitHub's configured default branch (`origin/HEAD`)
-is `main`. Not independently confirmed from this environment: Vercel's configured
-"Production Branch" setting for the linked project (no Vercel CLI session or dashboard
-access was available at release-preparation time) — treat as unverified until checked in
-the Vercel dashboard.
+is `main`. Also confirmed manually in the Vercel dashboard (Settings → Environments):
+Production tracks `main`; preview deployments are built from all other Git branches.
 
 **Deployment mechanism:** Vercel, via its GitHub integration on the
 `timmihendrix1/curling-release-tracker` repository (a `.vercel/` project-link directory

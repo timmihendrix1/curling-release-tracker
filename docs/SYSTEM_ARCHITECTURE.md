@@ -1086,7 +1086,16 @@ math as History, framed for immediate in-block feedback (`ExplanationContext: "c
 
 ## Persistence and migration (Implemented)
 
-Two `localStorage` keys, written by two independent `useEffect`s in `TrackerApp.tsx`:
+This section covers `Session`/`Session History` specifically. **For the complete,
+re-verified inventory of all 10 persisted `localStorage` keys across all 7 independent
+domains** (Session, History Filters, Assessment, Training Plans, Accuracy Tolerance
+Profiles, Smart Random Profiles, Assessment Preferences) — including the proposed
+repository boundary that would sit in front of them — see
+`docs/PERSISTENCE_BOUNDARY_DESIGN.md` and `docs/adr/0013-application-owned-persistence-repository-boundary.md`
+(Proposed, not yet implemented).
+
+Session and Session History are two `localStorage` keys, written by two independent
+`useEffect`s in `TrackerApp.tsx`:
 
 - `curling-release-tracker-current-session` — the current `Session`.
 - `curling-release-tracker-session-history` — a `Session[]` of completed sessions.

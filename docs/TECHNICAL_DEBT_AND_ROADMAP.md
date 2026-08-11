@@ -44,6 +44,13 @@ instead of one growing function with nested conditionals — same behavior, easi
 reason about the Nth addition. Don't do this preemptively; do it the next time adding a
 mode makes the current function genuinely hard to follow.
 
+**Related, not a substitute:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` and
+`docs/adr/0013-application-owned-persistence-repository-boundary.md` (Proposed) design a
+repository boundary around `migrateSession` and every other persisted domain's migration
+function, calling each unchanged — that work does not itself reduce
+`sessionMigration.ts`'s branching, and is not a prerequisite for the backfill-rule-table
+fix described above.
+
 ### CSV schema stability
 
 **What:** The CSV export column set has already been reordered once (`predicted_time`
