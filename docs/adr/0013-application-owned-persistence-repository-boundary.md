@@ -2,10 +2,16 @@
 
 ## Status
 
-Accepted. Not implemented. Accepted by the product owner following review of
+Accepted. Implemented. Accepted by the product owner following review of
 `PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`. See `docs/PERSISTENCE_BOUNDARY_DESIGN.md`
-for the full design this ADR summarizes. Phase 1 implementation follows in a separate
-commit on `feature/persistence-boundary-phase-1`.
+for the full design this ADR summarizes. Phase 1 was implemented on
+`feature/persistence-boundary-phase-1` (commit
+`refactor(persistence): introduce application repository boundary`): the
+`StorageAdapter`, all seven repositories, the three-state hydration model, and
+`TrackerApp.tsx`'s wiring all exist exactly as designed below — see
+`docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for the as-built summary.
+IndexedDB, cloud sync, and the other Phase 2+ items in design doc §10 remain
+unimplemented.
 
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: Decision 1 was revised to no longer include a

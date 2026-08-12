@@ -643,3 +643,22 @@ export function migrateSessionHistory(raw: unknown): Session[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((item) => migrateSession(item));
 }
+
+/**
+ * A brand-new, never-stored Session — with `blocks: []`, never a fabricated Legacy
+ * Block. Moved here (from TrackerApp.tsx) so SessionRepository's `loadCurrent()` can
+ * use the exact same constructor for its "absent" and "read_failed" fallback cases
+ * without duplicating this shape — see docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.1 for why
+ * absence must never be satisfied by calling migrateSession(null)/(undefined) instead.
+ */
+export function createNewSession(): Session {
+  return {
+    id: crypto.randomUUID(),
+    title: "Training Session",
+    date: new Date().toISOString(),
+    notes: "",
+    blocks: [],
+    activeBlockId: "",
+    shots: [],
+  };
+}

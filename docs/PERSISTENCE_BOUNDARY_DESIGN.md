@@ -1,10 +1,16 @@
 # Persistence Boundary Design
 
-**Status:** Proposed. Companion to `docs/adr/0013-application-owned-persistence-repository-boundary.md`.
-This document is design and documentation only — no repository code, no IndexedDB
-adapter, and no change to any existing `localStorage` key, stored shape, or migration
-behavior exists in this pass. See `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`
-§18, "Phase 1: Persistence boundary."
+**Status:** Accepted. Implemented. Companion to
+`docs/adr/0013-application-owned-persistence-repository-boundary.md`. Phase 1
+(everything this document describes: the `StorageAdapter`, all seven repositories, the
+three-state hydration model, and the wiring into `TrackerApp.tsx`) was implemented on
+`feature/persistence-boundary-phase-1` exactly as designed below — no storage key,
+stored shape, migration behavior, session/history write order, or deduplication
+behavior changed. See `docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for
+the as-built summary, and
+`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18, "Phase 1: Persistence
+boundary (Implemented)." The IndexedDB adapter described in Section 10 remains
+unimplemented (Phase 2).
 
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's

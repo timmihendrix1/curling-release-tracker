@@ -1084,23 +1084,59 @@ as History) → Target vs. Actual Scatterplot (prominent for Variable Weight; co
 Settings / Session Settings / Export / Start New Session. Same interpretation-text
 math as History, framed for immediate in-block feedback (`ExplanationContext: "current"`).
 
-## Persistence and migration (Implemented)
+## Persistence boundary (Implemented)
 
-This section covers `Session`/`Session History` specifically. **For the complete,
-re-verified inventory of all 10 persisted `localStorage` keys across all 7 independent
-domains** (Session, History Filters, Assessment, Training Plans, Accuracy Tolerance
-Profiles, Smart Random Profiles, Assessment Preferences) — including the proposed
-repository boundary that would sit in front of them — see
+Every persisted domain is read and written through an application-owned repository, not
+through direct `localStorage` calls scattered across components — see
 `docs/PERSISTENCE_BOUNDARY_DESIGN.md` and `docs/adr/0013-application-owned-persistence-repository-boundary.md`
-(Proposed, not yet implemented).
+(Accepted. Implemented) for the full design and rationale. Summary of what exists today:
 
-Session and Session History are two `localStorage` keys, written by two independent
-`useEffect`s in `TrackerApp.tsx`:
+- **`StorageAdapter`** (`src/lib/persistence/localStorageAdapter.ts`) is the only file
+  permitted to reference the `localStorage` global directly — enforced by
+  `src/lib/persistence/__tests__/architectureBoundary.test.ts`, a filesystem scan rather
+  than a custom ESLint rule (deferred as unnecessary for this phase). It never throws;
+  both `get`/`set` resolve to a typed result (`StorageGetResult` /
+  `PersistenceWriteResult`), classifying any raw browser exception
+  (`QuotaExceededError`, storage-unavailable, etc.) before it can escape the boundary.
+- **Seven repositories** (`SessionRepository`, `HistoryFiltersRepository`,
+  `AssessmentRepository`, `TrainingPlansRepository`,
+  `AccuracyToleranceProfilesRepository`, `SmartRandomProfilesRepository`,
+  `AssessmentPreferencesRepository`) each wrap the adapter and one domain's existing
+  migration/serialization logic unchanged. Every `load*` method resolves a
+  `DomainLoadResult<T>` with three distinct outcomes — `"value"`, `"absent"`, or
+  `"read_failed"` — never conflating a genuinely missing key with a storage failure (see
+  design doc §8.2 for why that distinction matters:
+  `SessionRepository.loadCurrent()`'s doc comment is the concrete cautionary example —
+  calling `migrateSession` on a failure's fallback would fabricate a bogus "Legacy
+  Block", ADR-0005).
+- **Hydration** in `TrackerApp.tsx` is a three-state model per domain (`"loading"` →
+  `"ready"` or `"write_protected"`, see `src/lib/persistence/types.ts`). A domain's save
+  effect only runs once hydration reaches `"ready"` (via either `"value"` or `"absent"`);
+  a `"read_failed"` result leaves that domain `"write_protected"` for the rest of the
+  session — its state is set to the result's display-only fallback, but nothing is ever
+  written back over whatever is actually stored. The Timing Simulator subscription is
+  additionally gated on session hydration reaching `"ready"` specifically, so a session
+  read failure can never let a stale or not-yet-hydrated session receive timing results.
+- This phase is strictly behavior-preserving: storage keys, serialized shapes, the
+  current-session-before-history write order, and the lack of cross-save deduplication
+  are all unchanged from before the boundary existed (design doc §6). IndexedDB, cloud
+  sync, and the rest of design doc §10 remain unimplemented.
+
+This section covers `Session`/`Session History` specifically for the migration rules
+below. **For the complete, re-verified inventory of all 10 persisted `localStorage` keys
+across all 7 independent domains** (Session, History Filters, Assessment, Training
+Plans, Accuracy Tolerance Profiles, Smart Random Profiles, Assessment Preferences) see
+`docs/PERSISTENCE_BOUNDARY_DESIGN.md`.
+
+Session and Session History are two `localStorage` keys, read and written through
+`SessionRepository` (`src/lib/sessionRepository.ts`), via two independent `useEffect`s
+in `TrackerApp.tsx`:
 
 - `curling-release-tracker-current-session` — the current `Session`.
 - `curling-release-tracker-session-history` — a `Session[]` of completed sessions.
 
-Migration (`migrateSession`) runs unconditionally on every load of either key, whether
+Migration (`migrateSession`) runs unconditionally on every successful load of either key
+(a `"value"` result), whether
 the data is brand new or years old — there is no version field or explicit "needs
 migration" check; the function is written to be a safe no-op on already-current data.
 

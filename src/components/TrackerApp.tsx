@@ -58,15 +58,13 @@ import {
 } from "../lib/analytics";
 import { targetVsActualExplanation } from "../lib/analyticsExplanations";
 import { applyTimingResultToAssessmentRun } from "../lib/assessment/capture";
-import { migrateAssessmentPersistedState } from "../lib/assessment/migration";
 import {
-  ASSESSMENT_STORAGE_KEY,
   createEmptyAssessmentPersistedState,
   deleteAssessmentRunFromHistory,
   getAssessmentRunFromHistory,
-  serializeAssessmentPersistedState,
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
+import { assessmentRepository } from "../lib/assessment/repository";
 import { getCurrentPlannedShot } from "../lib/assessment/progress";
 import { pauseAssessmentRun } from "../lib/assessment/run";
 import {
@@ -89,7 +87,9 @@ import {
   exportSessionToCsv,
 } from "../lib/export";
 import { DEFAULT_ACTIVE_VIEW, type ActiveView } from "../lib/navigation";
-import { migrateSession, migrateSessionHistory } from "../lib/sessionMigration";
+import type { DomainHydrationState, PersistenceReadError } from "../lib/persistence/types";
+import { createNewSession } from "../lib/sessionMigration";
+import { sessionRepository } from "../lib/sessionRepository";
 import {
   createSimulatorTimingProvider,
 } from "../lib/simulatorTimingProvider";
@@ -108,9 +108,9 @@ import {
   representativeThresholds,
   resolveDefaultMeasurementMode,
   resolveDefaultTrainingCategory,
-  sanitizeHistoryFilters,
   type HistoryAnalysisFilters,
 } from "../lib/historyAnalysis";
+import { historyFiltersRepository } from "../lib/historyFiltersRepository";
 import {
   DEFAULT_SHOT_FILTER,
   filterShots,
@@ -138,13 +138,11 @@ import {
   variableTargetModeLabel,
   type NewBlockInput,
 } from "../lib/trainingBlocks";
-import { migrateAccuracyToleranceProfilesState } from "../lib/accuracyToleranceProfiles/migration";
 import {
-  ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
   createEmptyAccuracyToleranceProfilesState,
-  serializeAccuracyToleranceProfilesState,
   type AccuracyToleranceProfilesState,
 } from "../lib/accuracyToleranceProfiles/persistence";
+import { accuracyToleranceProfilesRepository } from "../lib/accuracyToleranceProfiles/repository";
 import {
   addAccuracyToleranceProfile,
   buildAccuracyToleranceProfile,
@@ -154,13 +152,11 @@ import {
   setDefaultAccuracyToleranceProfile,
   type AccuracyToleranceProfileInput,
 } from "../lib/accuracyToleranceProfiles/profiles";
-import { migrateSmartRandomProfilesState } from "../lib/smartRandomProfiles/migration";
 import {
-  SMART_RANDOM_PROFILES_STORAGE_KEY,
   createEmptySmartRandomProfilesState,
-  serializeSmartRandomProfilesState,
   type SmartRandomProfilesState,
 } from "../lib/smartRandomProfiles/persistence";
+import { smartRandomProfilesRepository } from "../lib/smartRandomProfiles/repository";
 import {
   addSmartRandomProfile,
   buildSmartRandomProfile,
@@ -172,17 +168,15 @@ import {
 import { advanceToNextPlanStep, startPlanExecution } from "../lib/trainingPlans/execution";
 import { resolveExpectedHandle } from "../lib/trainingPlans/handleStrategy";
 import { mapPlanStepToTrainingBlockInput } from "../lib/trainingPlans/mapping";
-import { migrateTrainingPlans } from "../lib/trainingPlans/migration";
 import {
   addPlan,
   deletePlan,
   duplicatePlan,
-  serializeTrainingPlansState,
   TRAINING_PLANS_SCHEMA_VERSION,
-  TRAINING_PLANS_STORAGE_KEY,
   updatePlan,
   type TrainingPlansPersistedState,
 } from "../lib/trainingPlans/persistence";
+import { trainingPlansRepository } from "../lib/trainingPlans/repository";
 import {
   getActiveStepSnapshot,
   getPlanProgressSummary,
@@ -219,14 +213,12 @@ const FUNCTIONAL_PAGE_HEADERS: Record<
   },
 };
 
-const CURRENT_SESSION_STORAGE_KEY =
-  "curling-release-tracker-current-session";
-const SESSION_HISTORY_STORAGE_KEY =
-  "curling-release-tracker-session-history";
-const HISTORY_FILTERS_STORAGE_KEY =
-  "curling-release-tracker-history-filters";
-// TRAINING_PLANS_STORAGE_KEY lives in src/lib/trainingPlans/persistence.ts —
-// its own key, independent of Session/Session History (see ADR-0012).
+// All ten storage keys are now owned by their respective repositories
+// (src/lib/sessionRepository.ts, historyFiltersRepository.ts,
+// assessment/repository.ts, trainingPlans/repository.ts,
+// accuracyToleranceProfiles/repository.ts, smartRandomProfiles/repository.ts,
+// assessmentPreferencesRepository.ts) — see docs/PERSISTENCE_BOUNDARY_DESIGN.md §5 and
+// ADR-0013. No key constant lives in this component anymore.
 
 type ConfirmAction = {
   title: string;
@@ -241,18 +233,6 @@ type EditingShot = {
   handle: Handle;
   shotType?: ShotType;
 };
-
-function createNewSession(): Session {
-  return {
-    id: crypto.randomUUID(),
-    title: "Training Session",
-    date: new Date().toISOString(),
-    notes: "",
-    blocks: [],
-    activeBlockId: "",
-    shots: [],
-  };
-}
 
 // Low-effort History note: how many of this block's shots came from Auto Capture, and
 // which provider. Returns null (renders nothing) for a block with no captured shots at
@@ -354,6 +334,33 @@ export default function TrackerApp() {
   // uses (see docs/TECHNICAL_DEBT_AND_ROADMAP.md's set-state-in-effect note).
   const [assessmentState, setAssessmentState] =
     useState<AssessmentPersistedState | null>(null);
+
+  // --- Persistence hydration state (Phase 1 repository boundary) ---
+  // One DomainHydrationState + retained read error per effect-persisted domain (every
+  // repository except AssessmentPreferencesRepository, which has no mount/save effect
+  // to gate). "loading"/"write_protected" block that domain's save effect; only "ready"
+  // (reached via either a real "value" or genuine "absent") permits it to run — see
+  // docs/PERSISTENCE_BOUNDARY_DESIGN.md §7. The read-error half of each pair is retained
+  // in state (for future reporting/recovery UI, explicitly out of scope for Phase 1 —
+  // see ADR-0013) but not read anywhere yet, so it's kept as an unnamed tuple slot rather
+  // than an unused binding.
+  const [sessionHydration, setSessionHydration] = useState<DomainHydrationState>("loading");
+  const [, setSessionReadError] = useState<PersistenceReadError | null>(null);
+  const [historyFiltersHydration, setHistoryFiltersHydration] =
+    useState<DomainHydrationState>("loading");
+  const [, setHistoryFiltersReadError] = useState<PersistenceReadError | null>(null);
+  const [assessmentHydration, setAssessmentHydration] =
+    useState<DomainHydrationState>("loading");
+  const [, setAssessmentReadError] = useState<PersistenceReadError | null>(null);
+  const [trainingPlansHydration, setTrainingPlansHydration] =
+    useState<DomainHydrationState>("loading");
+  const [, setTrainingPlansReadError] = useState<PersistenceReadError | null>(null);
+  const [accuracyProfilesHydration, setAccuracyProfilesHydration] =
+    useState<DomainHydrationState>("loading");
+  const [, setAccuracyProfilesReadError] = useState<PersistenceReadError | null>(null);
+  const [smartRandomProfilesHydration, setSmartRandomProfilesHydration] =
+    useState<DomainHydrationState>("loading");
+  const [, setSmartRandomProfilesReadError] = useState<PersistenceReadError | null>(null);
   // The handle actually executed for the current planned shot — defaults to
   // the shot's Expected Handle (set by AssessScreen) but may be toggled by
   // the athlete. Lives here, not inside AssessScreen, for the same reason
@@ -729,6 +736,14 @@ export default function TrackerApp() {
 
   useEffect(() => {
     if (!IS_DEV) return;
+    // Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): the provider may start only
+    // once the current-session domain reached "ready" via a successful `loadCurrent()` —
+    // either a real "value" or genuine "absent" — never merely because the load
+    // attempt finished. A read failure leaves `sessionHydration` at "write_protected"
+    // forever (absent a future retry), so the provider is never started in that case,
+    // closing the risk of a timing result being generated as processable input for a
+    // session that never actually became ready.
+    if (sessionHydration !== "ready") return;
 
     // Exactly one subscription per mounted effect instance. React (including Strict
     // Mode's dev-only mount→cleanup→mount double-invoke) always runs this cleanup
@@ -751,206 +766,214 @@ export default function TrackerApp() {
     // dependency here; re-subscribing on every render would defeat the point of a
     // stable provider instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simulatorProvider]);
+  }, [simulatorProvider, sessionHydration]);
 
+  // --- Mount-time hydration (Phase 1 repository boundary) ---
+  // Replaces the old single synchronous mount effect. Each domain's load is kicked off
+  // independently — no domain's outcome blocks or is blocked by another's (except
+  // Session's own two keys, which share one hydration state since they're one domain —
+  // see docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.1). A shared `cancelled` flag prevents any
+  // late-resolving load from updating state after unmount.
   useEffect(() => {
-    const savedSession = localStorage.getItem(
-      CURRENT_SESSION_STORAGE_KEY
-    );
+    let cancelled = false;
 
-    const savedHistory = localStorage.getItem(
-      SESSION_HISTORY_STORAGE_KEY
-    );
+    Promise.all([sessionRepository.loadCurrent(), sessionRepository.loadHistory()]).then(
+      ([currentResult, historyResult]) => {
+        if (cancelled) return;
 
-    if (savedSession) {
-      const loadedSession = migrateSession(JSON.parse(savedSession));
-      // A lazy useState initializer would read localStorage during SSR and cause a
-      // hydration mismatch, so this load intentionally setState()s from the mount
-      // effect body instead (see CLAUDE.md's working rules and
-      // docs/TECHNICAL_DEBT_AND_ROADMAP.md).
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setCurrentSession(loadedSession);
+        if (currentResult.status === "value") {
+          setCurrentSession(currentResult.value);
+          // Home is the normal entry point (see docs/adr/0009), except for the one
+          // active training situation reload can hand back: a Capture Sequence that
+          // was running or paused when the page closed.
+          if (isCaptureSequenceActive(currentResult.value.captureSequence)) {
+            setActiveView("train");
+          }
+        } else if (currentResult.status === "absent") {
+          setCurrentSession(createNewSession());
+        } else {
+          setCurrentSession(currentResult.fallback);
+        }
 
-      // Home is the normal entry point (see docs/adr/0009), except for the one
-      // active training situation reload can hand back: a Capture Sequence
-      // that was running or paused when the page closed. Landing on Home would
-      // hide that in-progress state behind an extra tap for no benefit — Train
-      // shows it exactly as left (paused, progress intact) without any risk,
-      // so this is the one case that starts there instead.
-      if (isCaptureSequenceActive(loadedSession.captureSequence)) {
-        setActiveView("train");
+        if (historyResult.status === "value") {
+          setSessionHistory(historyResult.value);
+        } else if (historyResult.status === "absent") {
+          setSessionHistory([]);
+        } else {
+          setSessionHistory(historyResult.fallback);
+        }
+
+        if (currentResult.status === "read_failed" || historyResult.status === "read_failed") {
+          setSessionReadError(
+            currentResult.status === "read_failed" ? currentResult.error : (historyResult as { error: PersistenceReadError }).error
+          );
+          setSessionHydration("write_protected");
+        } else {
+          setSessionHydration("ready");
+        }
       }
-    } else {
-      setCurrentSession(createNewSession());
-    }
-
-    if (savedHistory) {
-      setSessionHistory(
-        migrateSessionHistory(JSON.parse(savedHistory))
-      );
-    }
-
-    const savedHistoryFilters = localStorage.getItem(
-      HISTORY_FILTERS_STORAGE_KEY
     );
 
-    if (savedHistoryFilters) {
-      try {
-        setHistoryFilters(sanitizeHistoryFilters(JSON.parse(savedHistoryFilters)));
-      } catch {
-        // Corrupt/old-shape persisted filters are never fatal — fall back to
-        // the defaults already set at initial state.
+    historyFiltersRepository.load().then((result) => {
+      if (cancelled) return;
+      if (result.status === "value") {
+        setHistoryFilters(result.value);
+      } else if (result.status === "absent") {
+        setHistoryFilters(createDefaultHistoryFilters());
+      } else {
+        setHistoryFilters(result.fallback);
+        setHistoryFiltersReadError(result.error);
       }
-    }
+      setHistoryFiltersHydration(result.status === "read_failed" ? "write_protected" : "ready");
+    });
 
     // --- Assessment data (its own key, own migration path — ADR-0010/0011) ---
-    const savedAssessment = localStorage.getItem(ASSESSMENT_STORAGE_KEY);
-    let rawAssessment: unknown = null;
-    try {
-      rawAssessment = savedAssessment ? JSON.parse(savedAssessment) : null;
-    } catch {
-      rawAssessment = null;
-    }
-    const migratedAssessment = rawAssessment
-      ? migrateAssessmentPersistedState(rawAssessment)
-      : createEmptyAssessmentPersistedState();
+    assessmentRepository.loadState().then((result) => {
+      if (cancelled) return;
 
-    // A raw currentRun existed but failed validation (quarantined) — surface
-    // this transparently rather than letting it silently disappear (see
-    // docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md section 24).
-    const rawHadCurrentRun =
-      typeof rawAssessment === "object" &&
-      rawAssessment !== null &&
-      "currentRun" in rawAssessment &&
-      (rawAssessment as { currentRun?: unknown }).currentRun !== undefined;
-    if (rawHadCurrentRun && !migratedAssessment.currentRun) {
-      setAssessmentQuarantineNotice(ASSESSMENT_QUARANTINE_NOTICE);
-    }
-
-    // Reload Recovery: a persisted run that was still "warmup"/"in_progress"
-    // survived a reload (the app never persists "capture is live" as a
-    // separate flag — this status combination IS that signal). Force it to
-    // "paused" before it's ever rendered, so capture never silently
-    // reactivates without an explicit Resume tap (see spec section 21-23).
-    let finalAssessment = migratedAssessment;
-    if (
-      migratedAssessment.currentRun &&
-      (migratedAssessment.currentRun.status === "warmup" ||
-        migratedAssessment.currentRun.status === "in_progress")
-    ) {
-      const pausedOutcome = pauseAssessmentRun(migratedAssessment.currentRun);
-      if (pausedOutcome.ok) {
-        const pausedRun = {
-          ...pausedOutcome.value,
-          interruption: {
-            ...pausedOutcome.value.interruption,
-            interruptionCount: pausedOutcome.value.interruption.interruptionCount + 1,
-          },
-        };
-        finalAssessment = { ...migratedAssessment, currentRun: pausedRun };
-        setPendingReloadRecoveryRunId(pausedRun.id);
-        const currentShot = getCurrentPlannedShot(pausedRun);
-        if (currentShot) setAssessmentExecutedHandle(currentShot.expectedHandle);
+      if (result.status === "read_failed") {
+        setAssessmentState(result.fallback.state);
+        setAssessmentReadError(result.error);
+        setAssessmentHydration("write_protected");
+        return;
       }
-    }
 
-    setAssessmentState(finalAssessment);
+      const migratedAssessment =
+        result.status === "value" ? result.value.state : createEmptyAssessmentPersistedState();
+
+      // A raw currentRun existed but failed validation (quarantined) — surface this
+      // transparently rather than letting it silently disappear (see
+      // docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md section 24). Never
+      // applicable to "absent" — there was nothing to quarantine.
+      if (result.status === "value" && result.value.currentRunQuarantined) {
+        setAssessmentQuarantineNotice(ASSESSMENT_QUARANTINE_NOTICE);
+      }
+
+      // Reload Recovery: a persisted run that was still "warmup"/"in_progress" survived
+      // a reload (the app never persists "capture is live" as a separate flag — this
+      // status combination IS that signal). Force it to "paused" before it's ever
+      // rendered, so capture never silently reactivates without an explicit Resume tap
+      // (see spec section 21-23). Only meaningful for a real "value" — "absent" can
+      // never have a currentRun.
+      let finalAssessment = migratedAssessment;
+      if (
+        result.status === "value" &&
+        migratedAssessment.currentRun &&
+        (migratedAssessment.currentRun.status === "warmup" ||
+          migratedAssessment.currentRun.status === "in_progress")
+      ) {
+        const pausedOutcome = pauseAssessmentRun(migratedAssessment.currentRun);
+        if (pausedOutcome.ok) {
+          const pausedRun = {
+            ...pausedOutcome.value,
+            interruption: {
+              ...pausedOutcome.value.interruption,
+              interruptionCount: pausedOutcome.value.interruption.interruptionCount + 1,
+            },
+          };
+          finalAssessment = { ...migratedAssessment, currentRun: pausedRun };
+          setPendingReloadRecoveryRunId(pausedRun.id);
+          const currentShot = getCurrentPlannedShot(pausedRun);
+          if (currentShot) setAssessmentExecutedHandle(currentShot.expectedHandle);
+        }
+      }
+
+      setAssessmentState(finalAssessment);
+      setAssessmentHydration("ready");
+    });
 
     // --- Training Plan library (its own key, own migration path — ADR-0012) ---
-    const savedTrainingPlans = localStorage.getItem(TRAINING_PLANS_STORAGE_KEY);
-    let rawTrainingPlans: unknown = null;
-    try {
-      rawTrainingPlans = savedTrainingPlans ? JSON.parse(savedTrainingPlans) : null;
-    } catch {
-      rawTrainingPlans = null;
-    }
-    setTrainingPlans(migrateTrainingPlans(rawTrainingPlans).plans);
+    trainingPlansRepository.loadPlans().then((result) => {
+      if (cancelled) return;
+      if (result.status === "value") {
+        setTrainingPlans(result.value);
+      } else if (result.status === "absent") {
+        setTrainingPlans([]);
+      } else {
+        setTrainingPlans(result.fallback);
+        setTrainingPlansReadError(result.error);
+      }
+      setTrainingPlansHydration(result.status === "read_failed" ? "write_protected" : "ready");
+    });
 
     // --- Accuracy Tolerance Profiles (its own key, own migration path) ---
-    const savedAccuracyToleranceProfiles = localStorage.getItem(
-      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY
-    );
-    let rawAccuracyToleranceProfiles: unknown = null;
-    try {
-      rawAccuracyToleranceProfiles = savedAccuracyToleranceProfiles
-        ? JSON.parse(savedAccuracyToleranceProfiles)
-        : null;
-    } catch {
-      rawAccuracyToleranceProfiles = null;
-    }
-    setAccuracyToleranceProfilesState(
-      migrateAccuracyToleranceProfilesState(rawAccuracyToleranceProfiles)
-    );
+    accuracyToleranceProfilesRepository.loadState().then((result) => {
+      if (cancelled) return;
+      if (result.status === "value") {
+        setAccuracyToleranceProfilesState(result.value);
+      } else if (result.status === "absent") {
+        setAccuracyToleranceProfilesState(createEmptyAccuracyToleranceProfilesState());
+      } else {
+        setAccuracyToleranceProfilesState(result.fallback);
+        setAccuracyProfilesReadError(result.error);
+      }
+      setAccuracyProfilesHydration(result.status === "read_failed" ? "write_protected" : "ready");
+    });
 
     // --- Smart Random Profiles (its own key, own migration path) ---
-    const savedSmartRandomProfiles = localStorage.getItem(
-      SMART_RANDOM_PROFILES_STORAGE_KEY
-    );
-    let rawSmartRandomProfiles: unknown = null;
-    try {
-      rawSmartRandomProfiles = savedSmartRandomProfiles
-        ? JSON.parse(savedSmartRandomProfiles)
-        : null;
-    } catch {
-      rawSmartRandomProfiles = null;
-    }
-    setSmartRandomProfilesState(
-      migrateSmartRandomProfilesState(rawSmartRandomProfiles)
-    );
+    smartRandomProfilesRepository.loadState().then((result) => {
+      if (cancelled) return;
+      if (result.status === "value") {
+        setSmartRandomProfilesState(result.value);
+      } else if (result.status === "absent") {
+        setSmartRandomProfilesState(createEmptySmartRandomProfilesState());
+      } else {
+        setSmartRandomProfilesState(result.fallback);
+        setSmartRandomProfilesReadError(result.error);
+      }
+      setSmartRandomProfilesHydration(
+        result.status === "read_failed" ? "write_protected" : "ready"
+      );
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (!currentSession) return;
+    if (sessionHydration !== "ready") return;
 
-    localStorage.setItem(
-      CURRENT_SESSION_STORAGE_KEY,
-      JSON.stringify(currentSession)
-    );
-  }, [currentSession]);
+    sessionRepository.saveCurrent(currentSession);
+  }, [currentSession, sessionHydration]);
 
   useEffect(() => {
-    localStorage.setItem(
-      HISTORY_FILTERS_STORAGE_KEY,
-      JSON.stringify(historyFilters)
-    );
-  }, [historyFilters]);
+    if (historyFiltersHydration !== "ready") return;
+
+    historyFiltersRepository.save(historyFilters);
+  }, [historyFilters, historyFiltersHydration]);
 
   useEffect(() => {
-    localStorage.setItem(
-      SESSION_HISTORY_STORAGE_KEY,
-      JSON.stringify(sessionHistory)
-    );
-  }, [sessionHistory]);
+    if (sessionHydration !== "ready") return;
+
+    sessionRepository.saveHistory(sessionHistory);
+  }, [sessionHistory, sessionHydration]);
 
   useEffect(() => {
     if (!assessmentState) return;
-    localStorage.setItem(
-      ASSESSMENT_STORAGE_KEY,
-      serializeAssessmentPersistedState(assessmentState)
-    );
-  }, [assessmentState]);
+    if (assessmentHydration !== "ready") return;
+
+    assessmentRepository.saveState(assessmentState);
+  }, [assessmentState, assessmentHydration]);
 
   useEffect(() => {
-    const state: TrainingPlansPersistedState = {
-      schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
-      plans: trainingPlans,
-    };
-    localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, serializeTrainingPlansState(state));
-  }, [trainingPlans]);
+    if (trainingPlansHydration !== "ready") return;
+
+    trainingPlansRepository.savePlans(trainingPlans);
+  }, [trainingPlans, trainingPlansHydration]);
 
   useEffect(() => {
-    localStorage.setItem(
-      ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
-      serializeAccuracyToleranceProfilesState(accuracyToleranceProfilesState)
-    );
-  }, [accuracyToleranceProfilesState]);
+    if (accuracyProfilesHydration !== "ready") return;
+
+    accuracyToleranceProfilesRepository.saveState(accuracyToleranceProfilesState);
+  }, [accuracyToleranceProfilesState, accuracyProfilesHydration]);
 
   useEffect(() => {
-    localStorage.setItem(
-      SMART_RANDOM_PROFILES_STORAGE_KEY,
-      serializeSmartRandomProfilesState(smartRandomProfilesState)
-    );
-  }, [smartRandomProfilesState]);
+    if (smartRandomProfilesHydration !== "ready") return;
+
+    smartRandomProfilesRepository.saveState(smartRandomProfilesState);
+  }, [smartRandomProfilesState, smartRandomProfilesHydration]);
 
   if (!currentSession) {
     return null;

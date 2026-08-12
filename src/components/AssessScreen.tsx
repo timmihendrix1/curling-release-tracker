@@ -33,14 +33,7 @@ import {
 import { signedError } from "../lib/assessment/metrics";
 import type { AssessmentRun, InvalidAttemptReason } from "../lib/assessment/types";
 import { categorizeTargetError } from "../lib/accuracyThresholds";
-import {
-  getLastAssessmentCustomThreshold,
-  getLastAssessmentThresholdPreset,
-  getShowAssessmentIntroductionPreference,
-  setLastAssessmentCustomThreshold,
-  setLastAssessmentThresholdPreset,
-  setShowAssessmentIntroductionPreference,
-} from "../lib/assessmentPreferences";
+import { assessmentPreferencesRepository } from "../lib/assessmentPreferencesRepository";
 import { parseReleaseTime } from "../lib/timeInput";
 import AssessmentCompletionSummary from "./AssessmentCompletionSummary";
 import type { AssessmentLastResult } from "./AssessmentCurrentShot";
@@ -115,16 +108,34 @@ export default function AssessScreen({
   const [view, setView] = useState<PreRunView>("landing");
   const [introductionReturnView, setIntroductionReturnView] = useState<PreRunView>("landing");
 
-  const [thresholdPreset, setThresholdPreset] = useState<AccuracyThresholdPreset>(() =>
-    getLastAssessmentThresholdPreset()
-  );
-  const lastCustom = useRef(getLastAssessmentCustomThreshold());
-  const [customOnTargetInput, setCustomOnTargetInput] = useState(
-    lastCustom.current ? lastCustom.current.onTarget.toFixed(2) : "0.10"
-  );
-  const [customAcceptableInput, setCustomAcceptableInput] = useState(
-    lastCustom.current ? lastCustom.current.acceptable.toFixed(2) : "0.20"
-  );
+  // Preference reads are asynchronous (AssessmentPreferencesRepository, see
+  // docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.7) — these start at the same defaults the
+  // synchronous reads used to return on absence, then correct once the repository
+  // resolves. This repository is exempt from the app's hydration-gate/write-protection
+  // model (no passive save effect to protect), so a plain corrective effect is enough.
+  const [thresholdPreset, setThresholdPreset] = useState<AccuracyThresholdPreset>("standard");
+  const lastCustom = useRef<{ onTarget: number; acceptable: number } | null>(null);
+  const [customOnTargetInput, setCustomOnTargetInput] = useState("0.10");
+  const [customAcceptableInput, setCustomAcceptableInput] = useState("0.20");
+
+  useEffect(() => {
+    let cancelled = false;
+    assessmentPreferencesRepository.getLastThresholdPreset().then((result) => {
+      if (cancelled) return;
+      if (result.status === "value") setThresholdPreset(result.value);
+    });
+    assessmentPreferencesRepository.getLastCustomThreshold().then((result) => {
+      if (cancelled) return;
+      const values = result.status === "value" ? result.value : null;
+      if (!values) return;
+      lastCustom.current = values;
+      setCustomOnTargetInput(values.onTarget.toFixed(2));
+      setCustomAcceptableInput(values.acceptable.toFixed(2));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const [timingMethod, setTimingMethod] = useState<AssessmentTimingMethod>("manual");
   const [setupConfirmed, setSetupConfirmed] = useState(false);
@@ -298,12 +309,15 @@ export default function AssessScreen({
       : null;
 
   function handleViewAssessment() {
-    if (getShowAssessmentIntroductionPreference()) {
-      setIntroductionReturnView("overview");
-      setView("guidedIntroduction");
-    } else {
-      setView("overview");
-    }
+    assessmentPreferencesRepository.getShowIntroduction().then((result) => {
+      const show = result.status === "read_failed" ? result.fallback : result.status === "value" ? result.value : true;
+      if (show) {
+        setIntroductionReturnView("overview");
+        setView("guidedIntroduction");
+      } else {
+        setView("overview");
+      }
+    });
   }
 
   function handleStartNewFromLanding() {
@@ -376,9 +390,9 @@ export default function AssessScreen({
       return setOutcome.ok ? setOutcome.value : state;
     });
 
-    setLastAssessmentThresholdPreset(thresholdPreset);
+    assessmentPreferencesRepository.setLastThresholdPreset(thresholdPreset);
     if (thresholdPreset === "custom") {
-      setLastAssessmentCustomThreshold(thresholdSet.values);
+      assessmentPreferencesRepository.setLastCustomThreshold(thresholdSet.values);
     }
   }
 
@@ -505,11 +519,11 @@ export default function AssessScreen({
         {view === "guidedIntroduction" && (
           <AssessmentGuidedIntroduction
             onContinue={(dontShowAgain) => {
-              if (dontShowAgain) setShowAssessmentIntroductionPreference(false);
+              if (dontShowAgain) assessmentPreferencesRepository.setShowIntroduction(false);
               setView(introductionReturnView);
             }}
             onSkip={(dontShowAgain) => {
-              if (dontShowAgain) setShowAssessmentIntroductionPreference(false);
+              if (dontShowAgain) assessmentPreferencesRepository.setShowIntroduction(false);
               setView(introductionReturnView);
             }}
           />

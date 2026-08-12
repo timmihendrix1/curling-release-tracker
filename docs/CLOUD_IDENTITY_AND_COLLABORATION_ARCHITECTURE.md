@@ -1240,19 +1240,26 @@ do not block cloud, team, coaching, exercise or training-plan implementation:
 - Publish the current local version.
 - Tag the release used as the migration baseline.
 
-### Phase 1: Persistence boundary
+### Phase 1: Persistence boundary (Implemented)
 
-- Inventory every current `localStorage` key and persisted shape.
-- Introduce repository or persistence interfaces around existing storage.
-- Keep behaviour and visible UI unchanged.
+- Inventory every current `localStorage` key and persisted shape. **Done** — 10 keys
+  across 7 domains.
+- Introduce repository or persistence interfaces around existing storage. **Done** — a
+  `StorageAdapter` plus seven domain repositories, see
+  `docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section.
+- Keep behaviour and visible UI unchanged. **Done** — storage keys, serialized shapes,
+  session/history write order, and the lack of cross-save deduplication are all
+  unchanged; this phase deliberately did not fix any pre-existing behavior.
 - Add contract tests for current session, session history, assessments and settings.
+  **Done** — every repository has its own contract test suite, plus an
+  architecture-enforcement test rejecting direct `localStorage` access outside the
+  adapter.
 
-**Design proposed, not yet implemented:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` and
-`docs/adr/0013-application-owned-persistence-repository-boundary.md` (Status: Proposed)
-cover the full inventory (10 keys across 7 domains, re-verified against the current code),
-the repository/adapter boundary, the staged migration path into a later IndexedDB adapter,
-and the contract-test strategy for this phase. Product-owner review of that ADR is
-required before implementation begins.
+`docs/PERSISTENCE_BOUNDARY_DESIGN.md` and
+`docs/adr/0013-application-owned-persistence-repository-boundary.md` (Status: Accepted.
+Implemented) cover the full inventory, the repository/adapter boundary, and the staged
+migration path into a later IndexedDB adapter (Phase 2 below), which remains
+unimplemented.
 
 ### Phase 2: IndexedDB migration
 
