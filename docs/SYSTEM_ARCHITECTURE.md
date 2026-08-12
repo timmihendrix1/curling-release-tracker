@@ -1143,24 +1143,54 @@ custom-threshold controls had the same defect, plus a second race:
 `handleViewAssessment` started a fresh, unguarded preference read on every call, whose
 late completion could force navigation after the user had already moved on.
 
-The corrected rule, applied per domain, independently: `"loading"` — no user action may
-mutate that domain; `"ready"` — normal interaction and persistence are permitted;
-`"write_protected"` — the fallback may be displayed, but actions that would mutate or
-imply durable persistence for that domain must remain unavailable. This is enforced by
-disabling (or, for History Filters, simply not yet rendering) the specific interactive
-controls that mutate each domain — the "Training Plans" tab, the "Manage Accuracy
-Tolerances"/"Manage Smart Random Profiles" buttons, the History Filter bar — plus a
-matching guard at the top of every handler that mutates that domain's state, as
-defense-in-depth. Session gained the same treatment for its own `"write_protected"` case
-specifically (its `"loading"` case was already safe, structurally, via the pre-existing
-`if (!currentSession) return null;` render gate): once write-protected, starting a new
-session, creating/editing a Training Block, deleting/clearing session history, manual
-timing entry, and Timing Simulator/Auto Capture results are all disabled or no-op, via a
-`sessionHydration !== "ready"` guard added to every Session-mutating handler and to
-`processQueuedTimingResult`'s non-Assessment branch. Assessment received the same
-treatment via a single choke point, `updateAssessmentState`. Each domain's gate is
-independent — one domain being unavailable never disables an unrelated, already-ready
-domain.
+The corrected rule, applied per domain, independently, **with no per-domain exception**:
+`"loading"` — no user action may mutate that domain, and its mutating control(s) are not
+even rendered; `"ready"` — normal interaction and persistence are permitted;
+`"write_protected"` — the fallback may be displayed, but every control that mutates the
+domain or implies durable persistence is visibly disabled (never merely a silently
+no-op'd control that still looks interactive). Two layers are both required: the visible
+UI gate prevents a user from being misled into interacting with something that cannot
+durably take effect, and a matching guard at the top of every handler that mutates that
+domain's state is defence in depth against any trigger path that bypasses the UI layer.
+Neither layer alone is sufficient on its own.
+
+An earlier pass of this correction treated History Filters as an exception, reasoning
+that an in-memory-only change to a single, always-overwritten preference object is
+harmless since its own save effect already refuses to persist anything once
+write-protected. External review rejected that reasoning: the user-visible guarantee
+("this control is unavailable") must be identical across every domain regardless of what
+happens underneath. History Filters' controls (five `<select>`s, the custom-threshold
+inputs, "More filters" and its own contents) are now all passed
+`disabled={historyFiltersHydration !== "ready"}`, exactly like every other domain's
+controls, with `onChange` additionally routed through a handler-level guard
+(`handleChangeHistoryFilters`) as defence in depth.
+
+The "Training Plans" tab, the "Manage Accuracy Tolerances"/"Manage Smart Random
+Profiles" buttons, and the History Filter bar are disabled the same way. Session gained
+the same treatment for its own `"write_protected"` case specifically (its `"loading"`
+case was already safe, structurally, via the pre-existing `if (!currentSession) return
+null;` render gate): every *reachable* Session-mutating control is now visibly
+disabled — the Quick Start "Start Training" submit, the session name/notes fields, the
+Training Plan "Start Training" review button, the per-session-history "Delete" button,
+and "Clear History" — and every Session-mutating handler (`handleStartNewSession`, block
+creation/editing, session-history delete/clear, manual shot entry, Auto Capture start,
+etc.) also guards on `sessionHydration === "ready"`, together with
+`processQueuedTimingResult`'s non-Assessment branch. Manual timing entry, Auto Capture,
+and the Timing Simulator panel are, in the current implementation, structurally
+*unreachable* rather than merely disabled while Session is write-protected: the fallback
+`SessionRepository.loadCurrent()` returns on a read failure is always a blockless
+`createNewSession()`, and since every block-creating handler is guarded, `activeBlock`
+can never become non-null for the rest of that session — none of that UI ever mounts.
+Assessment received the equivalent treatment via its single choke point,
+`updateAssessmentState`, plus a `disabled` prop on `AssessmentOverview` that visibly
+disables the threshold-preset radios, the custom-threshold inputs, the setup-confirmation
+controls, and "Start Warm-up" together, so a user cannot complete an apparently
+functional setup that could only ever end in a silent no-op. Pure navigation that neither
+mutates the Assessment domain nor implies durable workflow progress ("View
+Assessment"/"Resume Assessment" from Landing) stays available regardless of Assessment's
+own hydration state, since it depends only on the separately-gated preferences hydration
+below. Each domain's gate is independent — one domain being unavailable never disables an
+unrelated, already-ready domain.
 
 **Why not a dirty-flag ("user state wins") guard instead**, which would be simpler: for a
 *collection* domain (Training Plans, Accuracy Tolerance Profiles, Smart Random Profiles),
@@ -1175,12 +1205,20 @@ conflict-merge, operation-replay, or three-way-merge logic was introduced.
 
 `AssessScreen.tsx`'s three preference reads (last threshold preset, last custom
 threshold, show-introduction) are now hydrated together, once, by a single mount-time
-effect — the threshold-preset/custom-threshold controls do not render at all until that
-settles, so there is no "interactive default, then silently replaced" window.
-`handleViewAssessment` no longer performs its own read at all; it reads the
-already-hydrated `showIntroductionPreference` value synchronously, which eliminates the
-late-completion-overrides-navigation race by construction (there is no longer a pending
-Promise per click for a later resolution to override anything with).
+effect, tracked by a local `preferencesHydration: "loading" | "ready"` flag — the
+threshold-preset/custom-threshold controls do not render at all until that settles, so
+there is no "interactive default, then silently replaced" window. The Assessment entry
+action itself ("View Assessment"/"Resume Assessment"/"Start New Assessment" on
+`AssessmentLanding`) is disabled while `preferencesHydration === "loading"`, since it
+decides between Guided Introduction and Overview using that hydrated value — an action
+whose outcome depends on an asynchronously-hydrated preference must stay unavailable
+until that preference settles, not merely resolve to a same-tick default and call itself
+safe because the read is synchronous. `handleViewAssessment` no longer performs its own
+read at all; it reads the already-hydrated `showIntroductionPreference` value
+synchronously, which eliminates the late-completion-overrides-navigation race by
+construction (there is no longer a pending Promise per click for a later resolution to
+override anything with), and still guards on `preferencesHydration === "ready"` as
+defence in depth.
 
 **Accepted, undisplayed consequence (Finding 6 of the audit):** no call site in
 `TrackerApp.tsx`/`AssessScreen.tsx` inspects the `PersistenceWriteResult` any `save*`/

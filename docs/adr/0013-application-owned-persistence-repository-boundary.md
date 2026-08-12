@@ -27,6 +27,21 @@ completes this ADR's own stated requirement ("a delayed hydration result must no
 silently overwrite a user action performed after mount") at the layer the original
 implementation had not yet reached.
 
+**Second implementation-note correction:** external review of that same correction
+commit found the readiness rule had been applied inconsistently rather than uniformly:
+History Filters was left interactive-but-non-persisting after `"write_protected"` instead
+of visibly disabled like every other domain; Session's and Assessment's controls relied
+on handler-level no-ops alone after a read failure, with nothing visibly disabled; and
+`AssessScreen`'s entry action could still decide navigation using its preference's
+initial in-memory default before that preference's own hydration had settled, merely
+because the decision itself was synchronous rather than because it was gated on
+readiness. A second follow-up correction commit closed all three, removing the
+History Filters exception, adding visible `disabled` states to Session's and
+Assessment's reachable mutating controls, and gating the Assessment entry action on the
+preference-hydration flag — see `PERSISTENCE_BOUNDARY_PHASE1_FINAL_CORRECTION_REPORT.md`
+for the full record. Still no change to Decision 5, any repository/adapter contract, or
+any storage key/shape.
+
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: Decision 1 was revised to no longer include a
 composed, cross-key session-archiving method — Phase 1 is strictly behavior-preserving,

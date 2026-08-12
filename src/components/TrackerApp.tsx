@@ -2089,6 +2089,18 @@ export default function TrackerApp() {
     }));
   }
 
+  /**
+   * Handler-level guard for History Filters, kept as defence in depth
+   * alongside the render-level `disabled` gate on `HistoryFilterBar` itself
+   * (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — a bypassed or
+   * programmatic call still cannot mutate History Filters state while its
+   * own hydration isn't "ready".
+   */
+  function handleChangeHistoryFilters(next: HistoryAnalysisFilters) {
+    if (historyFiltersHydration !== "ready") return;
+    setHistoryFilters(next);
+  }
+
   const resolvedAssessmentResultRun: AssessmentRun | null =
     viewingAssessmentResultRunId && assessmentState
       ? getAssessmentRunFromHistory(assessmentState, viewingAssessmentResultRunId) ?? null
@@ -2206,6 +2218,7 @@ export default function TrackerApp() {
                       defaultSmartRandomProfileId={
                         smartRandomProfilesState.defaultProfileId
                       }
+                      disabled={!sessionWritable}
                     />
                   </div>
 
@@ -2221,6 +2234,7 @@ export default function TrackerApp() {
                         notes={currentSession.notes}
                         onChangeTitle={handleChangeSessionTitle}
                         onChangeNotes={handleChangeSessionNotes}
+                        disabled={!sessionWritable}
                       />
                     </div>
                   </div>
@@ -2228,6 +2242,7 @@ export default function TrackerApp() {
               }
               plans={trainingPlans}
               plansTabDisabled={!trainingPlansWritable}
+              startPlanDisabled={!sessionWritable}
               onSavePlan={handleSaveTrainingPlan}
               onDeletePlan={handleDeleteTrainingPlan}
               onDuplicatePlan={handleDuplicateTrainingPlan}
@@ -2859,6 +2874,7 @@ export default function TrackerApp() {
                       onChangeTargetTime={
                         handleChangeActiveBlockTargetTime
                       }
+                      disabled={!sessionWritable}
                     />
                   )}
 
@@ -2868,6 +2884,7 @@ export default function TrackerApp() {
                     notes={currentSession.notes}
                     onChangeTitle={handleChangeSessionTitle}
                     onChangeNotes={handleChangeSessionNotes}
+                    disabled={!sessionWritable}
                   />
                 </div>
               </details>
@@ -2900,6 +2917,7 @@ export default function TrackerApp() {
           <AssessScreen
             assessmentState={assessmentState}
             updateAssessmentState={updateAssessmentState}
+            assessmentHydration={assessmentHydration}
             isTrainingCaptureActive={isCaptureSequenceActive(
               currentSession?.captureSequence
             )}
@@ -2992,17 +3010,21 @@ export default function TrackerApp() {
 
           {analyzeTab === "training" && (
           <>
-          {/* 1. Sticky Analysis Filters — while historyFiltersHydration is
-              still "loading", the stored filters haven't been applied yet,
-              so the interactive control (backed by createDefaultHistoryFilters())
-              stays unrendered rather than exposing a default a user could
-              change and lose the instant loading resolves
-              (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4). Once loading
-              settles — "ready" or "write_protected" alike — the real control
-              renders normally; write_protected changes simply never reach
-              the save effect (already gated), with no separate messaging
-              needed since this control never claims to be a saved
-              preference. */}
+          {/* 1. Sticky Analysis Filters — readiness gating
+              (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10). While
+              historyFiltersHydration is "loading", the stored filters
+              haven't been applied yet, so the interactive control (backed by
+              createDefaultHistoryFilters()) stays unrendered entirely rather
+              than exposing a default a user could change and lose the
+              instant loading resolves. Once loading settles, the control
+              always renders — but "write_protected" (a genuine read
+              failure) renders it `disabled`: the documented fallback stays
+              visible, every control inside is non-interactive, and (per
+              handleChangeHistoryFilters below) even a bypassed interaction
+              could not mutate state. This corrects the prior revision,
+              which left History Filters mutable-but-never-persisted after
+              write_protected — see
+              PERSISTENCE_BOUNDARY_PHASE1_FINAL_CORRECTION_REPORT.md. */}
           {historyFiltersHydration === "loading" ? (
             <div className={surfaceClass("primary")}>
               <p className="text-sm text-slate-500">Loading filters…</p>
@@ -3010,7 +3032,7 @@ export default function TrackerApp() {
           ) : (
             <HistoryFilterBar
               filters={effectiveHistoryFilters}
-              onChange={setHistoryFilters}
+              onChange={handleChangeHistoryFilters}
               availableTrainingCategories={
                 historyAnalysisContext.availableTrainingCategories
               }
@@ -3018,6 +3040,7 @@ export default function TrackerApp() {
                 historyAnalysisContext.availableMeasurementModes
               }
               sessions={sessionHistory}
+              disabled={historyFiltersHydration !== "ready"}
             />
           )}
 

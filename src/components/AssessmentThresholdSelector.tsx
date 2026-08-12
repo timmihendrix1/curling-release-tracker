@@ -26,6 +26,15 @@ type AssessmentThresholdSelectorProps = {
   onChangeCustomAcceptableInput: (value: string) => void;
   /** Only meaningful (and only shown) when preset === "custom". */
   customValidation: ThresholdValidationResult | null;
+  /**
+   * True while the owning Assessment domain (or its preference hydration)
+   * isn't ready to accept a setup decision yet — see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10. Disables the preset radios
+   * and the custom-threshold inputs without hiding the currently-displayed
+   * values. Defaults to false so existing call sites/tests keep today's
+   * always-enabled behavior.
+   */
+  disabled?: boolean;
 };
 
 const PRESET_OPTIONS: { id: AccuracyThresholdPreset; label: string }[] = [
@@ -49,6 +58,7 @@ export default function AssessmentThresholdSelector({
   onChangeCustomOnTargetInput,
   onChangeCustomAcceptableInput,
   customValidation,
+  disabled = false,
 }: AssessmentThresholdSelectorProps) {
   return (
     <div>
@@ -66,11 +76,12 @@ export default function AssessmentThresholdSelector({
             type="button"
             role="radio"
             aria-checked={preset === option.id}
+            disabled={disabled}
             onClick={() => onChangePreset(option.id)}
             // Selection, not an action — a light fill + check mark, never
             // the primary button's solid dark treatment (DESIGN_SYSTEM.md
             // §13.1: selected options must not resemble the primary action).
-            className={`rounded-xl px-3 py-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${
+            className={`rounded-xl px-3 py-3 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-50 ${
               preset === option.id
                 ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                 : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -104,6 +115,7 @@ export default function AssessmentThresholdSelector({
                   type="text"
                   inputMode="decimal"
                   value={customOnTargetInput}
+                  disabled={disabled}
                   onChange={(event) => onChangeCustomOnTargetInput(event.target.value)}
                   placeholder="0.10"
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
@@ -116,6 +128,7 @@ export default function AssessmentThresholdSelector({
                   type="text"
                   inputMode="decimal"
                   value={customAcceptableInput}
+                  disabled={disabled}
                   onChange={(event) => onChangeCustomAcceptableInput(event.target.value)}
                   placeholder="0.20"
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"

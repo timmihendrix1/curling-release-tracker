@@ -58,6 +58,7 @@ function Harness({
     <AssessScreen
       assessmentState={assessmentState}
       updateAssessmentState={updateAssessmentState}
+      assessmentHydration="ready"
       isTrainingCaptureActive={isTrainingCaptureActive}
       executedHandle={executedHandle}
       onChangeExecutedHandle={setExecutedHandle}
@@ -87,6 +88,13 @@ function exactTextIn(tagName: string, text: string) {
 }
 
 async function goToOverviewSkippingIntroduction() {
+  // The entry action is disabled until preference hydration settles
+  // (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — real repository reads are
+  // asynchronous even against the real (synchronous-under-the-hood)
+  // adapter this suite exercises, so a microtask must still elapse.
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "View Assessment" })).toBeEnabled()
+  );
   fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
   await waitFor(() => screen.getByText("How this assessment works"));
   fireEvent.click(screen.getByRole("button", { name: "Skip explanation" }));
@@ -140,6 +148,9 @@ describe("AssessScreen — Landing and Overview", () => {
 
   it("shows the Guided Introduction on first View Assessment, and Overview covers purpose/measures/why/setup/threshold", async () => {
     render(<Harness />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "View Assessment" })).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
     await waitFor(() => screen.getByText("How this assessment works"));
     expect(screen.getByText(/Medium Reproduction/)).toBeInTheDocument();
@@ -155,6 +166,9 @@ describe("AssessScreen — Landing and Overview", () => {
 
   it("'Do not show this automatically again' skips the introduction on the next View Assessment", async () => {
     render(<Harness />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "View Assessment" })).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
     await waitFor(() => screen.getByText("How this assessment works"));
     fireEvent.click(screen.getByRole("checkbox", { name: /Do not show this automatically again/ }));

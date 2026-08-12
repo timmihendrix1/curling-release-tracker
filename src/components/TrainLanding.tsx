@@ -27,6 +27,15 @@ type TrainLandingProps = {
    * keeps today's always-enabled behavior.
    */
   plansTabDisabled?: boolean;
+  /**
+   * True while the Session domain isn't "ready" (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — starting a plan creates a
+   * Training Block in the current Session, a different domain than
+   * `plansTabDisabled` above (the Training Plans library itself).
+   * Defaults to false so existing call sites/tests keep today's
+   * always-enabled behavior.
+   */
+  startPlanDisabled?: boolean;
   onSavePlan: (plan: TrainingPlan) => void;
   onDeletePlan: (planId: string) => void;
   onDuplicatePlan: (plan: TrainingPlan) => void;
@@ -53,6 +62,7 @@ export default function TrainLanding({
   quickStartContent,
   plans,
   plansTabDisabled = false,
+  startPlanDisabled = false,
   onSavePlan,
   onDeletePlan,
   onDuplicatePlan,
@@ -141,6 +151,7 @@ export default function TrainLanding({
           plan={plansSubView.plan}
           onStart={() => onStartPlan(plansSubView.plan)}
           onCancel={() => setPlansSubView({ screen: "library" })}
+          startDisabled={startPlanDisabled}
         />
       )}
     </div>

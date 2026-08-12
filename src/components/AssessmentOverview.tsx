@@ -34,6 +34,15 @@ type AssessmentOverviewProps = {
   trainingConflictMessage: string | null;
   onStartWarmup: () => void;
   onBack: () => void;
+  /**
+   * True while the Assessment domain itself is not "ready" (write-protected
+   * after a read failure — see docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10).
+   * Disables every setup/threshold control here, not just Start Warm-up —
+   * a user must not be allowed to go through an apparently functional setup
+   * that could only ever end in a silent no-op. Defaults to false so
+   * existing call sites/tests keep today's always-enabled behavior.
+   */
+  disabled?: boolean;
 };
 
 const template = RELEASE_TIME_CORE_ASSESSMENT_V1;
@@ -65,6 +74,7 @@ export default function AssessmentOverview({
   trainingConflictMessage,
   onStartWarmup,
   onBack,
+  disabled = false,
 }: AssessmentOverviewProps) {
   return (
     <div className="space-y-4">
@@ -124,6 +134,7 @@ export default function AssessmentOverview({
             onChangeCustomOnTargetInput={onChangeCustomOnTargetInput}
             onChangeCustomAcceptableInput={onChangeCustomAcceptableInput}
             customValidation={customValidation}
+            disabled={disabled}
           />
         </div>
 
@@ -134,6 +145,7 @@ export default function AssessmentOverview({
             showSimulatorOption={showSimulatorOption}
             confirmed={setupConfirmed}
             onChangeConfirmed={onChangeSetupConfirmed}
+            disabled={disabled}
           />
 
           <details className="mt-3 group">
@@ -180,13 +192,13 @@ export default function AssessmentOverview({
       <button
         type="button"
         onClick={onStartWarmup}
-        disabled={!canStart}
+        disabled={disabled || !canStart}
         className="w-full rounded-xl bg-slate-900 px-4 py-4 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
       >
         Start Warm-up
       </button>
 
-      {!canStart && startBlockedReason && (
+      {(disabled || !canStart) && startBlockedReason && (
         <p className="text-center text-xs text-slate-500">{startBlockedReason}</p>
       )}
     </div>

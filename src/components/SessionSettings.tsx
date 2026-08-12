@@ -15,6 +15,13 @@ type SessionSettingsProps = {
    * inside a card.
    */
   variant?: "card" | "bare";
+  /**
+   * True while the Session domain isn't "ready" (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — disables both fields
+   * without hiding the currently-displayed values. Defaults to false so
+   * existing call sites/tests keep today's always-enabled behavior.
+   */
+  disabled?: boolean;
 };
 
 export default function SessionSettings({
@@ -23,6 +30,7 @@ export default function SessionSettings({
   onChangeTitle,
   onChangeNotes,
   variant = "card",
+  disabled = false,
 }: SessionSettingsProps) {
   return (
     <div className={variant === "card" ? surfaceClass("hero") : ""}>
@@ -41,9 +49,10 @@ export default function SessionSettings({
           <input
             type="text"
             value={title}
+            disabled={disabled}
             onChange={(event) => onChangeTitle(event.target.value)}
             placeholder="e.g. Draw Training"
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
+            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
           />
         </div>
 
@@ -57,10 +66,11 @@ export default function SessionSettings({
 
           <textarea
             value={notes}
+            disabled={disabled}
             onChange={(event) => onChangeNotes(event.target.value)}
             placeholder="e.g. slow ice, focus on In Handle..."
             rows={2}
-            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400"
+            className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
           />
         </div>
       </div>

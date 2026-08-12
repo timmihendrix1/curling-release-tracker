@@ -285,6 +285,37 @@ describe("TrackerApp — Accuracy Tolerance Profiles readiness gating", () => {
     );
     expect(screen.getByText(/1 profile saved · Default: Match Play/)).toBeInTheDocument();
   });
+
+  it("initializes the documented empty default (not a fabricated profile) on absent, only once the manager becomes reachable, and never persists a default while loading", async () => {
+    stubSessionReady();
+    stubAssessmentReady();
+    vi.spyOn(historyFiltersRepository, "load").mockResolvedValue(loadedAbsent());
+    vi.spyOn(trainingPlansRepository, "loadPlans").mockResolvedValue(loadedAbsent());
+    vi.spyOn(smartRandomProfilesRepository, "loadState").mockResolvedValue(loadedAbsent());
+
+    const accuracyDeferred = createDeferred<ReturnType<typeof loadedAbsent<never>>>();
+    vi.spyOn(accuracyToleranceProfilesRepository, "loadState").mockReturnValue(
+      accuracyDeferred.promise
+    );
+    const saveSpy = vi.spyOn(accuracyToleranceProfilesRepository, "saveState");
+
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+    navButton("Settings").click();
+    await waitFor(() => screen.getByText("Accuracy Tolerances"));
+
+    expect(screen.getByRole("button", { name: "Manage Accuracy Tolerances" })).toBeDisabled();
+    expect(saveSpy).not.toHaveBeenCalled();
+
+    accuracyDeferred.resolve(loadedAbsent());
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Manage Accuracy Tolerances" })).toBeEnabled()
+    );
+
+    // Unrelated ready domain, same screen.
+    expect(screen.getByRole("button", { name: "Manage Smart Random Profiles" })).toBeEnabled();
+  });
 });
 
 describe("TrackerApp — Smart Random Profiles readiness gating", () => {
@@ -327,14 +358,82 @@ describe("TrackerApp — Smart Random Profiles readiness gating", () => {
     );
     expect(screen.getByText(/1 profile saved/)).toBeInTheDocument();
   });
+
+  it("initializes the documented empty default (not a fabricated profile) on absent, only once the manager becomes reachable, and never persists a default while loading", async () => {
+    stubSessionReady();
+    stubAssessmentReady();
+    vi.spyOn(historyFiltersRepository, "load").mockResolvedValue(loadedAbsent());
+    vi.spyOn(trainingPlansRepository, "loadPlans").mockResolvedValue(loadedAbsent());
+    vi.spyOn(accuracyToleranceProfilesRepository, "loadState").mockResolvedValue(loadedAbsent());
+
+    const smartRandomDeferred = createDeferred<ReturnType<typeof loadedAbsent<never>>>();
+    vi.spyOn(smartRandomProfilesRepository, "loadState").mockReturnValue(
+      smartRandomDeferred.promise
+    );
+    const saveSpy = vi.spyOn(smartRandomProfilesRepository, "saveState");
+
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+    navButton("Settings").click();
+    await waitFor(() => screen.getByText("Smart Random Profiles"));
+
+    expect(screen.getByRole("button", { name: "Manage Smart Random Profiles" })).toBeDisabled();
+    expect(saveSpy).not.toHaveBeenCalled();
+
+    smartRandomDeferred.resolve(loadedAbsent());
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Manage Smart Random Profiles" })).toBeEnabled()
+    );
+
+    // Unrelated ready domain, same screen.
+    expect(screen.getByRole("button", { name: "Manage Accuracy Tolerances" })).toBeEnabled();
+  });
 });
 
 describe("TrackerApp — write-protection (read_failed) across every effect-persisted domain", () => {
-  it("Session: settles loading, retains the fallback session, becomes non-mutable, and never calls saveCurrent/saveHistory again — without blocking Training Plans", async () => {
+  it("Session: settles loading, retains the fallback session, visibly disables every reachable Session-mutating control (not just silent handler no-ops), and never calls saveCurrent/saveHistory again — without blocking Training Plans", async () => {
     vi.spyOn(sessionRepository, "loadCurrent").mockResolvedValue(
       loadFailed({ id: "fallback", title: "", date: new Date().toISOString(), notes: "", blocks: [], activeBlockId: null, shots: [] } as never, READ_ERROR)
     );
-    vi.spyOn(sessionRepository, "loadHistory").mockResolvedValue(loadedAbsent());
+    // A stored history entry with a real block/shot, so "Clear History"'s
+    // and the per-session "Delete" button's disabled state can be
+    // attributed to Session write-protection specifically, not merely to
+    // `hasHistory` being false or an empty session list.
+    vi.spyOn(sessionRepository, "loadHistory").mockResolvedValue(
+      loadedValue([
+        {
+          id: "past-session",
+          title: "Past Session",
+          date: new Date().toISOString(),
+          notes: "",
+          blocks: [
+            {
+              id: "past-block",
+              name: "Block 1",
+              mode: "fixed",
+              measurementMode: "back-hog",
+              targetTime: 3.75,
+              createdAt: new Date().toISOString(),
+              accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+            },
+          ],
+          activeBlockId: "past-block",
+          shots: [
+            {
+              id: "past-shot",
+              sessionId: "past-session",
+              blockId: "past-block",
+              shotNumber: 1,
+              releaseTime: 3.75,
+              targetTime: 3.75,
+              handle: "in",
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        } as never,
+      ])
+    );
     stubAssessmentReady();
     vi.spyOn(historyFiltersRepository, "load").mockResolvedValue(loadedAbsent());
     vi.spyOn(accuracyToleranceProfilesRepository, "loadState").mockResolvedValue(loadedAbsent());
@@ -351,19 +450,56 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     navButton("Train").click();
     await waitFor(() => screen.getByText("Set Up Training Block"));
 
-    // Block creation must be unavailable — handleCreateFirstBlock no-ops.
+    // Training Setup (Quick Start) submit — visibly disabled, not merely a
+    // no-op handler.
+    expect(screen.getByRole("button", { name: "Start Training" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByText("Active Training Block")).toBeNull();
-    expect(saveCurrentSpy).not.toHaveBeenCalled();
-    expect(saveHistorySpy).not.toHaveBeenCalled();
 
-    // Unrelated ready domain (Training Plans) is unaffected.
+    // Session metadata (name) — visibly disabled.
+    expect(screen.getByPlaceholderText("e.g. Draw Training")).toBeDisabled();
+    fireEvent.change(screen.getByPlaceholderText("e.g. Draw Training"), {
+      target: { value: "Attempted rename" },
+    });
+    expect(screen.getByPlaceholderText("e.g. Draw Training")).toHaveValue("");
+
+    // Manual timing entry / Auto Capture / Timing Simulator are all
+    // structurally unreachable, not merely disabled: since block creation
+    // is blocked, `activeBlock` can never exist for the lifetime of this
+    // write-protected session, so none of their controls are ever rendered
+    // at all — verified directly rather than assumed.
+    expect(screen.queryByPlaceholderText("3.75 or 375")).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Auto Capture" })).toBeNull();
+    expect(screen.queryByText("Timing Simulator")).toBeNull();
+
+    // Training Plan "Start" — a second, independent Session-mutating entry
+    // point, reachable even though Training Plans itself is a separate,
+    // already-"ready" domain.
     fireEvent.click(screen.getByRole("tab", { name: "Training Plans" }));
     await waitFor(() => screen.getByText("Release Consistency"));
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("button", { name: "Start Training" }));
+    expect(screen.getByRole("button", { name: "Start Training" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Active Training Block")).toBeNull();
+
+    // Session History mutation — reachable via Settings/Analyze
+    // independent of block state — is visibly disabled too.
+    navButton("Settings").click();
+    await waitFor(() => screen.getByText("Clear Data"));
+    expect(screen.getByRole("button", { name: "Clear History" })).toBeDisabled();
+
+    navButton("Analyze").click();
+    await waitFor(() => screen.getByText("Past Session"));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+
+    expect(saveCurrentSpy).not.toHaveBeenCalled();
+    expect(saveHistorySpy).not.toHaveBeenCalled();
   });
 
-  it("History Filters: settles loading, retains the default fallback, and never calls save", async () => {
+  it("History Filters: settles loading, retains the default fallback, makes every control actually disabled (not just non-persisting), and never calls save", async () => {
     stubSessionReady();
     stubAssessmentReady();
     vi.spyOn(trainingPlansRepository, "loadPlans").mockResolvedValue(loadedAbsent());
@@ -382,14 +518,30 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
       "both"
     );
 
+    // Corrected: the control remains visible (the documented fallback), but
+    // every control inside must be actually disabled — not merely
+    // interactive-but-never-persisted, which external review found
+    // insufficient (a visibly interactive control that silently no-ops is
+    // not "unavailable").
+    expect(screen.getByRole("combobox", { name: "Handle" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Training Category" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Measurement Mode" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Date Range" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Threshold Comparison Mode" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /More filters/ })).toBeDisabled();
+
     fireEvent.change(screen.getByRole("combobox", { name: "Handle" }), {
       target: { value: "in" },
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
+    // Even if fireEvent bypasses the DOM's own disabled-element event
+    // suppression, the handler-level guard (defence in depth) must still
+    // refuse to mutate state or persist anything.
+    expect(screen.getByRole("combobox", { name: "Handle" })).toHaveValue("both");
     expect(saveSpy).not.toHaveBeenCalled();
   });
 
-  it("Assessment: settles loading, retains the empty fallback state, becomes non-mutable, and never calls saveState", async () => {
+  it("Assessment: settles loading, retains the empty fallback state, visibly disables every setup/threshold/start control (not just a silent no-op), never mutates or saves — while pure navigation (View Assessment) stays available", async () => {
     stubSessionReady();
     vi.spyOn(historyFiltersRepository, "load").mockResolvedValue(loadedAbsent());
     vi.spyOn(trainingPlansRepository, "loadPlans").mockResolvedValue(loadedAbsent());
@@ -406,17 +558,34 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Assess").click();
-    await waitFor(() => screen.getByRole("button", { name: "View Assessment" }));
+
+    // "View Assessment" is pure navigation — it neither mutates the
+    // Assessment domain nor implies durable workflow progress, so it stays
+    // available even though Assessment itself is write-protected (it only
+    // depends on the separate, independently-"ready" preferences read).
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "View Assessment" })).toBeEnabled()
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
     await waitFor(() => screen.getByText("How this assessment works"));
     fireEvent.click(screen.getByRole("button", { name: "Skip explanation" }));
     await waitFor(() => screen.getByText("Accuracy Thresholds"));
+
+    // Every setup/threshold/start control is now visibly disabled — a user
+    // must not be able to go through an apparently functional setup that
+    // could only ever end in a silent no-op.
+    expect(screen.getByRole("radio", { name: /Standard/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Tight/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Custom/ })).toBeDisabled();
+    expect(screen.getByRole("checkbox")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start Warm-up" })).toBeDisabled();
+    expect(
+      screen.getByText(/couldn.t be loaded, so a new assessment can.t be started/)
+    ).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("checkbox"));
-    // Start Warm-up routes through updateAssessmentState, which now no-ops
-    // once assessmentHydration is "write_protected" — no run is ever created.
-    const startButton = screen.getByRole("button", { name: "Start Warm-up" });
-    if (!startButton.hasAttribute("disabled")) fireEvent.click(startButton);
+    fireEvent.click(screen.getByRole("button", { name: "Start Warm-up" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByPlaceholderText("3.75 or 375")).toBeNull();
     expect(saveSpy).not.toHaveBeenCalled();

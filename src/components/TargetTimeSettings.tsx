@@ -11,12 +11,19 @@ type TargetTimeSettingsProps = {
    * (the collapsible Edit Details section) so it never nests a card inside
    * a card — see SessionSettings' equivalent variant. */
   variant?: "card" | "bare";
+  /**
+   * True while the Session domain isn't "ready" (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10). Defaults to false so
+   * existing call sites/tests keep today's always-enabled behavior.
+   */
+  disabled?: boolean;
 };
 
 export default function TargetTimeSettings({
   targetTime,
   onChangeTargetTime,
   variant = "card",
+  disabled = false,
 }: TargetTimeSettingsProps) {
   const [inputValue, setInputValue] = useState(targetTime.toFixed(2));
 
@@ -49,6 +56,7 @@ export default function TargetTimeSettings({
           type="text"
           inputMode="decimal"
           value={inputValue}
+          disabled={disabled}
           onChange={(event) => {
             const value = event.target.value;
             const isValidInput = /^[0-9.,]*$/.test(value);
@@ -57,13 +65,14 @@ export default function TargetTimeSettings({
               setInputValue(value);
             }
           }}
-          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400"
+          className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-100"
         />
 
         <button
           type="button"
           onClick={handleSave}
-          className="rounded-xl bg-slate-900 px-5 py-3 font-medium text-white transition hover:bg-slate-700"
+          disabled={disabled}
+          className="rounded-xl bg-slate-900 px-5 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Save
         </button>

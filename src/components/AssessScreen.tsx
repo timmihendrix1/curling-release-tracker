@@ -34,6 +34,7 @@ import { signedError } from "../lib/assessment/metrics";
 import type { AssessmentRun, InvalidAttemptReason } from "../lib/assessment/types";
 import { categorizeTargetError } from "../lib/accuracyThresholds";
 import { assessmentPreferencesRepository } from "../lib/assessmentPreferencesRepository";
+import type { DomainHydrationState } from "../lib/persistence/types";
 import { parseReleaseTime } from "../lib/timeInput";
 import AssessmentCompletionSummary from "./AssessmentCompletionSummary";
 import type { AssessmentLastResult } from "./AssessmentCurrentShot";
@@ -53,6 +54,15 @@ type AssessScreenProps = {
   updateAssessmentState: (
     updater: (state: AssessmentPersistedState) => AssessmentPersistedState
   ) => void;
+  /**
+   * The Assessment domain's own hydration state (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10). Only "ready" permits setup/
+   * threshold edits and starting a run — "write_protected" (a genuine read
+   * failure) visibly disables those controls rather than letting the user
+   * go through an apparently functional setup that `updateAssessmentState`
+   * would silently no-op.
+   */
+  assessmentHydration: DomainHydrationState;
   isTrainingCaptureActive: boolean;
   executedHandle: Handle;
   onChangeExecutedHandle: (handle: Handle) => void;
@@ -93,6 +103,7 @@ type LocalConfirmAction = {
 export default function AssessScreen({
   assessmentState,
   updateAssessmentState,
+  assessmentHydration,
   isTrainingCaptureActive,
   executedHandle,
   onChangeExecutedHandle,
@@ -342,20 +353,29 @@ export default function AssessScreen({
       : null;
 
   const thresholdIsValid = thresholdPreset !== "custom" || (customValidation?.valid ?? false);
-  const canStart = setupConfirmed && thresholdIsValid && !isTrainingCaptureActive;
+  // Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10): a genuine
+  // Assessment read failure must not let the user complete an apparently
+  // functional setup that updateAssessmentState would then silently no-op —
+  // "ready" is required, not merely "loading has settled."
+  const assessmentWritable = assessmentHydration === "ready";
+  const canStart =
+    setupConfirmed && thresholdIsValid && !isTrainingCaptureActive && assessmentWritable;
 
   // The disabled "Start Warm-up" button must say why nearby, not just refuse
   // to activate (docs/DESIGN_SYSTEM.md §12.5). The training-conflict case
-  // already has its own visible amber notice, so this only covers the two
-  // silent requirements: threshold decision and setup confirmation.
-  const startBlockedReason = !thresholdIsValid
-    ? "Fix the Custom threshold values above to continue."
-    : !setupConfirmed
-      ? "Confirm your setup above to continue."
-      : null;
+  // already has its own visible amber notice, so this only covers the
+  // silent requirements: threshold decision, setup confirmation, and
+  // Assessment domain readiness.
+  const startBlockedReason = !assessmentWritable
+    ? "Your saved assessment data couldn't be loaded, so a new assessment can't be started right now."
+    : !thresholdIsValid
+      ? "Fix the Custom threshold values above to continue."
+      : !setupConfirmed
+        ? "Confirm your setup above to continue."
+        : null;
 
   /**
-   * Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): previously started
+   * Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10): previously started
    * a fresh `getShowIntroduction()` read on every call, whose `.then()` had
    * no supersession guard — a late resolution could force navigation to
    * "guidedIntroduction"/"overview" after the user had already navigated
@@ -363,12 +383,18 @@ export default function AssessScreen({
    * synchronously (the preferred fix per the correction's binding
    * requirements) makes this a plain, synchronous decision with no pending
    * Promise that could ever resolve later — there is nothing left to
-   * supersede. Safe to call before the mount hydration effect settles (it
-   * simply uses the same documented default that effect would apply on
-   * "absent"); the one-time chance of navigating on a not-yet-corrected
-   * value is a navigation-target quirk, not a data-loss race.
+   * supersede.
+   *
+   * Further corrected: this must not decide using the initial in-memory
+   * default before hydration settles — the entry action ("View Assessment"/
+   * "Resume Assessment"/"Start New Assessment") is now visibly disabled
+   * while `preferencesHydration === "loading"` (see the `AssessmentLanding`
+   * render below), and this handler-level guard is defence in depth against
+   * any call that bypasses that UI gate.
    */
   function handleViewAssessment() {
+    if (preferencesHydration !== "ready") return;
+
     if (showIntroductionPreference) {
       setIntroductionReturnView("overview");
       setView("guidedIntroduction");
@@ -570,6 +596,7 @@ export default function AssessScreen({
             onStartNew={handleStartNewFromLanding}
             latestCompletedRun={getLatestCompletedAssessmentRun(assessmentState)}
             onViewLatestResult={onViewFullResults}
+            viewAssessmentDisabled={preferencesHydration !== "ready"}
           />
         )}
 
@@ -629,6 +656,7 @@ export default function AssessScreen({
             trainingConflictMessage={trainingConflictMessage}
             onStartWarmup={handleStartWarmup}
             onBack={() => setView("landing")}
+            disabled={!assessmentWritable}
           />
         )}
 

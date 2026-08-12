@@ -5,9 +5,14 @@
 (everything this document describes: the `StorageAdapter`, all seven repositories, the
 three-state hydration model, the interaction-boundary gating of Section 7.10, and the
 wiring into `TrackerApp.tsx`/`AssessScreen.tsx`) was implemented on
-`feature/persistence-boundary-phase-1`, with one follow-up correction commit closing the
-interaction-boundary gap `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` identified — see
-`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md`. No storage key, stored shape,
+`feature/persistence-boundary-phase-1`, with two follow-up correction commits: the first
+closed the interaction-boundary gap `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` identified
+(`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md`); the second closed a further,
+external-review-identified gap in that same correction — an inconsistently-applied
+readiness rule (History Filters' write-protected exception, Session's and Assessment's
+reliance on handler-only no-ops, and the Assessment entry action's use of an
+asynchronously-hydrated preference before it settled) — see
+`PERSISTENCE_BOUNDARY_PHASE1_FINAL_CORRECTION_REPORT.md`. No storage key, stored shape,
 migration behavior, or deduplication behavior changed at any point. See
 `docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for the as-built summary,
 and `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18, "Phase 1: Persistence
@@ -61,6 +66,20 @@ of the repository contract — `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` finding 7 
 prior documentation (the Phase 1 implementation report, left unmodified as a historical
 artifact) as overstating this. See
 `PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md` for the full correction record.
+
+**Revision 5** (this version) closes a gap external review found in Revision 4's own
+correction: readiness gating had been applied inconsistently. History Filters was
+documented (and implemented) as an exception allowed to stay interactive-but-non-
+persisting after `"write_protected"`; Session's controls relied on handler-level no-ops
+alone after a read failure, with no visible disabling; Assessment's setup/threshold
+controls were interactive up to the point of clicking "Start Warm-up"; and
+`AssessScreen`'s entry action could still decide between Guided Introduction and Overview
+using the initial in-memory default before its preference hydration had settled, merely
+because it was synchronous rather than because it was gated. Section 7.10 is rewritten to
+state one uniform rule — every domain's controls are visibly disabled (or, while
+`"loading"`, not rendered) *and* handler-guarded, with no per-domain exception — and to
+name exactly which controls changed for Session and Assessment. See
+`PERSISTENCE_BOUNDARY_PHASE1_FINAL_CORRECTION_REPORT.md` for the full record.
 
 ## 1. Purpose and scope
 
@@ -1287,20 +1306,42 @@ entirely. No conflict-merging, operation-replay, or three-way-merge behavior is
 introduced — Section 6.4's constraints against inventing new archival/reconciliation
 semantics extend to this correction too.
 
+**Every effect-persisted domain is non-mutable after `"read_failed"` — no domain-specific
+exception.** An earlier pass of this correction treated History Filters as an exception
+(reasoning that an in-memory-only change to a single, always-overwritten preference
+object is harmless since its save effect already refuses to persist anything once
+write-protected). External review rejected that reasoning: a control that remains
+visibly interactive but silently produces a handler-level no-op does not satisfy
+"unavailable," regardless of whether the underlying domain happens to be a single
+preference object or a collection — the *user-visible* guarantee must be identical
+across every domain. History Filters' controls are now disabled the same way every other
+domain's are (below).
+
+**Two layers are both required, not either/or**: a visible UI gate (the control is
+disabled, or in the "loading" case not yet rendered) prevents a user from being misled
+into interacting with something that cannot durably take effect; a handler-level guard
+(`if (xHydration !== "ready") return;`, or equivalent) is defence in depth against any
+trigger path that bypasses the UI layer (a bypassed `fireEvent`, a future added entry
+point, a race in test tooling). Neither layer alone is sufficient: the UI gate alone
+would regress if a future change added a new, undisabled entry point; the handler guard
+alone is exactly what external review flagged as insufficient on its own — the user must
+never be able to go through an apparently functional interaction that turns out to be a
+no-op.
+
 Applied per domain:
 
 - **History Filters** — the interactive filter control is not rendered while
   `historyFiltersHydration === "loading"` (a minimal loading placeholder stands in
-  instead); it renders normally once `"ready"` or `"write_protected"`. Unlike the
-  collection domains, History Filters may remain interactive after `"write_protected"` —
-  it is a single, always-overwritten preference object, not a collection that could be
-  partially clobbered, and its own save effect already refuses to persist anything for a
-  write-protected domain, so an in-memory-only change is harmless. The UI never presents
-  this as a saved preference either way.
+  instead). Once settled, the control always renders, but every control inside it is
+  passed `disabled={historyFiltersHydration !== "ready"}` — so a `"write_protected"`
+  domain shows its documented fallback with every select/input/button visibly
+  non-interactive, exactly like every other domain, not merely "interactive but never
+  persisted." `onChange` is also routed through a handler-level guard
+  (`handleChangeHistoryFilters`) as defence in depth.
 - **Training Plans** — the "Training Plans" tab (not the ad-hoc Quick Start subtree,
   which neither reads nor mutates this collection) is disabled while
   `trainingPlansHydration !== "ready"`, so the library/editor/start-review screens are
-  simply unreachable until the real collection has loaded.
+  simply unreachable until the real collection has loaded (or forever, if write-protected).
 - **Accuracy Tolerance Profiles / Smart Random Profiles** — the "Manage Accuracy
   Tolerances"/"Manage Smart Random Profiles" entry points are disabled while their
   respective hydration state `!== "ready"`, for the same reason.
@@ -1308,27 +1349,51 @@ Applied per domain:
   `if (!currentSession) return null;` render gate means nothing renders, so nothing can
   be interacted with, before Session's own load resolves). Its `"write_protected"` case
   was not: once write-protected, `currentSession` holds the display-only fallback and is
-  non-null, so the full UI would otherwise render normally. Every Session-mutating
-  handler (`handleStartNewSession`, block creation/editing, session-history delete/clear,
-  manual shot entry, Auto Capture start, etc.) now guards on `sessionHydration === "ready"`,
-  and `processQueuedTimingResult`'s non-Assessment branch carries the same guard — closing
-  both the classic manual-entry path and the Timing Simulator/Auto Capture path, which
-  both funnel through that one function (see "Manual entry and future sensor input share
-  one domain flow" in `CLAUDE.md`). The Timing Simulator's subscription effect already had
-  the equivalent guard (7.4).
+  non-null, so the full UI would otherwise render normally. Every reachable
+  Session-mutating control is now visibly disabled — the Quick Start "Start Training"
+  submit, the session name/notes fields, the Training Plan "Start Training" review
+  button, the per-session-history "Delete" button, and "Clear History" — and every
+  Session-mutating handler (`handleStartNewSession`, block creation/editing,
+  session-history delete/clear, manual shot entry, Auto Capture start, etc.) also guards
+  on `sessionHydration === "ready"` as defence in depth. `processQueuedTimingResult`'s
+  non-Assessment branch carries the same guard — closing both the classic manual-entry
+  path and the Timing Simulator/Auto Capture path, which both funnel through that one
+  function (see "Manual entry and future sensor input share one domain flow" in
+  `CLAUDE.md`). The Timing Simulator's subscription effect already had the equivalent
+  guard (7.4). Manual timing entry, Auto Capture, and the Timing Simulator panel itself
+  are, in the current implementation, structurally unreachable while write-protected —
+  the fallback session `SessionRepository.loadCurrent()` returns on `read_failed` is
+  always blockless (`createNewSession()`), and every block-creating handler is guarded,
+  so `activeBlock` can never become non-null for the lifetime of a write-protected
+  session, and none of that UI ever mounts at all.
 - **Assessment** — `updateAssessmentState`, the one function `AssessScreen.tsx` uses to
   mutate Assessment state, now also guards on `assessmentHydration === "ready"` (it
   previously only checked for a non-null ref, which a `"write_protected"` fallback
-  satisfies).
+  satisfies). `AssessmentOverview` additionally receives `disabled={assessmentHydration
+  !== "ready"}`, visibly disabling the threshold-preset radios, the custom-threshold
+  inputs, the setup-confirmation checkbox/timing-method selector, and the "Start
+  Warm-up" button together — a user must not be able to complete an apparently
+  functional setup that could only ever end in a silent no-op. Pure navigation that
+  neither mutates the Assessment domain nor implies durable workflow progress ("View
+  Assessment"/"Resume Assessment" from Landing) remains available, since it depends only
+  on the separate, independently-gated preferences hydration below, not on the
+  Assessment domain's own hydration state.
 - **`AssessScreen.tsx` preferences** — the three preference reads (last threshold preset,
   last custom threshold, show-introduction) are hydrated together, once, by a single
-  mount-time effect, rather than by three independent effects/action-time reads. The
-  threshold-preset/custom-threshold controls do not render until that settles, closing the
-  default-then-correction window entirely. `handleViewAssessment` no longer performs its
+  mount-time effect, rather than by three independent effects/action-time reads, tracked
+  by a local `preferencesHydration: "loading" | "ready"` flag. The threshold-preset/
+  custom-threshold controls do not render until that settles, closing the
+  default-then-correction window entirely. The Assessment entry action itself ("View
+  Assessment"/"Resume Assessment"/"Start New Assessment" on `AssessmentLanding`) is also
+  disabled while `preferencesHydration === "loading"` — an action that depends on an
+  asynchronously-hydrated preference must stay unavailable until that preference settles,
+  the same rule as every other domain, applied to a value that isn't itself a
+  `DomainHydrationState`-tracked repository. `handleViewAssessment` no longer performs its
   own read; it reads the already-hydrated preference value synchronously — the preferred
   fix per the correction's binding requirements, since it removes the pending-Promise
   supersession risk by construction rather than adding an explicit request-invalidation
-  mechanism on top of it.
+  mechanism on top of it — and, as defence in depth, still no-ops if called while
+  `preferencesHydration !== "ready"`.
 
 Each domain's gate is independent — one domain being `"loading"`/`"write_protected"` never
 disables an unrelated, already-`"ready"` domain's controls.

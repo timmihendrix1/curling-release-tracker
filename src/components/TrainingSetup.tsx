@@ -108,6 +108,15 @@ type TrainingSetupProps = {
    * editing an existing block/step, same principle as
    * defaultAccuracyToleranceProfileId above. */
   defaultSmartRandomProfileId?: string | null;
+  /**
+   * True while the Session domain isn't "ready" (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — disables submitting this
+   * form (block creation always mutates Session) without hiding or
+   * resetting whatever the athlete has already configured. Defaults to
+   * false so existing call sites/tests keep today's always-enabled
+   * behavior.
+   */
+  disabled?: boolean;
 };
 
 const BLOCK_MODES: BlockMode[] = ["fixed", "variable", "blind"];
@@ -138,6 +147,7 @@ export default function TrainingSetup({
   defaultAccuracyToleranceProfileId = null,
   smartRandomProfiles = [],
   defaultSmartRandomProfileId = null,
+  disabled = false,
 }: TrainingSetupProps) {
   // Only relevant for prefilling a brand-new configuration (see the prop doc
   // comment above) — an existing block/step's own stored thresholds always win.
@@ -664,7 +674,8 @@ export default function TrainingSetup({
         <button
           type="button"
           onClick={handleSubmit}
-          className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+          disabled={disabled}
+          className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           {submitLabel}
         </button>

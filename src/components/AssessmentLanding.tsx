@@ -18,6 +18,17 @@ type AssessmentLandingProps = {
   /** The most recently completed run, if any — see Phase C brief section 17. Detailed history/comparison stays under Analyze. */
   latestCompletedRun?: AssessmentRun | null;
   onViewLatestResult?: (runId: string) => void;
+  /**
+   * True while the entry action's dependency (the hydrated `showIntroduction`
+   * preference) hasn't settled yet — see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10. "View Assessment", "Resume
+   * Assessment", and "Start New Assessment" all ultimately decide between
+   * Guided Introduction and Overview using that one hydrated value, so all
+   * three are disabled together rather than letting any of them act on the
+   * initial in-memory default. Defaults to false so existing call sites/
+   * tests keep today's always-enabled behavior.
+   */
+  viewAssessmentDisabled?: boolean;
 };
 
 const STATUS_LABELS: Record<AssessmentRun["status"], string> = {
@@ -55,6 +66,7 @@ export default function AssessmentLanding({
   onStartNew,
   latestCompletedRun,
   onViewLatestResult,
+  viewAssessmentDisabled = false,
 }: AssessmentLandingProps) {
   const template = RELEASE_TIME_CORE_ASSESSMENT_V1;
   const hasActiveRun = currentRun && currentRun.status !== "completed" && currentRun.status !== "incomplete";
@@ -86,7 +98,8 @@ export default function AssessmentLanding({
           <button
             type="button"
             onClick={onResume}
-            className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+            disabled={viewAssessmentDisabled}
+            className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             Resume Assessment
           </button>
@@ -116,7 +129,8 @@ export default function AssessmentLanding({
           <button
             type="button"
             onClick={onViewAssessment}
-            className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+            disabled={viewAssessmentDisabled}
+            className="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             View Assessment
           </button>
@@ -125,7 +139,8 @@ export default function AssessmentLanding({
             <button
               type="button"
               onClick={onStartNew}
-              className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+              disabled={viewAssessmentDisabled}
+              className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Start New Assessment
             </button>

@@ -22,6 +22,16 @@ type HistoryFilterBarProps = {
   availableTrainingCategories: TrainingCategory[];
   availableMeasurementModes: MeasurementMode[];
   sessions: Session[];
+  /**
+   * True while History Filters is not "ready" (still loading, or
+   * write_protected after a read failure — see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10). The documented fallback
+   * value stays visible, but every control here becomes non-interactive —
+   * a visibly disabled control, not a silently-no-op'd one. Defaults to
+   * false so every existing call site/test keeps today's always-enabled
+   * behavior.
+   */
+  disabled?: boolean;
 };
 
 type SimpleDateRangePreset = "all" | "30d" | "90d" | "6m";
@@ -75,6 +85,7 @@ export default function HistoryFilterBar({
   availableTrainingCategories,
   availableMeasurementModes,
   sessions,
+  disabled = false,
 }: HistoryFilterBarProps) {
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const [pendingShotTypes, setPendingShotTypes] = useState<ShotType[]>(
@@ -280,6 +291,7 @@ export default function HistoryFilterBar({
             aria-label="Training Category"
             className={selectClassName()}
             value={filters.trainingCategory ?? ""}
+            disabled={disabled}
             onChange={(event) =>
               onChange({
                 ...filters,
@@ -302,6 +314,7 @@ export default function HistoryFilterBar({
             aria-label="Measurement Mode"
             className={selectClassName()}
             value={filters.measurementMode ?? ""}
+            disabled={disabled}
             onChange={(event) =>
               onChange({
                 ...filters,
@@ -324,6 +337,7 @@ export default function HistoryFilterBar({
             aria-label="Date Range"
             className={selectClassName()}
             value={filters.dateRange.preset === "custom" ? "all" : filters.dateRange.preset}
+            disabled={disabled}
             onChange={(event) =>
               onChange({
                 ...filters,
@@ -346,6 +360,7 @@ export default function HistoryFilterBar({
             value={
               filters.handles.length === 1 ? filters.handles[0] : "both"
             }
+            disabled={disabled}
             onChange={(event) =>
               onChange({
                 ...filters,
@@ -367,6 +382,7 @@ export default function HistoryFilterBar({
             aria-label="Threshold Comparison Mode"
             className={selectClassName()}
             value={thresholdModeSelection}
+            disabled={disabled}
             onChange={(event) =>
               handleThresholdModeChange(event.target.value as ThresholdModeOption)
             }
@@ -381,7 +397,8 @@ export default function HistoryFilterBar({
             type="button"
             onClick={() => setShowMoreFilters((value) => !value)}
             aria-expanded={showMoreFilters}
-            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+            disabled={disabled}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
               moreFiltersActive
                 ? "bg-slate-900 text-white"
                 : "bg-slate-200 text-slate-700"
@@ -406,6 +423,7 @@ export default function HistoryFilterBar({
                   aria-label="Custom On Target threshold"
                   aria-invalid={customOnTargetError !== null}
                   value={customOnTarget}
+                  disabled={disabled}
                   onChange={(event) =>
                     handleCustomOnTargetChange(event.target.value)
                   }
@@ -425,6 +443,7 @@ export default function HistoryFilterBar({
                   aria-label="Custom Acceptable threshold"
                   aria-invalid={customAcceptableError !== null}
                   value={customAcceptable}
+                  disabled={disabled}
                   onChange={(event) =>
                     handleCustomAcceptableChange(event.target.value)
                   }
@@ -440,7 +459,7 @@ export default function HistoryFilterBar({
                 <button
                   type="button"
                   onClick={applyCustomThresholds}
-                  disabled={!customThresholdsValidation.valid}
+                  disabled={disabled || !customThresholdsValidation.valid}
                   className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   Apply
@@ -448,7 +467,8 @@ export default function HistoryFilterBar({
                 <button
                   type="button"
                   onClick={resetCustomThresholds}
-                  className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                  disabled={disabled}
+                  className="rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Reset
                 </button>
@@ -487,7 +507,8 @@ export default function HistoryFilterBar({
                           value === "all" ? [] : [value as ShotType]
                         )
                       }
-                      className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      disabled={disabled}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                         isActive
                           ? "bg-slate-900 text-white"
                           : "bg-white text-slate-700"
@@ -506,6 +527,7 @@ export default function HistoryFilterBar({
                 <select
                   className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                   value={pendingSessionId}
+                  disabled={disabled}
                   onChange={(event) => {
                     setPendingSessionId(event.target.value);
                     setPendingBlockId("");
@@ -525,6 +547,7 @@ export default function HistoryFilterBar({
                 <select
                   className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm"
                   value={pendingBlockId}
+                  disabled={disabled}
                   onChange={(event) => setPendingBlockId(event.target.value)}
                 >
                   <option value="">All blocks</option>
@@ -546,6 +569,7 @@ export default function HistoryFilterBar({
                   type="number"
                   step="0.01"
                   value={pendingTargetMin}
+                  disabled={disabled}
                   onChange={(event) => setPendingTargetMin(event.target.value)}
                   className="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-2 text-sm"
                 />
@@ -556,6 +580,7 @@ export default function HistoryFilterBar({
                   type="number"
                   step="0.01"
                   value={pendingTargetMax}
+                  disabled={disabled}
                   onChange={(event) => setPendingTargetMax(event.target.value)}
                   className="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-2 text-sm"
                 />
@@ -566,14 +591,16 @@ export default function HistoryFilterBar({
               <button
                 type="button"
                 onClick={applyMoreFilters}
-                className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"
+                disabled={disabled}
+                className="flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300"
               >
                 Apply
               </button>
               <button
                 type="button"
                 onClick={resetMoreFilters}
-                className="flex-1 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                disabled={disabled}
+                className="flex-1 rounded-lg bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Reset
               </button>

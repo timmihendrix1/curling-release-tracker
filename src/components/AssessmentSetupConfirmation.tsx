@@ -9,6 +9,8 @@ type AssessmentSetupConfirmationProps = {
   showSimulatorOption: boolean;
   confirmed: boolean;
   onChangeConfirmed: (confirmed: boolean) => void;
+  /** See AssessmentThresholdSelector's identical prop — same readiness-gating rationale. */
+  disabled?: boolean;
 };
 
 /**
@@ -23,6 +25,7 @@ export default function AssessmentSetupConfirmation({
   showSimulatorOption,
   confirmed,
   onChangeConfirmed,
+  disabled = false,
 }: AssessmentSetupConfirmationProps) {
   return (
     <div>
@@ -43,9 +46,10 @@ export default function AssessmentSetupConfirmation({
             <button
               type="button"
               onClick={() => onChangeTimingMethod("manual")}
+              disabled={disabled}
               // Selection, not an action — distinct from the primary Start
               // Warm-up button's solid dark treatment (DESIGN_SYSTEM.md §13.1).
-              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 timingMethod === "manual"
                   ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -57,7 +61,8 @@ export default function AssessmentSetupConfirmation({
             <button
               type="button"
               onClick={() => onChangeTimingMethod("simulator")}
-              className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+              disabled={disabled}
+              className={`rounded-lg px-3 py-2 text-xs font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
                 timingMethod === "simulator"
                   ? "bg-slate-100 text-slate-900 ring-2 ring-inset ring-slate-900"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -74,6 +79,7 @@ export default function AssessmentSetupConfirmation({
         <input
           type="checkbox"
           checked={confirmed}
+          disabled={disabled}
           onChange={(event) => onChangeConfirmed(event.target.checked)}
           className="mt-0.5 h-4 w-4"
         />

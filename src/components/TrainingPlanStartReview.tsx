@@ -8,6 +8,14 @@ type TrainingPlanStartReviewProps = {
   plan: TrainingPlan;
   onStart: () => void;
   onCancel: () => void;
+  /**
+   * True while the Session domain isn't "ready" (see
+   * docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10) — starting a plan creates a
+   * Training Block in the current Session, so it must be visibly disabled
+   * rather than silently no-op'd. Defaults to false so existing call
+   * sites/tests keep today's always-enabled behavior.
+   */
+  startDisabled?: boolean;
 };
 
 function handleStrategySummary(step: TrainingPlanStep): string {
@@ -28,6 +36,7 @@ export default function TrainingPlanStartReview({
   plan,
   onStart,
   onCancel,
+  startDisabled = false,
 }: TrainingPlanStartReviewProps) {
   const totalStones = plan.steps.reduce((sum, step) => sum + step.completion.value, 0);
 
@@ -67,7 +76,8 @@ export default function TrainingPlanStartReview({
         <button
           type="button"
           onClick={onStart}
-          className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+          disabled={startDisabled}
+          className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Start Training
         </button>
