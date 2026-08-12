@@ -315,6 +315,20 @@ describe("TrackerApp — Accuracy Tolerance Profiles readiness gating", () => {
 
     // Unrelated ready domain, same screen.
     expect(screen.getByRole("button", { name: "Manage Smart Random Profiles" })).toBeEnabled();
+
+    // Open the manager and confirm the documented empty state — never a
+    // fabricated profile, and never a default pointing at one.
+    fireEvent.click(screen.getByRole("button", { name: "Manage Accuracy Tolerances" }));
+    await waitFor(() =>
+      screen.getByRole("button", { name: "Close Accuracy Tolerances" })
+    );
+    expect(
+      screen.getByText(
+        "No profiles saved yet. Create one to reuse it wherever Custom Accuracy Tolerance is configured."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByText("Default")).toBeNull();
   });
 });
 
@@ -388,6 +402,20 @@ describe("TrackerApp — Smart Random Profiles readiness gating", () => {
 
     // Unrelated ready domain, same screen.
     expect(screen.getByRole("button", { name: "Manage Accuracy Tolerances" })).toBeEnabled();
+
+    // Open the manager and confirm the documented empty state — never a
+    // fabricated profile, and never a default pointing at one.
+    fireEvent.click(screen.getByRole("button", { name: "Manage Smart Random Profiles" }));
+    await waitFor(() =>
+      screen.getByRole("button", { name: "Close Smart Random Profiles" })
+    );
+    expect(
+      screen.getByText(
+        "No profiles saved yet. Create one to reuse it wherever Smart Random is configured."
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+    expect(screen.queryByText("Default")).toBeNull();
   });
 });
 

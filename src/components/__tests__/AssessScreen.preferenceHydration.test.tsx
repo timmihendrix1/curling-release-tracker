@@ -343,19 +343,37 @@ describe("AssessScreen preference hydration (delayed-read correction)", () => {
   });
 
   it("a successful preference write is observable after unmount and remount (real repository, real localStorage)", async () => {
-    // Real repository/adapter, not mocked — proves the actual round-trip,
-    // matching the style of AssessScreen.test.tsx's existing "'Do not show
-    // this automatically again'" test but specifically across a full
-    // unmount/remount rather than within one mounted instance.
+    // Real repository/adapter, not mocked — proves the actual round-trip:
+    // checking "Do not show this automatically again" and completing the
+    // introduction invokes the real assessmentPreferencesRepository.setShowIntroduction(false)
+    // write path, matching the style of AssessScreen.test.tsx's existing
+    // "'Do not show this automatically again'" test but specifically across
+    // a full unmount/remount rather than within one mounted instance. This
+    // test never calls localStorage.setItem itself — the write is the real
+    // application path's, not a fake seeded by the test.
     const { unmount } = render(<Harness />);
-    await skipIntroductionToOverview();
+    await waitForEntryActionEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
+    await waitFor(() => screen.getByText("How this assessment works"));
+
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Do not show this automatically again/ })
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Skip explanation" }));
     await waitFor(() => screen.getByText("Accuracy Thresholds"));
 
-    unmount();
-    localStorage.setItem(
-      "curling-release-tracker-assessment-show-introduction",
-      "false"
+    // Observes (never writes) the real key to confirm the write actually
+    // reached storage before unmounting — localStorageAdapter.set() has no
+    // genuine `await`, so it has already completed synchronously-under-the-
+    // hood by the time the click handler returned, but this still waits
+    // rather than assuming that timing.
+    await waitFor(() =>
+      expect(
+        localStorage.getItem("curling-release-tracker-assessment-show-introduction")
+      ).toBe("false")
     );
+
+    unmount();
 
     render(<Harness />);
     await waitForEntryActionEnabled();
