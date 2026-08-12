@@ -3,12 +3,14 @@
 **Status:** Accepted. Implemented. Companion to
 `docs/adr/0013-application-owned-persistence-repository-boundary.md`. Phase 1
 (everything this document describes: the `StorageAdapter`, all seven repositories, the
-three-state hydration model, and the wiring into `TrackerApp.tsx`) was implemented on
-`feature/persistence-boundary-phase-1` exactly as designed below — no storage key,
-stored shape, migration behavior, session/history write order, or deduplication
-behavior changed. See `docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for
-the as-built summary, and
-`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18, "Phase 1: Persistence
+three-state hydration model, the interaction-boundary gating of Section 7.10, and the
+wiring into `TrackerApp.tsx`/`AssessScreen.tsx`) was implemented on
+`feature/persistence-boundary-phase-1`, with one follow-up correction commit closing the
+interaction-boundary gap `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` identified — see
+`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md`. No storage key, stored shape,
+migration behavior, or deduplication behavior changed at any point. See
+`docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for the as-built summary,
+and `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18, "Phase 1: Persistence
 boundary (Implemented)." The IndexedDB adapter described in Section 10 remains
 unimplemented (Phase 2).
 
@@ -30,13 +32,35 @@ read-result type still had only two branches, folding a genuinely absent key tog
 a real stored value (and any repaired/defaulted value derived from malformed data) into
 one `"ready"` status.
 
-**Revision 3** (this version) splits that remaining branch: the read-result type now has
-three top-level outcomes — `value` (something was stored, used as-is or repaired per the
-domain's existing policy), `absent` (the key genuinely does not exist), and `read_failed`
-(a genuine storage-access failure) — per `PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`.
-Every repository's `load*` method documentation, the hydration transition table, and the
+**Revision 3** splits that remaining branch: the read-result type now has three top-level
+outcomes — `value` (something was stored, used as-is or repaired per the domain's
+existing policy), `absent` (the key genuinely does not exist), and `read_failed` (a
+genuine storage-access failure) — per `PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`. Every
+repository's `load*` method documentation, the hydration transition table, and the
 timing-provider gating condition are updated to name all three outcomes explicitly
 (Sections 5, 7, 8, 9, 11).
+
+**Revision 4** (this version) corrects a gap the Phase 1 implementation itself introduced
+and `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` identified: Revision 3's hydration design
+(Section 7) fully specified *save-effect* write-guards, but said nothing about the
+*interaction boundary* — nothing required that a domain's mutating UI controls
+themselves stay unavailable while `DomainHydrationState` is `"loading"` or
+`"write_protected"`. The as-implemented `TrackerApp.tsx` (before this revision's
+correction) left History Filters, Training Plans, Accuracy Tolerance Profiles, and Smart
+Random Profiles fully interactive from an empty/default starting state the instant
+Session became ready, independent of each domain's own load — so a user could create,
+edit, or delete against that default before the real stored value ever arrived, only to
+have it silently overwritten once it did. `AssessScreen.tsx`'s threshold-preset/custom-
+threshold controls and its `handleViewAssessment` navigation had the equivalent defect.
+Section 7.10 (new) states the corrected, binding requirement: readiness gating at the
+interaction boundary, not a dirty-flag/"user state wins" guard, which Section 7.10
+explains is actively unsafe for a collection domain that starts empty. This revision also
+makes explicit (Section 6.5, new) that the session/history write-order property is
+contingent on the current synchronous-under-the-hood adapter, not a structural guarantee
+of the repository contract — `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` finding 7 flagged
+prior documentation (the Phase 1 implementation report, left unmodified as a historical
+artifact) as overstating this. See
+`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md` for the full correction record.
 
 ## 1. Purpose and scope
 
@@ -908,6 +932,33 @@ Any of the above would be a genuine behavior change and requires its own, separa
 product-owner decision and its own ADR update — not an implicit consequence of introducing
 the repository boundary.
 
+### 6.5 The write-order property is adapter-contingent, not a structural guarantee (added in Revision 4)
+
+`PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` finding 7: the current-session-before-history
+write order (6.1–6.2) is real and is directly verified by
+`TrackerApp.persistenceCharacterization.test.tsx`'s
+`"writes the current-session key before the session-history key..."` test, which spies on
+`Storage.prototype.setItem` against the real adapter. But that order is preserved by two
+facts specific to *today's* implementation, not by anything `SessionRepository`'s
+interface itself promises:
+
+1. `localStorageAdapter.set()` has no `await` in its body, so calling it executes
+   synchronously through to `localStorage.setItem()` before the call expression finishes
+   evaluating — there is no genuine asynchrony to reorder.
+2. React fires passive effects in declaration order on the same commit; the current-
+   session save effect is declared before the session-history save effect.
+
+Neither of these is part of `SessionRepository.saveCurrent`/`saveHistory`'s
+`Promise<PersistenceWriteResult>` signature. A genuinely asynchronous future adapter
+(IndexedDB or otherwise) could complete the history write before the current-session
+write if, e.g., the current-session transaction is larger or slower — nothing in
+`TrackerApp.tsx` or the repository layer would notice or prevent that, because nothing
+`await`s `saveCurrent()`'s Promise before triggering `saveHistory()`; the two effects are
+independent, uncoordinated call sites that happen to resolve synchronously today only
+because of points 1–2 above. Any IndexedDB migration or a transactional archive operation
+(6.4) requires its own explicit sequencing decision before this order can be relied on
+under a genuinely asynchronous adapter — not assumed to carry over from today's behavior.
+
 ## 7. Hydration design
 
 This section is new in this revision. It exists because Section 5's repository methods
@@ -1096,7 +1147,15 @@ from `AssessScreen.tsx` at arbitrary interaction points, never from an always-on
 effect with a corresponding save effect. There is no `DomainHydrationState`, no
 write-guard, and no unmount-cancellation concern for this repository — each `get`/`set`
 call is a single, self-contained, already-async-safe operation with no steady-state
-"loading"/"ready"/"write_protected" state to speak of (Section 5.7).
+"loading"/"ready"/"write_protected" state to speak of (Section 5.7). This exemption is
+about the *repository/hydration-state* concept specifically, not about whether the
+*consuming component* needs any readiness concept of its own — `AssessScreen.tsx` still
+needs, and (as of the Phase 1 correction, Section 7.10) has, its own local one-time
+mount-time hydration flag so its threshold-preset/custom-threshold controls don't paint
+an interactive default before their initial reads settle, and so a single, later-added
+navigation decision doesn't depend on an unguarded per-click read at all. That is a
+component-level UI concern, not a repository-boundary one — nothing here reintroduces a
+`DomainHydrationState`/write-guard/unmount-cancellation concept for this repository.
 
 ### 7.7 First post-`"ready"` render does not cause unintended rewrites
 
@@ -1178,6 +1237,101 @@ three-state hydration model explicitly:
     was seeded, and that every existing reset/clear/repair/discard behavior (Section 3,
     Section 6) still produces identical end-to-end results to the pre-repository baseline
     captured in the Section 11 characterization tests.
+
+### 7.10 Interaction-boundary gating (added in Revision 4 — the Phase 1 correction)
+
+Sections 7.1–7.9 fully specify *save-effect* write-guards: a domain's save effect must
+not fire until `DomainHydrationState` is `"ready"`. This is necessary but was not, by
+itself, sufficient — `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` found that the as-implemented
+`TrackerApp.tsx` left every mutating control for History Filters, Training Plans,
+Accuracy Tolerance Profiles, and Smart Random Profiles fully interactive, backed by that
+domain's initial default, for the entire window between Session becoming ready and that
+domain's *own* load resolving — independent of the (correctly implemented) save-effect
+guard. A user could create a Training Plan, an Accuracy/Smart Random profile, or change a
+filter during that window; the domain's own mount `.then()` would then unconditionally
+overwrite whatever was in React state once it resolved, silently discarding the user's
+action. `AssessScreen.tsx`'s threshold-preset/custom-threshold controls had the identical
+defect, plus a related one: `handleViewAssessment` started a fresh, unguarded preference
+read on every call, whose late completion could force navigation after the user had
+already moved on to something else.
+
+**The binding correction principle:** a late hydration result must never overwrite a user
+action performed after mount. Per domain, independently:
+
+- **`"loading"`** — no user action may mutate that domain.
+- **`"ready"`** — normal interaction and persistence are permitted.
+- **`"write_protected"`** — the fallback may be displayed, but actions that would mutate
+  or imply durable persistence for that domain must remain unavailable.
+
+**Why not a simple dirty-flag ("skip the late load if the user already touched this
+domain") guard:** for a domain that starts from an *empty* default (Training Plans,
+Accuracy Tolerance Profiles, Smart Random Profiles — all "collection" domains), that
+approach is unsafe on its own:
+
+1. The UI starts from an empty default.
+2. The user creates one item before the real load resolves.
+3. The dirty flag is now set, so the late-arriving *stored* collection is (correctly)
+   skipped.
+4. The user's one new item is now the entire in-memory collection.
+5. The next save effect persists that one-item collection over the complete stored
+   collection, since hydration has reached `"ready"` and nothing distinguishes "the user's
+   one item is the *whole* truth" from "the user's one item was added *on top of* data
+   never actually seen."
+
+That replaces one data-loss race (a late load overwrites a user action) with a different
+one (an early user action overwrites unseen stored data) — not a fix. **Readiness
+gating**, applied at the interaction boundary itself rather than resolved after the fact,
+is the required Phase 1 solution: the mutating control simply does not exist (or is
+disabled) until that domain's own hydration state is `"ready"`, closing the window
+entirely. No conflict-merging, operation-replay, or three-way-merge behavior is
+introduced — Section 6.4's constraints against inventing new archival/reconciliation
+semantics extend to this correction too.
+
+Applied per domain:
+
+- **History Filters** — the interactive filter control is not rendered while
+  `historyFiltersHydration === "loading"` (a minimal loading placeholder stands in
+  instead); it renders normally once `"ready"` or `"write_protected"`. Unlike the
+  collection domains, History Filters may remain interactive after `"write_protected"` —
+  it is a single, always-overwritten preference object, not a collection that could be
+  partially clobbered, and its own save effect already refuses to persist anything for a
+  write-protected domain, so an in-memory-only change is harmless. The UI never presents
+  this as a saved preference either way.
+- **Training Plans** — the "Training Plans" tab (not the ad-hoc Quick Start subtree,
+  which neither reads nor mutates this collection) is disabled while
+  `trainingPlansHydration !== "ready"`, so the library/editor/start-review screens are
+  simply unreachable until the real collection has loaded.
+- **Accuracy Tolerance Profiles / Smart Random Profiles** — the "Manage Accuracy
+  Tolerances"/"Manage Smart Random Profiles" entry points are disabled while their
+  respective hydration state `!== "ready"`, for the same reason.
+- **Session** — its `"loading"` case was already safe structurally (the pre-existing
+  `if (!currentSession) return null;` render gate means nothing renders, so nothing can
+  be interacted with, before Session's own load resolves). Its `"write_protected"` case
+  was not: once write-protected, `currentSession` holds the display-only fallback and is
+  non-null, so the full UI would otherwise render normally. Every Session-mutating
+  handler (`handleStartNewSession`, block creation/editing, session-history delete/clear,
+  manual shot entry, Auto Capture start, etc.) now guards on `sessionHydration === "ready"`,
+  and `processQueuedTimingResult`'s non-Assessment branch carries the same guard — closing
+  both the classic manual-entry path and the Timing Simulator/Auto Capture path, which
+  both funnel through that one function (see "Manual entry and future sensor input share
+  one domain flow" in `CLAUDE.md`). The Timing Simulator's subscription effect already had
+  the equivalent guard (7.4).
+- **Assessment** — `updateAssessmentState`, the one function `AssessScreen.tsx` uses to
+  mutate Assessment state, now also guards on `assessmentHydration === "ready"` (it
+  previously only checked for a non-null ref, which a `"write_protected"` fallback
+  satisfies).
+- **`AssessScreen.tsx` preferences** — the three preference reads (last threshold preset,
+  last custom threshold, show-introduction) are hydrated together, once, by a single
+  mount-time effect, rather than by three independent effects/action-time reads. The
+  threshold-preset/custom-threshold controls do not render until that settles, closing the
+  default-then-correction window entirely. `handleViewAssessment` no longer performs its
+  own read; it reads the already-hydrated preference value synchronously — the preferred
+  fix per the correction's binding requirements, since it removes the pending-Promise
+  supersession risk by construction rather than adding an explicit request-invalidation
+  mechanism on top of it.
+
+Each domain's gate is independent — one domain being `"loading"`/`"write_protected"` never
+disables an unrelated, already-`"ready"` domain's controls.
 
 ## 8. Error and read-result model
 

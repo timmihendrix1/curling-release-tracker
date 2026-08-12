@@ -109,29 +109,75 @@ export default function AssessScreen({
   const [introductionReturnView, setIntroductionReturnView] = useState<PreRunView>("landing");
 
   // Preference reads are asynchronous (AssessmentPreferencesRepository, see
-  // docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.7) — these start at the same defaults the
-  // synchronous reads used to return on absence, then correct once the repository
-  // resolves. This repository is exempt from the app's hydration-gate/write-protection
-  // model (no passive save effect to protect), so a plain corrective effect is enough.
+  // docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.7/§7.4). Corrected: all three reads
+  // (last threshold preset, last custom threshold, show-introduction) now
+  // resolve together, once, in one explicit mount-time hydration flow, rather
+  // than three independent effects/action-time reads — the three states below
+  // start at the same documented defaults an "absent" result would apply, and
+  // are only ever corrected by that one flow, before `preferencesHydration`
+  // flips to "ready". Nothing renders an interactive threshold-preset/custom-
+  // threshold control (see the "overview" view below) until then, so there is
+  // no window in which a user-visible default could be silently replaced by a
+  // late-arriving stored value. This repository still has no write-protection
+  // concept of its own (docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.7) — a
+  // `read_failed` result here only means this hydration pass falls back to
+  // the repository's documented fallback, exactly like "absent," with no
+  // further consequence for later writes.
+  type PreferencesHydration = "loading" | "ready";
+  const [preferencesHydration, setPreferencesHydration] =
+    useState<PreferencesHydration>("loading");
   const [thresholdPreset, setThresholdPreset] = useState<AccuracyThresholdPreset>("standard");
   const lastCustom = useRef<{ onTarget: number; acceptable: number } | null>(null);
   const [customOnTargetInput, setCustomOnTargetInput] = useState("0.10");
   const [customAcceptableInput, setCustomAcceptableInput] = useState("0.20");
+  // The one value handleViewAssessment reads — see the comment there for why
+  // this replaces a fresh per-click repository read entirely.
+  const [showIntroductionPreference, setShowIntroductionPreference] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    assessmentPreferencesRepository.getLastThresholdPreset().then((result) => {
+
+    Promise.all([
+      assessmentPreferencesRepository.getShowIntroduction(),
+      assessmentPreferencesRepository.getLastThresholdPreset(),
+      assessmentPreferencesRepository.getLastCustomThreshold(),
+    ]).then(([showResult, presetResult, customResult]) => {
       if (cancelled) return;
-      if (result.status === "value") setThresholdPreset(result.value);
+
+      // value -> the stored value; absent -> the documented current default
+      // (already this state's initial value, so no-op); read_failed -> the
+      // repository's own fallback (also `true`, but stated explicitly here
+      // rather than left implicit).
+      setShowIntroductionPreference(
+        showResult.status === "value"
+          ? showResult.value
+          : showResult.status === "read_failed"
+            ? showResult.fallback
+            : true
+      );
+
+      if (presetResult.status === "value") {
+        setThresholdPreset(presetResult.value);
+      } else if (presetResult.status === "read_failed") {
+        setThresholdPreset(presetResult.fallback);
+      }
+      // "absent" keeps the documented default ("standard") already set above.
+
+      const customValues =
+        customResult.status === "value"
+          ? customResult.value
+          : customResult.status === "read_failed"
+            ? customResult.fallback
+            : null;
+      if (customValues) {
+        lastCustom.current = customValues;
+        setCustomOnTargetInput(customValues.onTarget.toFixed(2));
+        setCustomAcceptableInput(customValues.acceptable.toFixed(2));
+      }
+
+      setPreferencesHydration("ready");
     });
-    assessmentPreferencesRepository.getLastCustomThreshold().then((result) => {
-      if (cancelled) return;
-      const values = result.status === "value" ? result.value : null;
-      if (!values) return;
-      lastCustom.current = values;
-      setCustomOnTargetInput(values.onTarget.toFixed(2));
-      setCustomAcceptableInput(values.acceptable.toFixed(2));
-    });
+
     return () => {
       cancelled = true;
     };
@@ -308,16 +354,27 @@ export default function AssessScreen({
       ? "Confirm your setup above to continue."
       : null;
 
+  /**
+   * Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): previously started
+   * a fresh `getShowIntroduction()` read on every call, whose `.then()` had
+   * no supersession guard — a late resolution could force navigation to
+   * "guidedIntroduction"/"overview" after the user had already navigated
+   * elsewhere. Reading the already-hydrated `showIntroductionPreference`
+   * synchronously (the preferred fix per the correction's binding
+   * requirements) makes this a plain, synchronous decision with no pending
+   * Promise that could ever resolve later — there is nothing left to
+   * supersede. Safe to call before the mount hydration effect settles (it
+   * simply uses the same documented default that effect would apply on
+   * "absent"); the one-time chance of navigating on a not-yet-corrected
+   * value is a navigation-target quirk, not a data-loss race.
+   */
   function handleViewAssessment() {
-    assessmentPreferencesRepository.getShowIntroduction().then((result) => {
-      const show = result.status === "read_failed" ? result.fallback : result.status === "value" ? result.value : true;
-      if (show) {
-        setIntroductionReturnView("overview");
-        setView("guidedIntroduction");
-      } else {
-        setView("overview");
-      }
-    });
+    if (showIntroductionPreference) {
+      setIntroductionReturnView("overview");
+      setView("guidedIntroduction");
+    } else {
+      setView("overview");
+    }
   }
 
   function handleStartNewFromLanding() {
@@ -519,17 +576,36 @@ export default function AssessScreen({
         {view === "guidedIntroduction" && (
           <AssessmentGuidedIntroduction
             onContinue={(dontShowAgain) => {
-              if (dontShowAgain) assessmentPreferencesRepository.setShowIntroduction(false);
+              if (dontShowAgain) {
+                setShowIntroductionPreference(false);
+                assessmentPreferencesRepository.setShowIntroduction(false);
+              }
               setView(introductionReturnView);
             }}
             onSkip={(dontShowAgain) => {
-              if (dontShowAgain) assessmentPreferencesRepository.setShowIntroduction(false);
+              if (dontShowAgain) {
+                setShowIntroductionPreference(false);
+                assessmentPreferencesRepository.setShowIntroduction(false);
+              }
               setView(introductionReturnView);
             }}
           />
         )}
 
-        {view === "overview" && (
+        {/* Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): the
+            interactive threshold-preset/custom-threshold controls never
+            mount until the mount-time preference hydration above has
+            settled — closing the "interactive default, then silently
+            replaced" window entirely, rather than resolving it after the
+            fact. No retry affordance; this is a one-time, near-instant
+            wait under the real adapter. */}
+        {view === "overview" && preferencesHydration === "loading" && (
+          <div className="rounded-2xl bg-white p-5 text-sm text-slate-500 ring-1 ring-slate-100">
+            Loading your saved preferences…
+          </div>
+        )}
+
+        {view === "overview" && preferencesHydration === "ready" && (
           <AssessmentOverview
             thresholdPreset={thresholdPreset}
             onChangeThresholdPreset={setThresholdPreset}

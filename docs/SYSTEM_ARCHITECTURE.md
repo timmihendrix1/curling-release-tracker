@@ -1117,10 +1117,80 @@ through direct `localStorage` calls scattered across components — see
   written back over whatever is actually stored. The Timing Simulator subscription is
   additionally gated on session hydration reaching `"ready"` specifically, so a session
   read failure can never let a stale or not-yet-hydrated session receive timing results.
-- This phase is strictly behavior-preserving: storage keys, serialized shapes, the
-  current-session-before-history write order, and the lack of cross-save deduplication
-  are all unchanged from before the boundary existed (design doc §6). IndexedDB, cloud
-  sync, and the rest of design doc §10 remain unimplemented.
+- This phase is strictly behavior-preserving: storage keys, serialized shapes, and the
+  lack of cross-save deduplication are all unchanged from before the boundary existed
+  (design doc §6). IndexedDB, cloud sync, and the rest of design doc §10 remain
+  unimplemented.
+- **The current-session-before-history write order is preserved by the current
+  implementation, not guaranteed by the repository contract itself.** It holds today
+  because `localStorageAdapter` resolves synchronously under the hood and React fires
+  passive effects in declaration order — not because `Promise<PersistenceWriteResult>`
+  itself promises any ordering. A future genuinely-asynchronous adapter (IndexedDB or
+  otherwise) would need its own explicit sequencing decision before this order could
+  still be relied on (design doc §6, §10).
+
+### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
+
+Save-effect write-guards (`if (xHydration !== "ready") return;`, above) are necessary but
+not, by themselves, sufficient: an audit of the initial Phase 1 implementation
+(`PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md`) found that History Filters, Training Plans,
+Accuracy Tolerance Profiles, and Smart Random Profiles all exposed a fully interactive
+control backed by that domain's initial default *before* its own repository load had
+resolved — a user could create a Training Plan, an Accuracy/Smart Random profile, or
+change a filter during that window, only to have the late-arriving mount-effect result
+silently overwrite it once the load resolved. `AssessScreen.tsx`'s threshold-preset and
+custom-threshold controls had the same defect, plus a second race:
+`handleViewAssessment` started a fresh, unguarded preference read on every call, whose
+late completion could force navigation after the user had already moved on.
+
+The corrected rule, applied per domain, independently: `"loading"` — no user action may
+mutate that domain; `"ready"` — normal interaction and persistence are permitted;
+`"write_protected"` — the fallback may be displayed, but actions that would mutate or
+imply durable persistence for that domain must remain unavailable. This is enforced by
+disabling (or, for History Filters, simply not yet rendering) the specific interactive
+controls that mutate each domain — the "Training Plans" tab, the "Manage Accuracy
+Tolerances"/"Manage Smart Random Profiles" buttons, the History Filter bar — plus a
+matching guard at the top of every handler that mutates that domain's state, as
+defense-in-depth. Session gained the same treatment for its own `"write_protected"` case
+specifically (its `"loading"` case was already safe, structurally, via the pre-existing
+`if (!currentSession) return null;` render gate): once write-protected, starting a new
+session, creating/editing a Training Block, deleting/clearing session history, manual
+timing entry, and Timing Simulator/Auto Capture results are all disabled or no-op, via a
+`sessionHydration !== "ready"` guard added to every Session-mutating handler and to
+`processQueuedTimingResult`'s non-Assessment branch. Assessment received the same
+treatment via a single choke point, `updateAssessmentState`. Each domain's gate is
+independent — one domain being unavailable never disables an unrelated, already-ready
+domain.
+
+**Why not a dirty-flag ("user state wins") guard instead**, which would be simpler: for a
+*collection* domain (Training Plans, Accuracy Tolerance Profiles, Smart Random Profiles),
+"skip the late load if the user already touched this domain" is unsafe on its own — the
+UI starts from an *empty* default, so if the user creates one item before the real load
+resolves, the late result is (correctly) skipped, but the complete stored collection is
+then never applied at all, and the user's one new item silently becomes the entire
+collection once hydration reaches `"ready"` and the save effect fires — replacing a
+missed-update bug with a data-loss bug. Readiness gating avoids this because it closes
+the window entirely rather than trying to resolve a conflict after the fact; no
+conflict-merge, operation-replay, or three-way-merge logic was introduced.
+
+`AssessScreen.tsx`'s three preference reads (last threshold preset, last custom
+threshold, show-introduction) are now hydrated together, once, by a single mount-time
+effect — the threshold-preset/custom-threshold controls do not render at all until that
+settles, so there is no "interactive default, then silently replaced" window.
+`handleViewAssessment` no longer performs its own read at all; it reads the
+already-hydrated `showIntroductionPreference` value synchronously, which eliminates the
+late-completion-overrides-navigation race by construction (there is no longer a pending
+Promise per click for a later resolution to override anything with).
+
+**Accepted, undisplayed consequence (Finding 6 of the audit):** no call site in
+`TrackerApp.tsx`/`AssessScreen.tsx` inspects the `PersistenceWriteResult` any `save*`/
+`set*` call returns — every write remains fire-and-forget, same as the original Phase 1
+implementation. This is a deliberate, product-owner-accepted deviation from the
+pre-Phase-1 code's (crude, uncaught-exception-based) write-failure visibility, not a
+claim of equivalence: a raw storage exception can no longer escape and crash a render,
+but a quota-exceeded or storage-unavailable write failure is now also completely silent
+to the user. Write-failure notification, retry, and recovery UX remain deferred (see
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`).
 
 This section covers `Session`/`Session History` specifically for the migration rules
 below. **For the complete, re-verified inventory of all 10 persisted `localStorage` keys

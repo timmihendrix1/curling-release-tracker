@@ -16,6 +16,17 @@ type TrainLandingProps = {
    */
   quickStartContent: ReactNode;
   plans: TrainingPlan[];
+  /**
+   * True while the Training Plans library hasn't finished loading, or is
+   * write-protected after a read failure (docs/PERSISTENCE_BOUNDARY_DESIGN.md
+   * §7.4) — disables the "Training Plans" tab itself so a user can never
+   * reach the library/editor/start-review screens and create, edit,
+   * duplicate, or delete a plan against a not-yet-loaded (or unrecoverable)
+   * collection. Quick Start is unaffected — it doesn't read or mutate this
+   * collection at all. Defaults to false so every existing call site/test
+   * keeps today's always-enabled behavior.
+   */
+  plansTabDisabled?: boolean;
   onSavePlan: (plan: TrainingPlan) => void;
   onDeletePlan: (planId: string) => void;
   onDuplicatePlan: (plan: TrainingPlan) => void;
@@ -41,6 +52,7 @@ type PlansSubView =
 export default function TrainLanding({
   quickStartContent,
   plans,
+  plansTabDisabled = false,
   onSavePlan,
   onDeletePlan,
   onDuplicatePlan,
@@ -80,7 +92,9 @@ export default function TrainLanding({
           type="button"
           role="tab"
           aria-selected={mode === "plans"}
+          disabled={plansTabDisabled}
           onClick={() => {
+            if (plansTabDisabled) return;
             setMode("plans");
             setPlansSubView({ screen: "library" });
           }}
@@ -88,7 +102,7 @@ export default function TrainLanding({
             mode === "plans"
               ? "bg-slate-900 text-white"
               : "text-slate-700 hover:bg-slate-200"
-          }`}
+          } disabled:cursor-not-allowed disabled:opacity-50`}
         >
           Training Plans
         </button>

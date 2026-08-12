@@ -528,6 +528,14 @@ export default function TrackerApp() {
   function updateAssessmentState(
     updater: (state: AssessmentPersistedState) => AssessmentPersistedState
   ) {
+    // Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): once Assessment
+    // hydration is "write_protected" (a genuine read failure), the fallback
+    // state is non-null, so the null-check below alone would otherwise let
+    // a Run be created/mutated in memory that can never actually persist.
+    // "ready" is the only hydration state that permits mutation, matching
+    // every other effect-persisted domain.
+    if (assessmentHydration !== "ready") return;
+
     const current = assessmentStateRef.current;
     if (!current) return;
     commitAssessmentState(updater(current));
@@ -589,6 +597,16 @@ export default function TrackerApp() {
       processQueuedAssessmentTimingResult(result);
       return;
     }
+
+    // Corrected (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): a Session that
+    // is not "ready" (still loading, structurally impossible to reach here
+    // since nothing renders before Session's own load resolves — or
+    // write_protected after a genuine read failure) must never have a
+    // timing result applied to it. This guard, together with the Timing
+    // Simulator's own subscription gate above, closes both the automatic
+    // (simulator) and manual/capture-sequence paths, which both funnel
+    // through this one function.
+    if (sessionHydration !== "ready") return;
 
     const session = sessionRef.current;
     if (!session) return;
@@ -979,6 +997,16 @@ export default function TrackerApp() {
     return null;
   }
 
+  // Readiness gating (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4): "ready" is
+  // the only hydration state that permits interaction with a domain's
+  // mutating controls — both "loading" and "write_protected" keep the
+  // domain's own fallback/default visible but non-mutable. Each flag is
+  // independent, so one domain being unavailable never disables another.
+  const sessionWritable = sessionHydration === "ready";
+  const trainingPlansWritable = trainingPlansHydration === "ready";
+  const accuracyProfilesWritable = accuracyProfilesHydration === "ready";
+  const smartRandomProfilesWritable = smartRandomProfilesHydration === "ready";
+
   const activeBlock = getActiveBlock(currentSession);
   const activeBlockShots = activeBlock
     ? getBlockShots(currentSession, activeBlock.id)
@@ -1165,6 +1193,8 @@ export default function TrackerApp() {
     );
 
   function handleChangeActiveBlockTargetTime(newTargetTime: number) {
+    if (sessionHydration !== "ready") return;
+
     setCurrentSession((session) => {
       if (!session) return session;
 
@@ -1180,6 +1210,8 @@ export default function TrackerApp() {
   }
 
   function handleChangeSessionTitle(title: string) {
+    if (sessionHydration !== "ready") return;
+
     setCurrentSession((session) => {
       if (!session) return session;
 
@@ -1191,6 +1223,8 @@ export default function TrackerApp() {
   }
 
   function handleChangeSessionNotes(notes: string) {
+    if (sessionHydration !== "ready") return;
+
     setCurrentSession((session) => {
       if (!session) return session;
 
@@ -1208,6 +1242,8 @@ export default function TrackerApp() {
     targetTimeOverride?: number,
     predictedTime?: number
   ) {
+    if (sessionHydration !== "ready") return;
+
     setCurrentSession((session) => {
       if (!session) return session;
 
@@ -1257,6 +1293,8 @@ export default function TrackerApp() {
   }
 
   function handleStartCaptureSequence(config: AutoCaptureStartConfig) {
+    if (sessionHydration !== "ready") return;
+
     const session = sessionRef.current;
     if (!session || !activeBlock) return;
 
@@ -1296,6 +1334,8 @@ export default function TrackerApp() {
   }
 
   function handlePauseCaptureSequence() {
+    if (sessionHydration !== "ready") return;
+
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
 
@@ -1306,6 +1346,8 @@ export default function TrackerApp() {
   }
 
   function handleResumeCaptureSequence() {
+    if (sessionHydration !== "ready") return;
+
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
 
@@ -1316,6 +1358,8 @@ export default function TrackerApp() {
   }
 
   function handleCancelCaptureSequence() {
+    if (sessionHydration !== "ready") return;
+
     setConfirmAction({
       title: "Cancel Auto Capture?",
       message:
@@ -1341,6 +1385,8 @@ export default function TrackerApp() {
   }
 
   function handleUndoLastCapturedShot() {
+    if (sessionHydration !== "ready") return;
+
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
 
@@ -1363,6 +1409,7 @@ export default function TrackerApp() {
   }
 
   function handleManualCaptureResult(value: number) {
+    if (sessionHydration !== "ready") return;
     if (!activeBlock) return;
     processIncomingTimingResult(
       createManualTimingResult(activeBlock.measurementMode, value)
@@ -1370,6 +1417,8 @@ export default function TrackerApp() {
   }
 
   function handleDeleteShot(shotId: string) {
+    if (sessionHydration !== "ready") return;
+
     setCurrentSession((session) => {
       if (!session) return session;
 
@@ -1412,6 +1461,7 @@ export default function TrackerApp() {
   }
 
   function handleSaveEditedShot() {
+    if (sessionHydration !== "ready") return;
     if (!editingShot) return;
 
     const parsedTime = Number(editingShot.releaseTime);
@@ -1466,6 +1516,8 @@ export default function TrackerApp() {
   }
 
   function handleCreateFirstBlock(value: TrainingSetupValue) {
+    if (sessionHydration !== "ready") return;
+
     const block = tryCreateTrainingBlock(value);
     if (!block) return;
 
@@ -1481,6 +1533,8 @@ export default function TrackerApp() {
   }
 
   function handleCreateNewBlock(value: TrainingSetupValue) {
+    if (sessionHydration !== "ready") return;
+
     // Pre-validate with a throwaway construction; addTrainingBlock's own
     // internal createTrainingBlock call is then guaranteed not to throw,
     // since the throw condition depends only on measurementMode/
@@ -1499,6 +1553,8 @@ export default function TrackerApp() {
 
   /** Upserts a Training Plan into the library by id — create or rename/re-edit alike. */
   function handleSaveTrainingPlan(plan: TrainingPlan) {
+    if (trainingPlansHydration !== "ready") return;
+
     setTrainingPlans((current) => {
       const library: TrainingPlansPersistedState = {
         schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
@@ -1520,6 +1576,8 @@ export default function TrackerApp() {
    * TrainingPlansLibrary already confirms this destructive action itself.
    */
   function handleDeleteTrainingPlan(planId: string) {
+    if (trainingPlansHydration !== "ready") return;
+
     setTrainingPlans(
       (current) =>
         deletePlan(
@@ -1530,6 +1588,8 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateTrainingPlan(plan: TrainingPlan) {
+    if (trainingPlansHydration !== "ready") return;
+
     const copy = duplicatePlan(plan);
     setTrainingPlans(
       (current) =>
@@ -1548,6 +1608,8 @@ export default function TrackerApp() {
    * never briefly missing one half of the pair. See ADR-0012.
    */
   function handleStartTrainingPlan(plan: TrainingPlan) {
+    if (sessionHydration !== "ready") return;
+
     const firstStep = plan.steps[0];
     if (!firstStep) return;
 
@@ -1571,6 +1633,8 @@ export default function TrackerApp() {
   function handleCreateAccuracyToleranceProfile(
     input: AccuracyToleranceProfileInput
   ) {
+    if (accuracyProfilesHydration !== "ready") return;
+
     const outcome = buildAccuracyToleranceProfile(input, new Date().toISOString());
     if (!outcome.ok) {
       alert(outcome.error.message);
@@ -1586,6 +1650,8 @@ export default function TrackerApp() {
     profileId: string,
     input: Omit<AccuracyToleranceProfileInput, "id" | "createdAt">
   ) {
+    if (accuracyProfilesHydration !== "ready") return;
+
     setAccuracyToleranceProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
       if (!existing) return current;
@@ -1605,6 +1671,8 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateAccuracyToleranceProfile(profileId: string) {
+    if (accuracyProfilesHydration !== "ready") return;
+
     setAccuracyToleranceProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
       if (!existing) return current;
@@ -1618,12 +1686,16 @@ export default function TrackerApp() {
   }
 
   function handleDeleteAccuracyToleranceProfile(profileId: string) {
+    if (accuracyProfilesHydration !== "ready") return;
+
     setAccuracyToleranceProfilesState((current) =>
       deleteAccuracyToleranceProfile(current, profileId)
     );
   }
 
   function handleSetDefaultAccuracyToleranceProfile(profileId: string | null) {
+    if (accuracyProfilesHydration !== "ready") return;
+
     setAccuracyToleranceProfilesState((current) => {
       const result = setDefaultAccuracyToleranceProfile(current, profileId);
       return result.ok ? result.value : current;
@@ -1636,6 +1708,8 @@ export default function TrackerApp() {
   // "back-hog"; buildSmartRandomProfile still re-validates this rather than
   // trusting the caller.
   function handleCreateSmartRandomProfile(value: SmartRandomProfileFormValue) {
+    if (smartRandomProfilesHydration !== "ready") return;
+
     const outcome = buildSmartRandomProfile(
       { ...value, measurementMode: "back-hog" },
       new Date().toISOString()
@@ -1654,6 +1728,8 @@ export default function TrackerApp() {
     profileId: string,
     value: SmartRandomProfileFormValue
   ) {
+    if (smartRandomProfilesHydration !== "ready") return;
+
     setSmartRandomProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
       if (!existing) return current;
@@ -1678,6 +1754,8 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateSmartRandomProfile(profileId: string) {
+    if (smartRandomProfilesHydration !== "ready") return;
+
     setSmartRandomProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
       if (!existing) return current;
@@ -1688,12 +1766,16 @@ export default function TrackerApp() {
   }
 
   function handleDeleteSmartRandomProfile(profileId: string) {
+    if (smartRandomProfilesHydration !== "ready") return;
+
     setSmartRandomProfilesState((current) =>
       deleteSmartRandomProfile(current, profileId)
     );
   }
 
   function handleSetDefaultSmartRandomProfile(profileId: string | null) {
+    if (smartRandomProfilesHydration !== "ready") return;
+
     setSmartRandomProfilesState((current) => {
       const result = setDefaultSmartRandomProfile(current, profileId);
       return result.ok ? result.value : current;
@@ -1708,6 +1790,8 @@ export default function TrackerApp() {
    * (see isPlanExecutionActive) or there is no next step.
    */
   function handleContinueToNextPlanStep() {
+    if (sessionHydration !== "ready") return;
+
     const session = currentSession;
     const planExecution = session?.planExecution;
     if (!session || !planExecution || !isPlanExecutionActive(session, planExecution)) {
@@ -1739,6 +1823,8 @@ export default function TrackerApp() {
   }
 
   function handleStartNewSession() {
+    if (sessionHydration !== "ready") return;
+
     guardLeavingActiveWork(
       hasUnsavedBlindDraft
         ? "You have an unfinished blind-weight shot. Starting a new session will discard it — the current session itself will still be saved to history. Continue?"
@@ -1853,6 +1939,8 @@ export default function TrackerApp() {
   }
 
   function handleOpenNewBlockModal() {
+    if (sessionHydration !== "ready") return;
+
     guardLeavingActiveWork(
       hasUnsavedBlindDraft
         ? "You have an unfinished blind-weight shot. Starting a new training block will discard it. Continue?"
@@ -1886,17 +1974,19 @@ export default function TrackerApp() {
       message: warningMessage,
       confirmLabel: "Leave",
       onConfirm: () => {
-        setCurrentSession((session) => {
-          if (!session || !session.captureSequence) return session;
-          return {
-            ...session,
-            captureSequence: {
-              ...session.captureSequence,
-              status: "cancelled",
-              cancelledAt: new Date().toISOString(),
-            },
-          };
-        });
+        if (sessionHydration === "ready") {
+          setCurrentSession((session) => {
+            if (!session || !session.captureSequence) return session;
+            return {
+              ...session,
+              captureSequence: {
+                ...session.captureSequence,
+                status: "cancelled",
+                cancelledAt: new Date().toISOString(),
+              },
+            };
+          });
+        }
         setConfirmAction(null);
         action();
       },
@@ -1958,6 +2048,8 @@ export default function TrackerApp() {
   }
 
   function handleDeleteHistorySession(sessionId: string) {
+    if (sessionHydration !== "ready") return;
+
     setConfirmAction({
       title: "Delete Session",
       message:
@@ -1976,6 +2068,8 @@ export default function TrackerApp() {
   }
 
   function handleClearSessionHistory() {
+    if (sessionHydration !== "ready") return;
+
     setConfirmAction({
       title: "Clear Session History",
       message:
@@ -2055,18 +2149,23 @@ export default function TrackerApp() {
           hasHistory={sessionHistory.length > 0}
           onExportHistoryCsv={() => exportHistoryToCsv(sessionHistory)}
           onClearHistory={handleClearSessionHistory}
+          clearHistoryDisabled={!sessionWritable}
           accuracyToleranceProfiles={accuracyToleranceProfilesState.profiles}
           defaultAccuracyToleranceProfileId={
             accuracyToleranceProfilesState.defaultProfileId
           }
-          onManageAccuracyTolerances={() =>
-            setShowAccuracyToleranceProfilesManager(true)
-          }
+          onManageAccuracyTolerances={() => {
+            if (!accuracyProfilesWritable) return;
+            setShowAccuracyToleranceProfilesManager(true);
+          }}
+          manageAccuracyTolerancesDisabled={!accuracyProfilesWritable}
           smartRandomProfiles={smartRandomProfilesState.profiles}
           defaultSmartRandomProfileId={smartRandomProfilesState.defaultProfileId}
-          onManageSmartRandomProfiles={() =>
-            setShowSmartRandomProfilesManager(true)
-          }
+          onManageSmartRandomProfiles={() => {
+            if (!smartRandomProfilesWritable) return;
+            setShowSmartRandomProfilesManager(true);
+          }}
+          manageSmartRandomProfilesDisabled={!smartRandomProfilesWritable}
         />
       )}
 
@@ -2128,6 +2227,7 @@ export default function TrackerApp() {
                 </div>
               }
               plans={trainingPlans}
+              plansTabDisabled={!trainingPlansWritable}
               onSavePlan={handleSaveTrainingPlan}
               onDeletePlan={handleDeleteTrainingPlan}
               onDuplicatePlan={handleDuplicateTrainingPlan}
@@ -2203,7 +2303,8 @@ export default function TrackerApp() {
                   <button
                     type="button"
                     onClick={handleOpenNewBlockModal}
-                    className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
+                    disabled={!sessionWritable}
+                    className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     New Training Block
                   </button>
@@ -2784,7 +2885,8 @@ export default function TrackerApp() {
               <button
                 type="button"
                 onClick={handleStartNewSession}
-                className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200"
+                disabled={!sessionWritable}
+                className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Start New Session
               </button>
@@ -2890,18 +2992,34 @@ export default function TrackerApp() {
 
           {analyzeTab === "training" && (
           <>
-          {/* 1. Sticky Analysis Filters */}
-          <HistoryFilterBar
-            filters={effectiveHistoryFilters}
-            onChange={setHistoryFilters}
-            availableTrainingCategories={
-              historyAnalysisContext.availableTrainingCategories
-            }
-            availableMeasurementModes={
-              historyAnalysisContext.availableMeasurementModes
-            }
-            sessions={sessionHistory}
-          />
+          {/* 1. Sticky Analysis Filters — while historyFiltersHydration is
+              still "loading", the stored filters haven't been applied yet,
+              so the interactive control (backed by createDefaultHistoryFilters())
+              stays unrendered rather than exposing a default a user could
+              change and lose the instant loading resolves
+              (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.4). Once loading
+              settles — "ready" or "write_protected" alike — the real control
+              renders normally; write_protected changes simply never reach
+              the save effect (already gated), with no separate messaging
+              needed since this control never claims to be a saved
+              preference. */}
+          {historyFiltersHydration === "loading" ? (
+            <div className={surfaceClass("primary")}>
+              <p className="text-sm text-slate-500">Loading filters…</p>
+            </div>
+          ) : (
+            <HistoryFilterBar
+              filters={effectiveHistoryFilters}
+              onChange={setHistoryFilters}
+              availableTrainingCategories={
+                historyAnalysisContext.availableTrainingCategories
+              }
+              availableMeasurementModes={
+                historyAnalysisContext.availableMeasurementModes
+              }
+              sessions={sessionHistory}
+            />
+          )}
 
           {historyAnalysisContext.totalShotCount > 0 ? (
             <>
@@ -3083,7 +3201,8 @@ export default function TrackerApp() {
                             session.id
                           )
                         }
-                        className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200"
+                        disabled={!sessionWritable}
+                        className="rounded-lg bg-red-100 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Delete
                       </button>

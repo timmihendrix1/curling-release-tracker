@@ -13,6 +13,20 @@ for the full design this ADR summarizes. Phase 1 was implemented on
 IndexedDB, cloud sync, and the other Phase 2+ items in design doc §10 remain
 unimplemented.
 
+**Implementation-note correction:** `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` found that the
+initial implementation correctly gated every domain's *save effect* (Decision 5) but left
+the *interaction boundary* itself (the mutating UI controls, and `AssessScreen.tsx`'s
+preference reads) ungated for History Filters, Training Plans, Accuracy Tolerance
+Profiles, Smart Random Profiles, and the Assess preference controls — a delayed load
+could still silently overwrite a user's in-session action even though it could never be
+persisted. A follow-up correction commit closed this by extending Decision 5's
+readiness model to the interaction boundary (design doc §7.10) — see
+`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md` for the full record. This does not
+change Decision 5 itself, any repository/adapter contract, or any storage key/shape; it
+completes this ADR's own stated requirement ("a delayed hydration result must not
+silently overwrite a user action performed after mount") at the layer the original
+implementation had not yet reached.
+
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: Decision 1 was revised to no longer include a
 composed, cross-key session-archiving method — Phase 1 is strictly behavior-preserving,

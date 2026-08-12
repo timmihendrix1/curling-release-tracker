@@ -278,6 +278,48 @@ it — not built preemptively for a lightweight info popover.
 
 ## On demand
 
+### Persistence write-failure visibility, retry, and recovery UX — deliberately deferred
+
+**What:** Since the Phase 1 persistence boundary (`docs/adr/0013-application-owned-persistence-repository-boundary.md`),
+`localStorageAdapter` never lets a raw `DOMException`/`QuotaExceededError` escape — every
+`save*`/`set*` call resolves a typed `PersistenceWriteResult`, `{ ok: false, error }` on
+failure, instead of throwing. No call site in `TrackerApp.tsx`/`AssessScreen.tsx`
+currently inspects that result; every write remains fire-and-forget. Likewise, a domain
+that reaches `"write_protected"` (a genuine read failure) has no user-visible indicator,
+no retry affordance, and no recovery workflow — it silently keeps working from the
+display-only fallback for the rest of the session.
+
+**Why this is deliberate, not an oversight:** ADR-0013 Decision 5/6 explicitly scoped
+Phase 1 to "no automatic retry, no recovery UX" — introducing either now would exceed
+what was reviewed and accepted. This is also **not** equivalent to the pre-Phase-1
+behavior: previously, an uncaught `QuotaExceededError` thrown from a bare
+`localStorage.setItem()` call inside a `useEffect` was at least visible (a console error,
+and potentially an aborted commit); now it is a typed, contained, but completely silent
+result. This is a deliberate trade documented in
+`PERSISTENCE_BOUNDARY_PHASE1_CORRECTION_REPORT.md` (and, before it, the Phase 1 audit),
+not a claim that nothing changed.
+
+**Recommendation:** revisit if real users start hitting storage quota limits (unlikely at
+current data volumes) or once a cloud/sync layer gives write failures new stakes. Any fix
+should decide, explicitly, what the user sees for each of `"storage_unavailable"` /
+`"quota_exceeded"` / `"unknown"`, and whether/how a `"write_protected"` domain can ever
+retry — neither is designed today.
+
+### IndexedDB adapter and transactional session archiving — deferred to a future phase
+
+**What:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes a future IndexedDB-backed
+`StorageAdapter` behind the same repository boundary, and §6.4/§6.5 note that the
+current-session-before-history write order is preserved only by the current,
+synchronous-under-the-hood `localStorageAdapter` and React's effect declaration order —
+not by anything the repository interface itself guarantees. A genuinely asynchronous
+adapter could complete the two writes out of order with nothing today noticing or
+preventing it.
+
+**Recommendation:** before any IndexedDB migration, make an explicit sequencing decision
+for `SessionRepository.saveCurrent`/`saveHistory` (e.g. `await` the first before starting
+the second, or a real transaction if the target store supports one) — do not assume
+today's order carries over silently. Not urgent: no IndexedDB work is scheduled.
+
 ### `react-hooks/set-state-in-effect` lint warning on initial load
 
 **What:** `TrackerApp.tsx`'s mount effect (`localStorage` read → `migrateSession` →

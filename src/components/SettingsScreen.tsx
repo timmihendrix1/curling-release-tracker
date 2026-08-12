@@ -6,12 +6,24 @@ type SettingsScreenProps = {
   hasHistory: boolean;
   onExportHistoryCsv: () => void;
   onClearHistory: () => void;
+  /**
+   * True while the Session domain isn't "ready" (docs/PERSISTENCE_BOUNDARY_DESIGN.md
+   * §7.4) — Clear History mutates session-history, which must stay
+   * unavailable during loading and after a read failure alike. Defaults to
+   * false so existing call sites/tests keep today's `!hasHistory`-only
+   * gating.
+   */
+  clearHistoryDisabled?: boolean;
   accuracyToleranceProfiles: AccuracyToleranceProfile[];
   defaultAccuracyToleranceProfileId: string | null;
   onManageAccuracyTolerances: () => void;
+  /** Same readiness rule as clearHistoryDisabled, for the Accuracy Tolerance Profiles domain. */
+  manageAccuracyTolerancesDisabled?: boolean;
   smartRandomProfiles: SmartRandomProfile[];
   defaultSmartRandomProfileId: string | null;
   onManageSmartRandomProfiles: () => void;
+  /** Same readiness rule as clearHistoryDisabled, for the Smart Random Profiles domain. */
+  manageSmartRandomProfilesDisabled?: boolean;
 };
 
 /**
@@ -26,12 +38,15 @@ export default function SettingsScreen({
   hasHistory,
   onExportHistoryCsv,
   onClearHistory,
+  clearHistoryDisabled = false,
   accuracyToleranceProfiles,
   defaultAccuracyToleranceProfileId,
   onManageAccuracyTolerances,
+  manageAccuracyTolerancesDisabled = false,
   smartRandomProfiles,
   defaultSmartRandomProfileId,
   onManageSmartRandomProfiles,
+  manageSmartRandomProfilesDisabled = false,
 }: SettingsScreenProps) {
   const defaultProfile =
     accuracyToleranceProfiles.find(
@@ -69,7 +84,8 @@ export default function SettingsScreen({
         <button
           type="button"
           onClick={onManageAccuracyTolerances}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+          disabled={manageAccuracyTolerancesDisabled}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Manage Accuracy Tolerances
         </button>
@@ -102,7 +118,8 @@ export default function SettingsScreen({
         <button
           type="button"
           onClick={onManageSmartRandomProfiles}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+          disabled={manageSmartRandomProfilesDisabled}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Manage Smart Random Profiles
         </button>
@@ -162,7 +179,7 @@ export default function SettingsScreen({
         <button
           type="button"
           onClick={onClearHistory}
-          disabled={!hasHistory}
+          disabled={!hasHistory || clearHistoryDisabled}
           className="mt-4 w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:bg-red-50/60 disabled:text-red-300"
         >
           Clear History
