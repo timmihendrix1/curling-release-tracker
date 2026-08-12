@@ -1155,6 +1155,28 @@ through direct `localStorage` calls scattered across components — see
   this pass, matching `sessionRef`'s existing pattern), never the render closure that
   scheduled it, since that closure may be stale by the time a deferred, queued call
   actually runs.
+- **A second `StorageAdapter` implementation, backed by IndexedDB, exists but is not
+  wired in (Implemented, not activated — `docs/adr/0015-indexeddb-adapter-unwired.md`).**
+  `src/lib/persistence/indexedDbAdapter.ts`'s `createIndexedDbAdapter()` opens a
+  `curling-release-tracker` database (version 1, via the `idb` package) with two
+  out-of-line-string-keyed stores — `records` (what `get`/`set` actually read/write,
+  storing the exact serialized strings a repository already produces) and `metadata`
+  (reserved for a future migration/activation marker, not exposed through
+  `StorageAdapter` in this pass). The connection opens lazily on first `get`/`set`
+  (never at import time, so it stays safe under Next.js server-side evaluation), is
+  cached across calls, and is invalidated — dropping the cache so the next call reopens
+  fresh — on open failure, on a `blocking` notification (a newer connection needs this
+  one to close), and on abnormal termination; a `blocked` open is converted into a
+  classified failure immediately rather than left to hang, and a late-resolving blocked
+  connection is closed rather than adopted. Error classification mirrors
+  `localStorageAdapter.ts`'s exactly: `storage_unavailable` for a missing `indexedDB`
+  global, `SecurityError`/`NotAllowedError`/`InvalidStateError`, or a blocked open;
+  `quota_exceeded` for a `QuotaExceededError`; `unknown` otherwise. Nothing in the
+  application imports or constructs this adapter — `localStorage` remains the sole
+  production source of truth, and no migration, activation, rollback, or dual-write
+  mechanism exists yet. It still cannot express the atomic archive transaction ADR-0014
+  describes, for the same structural reason `localStorageAdapter.ts` can't: `get`/`set`
+  is a single-key interface.
 
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 

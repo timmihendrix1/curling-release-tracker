@@ -23,6 +23,10 @@ write order) is now resolved**, ahead of and independent of the IndexedDB adapte
 by `docs/adr/0014-session-archive-write-ordering.md` — see Sections 6.2, 6.4, and 6.5
 below for the updated text. This does not change this document's status regarding
 IndexedDB: Section 10 is still documentation-only, and IndexedDB is still unimplemented.
+**Revision 6 records one exception**: Section 10 step 1 (an IndexedDB-backed
+`StorageAdapter` implementation) is now implemented, but unwired — see
+`docs/adr/0015-indexeddb-adapter-unwired.md` and Section 10's revision note. Steps 2-4
+(migration, verification, activation/rollback) remain unimplemented and undesigned.
 
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
@@ -1615,9 +1619,20 @@ resolving an ordering ambiguity in Revision 1 that could be read as permitting
 (its old step 2, "before or alongside"). Phase 2 begins only after Section 11's sequence
 is complete.
 
+**Revision 6 (this version) records that step 1 below is now done** — see
+`docs/adr/0015-indexeddb-adapter-unwired.md`: `src/lib/persistence/indexedDbAdapter.ts`
+implements `StorageAdapter` against a two-store (`records`/`metadata`) IndexedDB
+database via the `idb` package, with no repository or domain-logic change, exactly as
+step 1 requires. It is not imported or constructed by any repository singleton or
+component — `localStorage` remains the sole production source of truth. Steps 2-4 below
+(migration, verification, and the activation/rollback gate) remain entirely
+undesigned and unimplemented; this revision does not change any of their open
+questions.
+
 1. **Introduce an IndexedDB adapter behind the same `StorageAdapter` interface** (or a
    richer one, per Section 9's "may later expand" note). No repository or domain-logic
-   code changes — only a second adapter implementation is added.
+   code changes — only a second adapter implementation is added. **Done, unwired** — see
+   the note above.
 2. **Migrate existing browser data without loss.** On first load under the IndexedDB
    adapter, for each of the 10 keys: read the existing `localStorage` value (still
    present, untouched), run it through the *same* existing migration function used today,
