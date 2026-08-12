@@ -2,8 +2,10 @@
 
 ## Status
 
-Proposed. Not implemented. Requires product-owner review before acceptance. See
-`docs/PERSISTENCE_BOUNDARY_DESIGN.md` for the full design this ADR summarizes.
+Accepted. Not implemented. Accepted by the product owner following review of
+`PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`. See `docs/PERSISTENCE_BOUNDARY_DESIGN.md`
+for the full design this ADR summarizes. Phase 1 implementation follows in a separate
+commit on `feature/persistence-boundary-phase-1`.
 
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: Decision 1 was revised to no longer include a
