@@ -361,6 +361,17 @@ export default function TrackerApp() {
   const [smartRandomProfilesHydration, setSmartRandomProfilesHydration] =
     useState<DomainHydrationState>("loading");
   const [, setSmartRandomProfilesReadError] = useState<PersistenceReadError | null>(null);
+  // Records exactly which `sessionHistory`/`currentSession` object references were
+  // already durably persisted by `sessionRepository.archiveAndReplace` (see
+  // docs/adr/0014-session-archive-write-ordering.md), so the two ordinary,
+  // independent save effects below (declared for per-shot/per-edit persistence) don't
+  // redundantly re-persist — and, in doing so, risk re-persisting in their own
+  // declaration order — the exact same archive transition the coordinated call just
+  // wrote in the deliberately-chosen history-then-current order. A genuine subsequent
+  // edit always produces a new object, so the reference comparison stops matching (and
+  // ordinary persistence resumes) the moment there's anything new to persist.
+  const lastArchivedHistoryRef = useRef<Session[] | null>(null);
+  const lastArchivedCurrentSessionRef = useRef<Session | null>(null);
   // The handle actually executed for the current planned shot — defaults to
   // the shot's Expected Handle (set by AssessScreen) but may be toggled by
   // the athlete. Lives here, not inside AssessScreen, for the same reason
@@ -484,7 +495,23 @@ export default function TrackerApp() {
   useEffect(() => {
     sessionRef.current = currentSession;
   }, [currentSession]);
+  // Authoritative mirror of sessionHistory — same rationale and pattern as sessionRef
+  // (see docs/adr/0014-session-archive-write-ordering.md's Strict-Mode/staleness
+  // hardening pass): the session-archive transition below reads this ref, never the
+  // render closure's `sessionHistory`, because that transition is deferred through
+  // captureQueueRef and must not act on a value that may have been current only at
+  // the moment the user clicked, not at the moment the deferred work actually runs.
+  const sessionHistoryRef = useRef<Session[]>(sessionHistory);
+  useEffect(() => {
+    sessionHistoryRef.current = sessionHistory;
+  }, [sessionHistory]);
   const captureQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Single-flight guard for the session-archive transition (docs/adr/0014). Checked
+  // and set synchronously, before any `await` — a ref, not state, specifically so the
+  // check-and-set is not itself subject to React's asynchronous setState batching.
+  // Cleared in every exit path (success, either failure step, or an unexpected
+  // exception) via the shared .finally() below.
+  const sessionArchiveInFlightRef = useRef(false);
 
   function outcomeToDiagnostic(
     outcome: ProcessTimingResultOutcome
@@ -952,6 +979,11 @@ export default function TrackerApp() {
   useEffect(() => {
     if (!currentSession) return;
     if (sessionHydration !== "ready") return;
+    // Already durably persisted by archiveAndReplace (docs/adr/0014) — skip the
+    // redundant rewrite rather than risk re-persisting this exact transition in this
+    // effect's own declaration order. Any subsequent real edit produces a new object,
+    // so this guard stops matching (and this effect resumes) on the very next change.
+    if (currentSession === lastArchivedCurrentSessionRef.current) return;
 
     sessionRepository.saveCurrent(currentSession);
   }, [currentSession, sessionHydration]);
@@ -964,6 +996,8 @@ export default function TrackerApp() {
 
   useEffect(() => {
     if (sessionHydration !== "ready") return;
+    // See the matching guard in the current-session save effect above.
+    if (sessionHistory === lastArchivedHistoryRef.current) return;
 
     sessionRepository.saveHistory(sessionHistory);
   }, [sessionHistory, sessionHydration]);
@@ -1822,6 +1856,80 @@ export default function TrackerApp() {
     setEntryMode("manual");
   }
 
+  /**
+   * The actual archive-and-replace work, run strictly through captureQueueRef — the
+   * same serialization point every TimingResult goes through (docs/adr/0014-session-archive-write-ordering.md's
+   * hardening pass; see ADR-0007 for the queue itself). This is what guarantees:
+   * - A capture mutation already queued (accepted) before this transition was enqueued
+   *   runs to completion first, so its result is reflected in sessionRef.current by the
+   *   time this function's snapshot read happens below — never lost.
+   * - A capture mutation submitted while this transition's own persistence write is
+   *   still pending gets queued *behind* this function's returned promise, so it can
+   *   never interleave between the snapshot read and the current-session replacement.
+   * Reads sessionRef/sessionHistoryRef — never the render closure — because by the
+   * time the queue actually reaches this call, the closure that scheduled it may be
+   * arbitrarily stale.
+   */
+  async function performSessionArchiveTransition() {
+    const previousSession = sessionRef.current;
+    const nextCurrentSession = createNewSession();
+
+    if (!previousSession || previousSession.shots.length === 0) {
+      // Re-checked here, against the authoritative ref, rather than trusting the
+      // click-time closure's `shots.length` — a capture result accepted while the
+      // confirmation dialog was open could have added a shot after the click but
+      // before this queued step actually runs.
+      commitSession(nextCurrentSession);
+      setBlockFilter(DEFAULT_SHOT_FILTER);
+      setActiveView("train");
+      return;
+    }
+
+    // Coordinated archive-and-replace: history is durably written before the
+    // replacement session is even attempted — never merely "issued first" — so this
+    // depends on neither React's effect-declaration order nor the adapter being
+    // synchronous. The snapshot (nextHistory) is selected here, once, and held in this
+    // local variable for the rest of the transition — nothing queued behind this call
+    // on captureQueueRef can run until this whole function returns, so nothing can
+    // mutate the session between this read and the eventual replacement below.
+    const nextHistory = [previousSession, ...sessionHistoryRef.current];
+    const archiveResult = await sessionRepository.archiveAndReplace(
+      nextHistory,
+      nextCurrentSession
+    );
+
+    if (!archiveResult.ok && archiveResult.step === "history") {
+      // History write failed: neither write took effect. Leave the completed
+      // session exactly as it is — no silent data loss — so the user can retry.
+      // Consistent with this codebase's existing, documented, deliberate deferral of
+      // write-failure UX (see docs/TECHNICAL_DEBT_AND_ROADMAP.md's "Persistence
+      // write-failure visibility, retry, and recovery UX" item) — this fix's scope is
+      // ordering/coordination, not new failure UI.
+      return;
+    }
+
+    // History is now durable either way (the only remaining failure mode,
+    // `step === "current"`, happens strictly after a successful history write).
+    // Record exactly what was already persisted, in both the render-visible state and
+    // its authoritative ref together, so the ordinary, independent save effects don't
+    // redundantly (and, in doing so, riskily) re-persist this same transition in their
+    // own declaration order.
+    lastArchivedHistoryRef.current = nextHistory;
+    sessionHistoryRef.current = nextHistory;
+    setSessionHistory(nextHistory);
+
+    if (archiveResult.ok) {
+      lastArchivedCurrentSessionRef.current = nextCurrentSession;
+    }
+    // else (step === "current"): leave lastArchivedCurrentSessionRef as-is, so the
+    // ordinary current-session save effect naturally retries persisting
+    // nextCurrentSession once it's committed below.
+
+    commitSession(nextCurrentSession);
+    setBlockFilter(DEFAULT_SHOT_FILTER);
+    setActiveView("train");
+  }
+
   function handleStartNewSession() {
     if (sessionHydration !== "ready") return;
 
@@ -1839,20 +1947,32 @@ export default function TrackerApp() {
           message:
             "Current session will be saved to history. Continue?",
           confirmLabel: "Start",
+          // Deliberately synchronous, not async: the single-flight check-and-set below
+          // must complete before any await exists anywhere in this call, so a second,
+          // rapid invocation (a double click landing before React removes this modal)
+          // is rejected unconditionally, not merely discouraged by a disabled button or
+          // a state update that hasn't committed yet.
           onConfirm: () => {
-            if (
-              currentSession &&
-              currentSession.shots.length > 0
-            ) {
-              setSessionHistory((currentHistory) => [
-                currentSession,
-                ...currentHistory,
-              ]);
-            }
+            if (sessionArchiveInFlightRef.current) return;
+            sessionArchiveInFlightRef.current = true;
 
-            setCurrentSession(createNewSession());
-            setBlockFilter(DEFAULT_SHOT_FILTER);
-            setActiveView("train");
+            // Enqueued onto the same queue every TimingResult goes through — see
+            // performSessionArchiveTransition's doc comment above. The .catch() mirrors
+            // ADR-0007's processIncomingTimingResult exactly: an unexpected exception
+            // must never leave captureQueueRef permanently rejected, which would
+            // silently break all future capture processing, not just this transition.
+            captureQueueRef.current = captureQueueRef.current
+              .then(() => performSessionArchiveTransition())
+              .catch((error) => {
+                console.error(
+                  "Unexpected error while archiving the session",
+                  error
+                );
+              })
+              .finally(() => {
+                sessionArchiveInFlightRef.current = false;
+              });
+
             setConfirmAction(null);
           },
         });

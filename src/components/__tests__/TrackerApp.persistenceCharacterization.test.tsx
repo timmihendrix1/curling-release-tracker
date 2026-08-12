@@ -48,7 +48,13 @@ function openEditDetails() {
 }
 
 describe("TrackerApp persistence characterization (current, pre-repository behavior)", () => {
-  it("writes the current-session key before the session-history key when starting a new session with a recorded shot", async () => {
+  // Corrected by docs/adr/0014-session-archive-write-ordering.md: the session-archiving
+  // transition now writes session-history to completion before it even attempts the
+  // replacement current-session write — coordinated at the repository boundary via
+  // `SessionRepository.archiveAndReplace`, not by relying on React's effect-declaration
+  // order (which previously wrote current-session first — the exact ordering this ADR
+  // found unsafe once a genuinely asynchronous adapter is introduced).
+  it("writes the session-history key to completion before the current-session key when starting a new session with a recorded shot", async () => {
     await startTrainingAndAddOneShot();
     openEditDetails();
 
@@ -63,12 +69,40 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     await waitFor(() => screen.getByText("Set Up Training Block"));
 
     const keysInCallOrder = setItemSpy.mock.calls.map(([key]) => key);
-    const currentSessionIndex = keysInCallOrder.indexOf(CURRENT_SESSION_KEY);
     const sessionHistoryIndex = keysInCallOrder.indexOf(SESSION_HISTORY_KEY);
+    const currentSessionIndex = keysInCallOrder.indexOf(CURRENT_SESSION_KEY);
 
-    expect(currentSessionIndex).toBeGreaterThanOrEqual(0);
     expect(sessionHistoryIndex).toBeGreaterThanOrEqual(0);
-    expect(currentSessionIndex).toBeLessThan(sessionHistoryIndex);
+    expect(currentSessionIndex).toBeGreaterThanOrEqual(0);
+    expect(sessionHistoryIndex).toBeLessThan(currentSessionIndex);
+
+    setItemSpy.mockRestore();
+  });
+
+  it("writes each key exactly once for the archive transition — the ordinary, independent per-key save effects do not repeat or reorder the coordinated write", async () => {
+    await startTrainingAndAddOneShot();
+    openEditDetails();
+
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
+    setItemSpy.mockClear();
+
+    screen.getByRole("button", { name: "Start New Session" }).click();
+    await waitFor(() => screen.getByText("Start New Session"));
+    screen.getByRole("button", { name: "Start" }).click();
+    await waitFor(() => screen.getByText("Set Up Training Block"));
+
+    // Give any further, independently-scheduled render/effect cycle a chance to run —
+    // if the ordinary save effects redundantly re-persisted this same transition (in
+    // their own declaration order), it would show up as a second call to one of these
+    // two keys.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const keysInCallOrder = setItemSpy.mock.calls.map(([key]) => key);
+    const historyCalls = keysInCallOrder.filter((key) => key === SESSION_HISTORY_KEY);
+    const currentSessionCalls = keysInCallOrder.filter((key) => key === CURRENT_SESSION_KEY);
+
+    expect(historyCalls).toHaveLength(1);
+    expect(currentSessionCalls).toHaveLength(1);
 
     setItemSpy.mockRestore();
   });

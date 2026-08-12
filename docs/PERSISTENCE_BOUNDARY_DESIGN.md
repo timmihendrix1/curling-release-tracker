@@ -17,7 +17,12 @@ migration behavior, or deduplication behavior changed at any point. See
 `docs/SYSTEM_ARCHITECTURE.md`'s "Persistence boundary" section for the as-built summary,
 and `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18, "Phase 1: Persistence
 boundary (Implemented)." The IndexedDB adapter described in Section 10 remains
-unimplemented (Phase 2).
+unimplemented (Phase 2). **One Phase-2 prerequisite this document flagged (Section 6.4's
+"transactional or safer-ordered archive operation," Section 6.5's adapter-contingent
+write order) is now resolved**, ahead of and independent of the IndexedDB adapter itself,
+by `docs/adr/0014-session-archive-write-ordering.md` — see Sections 6.2, 6.4, and 6.5
+below for the updated text. This does not change this document's status regarding
+IndexedDB: Section 10 is still documentation-only, and IndexedDB is still unimplemented.
 
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
@@ -898,35 +903,45 @@ performs no deduplication on load either. (Contrast: `AssessmentRepository`'s re
 equivalent, `archiveCurrentAssessmentRun`, *is* ID-idempotent — `persistence.ts:60-86`.
 Session has no equivalent today.)
 
-### 6.2 Binding product-owner decision for Phase 1
+### 6.2 Binding product-owner decision for Phase 1 (superseded in part by ADR-0014)
 
-**Phase 1 does not change any of the above.** Specifically, and explicitly superseding the
+**Phase 1 did not change any of the above.** Specifically, and explicitly superseding the
 original draft's `archiveCurrentToHistory` method:
 
-1. **The write order is unchanged**: current-session first, session-history second.
+1. ~~**The write order is unchanged**: current-session first, session-history second.~~
+   **Superseded by `docs/adr/0014-session-archive-write-ordering.md`**, the separate,
+   explicitly-approved decision Section 6.4 (below) called for: the write order is now
+   session-history first, current-session second, coordinated inside one repository
+   method (`SessionRepository.archiveAndReplace`) rather than left to two independent
+   `useEffect`s. See ADR-0014 for the full rationale (history-first is the safer
+   direction for a non-atomic backend) and failure semantics. Points 2, 4, and 5 below
+   are unaffected by that change.
 2. **No ID-based deduplication or new idempotency behavior is introduced** for session
    archiving.
-3. **`SessionRepository` exposes only `loadCurrent`/`saveCurrent`/`loadHistory`/
-   `saveHistory`** (Section 5.1) — there is no composed, cross-key repository method for
-   archiving.
+3. ~~**`SessionRepository` exposes only `loadCurrent`/`saveCurrent`/`loadHistory`/
+   `saveHistory`**~~ — **superseded by ADR-0014**: `SessionRepository` now also exposes
+   `archiveAndReplace`, the one composed, cross-key operation ADR-0014 authorizes
+   specifically for this transition. It still does not decide *what* the next state is
+   (point 4 below still holds) — only how the two writes it's given are coordinated.
 4. **Construction of the next session and the next history array stays in the existing
-   application flow** (`TrackerApp.tsx`'s `handleStartNewSession`, or its eventual
-   equivalent) — the repository does not decide *what* the next state is, only persists
-   what it's given.
+   application flow** (`TrackerApp.tsx`'s `handleStartNewSession`) — the repository does
+   not decide *what* the next state is, only persists what it's given, in the order and
+   with the failure semantics ADR-0014 specifies.
 5. **The empty-session guard (`shots.length > 0`) stays in application code**, not inside
    any repository operation — a repository method has no product-level opinion about
    whether a session is "worth archiving."
 
-Concretely, the Phase 1 implementation of `handleStartNewSession` (or its equivalent) is
-expected to call, in this exact order, matching today's effect declaration order exactly:
+As implemented (post-ADR-0014), `handleStartNewSession` calls:
 
 ```
 if (currentSession has at least one shot) {
   const nextHistory = [currentSession, ...existingHistory];
-  await sessionRepository.saveCurrent(nextCurrentSession);
-  await sessionRepository.saveHistory(nextHistory);
+  const result = await sessionRepository.archiveAndReplace(nextHistory, nextCurrentSession);
+  // result distinguishes a history-write failure (nothing persisted, React state left
+  // untouched) from a current-session-write failure (history already durable; React
+  // state still updated; the ordinary saveCurrent effect retries) — see ADR-0014.
 } else {
-  await sessionRepository.saveCurrent(nextCurrentSession);
+  // handled by the ordinary, independent saveCurrent save effect, unchanged.
 }
 ```
 
@@ -940,18 +955,30 @@ absence of a fix for an oversight.
 
 ### 6.4 Deferred to a separate, future, explicitly-approved decision
 
-Not decided by this document, and not authorized by ADR-0013:
+Not decided by this document, and not authorized by ADR-0013 directly:
 
-- A transactional (or safer-ordered) archive operation.
+- ~~A transactional (or safer-ordered) archive operation.~~ **Resolved by
+  `docs/adr/0014-session-archive-write-ordering.md`**: a safer-ordered (history-first),
+  explicitly-coordinated `archiveAndReplace` operation. Not transactional — ADR-0014 is
+  explicit that `localStorage` still cannot provide cross-key atomicity; it only commits
+  to which non-atomic order is safer, and documents the seam a future IndexedDB adapter
+  could use to make the same operation genuinely atomic.
 - Retry-safe deduplication for session archiving, of the kind `AssessmentRepository`
-  already has for run archiving.
-- Any change to the current write order.
+  already has for run archiving. **Still not decided** — ADR-0014 does not add
+  ID-based deduplication to `archiveAndReplace`.
+- ~~Any change to the current write order.~~ **Resolved by ADR-0014** (above).
 
-Any of the above would be a genuine behavior change and requires its own, separate
-product-owner decision and its own ADR update — not an implicit consequence of introducing
-the repository boundary.
+Retry-safe deduplication remains a genuine behavior change requiring its own, separate
+product-owner decision and ADR — not an implicit consequence of ADR-0014.
 
-### 6.5 The write-order property is adapter-contingent, not a structural guarantee (added in Revision 4)
+### 6.5 The write-order property is now coordinated at the repository boundary, not adapter-contingent (Resolved by ADR-0014; historical description below kept for context)
+
+**This subsection described a gap that has since been closed.** `docs/adr/0014-session-archive-write-ordering.md`
+introduces `SessionRepository.archiveAndReplace`, which sequences the two writes with a
+plain `await` inside the repository method itself — the guarantee no longer depends on
+adapter synchronicity or React effect declaration order, for the reasons the original
+finding below identified as a risk. The original finding is preserved here as the
+historical record of why ADR-0014 was needed:
 
 `PERSISTENCE_BOUNDARY_PHASE1_AUDIT.md` finding 7: the current-session-before-history
 write order (6.1–6.2) is real and is directly verified by
@@ -1810,9 +1837,13 @@ not a design gap.
 ### 6. How atomic multi-record operations should be represented
 
 **Resolved for Phase 1: there are none.** Section 6 removes the one candidate
-(`archiveCurrentToHistory`) the original draft proposed. No repository method in this
-revision claims cross-key atomicity. A future, separately-approved decision may introduce
-one (Section 6.4).
+(`archiveCurrentToHistory`) the original draft proposed. No repository method in Phase 1
+claims cross-key atomicity. **Partially superseded by `docs/adr/0014-session-archive-write-ordering.md`**:
+`SessionRepository.archiveAndReplace` now exists as a composed, cross-key operation, but
+it is explicitly *coordinated* (a deliberate write order), not *atomic* — ADR-0014 is
+explicit that `localStorage` still cannot provide cross-key atomicity, and documents the
+seam a future IndexedDB adapter could use to make the same operation genuinely atomic.
+True atomicity remains a future, separately-approved decision, same as before.
 
 ### 7. How repository errors should be exposed without coupling the UI to browser APIs
 
@@ -1855,11 +1886,15 @@ Phase 1; that characterization tests precede production wiring changes (Section 
 
 **Explicitly deferred**: per-domain migration-progress tracking's storage location; the
 exact equality-check mechanism for pre-deletion validation; the IndexedDB
-activation-and-rollback mechanism (Section 10, step 4); a transactional/safer-ordered
-session-archive operation and retry deduplication (Section 6.4); any automatic-retry or
-recovery UX for a `"write_protected"` domain (Section 7.1); downgrade behavior once
-IndexedDB becomes authoritative; anything about sync metadata, conflict resolution, or
-identity (Section 12).
+activation-and-rollback mechanism (Section 10, step 4); ~~a transactional/safer-ordered
+session-archive operation~~ (a safer-ordered, coordinated — but not transactional —
+operation is now resolved by `docs/adr/0014-session-archive-write-ordering.md`; true
+cross-key transactionality remains deferred to whatever future IndexedDB adapter
+decision implements Section 6's "seam") and retry deduplication for session archiving
+(Section 6.4, still unresolved); any automatic-retry or recovery UX for a
+`"write_protected"` domain (Section 7.1); downgrade behavior once IndexedDB becomes
+authoritative; anything about sync metadata, conflict resolution, or identity
+(Section 12).
 
 ## 14. Relationship to existing ADRs and documents
 

@@ -308,17 +308,27 @@ retry — neither is designed today.
 ### IndexedDB adapter and transactional session archiving — deferred to a future phase
 
 **What:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes a future IndexedDB-backed
-`StorageAdapter` behind the same repository boundary, and §6.4/§6.5 note that the
-current-session-before-history write order is preserved only by the current,
-synchronous-under-the-hood `localStorageAdapter` and React's effect declaration order —
-not by anything the repository interface itself guarantees. A genuinely asynchronous
-adapter could complete the two writes out of order with nothing today noticing or
-preventing it.
+`StorageAdapter` behind the same repository boundary. The sequencing half of this item is
+now resolved: `docs/adr/0014-session-archive-write-ordering.md` introduced
+`SessionRepository.archiveAndReplace`, which coordinates the session-history and
+current-session writes with a plain sequential `await` inside the repository method
+itself (history-first, chosen as the safer-recoverable order for a non-atomic backend) —
+this no longer depends on `localStorageAdapter`'s incidental synchronicity or React's
+effect declaration order, closing the exact gap this item originally flagged.
 
-**Recommendation:** before any IndexedDB migration, make an explicit sequencing decision
-for `SessionRepository.saveCurrent`/`saveHistory` (e.g. `await` the first before starting
-the second, or a real transaction if the target store supports one) — do not assume
-today's order carries over silently. Not urgent: no IndexedDB work is scheduled.
+**What remains open:** ADR-0014 explicitly does not, and cannot, make the two
+`localStorage` writes atomic — an interruption between them can still produce a
+recoverable duplicate (never a loss, per ADR-0014's chosen ordering, but not "nothing
+happened either"). True cross-key atomicity requires a real IndexedDB transaction
+spanning both object stores, which does not exist yet — ADR-0014 documents the seam
+(`archiveAndReplace`'s stable signature/failure-semantics) a future IndexedDB adapter
+implementation can use to provide it without any change above the repository layer.
+
+**Recommendation:** when IndexedDB work is actually scheduled, implement
+`archiveAndReplace`'s IndexedDB-backed version as one transaction over both object
+stores rather than two sequential `set` calls — do not assume the current, still-
+non-atomic `localStorage` implementation's behavior needs to be preserved beyond its
+documented failure semantics (ADR-0014). Not urgent: no IndexedDB work is scheduled.
 
 ### `react-hooks/set-state-in-effect` lint warning on initial load
 

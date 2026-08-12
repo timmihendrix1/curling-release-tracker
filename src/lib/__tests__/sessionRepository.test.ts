@@ -6,7 +6,11 @@ import {
   SESSION_HISTORY_STORAGE_KEY,
 } from "../sessionRepository";
 import { createLocalStorageAdapter } from "../persistence/localStorageAdapter";
-import type { StorageAdapter } from "../persistence/types";
+import type {
+  PersistenceWriteError,
+  PersistenceWriteResult,
+  StorageAdapter,
+} from "../persistence/types";
 
 function fakeFailingAdapter(): StorageAdapter {
   return {
@@ -19,6 +23,76 @@ function fakeFailingAdapter(): StorageAdapter {
     },
     async set() {
       return { ok: false, error: { kind: "storage_unavailable" } };
+    },
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function makeSession(id: string) {
+  return {
+    id,
+    title: id,
+    date: new Date().toISOString(),
+    notes: "",
+    blocks: [],
+    activeBlockId: "",
+    shots: [],
+  };
+}
+
+/**
+ * A deliberately, genuinely asynchronous test adapter — unlike `localStorage`, `set()`
+ * does not resolve until the test explicitly releases it. This is required to prove
+ * `archiveAndReplace`'s ordering guarantee holds independent of adapter synchronicity
+ * (docs/adr/0014-session-archive-write-ordering.md): a fake that resolves immediately
+ * (as most mocks would) could pass an ordering assertion for the wrong reason — because
+ * everything happens to settle in one microtask, the same way the real
+ * `localStorageAdapter` does today. This adapter makes the *first* `set()` call
+ * controllable so a test can assert the second call has not even started until the
+ * first is released.
+ */
+function createControllableAsyncAdapter(options?: {
+  failKey?: string;
+  failError?: PersistenceWriteError;
+}) {
+  const callLog: string[] = [];
+  const pendingGates = new Map<string, ReturnType<typeof createDeferred<void>>>();
+
+  function gateFor(key: string) {
+    if (!pendingGates.has(key)) {
+      pendingGates.set(key, createDeferred<void>());
+    }
+    return pendingGates.get(key)!;
+  }
+
+  const adapter: StorageAdapter = {
+    async get() {
+      return { status: "value", value: null };
+    },
+    async set(key: string): Promise<PersistenceWriteResult> {
+      callLog.push(`start:${key}`);
+      await gateFor(key).promise;
+      callLog.push(`resolve:${key}`);
+      if (options?.failKey === key) {
+        return { ok: false, error: options.failError ?? { kind: "storage_unavailable" } };
+      }
+      return { ok: true };
+    },
+  };
+
+  return {
+    adapter,
+    callLog,
+    /** Releases the gate for one key's set() call, letting it resolve. */
+    release(key: string) {
+      gateFor(key).resolve();
     },
   };
 }
@@ -223,6 +297,137 @@ describe("SessionRepository", () => {
       const repo = createSessionRepository(createLocalStorageAdapter());
       const history = await repo.loadHistory();
       expect(history.status).toBe("value");
+    });
+  });
+
+  // See docs/adr/0014-session-archive-write-ordering.md for the decision this
+  // coordinated operation implements.
+  describe("archiveAndReplace", () => {
+    async function flushMicrotasks() {
+      for (let i = 0; i < 5; i++) {
+        await Promise.resolve();
+      }
+    }
+
+    it("writes session history to completion before the replacement current-session write even begins — proven with a genuinely asynchronous adapter, not one that resolves in the same microtask", async () => {
+      const { adapter, callLog, release } = createControllableAsyncAdapter();
+      const repo = createSessionRepository(adapter);
+
+      const resultPromise = repo.archiveAndReplace(
+        [makeSession("h1")],
+        makeSession("c1")
+      );
+
+      // The history write has started; the current-session write must not have
+      // started yet. If this adapter resolved synchronously (like localStorage),
+      // or in the same microtask, this assertion could pass for the wrong
+      // reason — the controllable gate is what makes it a real proof.
+      expect(callLog).toEqual([`start:${SESSION_HISTORY_STORAGE_KEY}`]);
+
+      release(SESSION_HISTORY_STORAGE_KEY);
+      await flushMicrotasks();
+
+      expect(callLog).toEqual([
+        `start:${SESSION_HISTORY_STORAGE_KEY}`,
+        `resolve:${SESSION_HISTORY_STORAGE_KEY}`,
+        `start:${CURRENT_SESSION_STORAGE_KEY}`,
+      ]);
+
+      release(CURRENT_SESSION_STORAGE_KEY);
+      const result = await resultPromise;
+
+      expect(result).toEqual({ ok: true });
+      expect(callLog).toEqual([
+        `start:${SESSION_HISTORY_STORAGE_KEY}`,
+        `resolve:${SESSION_HISTORY_STORAGE_KEY}`,
+        `start:${CURRENT_SESSION_STORAGE_KEY}`,
+        `resolve:${CURRENT_SESSION_STORAGE_KEY}`,
+      ]);
+    });
+
+    it("persists both the history array and the replacement session correctly against the real localStorage adapter", async () => {
+      localStorage.clear();
+      const repo = createSessionRepository(createLocalStorageAdapter());
+      const history = [makeSession("h1")];
+      const nextCurrent = makeSession("c1");
+
+      const result = await repo.archiveAndReplace(history, nextCurrent);
+
+      expect(result).toEqual({ ok: true });
+      expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_STORAGE_KEY)!)).toHaveLength(1);
+      expect(JSON.parse(localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)!).id).toBe("c1");
+    });
+
+    it("never attempts the current-session write when the history write fails — resolving { step: 'history' }, nothing persisted", async () => {
+      const { adapter, callLog, release } = createControllableAsyncAdapter({
+        failKey: SESSION_HISTORY_STORAGE_KEY,
+        failError: { kind: "unknown", message: "simulated history failure" },
+      });
+      release(SESSION_HISTORY_STORAGE_KEY);
+      release(CURRENT_SESSION_STORAGE_KEY);
+      const repo = createSessionRepository(adapter);
+
+      const result = await repo.archiveAndReplace(
+        [makeSession("h1")],
+        makeSession("c1")
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        step: "history",
+        error: { kind: "unknown", message: "simulated history failure" },
+      });
+      expect(callLog).toEqual([
+        `start:${SESSION_HISTORY_STORAGE_KEY}`,
+        `resolve:${SESSION_HISTORY_STORAGE_KEY}`,
+      ]);
+      expect(callLog.some((entry) => entry.includes(CURRENT_SESSION_STORAGE_KEY))).toBe(
+        false
+      );
+    });
+
+    it("returns the current-session write failure visibly, distinguished by step, after the history write already succeeded", async () => {
+      const { adapter, callLog, release } = createControllableAsyncAdapter({
+        failKey: CURRENT_SESSION_STORAGE_KEY,
+        failError: { kind: "quota_exceeded" },
+      });
+      release(SESSION_HISTORY_STORAGE_KEY);
+      release(CURRENT_SESSION_STORAGE_KEY);
+      const repo = createSessionRepository(adapter);
+
+      const result = await repo.archiveAndReplace(
+        [makeSession("h1")],
+        makeSession("c1")
+      );
+
+      expect(result).toEqual({
+        ok: false,
+        step: "current",
+        error: { kind: "quota_exceeded" },
+      });
+      expect(callLog).toEqual([
+        `start:${SESSION_HISTORY_STORAGE_KEY}`,
+        `resolve:${SESSION_HISTORY_STORAGE_KEY}`,
+        `start:${CURRENT_SESSION_STORAGE_KEY}`,
+        `resolve:${CURRENT_SESSION_STORAGE_KEY}`,
+      ]);
+    });
+
+    it("leaves the independent saveCurrent/saveHistory operations available and unaffected afterward — ordinary per-shot/per-edit persistence still works", async () => {
+      localStorage.clear();
+      const repo = createSessionRepository(createLocalStorageAdapter());
+
+      await repo.archiveAndReplace([makeSession("h1")], makeSession("c1"));
+
+      const saveCurrentResult = await repo.saveCurrent(makeSession("c2"));
+      expect(saveCurrentResult).toEqual({ ok: true });
+      expect(JSON.parse(localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)!).id).toBe("c2");
+
+      const saveHistoryResult = await repo.saveHistory([makeSession("h2")]);
+      expect(saveHistoryResult).toEqual({ ok: true });
+      expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_STORAGE_KEY)!)).toHaveLength(
+        1
+      );
     });
   });
 });

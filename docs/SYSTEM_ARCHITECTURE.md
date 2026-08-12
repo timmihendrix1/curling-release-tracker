@@ -1121,13 +1121,40 @@ through direct `localStorage` calls scattered across components — see
   lack of cross-save deduplication are all unchanged from before the boundary existed
   (design doc §6). IndexedDB, cloud sync, and the rest of design doc §10 remain
   unimplemented.
-- **The current-session-before-history write order is preserved by the current
-  implementation, not guaranteed by the repository contract itself.** It holds today
-  because `localStorageAdapter` resolves synchronously under the hood and React fires
-  passive effects in declaration order — not because `Promise<PersistenceWriteResult>`
-  itself promises any ordering. A future genuinely-asynchronous adapter (IndexedDB or
-  otherwise) would need its own explicit sequencing decision before this order could
-  still be relied on (design doc §6, §10).
+- **Session archiving is coordinated at the repository boundary, not left to two
+  independent React effects (Implemented, `docs/adr/0014-session-archive-write-ordering.md`).**
+  `SessionRepository.archiveAndReplace(nextHistory, nextCurrentSession)` writes session
+  history to completion — via a plain sequential `await` inside the repository method,
+  not via effect declaration order — **before** it even attempts the current-session
+  write, and short-circuits (never attempting the current-session write at all) if the
+  history write fails. This ordering guarantee holds regardless of whether the adapter
+  resolves synchronously (today's `localStorage`) or genuinely asynchronously (a future
+  IndexedDB adapter), because no React effect participates in the coordination. History-
+  first was chosen as the safer of the two possible orders for a backend with no
+  cross-key atomicity: an interruption between the two writes now risks, at worst, a
+  recoverable duplicate (the archived session briefly still visible in the old "current"
+  slot too), never the unrecoverable loss the reverse order risked. Two refs in
+  `TrackerApp.tsx` (`lastArchivedHistoryRef`/`lastArchivedCurrentSessionRef`) prevent the
+  ordinary, independent per-key save effects from redundantly re-persisting — in their
+  own declaration order — the same transition the coordinated call just committed. See
+  ADR-0014 for the full failure semantics and the seam this leaves for a future
+  IndexedDB adapter to make the same operation genuinely atomic.
+- **The transition itself is single-flight and coordinated with the existing capture
+  queue, not left to `ConfirmModal` or a stale render closure (Implemented, ADR-0014's
+  hardening pass).** `handleStartNewSession`'s `onConfirm` checks and sets a
+  `useRef<boolean>` guard synchronously, before any `await`, so a second rapid click
+  cannot start a second `archiveAndReplace` call — `ConfirmModal` itself has no
+  re-entrancy protection of its own. The actual transition
+  (`performSessionArchiveTransition`) is enqueued onto `captureQueueRef`, the same
+  Promise chain every `TimingResult` already flows through (ADR-0007), so a capture
+  mutation already accepted before the transition's turn always completes first (and is
+  reflected in the archived snapshot), and one submitted while the transition's own
+  persistence write is pending cannot interleave between the snapshot read and the
+  current-session replacement — it simply runs after, against whatever is authoritative
+  by then. The transition reads `sessionRef`/`sessionHistoryRef` (a new mirror added for
+  this pass, matching `sessionRef`'s existing pattern), never the render closure that
+  scheduled it, since that closure may be stale by the time a deferred, queued call
+  actually runs.
 
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 
@@ -1237,8 +1264,11 @@ Plans, Accuracy Tolerance Profiles, Smart Random Profiles, Assessment Preference
 `docs/PERSISTENCE_BOUNDARY_DESIGN.md`.
 
 Session and Session History are two `localStorage` keys, read and written through
-`SessionRepository` (`src/lib/sessionRepository.ts`), via two independent `useEffect`s
-in `TrackerApp.tsx`:
+`SessionRepository` (`src/lib/sessionRepository.ts`). Ordinary per-shot/per-edit
+persistence for each key still goes through its own independent `useEffect` in
+`TrackerApp.tsx`; the session-archiving transition specifically goes through the single,
+coordinated `archiveAndReplace` method instead (see above and ADR-0014), not through
+those two effects:
 
 - `curling-release-tracker-current-session` — the current `Session`.
 - `curling-release-tracker-session-history` — a `Session[]` of completed sessions.
