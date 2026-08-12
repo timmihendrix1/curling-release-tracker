@@ -13,14 +13,24 @@ behavior-preserving, including the exact current write order and the current lac
 session-history deduplication (Section 6) — and all seven repository contracts were
 completed (Section 5).
 
-**Revision 2** (this version) corrects an unsafe conflation Revision 1 still contained,
-identified in `PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`: a genuine storage read failure was
-treated identically to normal absence, which would let default state be persisted over
-already-stored data once hydration "completed" and writes were enabled. This revision
-introduces an explicit, application-owned read-result type distinct from the write-result
-type (Section 8), a three-state hydration model that keeps a domain read-only whenever its
-load genuinely failed (Section 7), and a corrected implementation sequence that puts
-characterization tests strictly before any production wiring change (Section 11).
+**Revision 2** corrected an unsafe conflation Revision 1 still contained, identified in
+`PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`: a genuine storage read failure was treated
+identically to normal absence, which would let default state be persisted over
+already-stored data once hydration "completed" and writes were enabled. That revision
+introduced an application-owned read-result type distinct from the write-result type, a
+three-state hydration model, and a corrected implementation sequence putting
+characterization tests strictly before any production wiring change (Section 11) — but its
+read-result type still had only two branches, folding a genuinely absent key together with
+a real stored value (and any repaired/defaulted value derived from malformed data) into
+one `"ready"` status.
+
+**Revision 3** (this version) splits that remaining branch: the read-result type now has
+three top-level outcomes — `value` (something was stored, used as-is or repaired per the
+domain's existing policy), `absent` (the key genuinely does not exist), and `read_failed`
+(a genuine storage-access failure) — per `PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`.
+Every repository's `load*` method documentation, the hydration transition table, and the
+timing-provider gating condition are updated to name all three outcomes explicitly
+(Sections 5, 7, 8, 9, 11).
 
 ## 1. Purpose and scope
 
@@ -303,17 +313,29 @@ every call — never a cached or shared mutable reference.** This is stated once
 generally, and applies uniformly to every method in every repository in this section; it
 is not restated per method.
 
-Every write method returns `Promise<PersistenceWriteResult>` (defined in Section 8) rather
-than `Promise<void>` or a bare rejected `Promise`. Every read method returns
-`Promise<DomainLoadResult<T>>` (also defined in Section 8) rather than a bare `Promise<T>`
-— **this is corrected from Revision 1**, which had every read method resolve directly to
-`T`, collapsing normal absence and malformed/repaired data (both safe to persist) together
-with genuine storage-layer read failures (not safe to persist) into one indistinguishable
-outcome. `DomainLoadResult<T>` keeps that distinction explicit: `{ status: "ready", value }`
-for the first group, `{ status: "read_failed", fallback, error }` for the second. Every
-`load*` method still **never rejects, for any reason** — a genuine read failure resolves
-to the `read_failed` variant rather than throwing; see Section 8 for the full type and
-Section 7 for how hydration consumes it.
+Every write method returns `Promise<PersistenceWriteResult>` (defined in Section 8.1)
+rather than `Promise<void>` or a bare rejected `Promise`. Every read method returns
+`Promise<DomainLoadResult<T>>` (defined in Section 8.2) rather than a bare `Promise<T>` —
+distinguishing three outcomes, not the one a bare `Promise<T>` could express:
+
+- **`{ status: "value"; value: T }`** — something was stored under the key. `value` is
+  either that stored data as-is, or the result of the domain's existing repair/quarantine/
+  discard policy if the stored data was malformed or an unsupported schema version
+  (Section 3) — both are "a value," never distinguished from each other within this
+  status, exactly as today.
+- **`{ status: "absent" }`** — the key genuinely does not exist. Carries no value on
+  purpose: the caller (hydration owner) initializes that domain's own documented default
+  directly (stated per method below), the same way current code already does per domain —
+  **this is not a generic "call the migration function with `null`" step**, and Section
+  5.1 explains below why that generic approach would be actively wrong for `Session`
+  specifically.
+- **`{ status: "read_failed"; fallback: T; error }`** — a genuine storage-layer read
+  failure. `fallback` is named differently from `value` so the type itself documents
+  "display only, never for persistence" (Section 7 enforces this at the write-guard
+  level).
+
+Every `load*` method still **never rejects, for any reason** — see Section 8.2 for the
+full type and Section 7 for how hydration consumes all three outcomes.
 
 ### 5.1 `SessionRepository`
 
@@ -323,30 +345,46 @@ Owns keys #1 (`curling-release-tracker-current-session`) and #2
 Section 6 for why, and for exactly how `TrackerApp.tsx`'s `handleStartNewSession` composes
 `saveCurrent`/`saveHistory` itself in Phase 1.
 
+**Why `"absent"` must not call `migrateSession(null)`:** `migrateSession`'s own
+`migrateBlocks` step treats a genuinely *missing* `blocks` array as legacy pre-block data
+and fabricates a `"Legacy Block"` to hold it (ADR-0005) — confirmed directly:
+`migrateSession(null)` resolves `source = {}`, and `migrateBlocks({})` sees no `blocks`
+array at all, so it returns `[createLegacyBlock({})]`. A brand-new session that was never
+stored yet is not legacy data and must never receive a fabricated block. This is exactly
+why today's code (`TrackerApp.tsx:765-780`) checks `if (savedSession)` **before** ever
+calling `migrateSession`, and calls `createNewSession()` in the `else` branch instead —
+and exactly why `loadCurrent()`'s `"absent"` status must remain a distinct,
+migration-bypassing outcome, not a convenience wrapper around calling the migration
+function with an empty input.
+
 ```typescript
 interface SessionRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<Session | undefined>` (Section 8).
-   * On `status: "ready"`: `value` is the current session, already migrated, or
-   * `undefined` if nothing is stored yet (matches today's absence semantics exactly —
-   * callers remain responsible for calling `createNewSession()` themselves, as
-   * `TrackerApp.tsx`'s current mount effect does). Malformed/unknown-shape data never
-   * produces `read_failed` — `migrateSession` already degrades malformed/partial data to
-   * a valid, repaired `Session` (Section 3); a completely unparseable string is treated
-   * the same as "nothing stored," both resolving to `status: "ready"`.
-   * On `status: "read_failed"`: a genuine adapter-level read failure (Section 8) — the
-   * fallback is `undefined` (the same value absence would produce), for display purposes
-   * only. Callers/hydration (Section 7) must not treat this as equivalent to `"ready"`.
+   * Input: none. Output: `DomainLoadResult<Session>` (Section 8.2).
+   * `"value"`: something was stored under the key; `value` is that data run through
+   * `migrateSession` (Section 3) — this covers both a genuine prior session and a
+   * malformed/partial stored string, both repaired to a valid `Session` by the existing
+   * function, never distinguished from each other within `"value"`.
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes
+   * `createNewSession()` directly (`TrackerApp.tsx`'s existing function) — **never**
+   * `migrateSession(null)`, per the note above this interface.
+   * `"read_failed"`: a genuine adapter-level read failure (Section 8.2) — `fallback` is
+   * `createNewSession()`, for display purposes only. Callers/hydration (Section 7) must
+   * not treat this as equivalent to `"value"`/`"absent"`.
+   * A repaired `"value"` result may be persisted once the domain reaches `"ready"`
+   * (Section 7) — this is the existing, accepted "re-persist the migrated value
+   * immediately" behavior, unchanged.
    * Mutation semantics: read-only, no side effect.
    * Copy semantics: fresh object every call (Section 5's general rule).
    * Atomicity: N/A (single read, single key).
    * Idempotency: yes — repeated calls with no intervening write return equal results.
-   * Current behavior preserved: yes, exactly, for the `"ready"` path (`TrackerApp.tsx:757-780`'s
-   * existing load-then-optionally-create split); the `"read_failed"` distinction is new
-   * in this revision and has no prior behavior to preserve, since today's synchronous
-   * code has no observable read-failure path at all.
+   * Current behavior preserved: yes, exactly, for `"value"`/`"absent"`
+   * (`TrackerApp.tsx:757-780`'s existing load-then-optionally-create split, now made
+   * explicit as two distinct statuses instead of one `if (savedSession)` branch); the
+   * `"read_failed"` distinction is new and has no prior behavior to preserve, since
+   * today's synchronous code has no observable read-failure path at all.
    */
-  loadCurrent(): Promise<DomainLoadResult<Session | undefined>>;
+  loadCurrent(): Promise<DomainLoadResult<Session>>;
 
   /**
    * Input: the full `Session` to persist. Output: a `PersistenceWriteResult` (Section 8).
@@ -363,18 +401,23 @@ interface SessionRepository {
   saveCurrent(session: Session): Promise<PersistenceWriteResult>;
 
   /**
-   * Input: none. Output: `DomainLoadResult<Session[]>` (Section 8).
-   * On `status: "ready"`: `value` is the full history list, already migrated. `[]` if
-   * nothing is stored — never `undefined` (this domain's absence value is an empty
-   * array, not a missing object; a real, existing asymmetry with `loadCurrent()`,
-   * preserved, not smoothed over). Malformed/unknown-shape data degrades via
-   * `migrateSessionHistory` exactly as today and also resolves to `"ready"`.
-   * On `status: "read_failed"`: a genuine adapter-level read failure; `fallback` is `[]`,
-   * for display purposes only — not to be treated as "confirmed empty history."
+   * Input: none. Output: `DomainLoadResult<Session[]>` (Section 8.2).
+   * `"value"`: something was stored; `value` is that data run through
+   * `migrateSessionHistory` (mapping `migrateSession` over the array) — covers both a
+   * genuine prior history and a malformed/partial stored string, repaired the same way,
+   * never distinguished from each other within `"value"`. Unlike `loadCurrent()`, running
+   * migration on an actually-stored-but-malformed array here carries no Legacy-Block-style
+   * trap, since `migrateSessionHistory` maps `migrateSession` per-entry over whatever
+   * array elements exist — there is no equivalent "was this key ever written at all"
+   * ambiguity once we already know `"value"` (something was stored).
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes `[]`
+   * directly — the domain's existing, documented empty-history default.
+   * `"read_failed"`: a genuine adapter-level read failure; `fallback` is `[]`, for
+   * display purposes only — not to be treated as "confirmed empty history."
    * Copy semantics: fresh array every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly, for the `"ready"` path
+   * Current behavior preserved: yes, exactly, for `"value"`/`"absent"`
    * (`TrackerApp.tsx:761-763`); `"read_failed"` is new, with no prior behavior to
    * preserve.
    */
@@ -408,20 +451,28 @@ Owns key #3. Wraps `sanitizeHistoryFilters`/`sanitizeThresholdComparisonMode`
 ```typescript
 interface HistoryFiltersRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<HistoryAnalysisFilters>` (Section 8).
-   * On `status: "ready"`: `value` is the current filters, already sanitized. Absence or
-   * a `JSON.parse` failure resolves to `createDefaultHistoryFilters()`
-   * (`historyAnalysis.ts:85-96`), exactly matching `TrackerApp.tsx:793-804`'s existing
-   * try/catch-to-defaults behavior, and both resolve to `"ready"`. A malformed
-   * `thresholdComparisonMode` sub-field is independently repaired by
-   * `sanitizeThresholdComparisonMode`, exactly as today.
-   * On `status: "read_failed"`: `fallback` is `createDefaultHistoryFilters()`, for
-   * display purposes only.
+   * Input: none. Output: `DomainLoadResult<HistoryAnalysisFilters>` (Section 8.2).
+   * `"value"`: something was stored and parsed successfully; `value` is that data run
+   * through `sanitizeHistoryFilters`/`sanitizeThresholdComparisonMode`
+   * (`historyAnalysis.ts:139-149`) — repairs a malformed `thresholdComparisonMode`
+   * sub-field exactly as today, still `"value"` (something was there, just partly wrong).
+   * A stored string that fails `JSON.parse` entirely is treated as `"absent"` below —
+   * matching `TrackerApp.tsx:793-804`'s existing try/catch, which today falls back to the
+   * already-set default on either "nothing stored" or "couldn't parse" without
+   * distinguishing them; this repository preserves that exact grouping rather than
+   * inventing a new distinction between "no string" and "unparseable string" that current
+   * code never made.
+   * `"absent"`: the key genuinely does not exist, or its stored string is not valid JSON.
+   * The hydration owner initializes `createDefaultHistoryFilters()`
+   * (`historyAnalysis.ts:85-96`) directly.
+   * `"read_failed"`: `fallback` is `createDefaultHistoryFilters()`, for display purposes
+   * only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
+   * Current behavior preserved: yes, exactly, for `"value"`/`"absent"`; `"read_failed"`
+   * is new.
    */
   load(): Promise<DomainLoadResult<HistoryAnalysisFilters>>;
 
@@ -460,29 +511,33 @@ type AssessmentLoadResult = {
 
 interface AssessmentRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<AssessmentLoadResult>` (Section 8).
-   * On `status: "ready"`: `value` is `{ state, currentRunQuarantined }`. `state` never
-   * has an `undefined`/missing shape — an absent or fully-invalid key resolves to
-   * `createEmptyAssessmentPersistedState()` (`persistence.ts:26-28`), exactly as today,
-   * and also resolves to `"ready"` (absence and malformed data are not distinguished
-   * from each other, only from a genuine read failure — see below). This asymmetry with
-   * `SessionRepository.loadCurrent()` (which CAN return `undefined` inside a `"ready"`
-   * result) is intentional and preserved, not smoothed over. An individually invalid run
-   * is quarantined (dropped), never partially repaired, exactly as
-   * `migrateAssessmentPersistedState` does today; an unrecognized root `schemaVersion`
-   * resolves to the fresh empty state — still `"ready"`.
-   * On `status: "read_failed"`: `fallback` is `{ state: createEmptyAssessmentPersistedState(),
-   * currentRunQuarantined: false }`, for display purposes only — the app must not assume
-   * no run is actually in progress merely because this read failed.
+   * Input: none. Output: `DomainLoadResult<AssessmentLoadResult>` (Section 8.2).
+   * `"value"`: the stored string parsed successfully (as *some* JSON object, whether or
+   * not its shape is actually valid); `value` is `{ state, currentRunQuarantined }` where
+   * `state` is that parsed object run through `migrateAssessmentPersistedState` — an
+   * individually invalid run is quarantined (dropped), never partially repaired, exactly
+   * as today; an unrecognized root `schemaVersion` resolves to the fresh empty state —
+   * still `"value"`, since something parseable was there, it just didn't validate.
+   * `"absent"`: the key genuinely does not exist, **or its stored string failed
+   * `JSON.parse` entirely** — matching `TrackerApp.tsx:802-811`'s existing behavior
+   * exactly (both cases set `rawAssessment = null` and take the same
+   * `createEmptyAssessmentPersistedState()` shortcut *without* calling
+   * `migrateAssessmentPersistedState` at all); this repository preserves that exact
+   * grouping. The hydration owner initializes `{ state: createEmptyAssessmentPersistedState(),
+   * currentRunQuarantined: false }` directly.
+   * `"read_failed"`: `fallback` is the same empty-state shape as `"absent"`, for display
+   * purposes only — the app must not assume no run is actually in progress merely because
+   * this read failed.
    * Reload-recovery (forcing a `warmup`/`in_progress` run to `paused`) stays in
-   * application code, operating on a `"ready"` result's value only — it is an existing
+   * application code, operating on a `"value"` result only — it is an existing
    * domain-function composition (`pauseAssessmentRun`), not a repository concern, and
-   * must not run against a `"read_failed"` fallback.
+   * must not run against an `"absent"`/`"read_failed"` fallback (there is no run to
+   * recover in either case).
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
    * Current behavior preserved: yes, including the quarantine-notice signal, for
-   * `"ready"`; `"read_failed"` is new.
+   * `"value"`/`"absent"`; `"read_failed"` is new.
    */
   loadState(): Promise<DomainLoadResult<AssessmentLoadResult>>;
 
@@ -511,22 +566,28 @@ shape: a **root-level full wipe on version mismatch**, distinct from both
 ```typescript
 interface TrainingPlansRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<TrainingPlan[]>` (Section 8).
-   * On `status: "ready"`: `value` is the plan list, already migrated. `[]` if nothing is
-   * stored, if the root `schemaVersion` doesn't match (`migrateTrainingPlans`'s
-   * full-wipe gate, `migration.ts:159-161`), or if the stored value is fully malformed —
-   * never `undefined`, and all of these resolve to `"ready"`. Within a matching root
-   * version, each plan is independently field-repaired (`migratePlan`,
-   * `migration.ts:134-149`); a single structurally broken plan is dropped without
-   * invalidating the rest of the list.
-   * On `status: "read_failed"`: `fallback` is `[]`, for display purposes only.
+   * Input: none. Output: `DomainLoadResult<TrainingPlan[]>` (Section 8.2).
+   * `"value"`: something was stored (any parseable JSON, whether or not it validates);
+   * `value` is that data run through `migrateTrainingPlans` — `[]` if the root
+   * `schemaVersion` doesn't match (`migrateTrainingPlans`'s full-wipe gate,
+   * `migration.ts:159-161`) or the stored value is malformed, still `"value"` since
+   * something was there. Within a matching root version, each plan is independently
+   * field-repaired (`migratePlan`, `migration.ts:134-149`); a single structurally broken
+   * plan is dropped without invalidating the rest of the list.
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes `[]`
+   * directly. Note: today's code (`TrackerApp.tsx:860`) always calls
+   * `migrateTrainingPlans(rawTrainingPlans).plans` even when `rawTrainingPlans` is
+   * `null`, relying on the migration function's own internal `isRecord` check to produce
+   * `[]` — this repository bypasses that call entirely on genuine absence instead, for
+   * consistency with the other six repositories' `"absent"` handling; the *value*
+   * produced is identical either way (`[]`), so this changes no observable behavior.
+   * `"read_failed"`: `fallback` is `[]`, for display purposes only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh array every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, for `"ready"` — matches `TrackerApp.tsx:860`'s
-   * existing `migrateTrainingPlans(rawTrainingPlans).plans` unwrapping exactly;
-   * `"read_failed"` is new.
+   * Current behavior preserved: yes, for `"value"`/`"absent"` (identical output to
+   * today's unconditional `migrateTrainingPlans` call); `"read_failed"` is new.
    */
   loadPlans(): Promise<DomainLoadResult<TrainingPlan[]>>;
 
@@ -556,22 +617,28 @@ fully specified here.
 ```typescript
 interface AccuracyToleranceProfilesRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<AccuracyToleranceProfilesState>` (Section 8).
-   * On `status: "ready"`: `value` is the full state, already migrated. Never
-   * `undefined` — absence, an unrecognized `schemaVersion`, or a fully-invalid
-   * top-level shape resolves to `createEmptyAccuracyToleranceProfilesState()`
-   * (`persistence.ts`), and all of these resolve to `"ready"`. An individually invalid
-   * profile is quarantined (dropped) via `migrateProfile`, never repaired, without
-   * invalidating the rest of the list. A `defaultProfileId` that no longer resolves to a
-   * surviving profile is cleared to `null` — this repair happens *within* the loaded
-   * object, not as a side effect the repository performs separately.
-   * On `status: "read_failed"`: `fallback` is `createEmptyAccuracyToleranceProfilesState()`,
-   * for display purposes only.
+   * Input: none. Output: `DomainLoadResult<AccuracyToleranceProfilesState>` (Section 8.2).
+   * `"value"`: something was stored (parseable, whether or not it validates); `value` is
+   * that data run through `migrateAccuracyToleranceProfilesState` — an unrecognized
+   * `schemaVersion` or a fully-invalid top-level shape resolves to
+   * `createEmptyAccuracyToleranceProfilesState()`, still `"value"`. An individually
+   * invalid profile is quarantined (dropped) via `migrateProfile`, never repaired,
+   * without invalidating the rest of the list. A `defaultProfileId` that no longer
+   * resolves to a surviving profile is cleared to `null` — this repair happens *within*
+   * the loaded object, not as a side effect the repository performs separately.
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes
+   * `createEmptyAccuracyToleranceProfilesState()` directly. As with
+   * `TrainingPlansRepository` (Section 5.4), today's code always calls the migration
+   * function even on `null`; bypassing it here on genuine absence produces the identical
+   * value, so no observable behavior changes.
+   * `"read_failed"`: `fallback` is `createEmptyAccuracyToleranceProfilesState()`, for
+   * display purposes only.
    * Mutation semantics: read-only.
    * Copy semantics: fresh object every call.
    * Atomicity: N/A.
    * Idempotency: yes.
-   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
+   * Current behavior preserved: yes, exactly, for `"value"`/`"absent"`; `"read_failed"`
+   * is new.
    */
   loadState(): Promise<DomainLoadResult<AccuracyToleranceProfilesState>>;
 
@@ -603,16 +670,20 @@ specified here.
 ```typescript
 interface SmartRandomProfilesRepository {
   /**
-   * Output: `DomainLoadResult<SmartRandomProfilesState>` (Section 8). Same
-   * `"ready"`-path absence/malformed/quarantine semantics as
+   * Output: `DomainLoadResult<SmartRandomProfilesState>` (Section 8.2). Same
+   * `"value"`-path malformed/quarantine semantics as
    * `AccuracyToleranceProfilesRepository.loadState()` (Section 5.5), plus one additional
    * domain-specific repair: a profile whose `measurementMode` no longer supports Smart
    * Random (per `isSmartRandomAvailable`) is quarantined, never coerced into a fabricated
-   * range — exactly as `migrateSmartRandomProfilesState` does today. Same
-   * `"read_failed"` semantics as Section 5.5, with `fallback: createEmptySmartRandomProfilesState()`.
+   * range — exactly as `migrateSmartRandomProfilesState` does today, still `"value"`.
+   * Same `"absent"` treatment as Section 5.5 (hydration owner initializes
+   * `createEmptySmartRandomProfilesState()` directly; bypassing today's unconditional
+   * migration call on `null` changes no observable value). Same `"read_failed"`
+   * semantics as Section 5.5, with `fallback: createEmptySmartRandomProfilesState()`.
    * Mutation semantics: read-only. Copy semantics: fresh object every call.
    * Atomicity: N/A. Idempotency: yes.
-   * Current behavior preserved: yes, exactly, for `"ready"`; `"read_failed"` is new.
+   * Current behavior preserved: yes, exactly, for `"value"`/`"absent"`; `"read_failed"`
+   * is new.
    */
   loadState(): Promise<DomainLoadResult<SmartRandomProfilesState>>;
 
@@ -638,10 +709,16 @@ gate in Section 7 — see that section's note.
 ```typescript
 interface AssessmentPreferencesRepository {
   /**
-   * Input: none. Output: `DomainLoadResult<boolean>` (Section 8) — whether the Assess
-   * Guided Introduction should be shown. On `"ready"`: `true` (shown) if nothing is
-   * stored yet — matches `getShowAssessmentIntroductionPreference`'s existing
-   * `raw === null → true` default exactly (`assessmentPreferences.ts:19`). On
+   * Input: none. Output: `DomainLoadResult<boolean>` (Section 8.2) — whether the Assess
+   * Guided Introduction should be shown.
+   * `"value"`: a string was stored; `value` is `raw === "true"` evaluated literally
+   * (`assessmentPreferences.ts:20`) — **note this is not a "repair to default"
+   * situation**: an unrecognized stored string (anything other than the literal `"true"`)
+   * evaluates to `false`, not to the `"absent"` default of `true` below. This exact,
+   * slightly surprising literal-comparison behavior is preserved unchanged.
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes `true`
+   * (shown) directly — matches `getShowAssessmentIntroductionPreference`'s existing
+   * `raw === null → true` default exactly (`assessmentPreferences.ts:19`).
    * `"read_failed"`: `fallback: true`, for display purposes only. Never rejects.
    * **No write-protection state applies to this repository** (see the note above this
    * interface) — there is no passive save effect to protect; a `"read_failed"` result
@@ -649,7 +726,7 @@ interface AssessmentPreferencesRepository {
    * may simply retry on the next relevant interaction if it chooses to.
    * Mutation semantics: read-only. Copy semantics: N/A (primitive).
    * Atomicity/idempotency: N/A/yes. Current behavior preserved: yes, exactly, for
-   * `"ready"`; `"read_failed"` is new.
+   * `"value"`/`"absent"`; `"read_failed"` is new.
    */
   getShowIntroduction(): Promise<DomainLoadResult<boolean>>;
 
@@ -658,15 +735,20 @@ interface AssessmentPreferencesRepository {
   setShowIntroduction(show: boolean): Promise<PersistenceWriteResult>;
 
   /**
-   * Output: `DomainLoadResult<AccuracyThresholdPreset>`. On `"ready"`: the last-selected
-   * threshold preset, defaulting to `"standard"` on absence or an invalid stored value —
-   * matches the existing whitelist-check-with-fallback exactly
-   * (`assessmentPreferences.ts:27,33-35`). On `"read_failed"`: `fallback: "standard"`.
+   * Output: `DomainLoadResult<AccuracyThresholdPreset>`.
+   * `"value"`: a string was stored; `value` is that string if it's one of
+   * `VALID_PRESETS`, else `"standard"` — matches the existing whitelist-check-with-
+   * fallback exactly (`assessmentPreferences.ts:27,33-35`); an invalid stored string is
+   * still `"value"` (something was there, repaired to `"standard"`), distinct from
+   * `"absent"` below even though the resulting fallback value happens to be the same.
+   * `"absent"`: the key genuinely does not exist. The hydration owner initializes
+   * `"standard"` directly.
+   * `"read_failed"`: `fallback: "standard"`.
    * Never authoritative for an actual Run's threshold snapshot (documented at
    * `assessmentPreferences.ts:29`) — this remains a UI-preselection concern only,
    * unchanged. No write-protection state applies, per the note above.
    * Mutation semantics: read-only. Current behavior preserved: yes, exactly, for
-   * `"ready"`; `"read_failed"` is new.
+   * `"value"`/`"absent"`; `"read_failed"` is new.
    */
   getLastThresholdPreset(): Promise<DomainLoadResult<AccuracyThresholdPreset>>;
 
@@ -675,13 +757,20 @@ interface AssessmentPreferencesRepository {
   setLastThresholdPreset(preset: AccuracyThresholdPreset): Promise<PersistenceWriteResult>;
 
   /**
-   * Output: `DomainLoadResult<AccuracyThresholds | null>`. On `"ready"`: the
-   * last-entered custom threshold pair, or `null` if absent or malformed — matches
+   * Output: `DomainLoadResult<AccuracyThresholds | null>`.
+   * `"value"`: a non-empty string was stored; `value` is the parsed-and-shape-checked
+   * threshold pair if it parses and validates, else `null` — matches
    * `getLastAssessmentCustomThreshold`'s existing try/catch + shape-check exactly
-   * (`assessmentPreferences.ts:46-59`). On `"read_failed"`: `fallback: null`. Also never
-   * authoritative, same reasoning as above; no write-protection state applies.
+   * (`assessmentPreferences.ts:46-59`); a present-but-invalid string is still `"value"`
+   * (repaired to `null`), distinct from `"absent"` even though the fallback value is
+   * again coincidentally the same.
+   * `"absent"`: the key genuinely does not exist (or is an empty string, which today's
+   * `if (!raw) return null` treats identically — preserved). The hydration owner
+   * initializes `null` directly.
+   * `"read_failed"`: `fallback: null`.
+   * Also never authoritative, same reasoning as above; no write-protection state applies.
    * Mutation semantics: read-only. Current behavior preserved: yes, exactly, for
-   * `"ready"`; `"read_failed"` is new.
+   * `"value"`/`"absent"`; `"read_failed"` is new.
    */
   getLastCustomThreshold(): Promise<DomainLoadResult<AccuracyThresholds | null>>;
 
@@ -693,27 +782,33 @@ interface AssessmentPreferencesRepository {
 
 ### 5.8 How these contracts preserve current behavior
 
-- Every method's absence/default/malformed-data behavior matches the corresponding
+- Every method's `"value"`/`"absent"`/malformed-data behavior matches the corresponding
   existing `migrate*`/`sanitize*` function or inline check exactly — no new default-value
   rule, no new fallback behavior, no new validation rule is introduced anywhere in this
-  section.
+  section. Where today's code always invokes a migration function even on a `null` input
+  (`TrainingPlansRepository`, `AccuracyToleranceProfilesRepository`,
+  `SmartRandomProfilesRepository`), this document documents an equivalent-output
+  simplification (bypass the call on genuine `"absent"`) explicitly, per method, rather
+  than silently changing what those three methods return.
 - No repository exposes a generic `save(key, value)`/`get(key)` method — every method is
   named for its domain operation.
-- `AssessmentRepository.loadState()`'s "never missing" contract, and
-  `SessionRepository.loadHistory()`'s "`[]`, never `undefined`" contract, are both stated
-  as intentional asymmetries with `SessionRepository.loadCurrent()` — preserved, not
-  smoothed into one uniform absence value.
+- Every domain's `"absent"` default is stated explicitly and independently — `Session`
+  uses `createNewSession()` specifically (never a generic migration call, per Section
+  5.1's note on the Legacy Block trap), while every other domain uses its own documented
+  empty-state constructor or literal default. No two domains' absence handling is
+  assumed identical merely because this document uses one shared result type for all of
+  them.
 - Nothing in this section touches a storage *key name* or a persisted *shape* — the
   contracts describe how existing keys/shapes are accessed, never what they contain.
 - **`SessionRepository` no longer includes `archiveCurrentToHistory`** — see Section 6 for
   the corrected treatment of session archiving.
 - **Every `load*` method now returns `DomainLoadResult<T>`, not a bare `T`** — see
-  Section 8.2. Normal absence and malformed/repaired data are still folded into one
-  outcome (`"ready"`), exactly matching current behavior; a genuine storage read failure
-  is now its own, distinct outcome (`"read_failed"`), which current behavior has no
-  equivalent for (today's fully-synchronous code has no observable read-failure path at
-  all) and which Section 7's hydration design consumes to keep the affected domain
-  write-protected.
+  Section 8.2. Three outcomes, not one: `"value"` (something was stored, used as-is or
+  repaired per the domain's existing policy), `"absent"` (the key genuinely does not
+  exist), and `"read_failed"` (a genuine storage-layer failure, which current behavior
+  has no equivalent for — today's fully-synchronous code has no observable read-failure
+  path at all). Section 7's hydration design consumes all three, initializing the correct
+  default on `"absent"` and keeping the domain write-protected on `"read_failed"`.
 
 ## 6. Session archiving (corrected in this revision)
 
@@ -816,33 +911,39 @@ to "a real asynchronous gap" — and the product-owner decision requires that th
 introduce **no** new risk: no default overwriting stored data, no dropped timing results,
 no unintended rewrites, and no cross-domain contamination.
 
-**Corrected in this revision (Revision 2)**: the previous version of this section
-collapsed a genuine storage read failure into "hydration completed," which — combined
-with an unconditional "writes enabled once hydrated" rule — would have let default state
-be persisted over already-stored data purely because a *read* failed. That sequence
-(persisted data exists → read fails → application initializes default state → hydration
-"completes" → save effects enable → default state overwrites the real value) is exactly
-the unsafe conflation this revision closes. **"Hydration settled" and "writes enabled" are
-now two different things**, tracked by three explicit states, not one boolean.
+**Corrected across Revisions 2–3**: the original version of this section collapsed a
+genuine storage read failure into "hydration completed," which — combined with an
+unconditional "writes enabled once hydrated" rule — would have let default state be
+persisted over already-stored data purely because a *read* failed (Revision 2's fix).
+Revision 2's own read-result type still folded a real/repaired stored value together with
+genuine absence into one `"ready"` outcome; Revision 3 (this version) splits those into
+`"value"` and `"absent"` at the repository-contract level (Section 8.2), and this section
+now maps all **three** repository-level outcomes onto the hydration model explicitly.
+**"Hydration settled" and "writes enabled" remain two different things**, tracked by three
+explicit states, not one boolean.
 
 ### 7.1 Three-state model, per effect-persisted domain
 
 For each of the six domains wired through `TrackerApp.tsx`'s mount/save-effect pattern
 (#1–#7 minus `AssessmentPreferencesRepository`, which has no mount effect to gate — see
-7.6), the application layer tracks one state value per domain, replacing Revision 1's
-single boolean hydration flag:
+7.6), the application layer tracks one hydration-state value per domain:
 
 ```typescript
 type DomainHydrationState = "loading" | "ready" | "write_protected";
 ```
 
+Only three states — mapping from the repository's **three** `DomainLoadResult` outcomes
+(Section 8.2), not a one-to-one correspondence:
+
 - **`"loading"`** — the initial state, before the domain's `load*()` call resolves.
-- **`"ready"`** — the load resolved with `{ status: "ready", value }` (Section 8): a real
-  stored value, a normal-absence default, or a malformed-data fallback — all three are
-  safe to persist going forward, exactly as today. **Only in this state are the domain's
-  save effects permitted to run.**
-- **`"write_protected"`** — the load resolved with `{ status: "read_failed", fallback,
-  error }` (Section 8): a genuine storage-layer read failure. The domain's state is set to
+- **`"ready"`** — the load resolved either `{ status: "value", value }` or
+  `{ status: "absent" }` (Section 8.2). Both are safe to persist going forward, exactly as
+  today (today's code never distinguishes "a real/repaired value" from "the documented
+  default because nothing was stored" for write-permission purposes, only for *which*
+  value gets initialized — Section 7.2). **Only in this state are the domain's save
+  effects permitted to run.**
+- **`"write_protected"`** — the load resolved `{ status: "read_failed", fallback, error }`
+  (Section 8.2): a genuine storage-layer read failure. The domain's state is set to
   `fallback` **for UI display purposes only**; the domain's save effect stays disabled
   for the remainder of the session, so nothing — including that same fallback value — is
   ever written back to storage merely because the read failed. The `error` value is
@@ -861,32 +962,40 @@ if (sessionHydrationState !== "ready") return;
 This generalizes the ad hoc guard that already exists for exactly 2 of 7 domains today
 (`if (!currentSession) return;`, `if (!assessmentState) return;`) into a uniform rule
 applied to all 6 relevant domains, closing the write-guard gap identified in Section 2.1
-for the other 4 — **and** it is strictly narrower than Revision 1's `if (!hydrated)
-return;` guard, because `"write_protected"` is a third state that guard could not express.
-This is not a change to any domain's steady-state persisted value on the success path — a
-`"ready"` domain's save effect behaves exactly as today.
+for the other 4 — **and** it is strictly narrower than a boolean guard would be, because
+`"write_protected"` is a third state such a guard could not express. This is not a change
+to any domain's steady-state persisted value on the success path — a `"ready"` domain's
+save effect behaves exactly as today.
 
 ### 7.2 Required behavior per load outcome
 
-- **Successful value load** (`"ready"`, a real stored value): initialize the domain's
-  state to that value, set `DomainHydrationState` to `"ready"`, permit writes.
-- **Normal absence** (`"ready"`, nothing was stored): initialize the domain's existing
-  default/empty state (Section 5's per-method absence semantics, unchanged), set state to
-  `"ready"`, permit writes — identical treatment to the previous bullet, since both are
-  safe to persist and today's code never distinguishes them either.
-- **Malformed or unsupported stored data** (`"ready"`, via the domain's existing repair/
-  quarantine/discard policy): apply that policy exactly as today, set state to `"ready"`,
-  and permit writes **of the resulting fallback specifically where current behavior
-  already permits persisting it** — e.g. `TrainingPlansRepository`'s full-wipe-to-`[]` on
-  a `schemaVersion` mismatch is already, today, something the existing save effect would
-  happily re-persist as `[]` on the next write; this design changes nothing about that.
-  This is a "ready" outcome, not a "read_failed" one, per the task's own instruction that
-  malformed data and unknown schema versions "are not raw storage-access failures."
-- **Storage read failure** (`"read_failed"`): complete loading for UI purposes — the
-  domain's state becomes the `fallback` value and the domain is no longer `"loading"` —
-  but set `DomainHydrationState` to `"write_protected"`, **not** `"ready"`. The save
-  effect's guard (7.1) keeps it disabled. This is the one outcome Revision 1 handled
-  incorrectly (it set the equivalent of `"ready"` here).
+- **`{ status: "value", value }`** → initialize the domain's state from `value` directly
+  (this is either a genuine stored value, or the result of the domain's existing repair/
+  quarantine/discard policy applied to malformed/unsupported stored data — Section 8.2
+  does not distinguish those two from each other, only from absence and read failure),
+  then set `DomainHydrationState` to `"ready"`, permitting writes. A repaired/discarded
+  fallback produced this way may be persisted once `"ready"` — e.g.
+  `TrainingPlansRepository`'s full-wipe-to-`[]` on a `schemaVersion` mismatch is already,
+  today, something the existing save effect would happily re-persist as `[]` on the next
+  write; this design changes nothing about that.
+- **`{ status: "absent" }`** → initialize the domain's own documented current default or
+  empty state directly (Section 5's per-method absence semantics — e.g. `createNewSession()`
+  for `SessionRepository.loadCurrent()`, `[]` for history/plans, each profile domain's own
+  `createEmpty*State()`, per-preference literal defaults), then set `DomainHydrationState`
+  to `"ready"`, permitting writes. This is not a call to any migration function (Section
+  5.1's note on why that would be wrong for `Session` specifically applies as a general
+  principle: the hydration owner, not a generic repair pass, decides what "nothing was
+  ever stored" becomes).
+- **`{ status: "read_failed", fallback, error }`** → initialize the domain's state from
+  `fallback` **for display purposes only**, retain `error` (7.5), and set
+  `DomainHydrationState` to `"write_protected"`, **never** `"ready"`. The save effect's
+  guard (7.1) keeps it disabled. This is the one outcome the original hydration design
+  handled incorrectly before Revision 2 (it treated it as equivalent to success).
+
+Malformed or unsupported stored data is always handled under the first bullet
+(`"value"`), per each domain's existing, unchanged repair/quarantine/discard policy
+(Section 3) — it is never treated as `"read_failed"`, since nothing about the storage
+mechanism itself failed; something was simply stored that didn't validate.
 
 ### 7.3 Preventing defaults from overwriting stored data
 
@@ -917,14 +1026,16 @@ time that state changes and performs the real subscribe+start only on the transi
 `"ready"` — never on a transition into `"write_protected"`, and never before either
 transition. A future real hardware `TimingProvider` must follow the same gate.
 
-**This is corrected from Revision 1**, which gated the provider on "hydration completed,"
-a condition that Revision 1's collapsed model made true even after a read failure. Under
-this revision's three-state model, a current-session read failure leaves
-`sessionHydrationState` at `"write_protected"`, so the provider is never started — a
-timing result is never generated as processable input for a session that never actually
-became ready, closing exactly the case the task identified: "timing results must remain
-blocked until the current-session domain is successfully ready, not merely until its read
-attempt has finished."
+**This is corrected from the original design**, which gated the provider on "hydration
+completed," a condition that collapsed model made true even after a read failure. Under
+this three-state model, the provider may start once `SessionRepository.loadCurrent()`
+resolved either `{ status: "value" }` or `{ status: "absent" }` — both transition
+`sessionHydrationState` to `"ready"` — but must remain inactive after
+`{ status: "read_failed" }`, which leaves it at `"write_protected"` instead. A timing
+result is never generated as processable input for a session that never actually became
+ready, closing exactly the case identified in review: "timing results must remain blocked
+until the current-session domain is successfully ready, not merely until its read attempt
+has finished."
 
 `processIncomingTimingResult`'s existing `if (!session) return;` guard
 (`TrackerApp.tsx:586-587`) remains as defense-in-depth, but the primary fix is: the
@@ -949,13 +1060,20 @@ useEffect(() => {
   let cancelled = false;
   sessionRepository.loadCurrent().then((result) => {
     if (cancelled) return;
-    if (result.status === "ready") {
-      setCurrentSession(result.value ?? createNewSession());
-      setSessionHydrationState("ready");
-    } else {
-      setCurrentSession(result.fallback ?? createNewSession());
-      setSessionReadError(result.error);
-      setSessionHydrationState("write_protected");
+    switch (result.status) {
+      case "value":
+        setCurrentSession(result.value);
+        setSessionHydrationState("ready");
+        break;
+      case "absent":
+        setCurrentSession(createNewSession());
+        setSessionHydrationState("ready");
+        break;
+      case "read_failed":
+        setCurrentSession(result.fallback);
+        setSessionReadError(result.error);
+        setSessionHydrationState("write_protected");
+        break;
     }
   });
   return () => { cancelled = true; };
@@ -999,48 +1117,61 @@ and stays independent under this design.
 
 ### 7.9 Required integration and E2E tests
 
-Corrected and expanded from Revision 1 to test the three-state model explicitly, per the
-task's required additions:
+Corrected and expanded across revisions to test the three-outcome read model and the
+three-state hydration model explicitly:
 
-1. **Normal absence permits initialization and later persistence (integration):** mock a
-   `StorageAdapter.get()` resolving `{ status: "absent" }`-equivalent (Section 8); assert
-   the domain reaches `"ready"` and a subsequent state change is persisted.
-2. **Delayed successful reads cannot be overwritten by defaults (integration):** mock a
-   `StorageAdapter` with an artificially delayed successful `get()`; assert `set()` is
-   never called for that domain's key(s) until after the load resolves and the
-   corresponding state update (to `"ready"` with the real value) has committed.
-3. **A storage read failure settles hydration but keeps the domain write-protected
+1. **Stored value and normal absence produce different repository results
+   (integration):** for each repository, seed the adapter with a real stored value in one
+   run and nothing at all in another; assert the `load*()` result's `status` is `"value"`
+   in the first case and `"absent"` in the second — never the same tag. This is the direct
+   regression guard for the requirement that repository contracts distinguish a
+   successful stored value from normal absence, not just from a read failure.
+2. **Normal absence initializes the current domain default and permits later writes
+   (integration):** mock a `StorageAdapter.get()` resolving `{ status: "absent" }`; assert
+   the domain's state is initialized to that domain's own documented default (Section 5 —
+   e.g. `createNewSession()` for `SessionRepository`, not a generic empty object), the
+   domain reaches `"ready"`, and a subsequent state change is persisted.
+3. **Delayed successful reads cannot be overwritten by defaults (integration):** mock a
+   `StorageAdapter` with an artificially delayed `get()` resolving `{ status: "value" }`;
+   assert `set()` is never called for that domain's key(s) until after the load resolves
+   and the corresponding state update (to `"ready"` with the real value) has committed.
+4. **A storage read failure settles hydration but keeps the domain write-protected
    (integration):** mock `loadX()` to resolve `{ status: "read_failed", ... }`; assert the
-   domain leaves `"loading"` (UI-visible state is set) but reaches `"write_protected"`,
-   never `"ready"`, within a bounded time.
-4. **Default state is never persisted after a read failure (integration):** using the
-   same mock as test 3, assert `StorageAdapter.set()` is never called for that domain's
+   domain leaves `"loading"` (UI-visible state is set to `fallback`) but reaches
+   `"write_protected"`, never `"ready"`, within a bounded time.
+5. **Default state is never persisted after a read failure (integration):** using the
+   same mock as test 4, assert `StorageAdapter.set()` is never called for that domain's
    key(s) for the remainder of the test, including after further unrelated re-renders.
-5. **One failed domain does not prevent unrelated domains from becoming writable
+6. **One failed domain does not prevent unrelated domains from becoming writable
    (integration):** mock one domain's `loadX()` to resolve `read_failed` (or hang) while
-   another domain's resolves `"ready"` normally; assert the second domain reaches
-   `"ready"` and its save effect activates regardless of the first.
-6. **The timing provider remains inactive when current-session loading fails
+   another domain's resolves `"value"` or `"absent"` normally; assert the second domain
+   reaches `"ready"` and its save effect activates regardless of the first.
+7. **The timing provider remains inactive when current-session loading fails
    (integration):** mock `SessionRepository.loadCurrent()` to resolve `read_failed`; spy on
-   `TimingProvider.start()`; assert it is never called.
-7. **Malformed-data behavior remains domain-specific (integration):** for each domain,
+   `TimingProvider.start()`; assert it is never called. A companion assertion confirms the
+   provider *does* start when `loadCurrent()` resolves either `"value"` or `"absent"`.
+8. **Malformed-data behavior remains domain-specific (integration):** for each domain,
    write a malformed/legacy payload directly via the adapter and confirm the *existing*
-   repair/discard/quarantine policy still produces a `"ready"` result with the documented
-   repaired value — not a `"read_failed"` result. This is the regression guard for the
-   task's explicit requirement that malformed data and unknown schema versions are not
-   raw storage-access failures.
-8. **Browser exceptions do not escape the adapter boundary (integration):** mock the
+   repair/discard/quarantine policy still produces a `"value"` result (never `"absent"`,
+   never `"read_failed"`) with the documented repaired value. This is the regression guard
+   for the requirement that malformed data and unknown schema versions are not raw
+   storage-access failures.
+9. **Browser exceptions do not escape the adapter boundary (integration):** mock the
    underlying `localStorage.getItem`/`setItem` to throw `DOMException`/
    `QuotaExceededError`; assert no repository or hydration code ever observes that
    exception type — only the typed `PersistenceReadError`/`PersistenceWriteError` shapes
    (Section 8).
-9. **Unmount-safety (integration, retained from Revision 1):** unmount the component
-   before a pending `loadX()` resolves (either branch); resolve it afterward; assert no
-   `setState`-after-unmount warning and no corresponding `set()` call.
-10. **Reload regression (E2E, extends `tests/e2e/reload.spec.ts`):** seed realistic data
-    across all domains, reload, and assert the UI never renders an empty/default view
-    before showing the loaded content, and that no domain's final stored value ever equals
-    its empty/default serialization when real data was seeded.
+10. **Unmount-safety (integration):** unmount the component before a pending `loadX()`
+    resolves (any of the three branches); resolve it afterward; assert no
+    `setState`-after-unmount warning and no corresponding `set()` call.
+11. **Current absence, reset, repair, discard, and rewrite behavior is preserved
+    (E2E, extends `tests/e2e/reload.spec.ts`/`tests/e2e/corrupt-persistence.spec.ts`):**
+    seed realistic data (and, separately, no data) across all domains, reload, and assert
+    the UI never renders an empty/default view before showing the loaded content, that no
+    domain's final stored value ever equals its empty/default serialization when real data
+    was seeded, and that every existing reset/clear/repair/discard behavior (Section 3,
+    Section 6) still produces identical end-to-end results to the pre-repository baseline
+    captured in the Section 11 characterization tests.
 
 ## 8. Error and read-result model
 
@@ -1072,7 +1203,7 @@ caller could reasonably act on differently (e.g. "ask the user to free up space"
 a persistent, storage-is-broken banner"); `unknown` is the required catch-all so nothing
 un-typed ever crosses the boundary.
 
-### 8.2 Read result (new in this revision)
+### 8.2 Read result (three outcomes as of Revision 3)
 
 ```typescript
 /**
@@ -1084,32 +1215,36 @@ type PersistenceReadError =
   | { kind: "unknown"; message: string };
 
 /**
- * The result every repository load* method resolves to. Consistent with
- * PersistenceWriteResult's shape and error vocabulary (Section 8.1), but distinguishes
- * four things a bare Promise<T> could not (this document's task explicitly requires this
- * distinction, corrected from Revision 1):
- *   1. a successful read with a real stored value,
- *   2. normal absence (nothing was stored),
- *   3. storage unavailable or access blocked,
- *   4. an unknown storage failure.
- * Cases 1 and 2 are NOT distinguished from each other at this type's level — both are
- * folded into `status: "ready"`, because every existing domain migration function already
- * treats them identically (a real value and "nothing, use the default" both produce a
- * valid, safe-to-persist domain object; see Section 3). Malformed or unknown-schema-version
- * data is likewise folded into `"ready"`, via each domain's existing repair/quarantine/
- * discard policy — it is not a raw storage-access failure and must not be treated as one.
- * Cases 3 and 4 ARE distinguished from 1/2, and from each other (via `error.kind`), because
- * they are the one distinction Revision 1 incorrectly collapsed away.
+ * The result every repository load* method resolves to. Three top-level outcomes —
+ * corrected in Revision 3 from Revision 2's two-outcome shape, which still folded a
+ * genuinely absent key together with a real (or malformed-and-repaired) stored value
+ * into one `"ready"` status. That folding did not satisfy the requirement that
+ * repository contracts distinguish a successful stored value from normal absence, even
+ * though it correctly distinguished both from a genuine read failure.
+ *
+ *   1. `"value"` — something was stored under the key, and is now either that value as
+ *      loaded, or the result of applying the domain's existing repair/quarantine/discard
+ *      policy to it if it was malformed or an unsupported schema version (Section 3).
+ *      A malformed *string* is not the same as a *missing* key — something was there,
+ *      it just couldn't be used as-is.
+ *   2. `"absent"` — the storage key genuinely does not exist. Carries no value: per
+ *      Section 5/7, the caller (hydration owner) initializes that domain's own
+ *      documented default directly, the same way current code already does per domain —
+ *      this is not a generic "call migrate(null)" step (see Section 5.1's `SessionRepository`
+ *      note for why that generic approach would be actively wrong for at least one
+ *      domain).
+ *   3. `"read_failed"` — a genuine storage-access failure (adapter-level), distinguished
+ *      from both of the above by `error.kind`. `fallback` is named differently from
+ *      `value` so the type itself documents "display only, never for persistence."
+ *
+ * Malformed/unknown-schema-version data is always `"value"`, never `"read_failed"` — it
+ * is not a raw storage-access failure and must not be treated as one.
  */
 type DomainLoadResult<T> =
-  | { status: "ready"; value: T }
+  | { status: "value"; value: T }
+  | { status: "absent" }
   | { status: "read_failed"; fallback: T; error: PersistenceReadError };
 ```
-
-`fallback` is intentionally named differently from `value` — the type itself documents
-that a `"read_failed"` result's payload is for display only, never for persistence (see
-Section 7 for how hydration enforces this at the write-guard level, not just by naming
-convention).
 
 ### 8.3 Classification responsibility
 
@@ -1124,20 +1259,39 @@ repository contains any `instanceof DOMException` check or equivalent.** `DOMExc
 `QuotaExceededError`, and any IndexedDB-specific transaction error type never escape the
 `StorageAdapter` (Section 9).
 
-### 8.4 Why reads never reject, but now can still "fail"
+### 8.4 Why reads never reject, but now can still "fail" — and why absence is not a failure
 
 Every `load*` method still **always resolves — it never rejects, for any reason.** This is
-unchanged from Revision 1. What changed is what a "failed" read resolves *to*: Revision 1
-resolved it to the domain's plain default value, indistinguishable from normal absence
-(`Promise<T>`); this revision resolves it to `{ status: "read_failed", fallback, error }`
-(`Promise<DomainLoadResult<T>>`), explicitly distinguishable. This preserves the original
-goal (hydration always completes deliberately, Section 7.2) while closing the gap the
-product-owner review identified: "hydration completed" no longer silently means "safe to
-write."
+unchanged since Revision 1. What changed across revisions is what the result resolves *to*:
+Revision 1 resolved every outcome to the domain's plain value (`Promise<T>`), making a
+genuine read failure indistinguishable from normal absence; Revision 2 introduced
+`DomainLoadResult<T>` but still folded absence and a real/repaired value together as
+`"ready"`; Revision 3 (this version) separates all three — `"value"`, `"absent"`, and
+`"read_failed"` — so that "the storage key wasn't there" and "storage access itself is
+broken" are never conflated, and neither is conflated with "a real or repaired value is
+available." This preserves the original goal (hydration always completes deliberately —
+Section 7.2, now covering three branches instead of two) while satisfying the explicit
+requirement that a successful stored value and normal absence be distinguishable at the
+repository contract level, not just at the adapter's raw string layer.
 
 ## 9. Adapter and transactions
 
 ```typescript
+/**
+ * The adapter's own, deliberately simpler read result — it represents successful
+ * absence as a successful `value: null` (matching `localStorage.getItem`'s own `null`
+ * contract exactly), rather than adopting `DomainLoadResult`'s three-way split at this
+ * raw, string-only layer. This is a permitted simplification specifically at the
+ * adapter boundary: nothing above this layer is allowed to leave the
+ * `"value"`/`"absent"` distinction implicit — every repository's `load*` method
+ * (Section 5) MUST translate a `{ status: "value", value: null }` result from this
+ * adapter into its own explicit `{ status: "absent" }`, never pass `null` upward as if
+ * it were a domain value.
+ */
+type StorageGetResult =
+  | { status: "value"; value: string | null }
+  | { status: "read_failed"; fallback: null; error: PersistenceReadError };
+
 /**
  * The only component in this design that knows about a specific browser storage
  * mechanism, and the only component that classifies its exceptions (Section 8).
@@ -1145,16 +1299,17 @@ write."
  */
 interface StorageAdapter {
   /**
-   * `T = string | null` in `DomainLoadResult` (Section 8.2): `{ status: "ready", value:
-   * null }` means the key genuinely does not exist (matches `localStorage.getItem`'s
-   * `null` exactly); `{ status: "ready", value: "..." }` means a string is stored,
-   * whatever its content — malformed-JSON handling happens one layer up, in the
-   * repository, not here. `{ status: "read_failed", fallback: null, error }` means a
-   * genuine storage-layer failure (e.g. a browser blocking storage access entirely) —
-   * **corrected from Revision 1**, which had this method reject and be silently treated
-   * as `null` by the caller; that conflation is exactly what this revision removes.
+   * `{ status: "value", value: null }` means the key genuinely does not exist (matches
+   * `localStorage.getItem`'s `null` exactly) — repositories must translate this to
+   * `{ status: "absent" }` (Section 8.2), never treat `null` itself as a domain value.
+   * `{ status: "value", value: "..." }` means a string is stored, whatever its content —
+   * malformed-JSON handling happens one layer up, in the repository, not here.
+   * `{ status: "read_failed", fallback: null, error }` means a genuine storage-layer
+   * failure (e.g. a browser blocking storage access entirely) — **corrected from
+   * Revision 1**, which had this method reject and be silently treated as `null` by the
+   * caller; that conflation is exactly what Revisions 2–3 remove.
    */
-  get(key: string): Promise<DomainLoadResult<string | null>>;
+  get(key: string): Promise<StorageGetResult>;
 
   /** Full overwrite, matching `localStorage.setItem`'s existing contract. Resolves once
    * durable per the backend's own guarantee, to `{ ok: true }`. Resolves — never
@@ -1338,17 +1493,19 @@ sequence.
 
 ### 11.9 Per-domain coverage checklist (steps 1, 3, 5, 8)
 
-Each domain (all 7 repositories) requires coverage for: empty storage/normal absence, a
-valid round trip, an update, the domain's actual reset/clear semantics, a malformed
-payload (asserting `"ready"`, not `"read_failed"` — Section 7.9, test 7), current
-migration behavior (including the `blocks`/`blocks: []` case for domains #1-#2), an
-unknown schema version where applicable (#4-#7), isolation from other domains, failed-write
-behavior (Section 8.1), and — new in this revision — a genuine read failure specifically
-(asserting `"read_failed"`, write-protection, and no persisted default — Section 7.9,
-tests 1-4). At minimum, dedicated coverage is required for current session, session
-history, Assessment, and `HistoryFiltersRepository` (standing in for "settings"), per the
-task's explicit requirement — but this applies uniformly to all 7, not just those four,
-since a boundary proven correct for 4 of 7 domains is not yet trustworthy for the other 3.
+Each domain (all 7 repositories) requires coverage for: a distinct `"value"` result for a
+real stored value, a distinct `"absent"` result for a genuinely missing key (asserted as
+different from each other — Section 7.9, test 1), a valid round trip, an update, the
+domain's actual reset/clear semantics, a malformed payload (asserting `"value"` with the
+documented repaired content, never `"absent"` and never `"read_failed"` — Section 7.9,
+test 8), current migration behavior (including the `blocks`/`blocks: []` case for domains
+#1-#2), an unknown schema version where applicable (#4-#7), isolation from other domains,
+failed-write behavior (Section 8.1), and a genuine read failure specifically (asserting
+`"read_failed"`, write-protection, and no persisted default — Section 7.9, tests 4-5). At
+minimum, dedicated coverage is required for current session, session history, Assessment,
+and `HistoryFiltersRepository` (standing in for "settings"), per the task's explicit
+requirement — but this applies uniformly to all 7, not just those four, since a boundary
+proven correct for 4 of 7 domains is not yet trustworthy for the other 3.
 
 ## 12. Future sync compatibility (seam only — not a sync protocol)
 
@@ -1444,17 +1601,22 @@ writes, plus the distinct `PersistenceReadError`/`DomainLoadResult<T>` shape for
 (Section 11, step 7) — no longer an optional, indefinitely-deferred follow-up. The test
 itself is not written in this documentation-only pass.
 
-### 9. Whether normal absence and a genuine storage read failure may be treated alike
+### 9. Whether normal absence, a successful stored value, and a genuine storage read failure may be treated alike
 
-**Resolved: no — they are explicitly distinct outcomes.** Added in this revision,
-correcting Revision 1's collapse of the two into one "always resolves to a plain default"
-read contract. Absence, malformed data, and unknown-schema-version data all resolve to
-`DomainLoadResult`'s `"ready"` status (all three were already, correctly, treated alike by
-this codebase's existing migration functions); a genuine storage-layer read failure
-resolves to `"read_failed"` instead, and the hydration design (Section 7) keeps the
-affected domain write-protected until a successful read occurs — never persisting the
-failure's display-only fallback value. See Section 8 for the type and Section 7 for how
-it's consumed.
+**Resolved: no — all three are explicitly distinct outcomes.** Revision 1 collapsed all
+three into one "always resolves to a plain default" read contract. Revision 2 separated
+read failure from the other two, but still folded a successful stored value and normal
+absence together into one `"ready"` status. Revision 3 (this version) separates all
+three: `DomainLoadResult`'s `"value"` status (a real stored value, or the result of the
+domain's existing repair/quarantine/discard policy applied to malformed/unsupported
+stored data — these two remain undistinguished from each other, since this codebase's
+existing migration functions already treat them alike); `"absent"` (the key genuinely
+does not exist — the hydration owner, not a migration function, decides what this becomes,
+per domain, since at least one domain's migration function would otherwise misinterpret
+absence as legacy data, Section 5.1); and `"read_failed"` (a genuine storage-layer
+failure), which the hydration design (Section 7) keeps write-protected until a successful
+read occurs — never persisting the failure's display-only fallback value. See Section 8.2
+for the type and Section 7 for how all three are consumed.
 
 ### 10. What must be decided now vs. what should remain deferred
 

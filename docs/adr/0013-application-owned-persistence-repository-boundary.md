@@ -12,13 +12,18 @@ including today's exact session-archiving write order and its current lack of
 deduplication (design doc §6) — and Decisions 5 (hydration safety) and 6 (error model)
 were added.
 
-**Revision 2** (this version) corrects an unsafe conflation identified in
+**Revision 2** corrected an unsafe conflation identified in
 `PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`: Revision 1's Decision 6 treated a genuine storage
 read failure identically to normal absence, which — combined with Decision 5's
 then-boolean hydration flag — would have let default state be persisted over already-
-stored data once hydration "completed," even when it completed via a failed read.
-Decisions 5 and 6 are both revised below to keep "a load settled" and "writes are enabled"
-explicitly distinct.
+stored data once hydration "completed," even when it completed via a failed read. That
+revision's read-result type still folded a successful stored value and normal absence
+together into one status, only separating both from a genuine read failure.
+
+**Revision 3** (this version) splits that remaining fold, per
+`PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`: the read-result type in Decision 6 now has
+three top-level outcomes — `"value"`, `"absent"`, and `"read_failed"` — and every
+repository's `load*` method contract (design doc §5) documents all three explicitly.
 
 ## Context
 
@@ -97,10 +102,14 @@ make that change, disclosed or not, without its own separate decision (design do
 
 ### 3. An initial `localStorage` adapter preserving current behavior exactly
 
-Introduce one shared `StorageAdapter` interface (`get(key): Promise<DomainLoadResult<string
-| null>>`, `set(key, value): Promise<PersistenceWriteResult>`) — the only component that
-knows about a specific browser storage mechanism, and, per Decision 6, the only component
-that classifies its exceptions.
+Introduce one shared `StorageAdapter` interface (`get(key): Promise<StorageGetResult>`,
+`set(key, value): Promise<PersistenceWriteResult>`) — the only component that knows about
+a specific browser storage mechanism, and, per Decision 6, the only component that
+classifies its exceptions. The adapter's own read result may represent successful absence
+as a successful `value: null` (design doc §9) — a permitted simplification at this raw,
+string-only layer — but every repository built on it must translate that into its own
+explicit `"absent"` outcome (Decision 6); nothing above the adapter is allowed to treat
+`null` as if it were a domain value.
 Its first implementation wraps `localStorage` directly, synchronously under the hood, but
 returns `Promise`s from day one so no caller-visible signature change is needed when a
 second implementation is introduced later. `remove` is deliberately omitted — no code
@@ -133,47 +142,68 @@ with the exact mechanism deferred (design doc §10, step 4).
 
 ### 5. Hydration uses three explicit states, not one boolean — writes require success, not merely settling
 
-**Revised in this revision.** Each of the six `TrackerApp`-orchestrated domains (all but
+Each of the six `TrackerApp`-orchestrated domains (all but
 `AssessmentPreferencesRepository`, which needs none) tracks a per-domain
 `DomainHydrationState`: `"loading"` until the domain's `load*` call resolves; `"ready"` if
-it resolved with a real value, normal absence, or repaired/quarantined data (all
-safe-to-persist, per Decision 6); `"write_protected"` if it resolved with a genuine
-storage read failure. Every save effect is gated on `state === "ready"` **specifically** —
-not merely "no longer loading." The Timing Simulator's subscription effect is gated the
-same way, so no timing result can be processed unless the session domain reached
-`"ready"`, not merely finished attempting to load. A cancellation guard prevents a
-late-resolving load from updating state after unmount, regardless of which state it would
-have set. See design doc §7 for the complete mechanism, rationale, and required tests.
+it resolved `{ status: "value" }` or `{ status: "absent" }` (Decision 6) — a real/repaired
+stored value and normal absence are both safe-to-persist, and the hydration owner
+initializes each domain's own documented default specifically on `"absent"`, never via a
+generic migration call (design doc §5.1's `Session`/Legacy-Block note); `"write_protected"`
+if it resolved `{ status: "read_failed" }`. Every save effect is gated on
+`state === "ready"` **specifically** — not merely "no longer loading." The Timing
+Simulator's subscription effect is gated the same way: it may start once
+`SessionRepository.loadCurrent()` resolved `"value"` or `"absent"`, and must stay inactive
+after `"read_failed"`. A cancellation guard prevents a late-resolving load from updating
+state after unmount, regardless of which of the three outcomes it would have set. See
+design doc §7 for the complete mechanism, rationale, and required tests.
 
-This decision did not exist in the original proposal (a gap Revision 1 closed) and, in
-Revision 1's form, still treated a read failure as equivalent to a successful settle —
-this revision closes that: a `"write_protected"` domain never has its save effect enabled,
-so a display-only fallback value is never persisted merely because the domain finished
-attempting to load.
+This decision did not exist in the original proposal (a gap Revision 1 closed), and in
+its first two forms still risked conflating outcomes that must stay distinct — Revision 1
+conflated read failure with success entirely; Revision 2 conflated a real value with
+absence (Decision 6 explains why that second conflation also mattered). This revision's
+`"write_protected"` state never has its save effect enabled, so a display-only fallback
+value is never persisted merely because the domain finished attempting to load, and its
+`"ready"` state is only reached via the two outcomes the design doc's Section 5 documents,
+per domain, as actually safe to persist.
 
-### 6. Read and write results are distinct types; reads never reject but can now report failure
+### 6. Read result has three outcomes; writes have their own, separate error shape
 
-**Revised in this revision.** Every repository write method returns
-`Promise<PersistenceWriteResult>`, a three-variant shape (`storage_unavailable` |
-`quota_exceeded` | `unknown`) — see design doc §8.1. Every repository read method (`load*`)
-returns `Promise<DomainLoadResult<T>>` — **not**, as Revision 1 had it, a bare
-`Promise<T>` — a two-variant shape distinguishing `{ status: "ready", value }` (a real
-value, normal absence, or domain-repaired data — all treated alike, exactly as today) from
-`{ status: "read_failed", fallback, error }` (a genuine storage-layer failure, with
-`error` drawn from a narrower, read-specific vocabulary: `storage_unavailable` | `unknown`
-— see design doc §8.2). `load*` still never rejects — a read failure resolves to
-`"read_failed"` rather than throwing — but it is no longer indistinguishable from success.
-The `StorageAdapter`, and only the `StorageAdapter`, translates `DOMException`,
-`QuotaExceededError`, and any IndexedDB-specific transaction error into either shape; no
-repository contains browser-exception-sniffing logic.
+Every repository write method returns `Promise<PersistenceWriteResult>`, a three-variant
+error shape (`storage_unavailable` | `quota_exceeded` | `unknown`) — see design doc §8.1,
+unchanged since Revision 1. Every repository read method (`load*`) returns
+`Promise<DomainLoadResult<T>>` (design doc §8.2) — corrected across two revisions from
+Revision 1's bare `Promise<T>`:
 
-This decision's Revision 1 form ("reads never fail," full stop) is exactly what the
-product-owner review identified as unsafe: it let a read failure produce a value
-indistinguishable from confirmed absence, which Decision 5's then-boolean flag would then
-mark safe to persist. This revision's two-variant read result, combined with Decision 5's
-three-state hydration, closes that gap while preserving the original goal (no
-`DOMException`/`QuotaExceededError`/IndexedDB-specific error ever reaches a repository or
-the UI, and no repository duplicates browser-specific exception knowledge).
+```typescript
+type DomainLoadResult<T> =
+  | { status: "value"; value: T }
+  | { status: "absent" }
+  | { status: "read_failed"; fallback: T; error: PersistenceReadError };
+```
+
+`"value"` covers a real stored value and any repaired/quarantined/discarded result of the
+domain's existing policy applied to malformed or unsupported stored data — these two
+remain undistinguished from each other, exactly as today's migration functions already
+treat them. `"absent"` — **new in this revision** — is now separate from `"value"`: the
+storage key genuinely does not exist, and carries no value at all, because (design doc
+§5.1) at least one domain's migration function would misinterpret a bare "nothing here"
+input as legacy data requiring fabrication, so the hydration owner, not a generic
+repair pass, must decide what "never stored" becomes, per domain. `"read_failed"` (added
+in Revision 2) remains the one outcome requiring write-protection (Decision 5). `load*`
+still never rejects — every one of the three outcomes is a resolved value, never a thrown
+exception. The `StorageAdapter`, and only the `StorageAdapter`, translates `DOMException`,
+`QuotaExceededError`, and any IndexedDB-specific transaction error into either result
+shape; no repository contains browser-exception-sniffing logic.
+
+Revision 1's form of this decision ("reads never fail," folding everything into one
+success value) is exactly what the product-owner review identified as unsafe. Revision 2's
+form fixed the read-failure conflation but left a narrower one: it did not satisfy the
+explicit requirement that repository contracts distinguish a successful stored value from
+normal absence, which made per-method absence semantics less precise than required. This
+revision's three-outcome read result, combined with Decision 5's three-state hydration,
+closes both gaps while preserving the original goal (no `DOMException`/
+`QuotaExceededError`/IndexedDB-specific error ever reaches a repository or the UI, and no
+repository duplicates browser-specific exception knowledge).
 
 ### 7. A future sync layer above local persistence, never direct UI-to-cloud persistence
 
@@ -204,10 +234,15 @@ placeholder") for a capability that may not ship for a long time.
   browser-specific knowledge across all seven repositories and contradict the adapter's
   role as the sole component aware of the underlying storage mechanism.
 - **Treating a genuine read failure identically to normal absence (Revision 1's
-  approach).** Rejected in this revision: it lets default state be initialized and later
-  persisted over data that was never actually confirmed missing, purely because a read
-  attempt failed rather than genuinely finding nothing. A two-variant read result
-  (Decision 6) and a three-state hydration model (Decision 5) replace it.
+  approach).** Rejected: it lets default state be initialized and later persisted over
+  data that was never actually confirmed missing, purely because a read attempt failed
+  rather than genuinely finding nothing.
+- **Folding a real (or repaired) stored value together with normal absence into one
+  status, distinguished only from read failure (Revision 2's approach).** Rejected in
+  this revision: it did not satisfy the requirement that repository contracts distinguish
+  a successful stored value from normal absence, and made per-method absence semantics
+  (e.g. exactly which default a caller should initialize) less explicit than required. The
+  three-outcome read result (Decision 6) replaces it.
 - **Designing automatic retry or recovery UX for a `"write_protected"` domain now.**
   Rejected for this pass: no current code has automatic-retry behavior for anything, and
   introducing one here would exceed this ADR's scope. Write-protection itself is
