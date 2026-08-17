@@ -331,19 +331,102 @@ Neither the adapter nor the migration engine is wired into any repository single
 component; `localStorage` remains the sole production source of truth and is never
 written to or deleted by the migration engine.
 
-**What remains open:** verification before any legacy-data cleanup (design doc §10 step
-3), and the activation-and-rollback mechanism required before IndexedDB could become the
-authoritative write target (step 4) — plus true cross-key atomicity for session
-archiving. ADR-0014 explicitly does not, and cannot, make the two writes atomic under
-either backend — an interruption between them can still produce a recoverable duplicate
-(never a loss, per ADR-0014's chosen ordering, but not "nothing happened either"). True
-cross-key atomicity requires a real IndexedDB transaction spanning both object stores,
-which the current adapter does not provide for `archiveAndReplace` (its generic
-`get`/`set` remain a single-key interface, exactly like `localStorageAdapter.ts`'s,
-though `IndexedDbMigrationTarget.commitDomainSnapshot` shows the same adapter's
-underlying connection can support a genuine multi-store transaction when a narrower,
-purpose-built interface is used instead of the generic one) — ADR-0014 documents the
-seam (`archiveAndReplace`'s stable signature/failure-semantics) a future
+**Activation/rollback has a proposed design, but it is explicitly incomplete — not
+design-resolved, and not accepted:**
+`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` (status:
+**Proposed, incomplete design**) answers design doc §10 step 4, but names a specific,
+unresolved blocking prerequisite it does not solve — see below. It does **not** answer
+step 3 (verify before cleanup), which remains fully unresolved as a distinct problem
+(ADR-0017 Decision 11 is explicit that activation-time verification and cleanup
+verification have different success criteria and are not the same mechanism).
+
+What ADR-0017 specifies: per-domain activation authority computed (never stored) from
+**two independent, fingerprint-bound activation-evidence records** — a new per-domain
+`localStorage` witness plus a new IndexedDB `metadata` record distinct from ADR-0016's
+migration marker. Authority is granted only when both records agree and the IndexedDB
+evidence is `"committed"` — a lone witness or a lone `"committed"` evidence record fails
+closed instead of silently re-selecting `localStorage`, but a lone, valid `"prepared"`
+evidence record is a different case: it has never conferred authority on its own, so
+finding it with no witness yet is simply pre-authority and resolves `localStorage`
+(Decision 13 row 1b), not `blocked`. **Authority begins only once the IndexedDB evidence reaches
+`"committed"` and matches the witness — never at the earlier `"prepared"` step**, even
+with a matching witness already present: a crash between those two writes releases
+activation's exclusive lock, and an ordinary, fully-participating writer may still
+legitimately write to `localStorage` before a recovery procedure gets a chance to
+re-verify the *current* snapshot, so that intermediate state blocks rather than grants
+authority. That automatic recovery procedure discards a stale attempt (when the source
+has drifted) by deleting the `localStorage` witness *before* the IndexedDB evidence — the
+reverse of manual rollback's deletion order, deliberately: an unattended, automatic
+discard must resolve any crash to plain `localStorage` authority, never to a state
+requiring manual review, which is exactly what the opposite order (used for manual
+rollback, where an operator is already present) could otherwise produce. An
+**authority-aware mutation lease**, not a lock around each individual write, is the
+actual write-exclusion mechanism: per-domain Web Locks (shared for ordinary writes,
+exclusive for activation, held for the entire verify-through-finalize sequence) are
+necessary but not sufficient on their own, since a write queued behind an in-progress
+activation could otherwise still execute afterward through a repository instance bound to
+the now-superseded backend — the lease closes this by re-checking current durable
+evidence, under the lock, **exactly once per complete logical mutation, immediately
+before that mutation's first write** (never independently repeated before a later write
+in the same mutation), and the lease is held across that whole logical mutation (e.g.
+both of `SessionRepository.archiveAndReplace`'s ordered writes, checked once), not per
+individual `StorageAdapter.set` call, so an exclusive activation attempt can never run
+partway through a multi-write operation. A `storage`-event or `BroadcastChannel`
+notification may help another tab notice sooner, but is explicitly not the safety
+mechanism. Also specified: a bounded, at-most-two-pass verification sequence (a second
+mismatch under the held lock means a non-participating writer, and is reported, not
+retried); a ten-state startup readiness gate that must resolve before any repository is
+constructed, blocking the whole application only when `localStorage` itself is
+unreadable; fail-closed failure/recovery rules reusing the existing `"write_protected"`
+hydration state for a gate-withheld domain, an already-constructed repository's later
+IndexedDB failure, and a mutation lease's authority-changed discovery alike; and rollback
+reclassified as **manual, never automatic** (blocked once a post-activation IndexedDB
+write exists — never "switch back to stale `localStorage`" — manual-but-conditional for a
+deployment revert, deferred for storage-corruption data recovery).
+
+**The blocking prerequisite ADR-0017 identifies and does not solve — one bundled
+decision, not two independent ones:** no purely client-side mechanism in this codebase
+can prevent an application build older than this protocol from continuing to read and
+write `localStorage` during or after activation — such a build has no code participating
+in the write-fencing lock or the evidence protocol, and nothing in a newer build can
+reach or coordinate with it. **The same future decision must also explicitly decide the
+fate of one further, named gap in the startup gate.** Precisely stated: *after* authority
+has been granted (the IndexedDB evidence has reached `"committed"`), loss of either
+evidence record fails closed whenever the surviving side can still be consulted —
+Decision 13 row 0b is the one explicit outage exception, not a general exception to the
+rule: a domain whose witness was lost while IndexedDB is *simultaneously unreachable*
+cannot be distinguished from a never-activated domain (the surviving side, IndexedDB's
+`"committed"` record, cannot be consulted in that exact window), and currently resolves
+`localStorage` anyway — an accepted trade-off whose justification depends specifically on
+production activation being blocked today, so it must be re-examined by, not separately
+from, whatever decision lifts that block. ADR-0017 states plainly that
+**automatic production activation is blocked by this one, combined prerequisite** until a
+separate, future, explicitly approved decision resolves both parts together (a concrete
+deployment/version-fencing mechanism, or a staged compatibility rollout with an
+enforceable prerequisite, plus an explicit call on the bounded gap) — it does not propose
+a tripwire or an "accepted residual risk" framing as a substitute for solving either.
+
+**None of this is implemented** — `localStorage` remains the sole production source of
+truth and IndexedDB remains unactivated. ADR-0017's own thirteen-stage implementation
+sequence places most of those stages as buildable and testable now, but gates repository
+wiring and any real activation behind the still-open, bundled old-build-and-bounded-gap
+prerequisite above; that prerequisite itself is not a buildable stage this team can
+complete unilaterally.
+
+**What remains open:** design doc §10 step 3 (verify before cleanup, entirely
+unresolved); the bundled old-build/version-fencing-and-bounded-gap prerequisite ADR-0017
+depends on but does not solve; every one of ADR-0017's implementation stages that follows
+it; plus true
+cross-key atomicity for session archiving. ADR-0014 explicitly does not, and cannot, make
+the two writes atomic under either backend — an interruption between them can still
+produce a recoverable duplicate (never a loss, per ADR-0014's chosen ordering, but not
+"nothing happened either"). True cross-key atomicity requires a real IndexedDB
+transaction spanning both object stores, which the current adapter does not provide for
+`archiveAndReplace` (its generic `get`/`set` remain a single-key interface, exactly like
+`localStorageAdapter.ts`'s, though `IndexedDbMigrationTarget.commitDomainSnapshot` shows
+the same adapter's underlying connection can support a genuine multi-store transaction
+when a narrower, purpose-built interface is used instead of the generic one) — ADR-0014
+documents the seam (`archiveAndReplace`'s stable signature/failure-semantics) a future
 transaction-based implementation can use without any change above the repository layer.
 
 **Recommendation:** when migration/activation work is actually scheduled, implement

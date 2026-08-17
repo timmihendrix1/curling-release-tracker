@@ -28,6 +28,50 @@ IndexedDB: Section 10 is still documentation-only, and IndexedDB is still unimpl
 `docs/adr/0015-indexeddb-adapter-unwired.md` and Section 10's revision note. Steps 2-4
 (migration, verification, activation/rollback) remain unimplemented and undesigned.
 
+**Revision 8 records that step 4 has a proposed, but explicitly incomplete, design**,
+**Revision 9 corrects four further defects found on review of Revision 8's mechanism**,
+**and Revision 10 corrects internal inconsistencies found on review of Revision 9's own
+corrections** — see `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`
+(**Proposed. Incomplete design**, not Accepted, unchanged by any of these corrections):
+per-domain activation authority computed from two independent, fingerprint-bound
+activation-evidence records (a new per-domain `localStorage` witness plus a new IndexedDB
+`metadata` record, distinct from ADR-0016's migration marker) — **authority begins only
+once the IndexedDB evidence reaches `"committed"` and matches the witness, never at the
+earlier `"prepared"` step even with a matching witness present**; an **authority-aware
+mutation lease**, not a bare lock around each individual write: per-domain Web Locks
+(shared for ordinary writes, exclusive for activation, held for the whole
+verify-through-finalize sequence) exclude concurrent writes, but a write *queued* behind
+an in-progress activation must also re-check current durable evidence, under the lock,
+**exactly once per complete logical mutation, immediately before that mutation's first
+write** — never independently repeated before a later write in the same mutation —
+otherwise it could still land after activation completes, through a repository instance
+bound to the now-superseded backend; the lease is held across one *complete logical
+mutation* (e.g. both of `SessionRepository.archiveAndReplace`'s ordered writes together,
+checked once), never per individual `StorageAdapter.set` call, so an exclusive activation
+attempt can never run partway through a multi-write operation; the ten-state startup
+readiness gate; a bounded (at most two-pass) exact-string pre-activation verification
+sequence; crash consistency per write, including an automatic, crash-resumable recovery
+procedure for an interrupted `"prepared"` + witness state that deletes the witness
+*before* the evidence when the source has drifted — the reverse of manual rollback's
+order, deliberately, so every crash point resolves to plain `localStorage` authority
+rather than a state requiring manual review (Revision 10 correction: the prior text had
+this backwards); fail-closed failure/recovery rules; and rollback reclassified as
+manual/blocked/deferred (never automatic). **ADR-0017 identifies exactly one unresolved
+blocking prerequisite, stated as a single bundled decision (Revision 10 correction: not
+two independent ones)**: no purely client-side mechanism in this codebase can prevent an
+application build older than this protocol from continuing to write `localStorage`
+during or after activation — and the same future decision that resolves this must also
+explicitly decide the startup gate's one named, bounded fault-model gap (a witness lost
+while IndexedDB is simultaneously unreachable cannot be distinguished from "never
+activated," and currently resolves `localStorage` anyway as an accepted trade-off that
+depends on production activation being blocked). ADR-0017 does not solve either part —
+it names automatic production activation as blocked until that one, combined, separate
+decision resolves it. **Nothing is implemented, and step 4 is not resolved** —
+`localStorage` remains the sole production source of truth and IndexedDB remains
+unactivated. Step 3 (verify before cleanup) is a **different problem from ADR-0017's
+pre-activation verification and remains entirely unresolved** — see the correction to
+this section's step 3, below.
+
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
 `SessionRepository.archiveCurrentToHistory` method was removed — Phase 1 is strictly
@@ -1657,18 +1701,47 @@ open questions.
    done: anything that actually *calls* this migration engine from the running
    application (an explicit, separate, future wiring decision).
 3. **Verify migrated data before considering cleanup of legacy storage.** A separate,
-   later step, never an automatic consequence of a successful first read. Still
-   undesigned and unimplemented.
+   later step, never an automatic consequence of a successful first read. **Remains
+   entirely unresolved.** ADR-0017 Decision 6 designs a *different, related* mechanism —
+   verifying freshness immediately before *activation* — and Decision 11 is explicit that
+   this is not the same problem as cleanup verification: once a domain is activated, IndexedDB is
+   expected to receive new writes with no `localStorage` counterpart, so exact equality
+   between the two backends is no longer the right success criterion by the time anyone
+   considers deleting legacy data. Do not read ADR-0017 as resolving this step.
 4. **Before IndexedDB becomes the authoritative write target, obtain a separately
    approved activation-and-rollback design.** Retaining legacy `localStorage` (step 2) is
    **not, by itself, a safe rollback strategy once the application starts writing new
    data to IndexedDB only** — any record created *after* that cutover exists solely in
    IndexedDB, so rolling back to an older, `localStorage`-only build would make that
-   record invisible to the rolled-back build, not merely "unsynced." A real rollback
-   strategy needs either a dual-write transition window, an explicit, reversible
-   feature-flagged cutover point, or some other mechanism — **which mechanism is used is
-   explicitly deferred** to that future, separate decision; this document only requires
-   that the decision be made deliberately, not implied by "we kept the old data around."
+   record invisible to the rolled-back build, not merely "unsynced." **A design is now
+   proposed but not accepted** (`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`,
+   status: Proposed, incomplete design): per-domain activation authority computed from
+   two independent, fingerprint-bound activation-evidence records (a new per-domain
+   `localStorage` witness plus a new IndexedDB `metadata` record, distinct from this
+   section's own migration marker) — authority begins only once the IndexedDB evidence
+   reaches `"committed"` and matches the witness, never at the earlier `"prepared"` step;
+   an authority-aware mutation lease, scoped to one complete logical mutation and
+   re-checking current durable evidence under the lock exactly once — immediately before
+   that mutation's first write, never independently repeated before a later write within
+   the same mutation (not merely a lock excluding concurrent writes, which does not by
+   itself stop a *queued* write from later executing against a stale, pre-activation
+   backend); a ten-state startup readiness gate, including one explicitly named and
+   bounded gap (witness loss coincident with IndexedDB being unreachable resolves
+   `localStorage`, accepted as a trade-off rather than a guarantee); and rollback
+   reclassified as manual (before any post-activation IndexedDB write, and only as an
+   operator-run diagnostic, never automatic), blocked (after — never "switch back to
+   stale `localStorage`" treated as a safe rollback), manual-but-conditional (a
+   deployment revert), or deferred (storage-corruption data recovery). **ADR-0017 itself
+   identifies why it cannot be accepted yet — one bundled prerequisite, not two**: no
+   purely client-side mechanism can exclude an application build older than this protocol
+   from writing `localStorage` during or after activation, and the same future decision
+   that resolves this must also explicitly decide the fate of the startup gate's bounded
+   gap above, since that gap's current resolution depends specifically on production
+   activation being blocked today. Automatic production activation is blocked on that
+   one, combined, separate decision. Still **not implemented, and not resolved** —
+   `localStorage` remains the sole production source of truth; see ADR-0017 for the full
+   design and its own implementation sequence, most of which is itself gated on that
+   still-open prerequisite.
 
 ### 10.1 Explicit handling of each required migration risk
 
@@ -1709,16 +1782,35 @@ open questions.
 - **Data written by an older application version.** Exactly what the existing `migrate*`
   functions already handle; the migration step runs that same function before data ever
   reaches IndexedDB.
-- **Downgrade behavior.** Not solved by this design — an explicit open question (Section
-  13). As long as step 2's `localStorage` copy is retained and step 4's activation
-  decision has not yet made IndexedDB the sole write target, an older build can keep
-  reading `localStorage` unaffected. Once IndexedDB becomes authoritative (step 4), full
-  downgrade safety requires whatever mechanism that separate decision specifies.
-- **Validation before legacy-data deletion.** Required, not optional: before any
-  `localStorage` key is deleted, the corresponding IndexedDB data must be read back and
-  compared against the migrated (not raw) value for structural/value equality, for every
-  record. The exact comparison mechanism is an implementation-time detail, not decided
-  here — but skipping this step is not authorized.
+- **Downgrade behavior.** As long as step 2's `localStorage` copy is retained and no
+  domain has been activated, an older build can keep reading `localStorage` unaffected —
+  unchanged by ADR-0017. Once a domain is activated, "downgrade" to an older,
+  pre-activation-aware build is the concrete instance of ADR-0017 Decision 3's **named,
+  unresolved blocking prerequisite** (old application builds/tabs cannot be excluded from
+  writing `localStorage` during or after activation): the older build has no concept of
+  the activation-evidence protocol and will simply resume reading/writing `localStorage`
+  for that domain, with nothing in the newer code able to reach or coordinate with it.
+  ADR-0017 does not close this gap and does not claim to mitigate it with a tripwire or
+  any other partial measure — it states plainly that automatic production activation
+  remains blocked until a separate, future decision resolves this prerequisite, and does
+  not authorize deleting or disabling any older build.
+- **Validation before legacy-data deletion.** Required, not optional, and **still fully
+  unresolved** — this is not addressed by ADR-0017, which verifies freshness for
+  activation only (a different problem, per ADR-0017 Decision 11: once a domain is
+  activated, IndexedDB is expected to receive writes with no `localStorage` counterpart,
+  so exact equality is no longer the right comparison by the time cleanup is considered).
+  This bullet's prior text ("compared against the migrated value") described the
+  original, superseded design-doc sketch, not what ADR-0016 actually implements —
+  correcting it: ADR-0016's migration engine copies each key's **exact serialized
+  string, unparsed and unrepaired**, into IndexedDB (Decision 1 there); no `migrate*`
+  function ever runs during that copy. Interpretation/repair through each domain's
+  existing `migrate*` function happens only later, when a repository's `load*` method
+  reads the copied value during ordinary hydration — identically whichever backend the
+  bytes came from. Any future deletion-time validation would therefore need its own,
+  separately designed comparison basis; it is not simply "compare against the migrated
+  value," since no migrated value exists anywhere in IndexedDB to compare against. The
+  exact mechanism remains undecided, and skipping this step before ever deleting a
+  `localStorage` key is not authorized.
 - **Idempotent retry behavior.** Every migration step must be safe to run again from
   scratch — a second run overwrites with the same result, never duplicates or appends.
 - **The `blocks` vs. `blocks: []` distinction.** Unaffected — enforced entirely inside
@@ -1927,17 +2019,47 @@ Phase 1; that characterization tests precede production wiring changes (Section 
 
 **Explicitly deferred**: ~~per-domain migration-progress tracking's storage location~~
 (resolved by `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`: the
-`metadata` object store ADR-0015 reserved for exactly this); the exact equality-check
-mechanism for pre-deletion validation; the IndexedDB activation-and-rollback mechanism
-(Section 10, step 4); ~~a transactional/safer-ordered
+`metadata` object store ADR-0015 reserved for exactly this); **the exact equality-check
+mechanism for pre-deletion validation remains fully unresolved** — it is a different
+problem from the activation-time freshness check
+`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` Decision 6
+designs (that check has no bearing on cleanup, per that ADR's own Decision 11); **the
+IndexedDB activation-and-rollback mechanism (Section 10, step 4) has a *proposed but not
+accepted* design** in ADR-0017 (status: Proposed, incomplete design) — per-domain
+authority computed from two independent, fingerprint-bound activation-evidence records (a
+new per-domain `localStorage` witness plus a new IndexedDB `metadata` record), with
+authority granted only once evidence reaches `"committed"` and matches the witness (never
+at the earlier `"prepared"` step — ADR-0017 Decision 4 removed an earlier, incorrect
+"self-healing" claim that it was); an authority-aware mutation lease, held per complete
+logical mutation and re-checking current durable evidence under the lock exactly once,
+immediately before that mutation's first write — never independently repeated before a
+later write in the same mutation — rather than a bare per-write lock (ADR-0017 Decision
+2, also corrected: a lock alone does not stop a queued write from later executing
+against a stale, pre-activation backend once the lock releases); a bounded (at most
+two-pass) verification sequence; a ten-state startup readiness gate, including one
+explicitly named, bounded gap (ADR-0017 Decision 13, row 0b: witness loss coincident
+with IndexedDB being unreachable resolves `localStorage`, an accepted trade-off, not a
+guarantee — **explicitly bundled into Decision 3 below, not a second, independent open
+question**); and rollback reclassified as manual/blocked/deferred (**never automatic** —
+ADR-0017 Decision 10 found the prior "automatic" claim unsound) — but ADR-0017 itself
+identifies why it cannot be accepted, as **one combined prerequisite**: no purely
+client-side mechanism can exclude an application build older than this protocol from
+writing `localStorage` during or after activation, **and** the same future decision must
+also decide row 0b's fate, since that row's current resolution depends specifically on
+production activation being blocked today — it declares automatic production activation
+**blocked** on that one, separate decision (ADR-0017 Decision 3) — not implemented, and
+not resolved; ~~a transactional/safer-ordered
 session-archive operation~~ (a safer-ordered, coordinated — but not transactional —
 operation is now resolved by `docs/adr/0014-session-archive-write-ordering.md`; true
 cross-key transactionality remains deferred to whatever future IndexedDB adapter
 decision implements Section 6's "seam") and retry deduplication for session archiving
 (Section 6.4, still unresolved); any automatic-retry or recovery UX for a
-`"write_protected"` domain (Section 7.1); downgrade behavior once IndexedDB becomes
-authoritative; anything about sync metadata, conflict resolution, or identity
-(Section 12).
+`"write_protected"` domain (Section 7.1) — ADR-0017 Decision 9 confirms this posture
+extends unchanged to a gate-withheld or IndexedDB-caused write-protection too; downgrade
+behavior once IndexedDB becomes authoritative for a given domain (ADR-0017 Decision 3
+names this as the concrete instance of its own named, unresolved, *blocking* prerequisite
+— not an accepted residual risk); anything about sync metadata, conflict resolution, or
+identity (Section 12).
 
 ## 14. Relationship to existing ADRs and documents
 

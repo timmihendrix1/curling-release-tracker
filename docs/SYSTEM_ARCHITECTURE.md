@@ -1207,6 +1207,75 @@ through direct `localStorage` calls scattered across components — see
   untouched by it and remains the sole production source of truth. Activation,
   verification-before-cleanup, rollback, dual-write, and `localStorage` cleanup are all
   still unresolved and unimplemented.
+- **A proposed, but explicitly incomplete, activation-and-rollback design exists (Design
+  only, not accepted — `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`,
+  status: Proposed, incomplete design).** Per-domain authority is a *computed*, never
+  separately stored, function of **two independent, fingerprint-bound activation-evidence
+  records** — a new per-domain `localStorage` witness (one dedicated key per domain,
+  distinct from the ten domain keys) and a new IndexedDB `metadata` record, distinct from
+  ADR-0016's migration marker — plus that migration marker and current IndexedDB
+  reachability; a `"complete"` migration marker alone is never sufficient for authority,
+  and neither is a lone witness or a lone `"committed"` evidence record — either signals
+  the other side was lost, and both fail closed rather than distinguishing "never
+  activated" from "activated, then lost." **A valid `"prepared"` evidence record with no
+  witness is a different, unremarkable case, not a loss signal**: `"prepared"` alone has
+  never conferred authority, so a `"prepared"` record with nothing on the `localStorage`
+  side yet is simply an activation attempt that has not reached its second step —
+  it resolves `localStorage`, not `blocked`. **`indexedDB` authority
+  begins only once the IndexedDB evidence reaches `"committed"` and matches the witness —
+  never at the earlier `"prepared"` step, even with a matching witness present**: a crash
+  between those two writes releases activation's exclusive lock, during which an
+  ordinary, fully-participating writer may still legitimately write to `localStorage`, so
+  that intermediate state is treated as blocked, pending an automatic, crash-resumable
+  recovery procedure that re-verifies the *current* (not the stale) snapshot before ever
+  finalizing or discarding it — a discard deletes the `localStorage` witness *before* the
+  IndexedDB evidence (the reverse of manual rollback's order, deliberately: any crash
+  during an automatic, unattended discard must resolve to plain `localStorage` authority,
+  never to a state requiring manual review, which is exactly what deleting in the other
+  order could produce). Ordinary writes and activation both participate in a **per-domain
+  Web Locks exclusive/shared write-fencing protocol**, held for the whole
+  verify-through-finalize sequence, but the lock alone is not the safety mechanism: a
+  write **queued** behind an in-progress activation must, once granted the shared lock,
+  re-check current durable evidence — exactly once per complete logical mutation,
+  immediately before that mutation's first write, never independently repeated before a
+  later write in the same mutation — before executing, otherwise it could still land,
+  after activation completes, through a repository instance built against the
+  now-superseded backend. This re-check is the actual safety mechanism; a `storage`-event
+  or `BroadcastChannel` notification may shorten how quickly another tab notices, but is
+  explicitly not relied on for correctness. The lease is also scoped to one **complete
+  logical mutation**, not one individual write — `SessionRepository.archiveAndReplace`
+  holds one lease and performs its one authority check across both of its ordered writes
+  together so an exclusive activation attempt can never run between them, without
+  changing ADR-0014's own ordering or failure semantics. Pre-activation verification
+  compares exact strings only, bounded to at most two passes under the held lock — a
+  second mismatch aborts and is reported, not retried, since it can only mean a
+  **non-participating writer** (an older application build) wrote during the critical
+  section. **ADR-0017 identifies exactly one unresolved, blocking prerequisite — bundled,
+  not split into two — that it does not solve**: no purely client-side mechanism in this
+  codebase can exclude a build that predates this protocol from writing `localStorage`
+  during or after activation, **and** the same future decision must also explicitly
+  decide the fate of one further, named gap in the startup gate: a domain whose witness
+  was lost while IndexedDB happens to be simultaneously unreachable cannot be
+  distinguished from a never-activated domain, and currently resolves `localStorage`
+  anyway — an accepted, bounded trade-off (favoring ordinary offline-first use over a
+  risk that cannot occur in production while activation itself remains blocked) whose
+  justification depends specifically on that block still being in place. **Automatic
+  production activation is blocked by ADR-0017 itself** pending that one, combined,
+  separate decision. A ten-state startup readiness gate resolves every domain's authority
+  before any repository is constructed, blocking the whole application only when
+  `localStorage` itself is unreadable — a per-domain blocked result always permits the
+  rest of the application to render. Post-activation IndexedDB outages, and a mutation
+  lease's authority-changed discovery, both reuse the existing `"write_protected"`
+  hydration state and the same reload-based recovery — three different triggers, one
+  mechanism. Rollback is reclassified as **manual, never automatic**, even before any
+  post-activation write — because the diagnostic proving that precondition cannot itself
+  exclude a non-participating writer while the old-build gap remains open — and otherwise
+  unchanged: blocked once a post-activation IndexedDB write exists, manual-but-conditional
+  for a deployment revert, deferred for storage-corruption data recovery. **Nothing is
+  implemented, and this design is not accepted**: `localStorage` remains the sole
+  production source of truth and IndexedDB remains unactivated; ADR-0017's
+  thirteen-stage implementation sequence gates repository wiring and real activation
+  behind that one still-open, bundled prerequisite.
 
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 
