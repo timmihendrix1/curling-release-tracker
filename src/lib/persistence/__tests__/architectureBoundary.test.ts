@@ -81,3 +81,103 @@ describe("persistence architecture boundary — indexedDB", () => {
     expect(/\bindexedDB\b/.test(code)).toBe(true);
   });
 });
+
+describe("persistence architecture boundary — migration module is not imported by production code", () => {
+  // See docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md: the
+  // migration engine (src/lib/persistence/localStorageToIndexedDbMigration.ts) exists
+  // and is tested, but nothing in the app invokes it yet — no repository singleton, no
+  // TrackerApp, no other component. Unlike the localStorage/indexedDB checks above,
+  // there is no single "approved importer" file here at all; the only expected
+  // reference anywhere in `src/` is the migration module's own filename.
+  const MIGRATION_MODULE_NAME = "localStorageToIndexedDbMigration";
+  const QUOTED_MODULE_PATH = `["'][^"']*${MIGRATION_MODULE_NAME}["']`;
+  // Four independent forms, matched by alternation rather than one form's regex being
+  // stretched to (incompletely) cover the others:
+  //   1. `\bfrom\s*"..."`      — named/default static imports AND re-exports, since
+  //                              both `import ... from "..."` and `export ... from
+  //                              "..."` share the same `from "..."` tail.
+  //   2. `\bimport\s*"..."`    — a bare side-effect import, which has no `from` at all
+  //                              (`import "..."`, directly followed by the path).
+  //   3. `\bimport\s*\(\s*"..."` — dynamic `import(...)`.
+  //   4. `\brequire\s*\(\s*"..."` — `require(...)`, tolerating whitespace before `(`
+  //                                  (`require ("...")`), not just `require("...")`.
+  const IMPORT_PATTERN = new RegExp(
+    [
+      `\\bfrom\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+      `\\brequire\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+    ].join("|")
+  );
+
+  function importsMigrationModule(source: string): boolean {
+    return IMPORT_PATTERN.test(stripComments(source));
+  }
+
+  it("the detector itself matches every supported import form and ignores unrelated/comment-only text (non-vacuous)", () => {
+    const positiveCases: Array<[string, string]> = [
+      [
+        "named static import",
+        'import { runLocalStorageToIndexedDbMigration } from "../persistence/localStorageToIndexedDbMigration";',
+      ],
+      [
+        "default static import",
+        'import migration from "./localStorageToIndexedDbMigration";',
+      ],
+      [
+        "side-effect import (no `from`)",
+        'import "../persistence/localStorageToIndexedDbMigration";',
+      ],
+      [
+        "dynamic import()",
+        'const mod = await import("../persistence/localStorageToIndexedDbMigration");',
+      ],
+      [
+        "require() with no space before the parenthesis",
+        'const mod = require("../persistence/localStorageToIndexedDbMigration");',
+      ],
+      [
+        "require() with whitespace before the parenthesis",
+        'const mod = require ("../persistence/localStorageToIndexedDbMigration");',
+      ],
+      [
+        "re-export using from",
+        'export { runLocalStorageToIndexedDbMigration } from "../persistence/localStorageToIndexedDbMigration";',
+      ],
+      [
+        "re-export-all using from",
+        'export * from "../persistence/localStorageToIndexedDbMigration";',
+      ],
+    ];
+    for (const [label, source] of positiveCases) {
+      expect(importsMigrationModule(source), `expected to detect: ${label}`).toBe(true);
+    }
+
+    const negativeCases: Array<[string, string]> = [
+      [
+        "comment-only mention",
+        '// This does not run localStorageToIndexedDbMigration — a comment mention only.',
+      ],
+      [
+        "block-comment mention",
+        '/* localStorageToIndexedDbMigration is mentioned here only in prose. */',
+      ],
+      ["unrelated static import", 'import { foo } from "./unrelated";'],
+      ["unrelated side-effect import", 'import "./unrelated";'],
+      ["unrelated dynamic import", 'await import("./unrelated");'],
+      ["unrelated require", 'require("./unrelated");'],
+    ];
+    for (const [label, source] of negativeCases) {
+      expect(importsMigrationModule(source), `expected NOT to detect: ${label}`).toBe(false);
+    }
+  });
+
+  it("no production file imports the migration module", () => {
+    const productionFiles = collectSourceFiles(SRC_ROOT).filter((path) => !isTestPath(path));
+    const offenders = productionFiles.filter((path) =>
+      importsMigrationModule(readFileSync(path, "utf8"))
+    );
+    // The migration module never imports itself, and nothing else may import it yet.
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+});

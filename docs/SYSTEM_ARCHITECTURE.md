@@ -1177,6 +1177,36 @@ through direct `localStorage` calls scattered across components — see
   mechanism exists yet. It still cannot express the atomic archive transaction ADR-0014
   describes, for the same structural reason `localStorageAdapter.ts` can't: `get`/`set`
   is a single-key interface.
+- **A resumable, per-domain copy migration from `localStorage` into IndexedDB exists,
+  but nothing invokes it (Implemented, mechanism only —
+  `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`).**
+  `src/lib/persistence/indexedDbAdapter.ts` gained a narrow, separate
+  `IndexedDbMigrationTarget` interface (`createIndexedDbMigrationTarget`) — reading and
+  validating a per-domain marker, and atomically committing one domain's snapshot in a
+  single IndexedDB transaction spanning both `records` and `metadata` — sharing the same
+  lazy/cached/retry-safe connection lifecycle `createIndexedDbAdapter` uses, not a second
+  implementation of it. `src/lib/persistence/localStorageToIndexedDbMigration.ts`
+  orchestrates all seven repository-boundary domains (`session`, `historyFilters`,
+  `assessment`, `trainingPlans`, `accuracyToleranceProfiles`, `smartRandomProfiles`,
+  `assessmentPreferences` — the same grouping ADR-0013 established) in that fixed order:
+  for each, it checks a deterministic `metadata`-store marker
+  (`migration:local-storage-to-indexeddb:v1:<domain>`) before ever reading that domain's
+  source keys, skips entirely if already complete, reads every source key before
+  attempting a commit, and copies the **exact string** each key resolves to — never
+  parsing, repairing, or reserializing it, since interpretation stays the exclusive job
+  of each domain's existing repository and migration function, applied later, whichever
+  backend the bytes came from. A `null` source value means the corresponding target
+  record must not exist. Markers are deliberately minimal (protocol version, domain,
+  status, the exact ordered source-key list — no timestamp, no random ID) and fail
+  closed on anything that doesn't validate exactly, never silently treated as absent or
+  complete. Two concurrent runs, or a run resumed after an interruption, are both safe:
+  the marker is re-checked inside the same transaction that writes it, and IndexedDB's
+  own transaction serialization over shared stores — not a new lock — is what guarantees
+  at most one commit per domain. Nothing in the application imports or invokes this
+  migration (enforced by an architecture-boundary test); `localStorage` remains
+  untouched by it and remains the sole production source of truth. Activation,
+  verification-before-cleanup, rollback, dual-write, and `localStorage` cleanup are all
+  still unresolved and unimplemented.
 
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 

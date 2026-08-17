@@ -305,7 +305,7 @@ should decide, explicitly, what the user sees for each of `"storage_unavailable"
 `"quota_exceeded"` / `"unknown"`, and whether/how a `"write_protected"` domain can ever
 retry — neither is designed today.
 
-### IndexedDB adapter and transactional session archiving — construction done, migration/activation/atomicity still open
+### IndexedDB adapter and transactional session archiving — adapter and copy migration done, activation/atomicity still open
 
 **What:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes a future IndexedDB-backed
 `StorageAdapter` behind the same repository boundary. The sequencing half of this item is
@@ -320,19 +320,29 @@ effect declaration order, closing the exact gap this item originally flagged.
 implemented — `src/lib/persistence/indexedDbAdapter.ts`'s `createIndexedDbAdapter()`,
 backed by the `idb` package, against a two-store (`records`/`metadata`)
 `curling-release-tracker` database — see
-`docs/adr/0015-indexeddb-adapter-unwired.md`. It is not wired into any repository
-singleton or component; `localStorage` remains the sole production source of truth.
+`docs/adr/0015-indexeddb-adapter-unwired.md`. **The copy-migration substage (design doc
+§10 step 2) is also now implemented** —
+`src/lib/persistence/localStorageToIndexedDbMigration.ts` copies exact serialized
+strings for all seven repository-boundary domains into IndexedDB behind fail-closed,
+resumable per-domain markers in the `metadata` store, without invoking any domain's
+migration/repair function (a deliberate exact-string-copy design, not a schema
+migration — see `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`).
+Neither the adapter nor the migration engine is wired into any repository singleton or
+component; `localStorage` remains the sole production source of truth and is never
+written to or deleted by the migration engine.
 
-**What remains open:** everything else in design doc §10 — migrating existing
-`localStorage` data into IndexedDB (step 2), verification before any legacy-data cleanup
-(step 3), and the activation-and-rollback mechanism required before IndexedDB could
-become the authoritative write target (step 4) — plus true cross-key atomicity for
-session archiving. ADR-0014 explicitly does not, and cannot, make the two writes atomic
-under either backend — an interruption between them can still produce a recoverable
-duplicate (never a loss, per ADR-0014's chosen ordering, but not "nothing happened
-either"). True cross-key atomicity requires a real IndexedDB transaction spanning both
-object stores, which the current adapter does not provide (its `get`/`set` remain a
-single-key interface, exactly like `localStorageAdapter.ts`'s) — ADR-0014 documents the
+**What remains open:** verification before any legacy-data cleanup (design doc §10 step
+3), and the activation-and-rollback mechanism required before IndexedDB could become the
+authoritative write target (step 4) — plus true cross-key atomicity for session
+archiving. ADR-0014 explicitly does not, and cannot, make the two writes atomic under
+either backend — an interruption between them can still produce a recoverable duplicate
+(never a loss, per ADR-0014's chosen ordering, but not "nothing happened either"). True
+cross-key atomicity requires a real IndexedDB transaction spanning both object stores,
+which the current adapter does not provide for `archiveAndReplace` (its generic
+`get`/`set` remain a single-key interface, exactly like `localStorageAdapter.ts`'s,
+though `IndexedDbMigrationTarget.commitDomainSnapshot` shows the same adapter's
+underlying connection can support a genuine multi-store transaction when a narrower,
+purpose-built interface is used instead of the generic one) — ADR-0014 documents the
 seam (`archiveAndReplace`'s stable signature/failure-semantics) a future
 transaction-based implementation can use without any change above the repository layer.
 
@@ -340,8 +350,8 @@ transaction-based implementation can use without any change above the repository
 `archiveAndReplace`'s IndexedDB-backed version as one transaction over both object
 stores rather than two sequential `set` calls — do not assume the current, still-
 non-atomic `localStorage` implementation's behavior needs to be preserved beyond its
-documented failure semantics (ADR-0014). Not urgent: no migration or activation work is
-scheduled yet.
+documented failure semantics (ADR-0014). Not urgent: no activation work is scheduled
+yet.
 
 ### `react-hooks/set-state-in-effect` lint warning on initial load
 

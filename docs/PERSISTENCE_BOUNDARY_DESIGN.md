@@ -1619,30 +1619,46 @@ resolving an ordering ambiguity in Revision 1 that could be read as permitting
 (its old step 2, "before or alongside"). Phase 2 begins only after Section 11's sequence
 is complete.
 
-**Revision 6 (this version) records that step 1 below is now done** — see
+**Revision 6 recorded that step 1 below is now done** — see
 `docs/adr/0015-indexeddb-adapter-unwired.md`: `src/lib/persistence/indexedDbAdapter.ts`
 implements `StorageAdapter` against a two-store (`records`/`metadata`) IndexedDB
 database via the `idb` package, with no repository or domain-logic change, exactly as
 step 1 requires. It is not imported or constructed by any repository singleton or
-component — `localStorage` remains the sole production source of truth. Steps 2-4 below
-(migration, verification, and the activation/rollback gate) remain entirely
-undesigned and unimplemented; this revision does not change any of their open
-questions.
+component — `localStorage` remains the sole production source of truth.
+
+**Revision 7 (this version) records that step 2 below is now done, and corrects step
+2's own original description** — see
+`docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`. The original text
+below ("run it through the *same* existing migration function used today, write the
+migrated result into IndexedDB") is superseded: the implemented migration engine
+(`src/lib/persistence/localStorageToIndexedDbMigration.ts`) copies each key's **exact
+serialized string**, unparsed and unrepaired, specifically to avoid a second
+implementation of every domain's existing repair/quarantine/discard policy — see ADR-
+0016 Decision 1 for the full reasoning, and its repository-equivalence tests for the
+proof that reading the same copied string through each domain's existing repository
+produces the same interpreted result regardless of which backend it came from. Per-domain
+progress lives in the `metadata` store ADR-0015 reserved for exactly this — never an
+11th `localStorage` key, closing the open risk 10.1 flagged below. Steps 3-4 remain
+entirely undesigned and unimplemented; this revision does not change either of their
+open questions.
 
 1. **Introduce an IndexedDB adapter behind the same `StorageAdapter` interface** (or a
    richer one, per Section 9's "may later expand" note). No repository or domain-logic
    code changes — only a second adapter implementation is added. **Done, unwired** — see
    the note above.
-2. **Migrate existing browser data without loss.** On first load under the IndexedDB
-   adapter, for each of the 10 keys: read the existing `localStorage` value (still
-   present, untouched), run it through the *same* existing migration function used today,
-   write the migrated result into IndexedDB, and — critically — **do not delete the
-   `localStorage` copy yet** (see step 3). If the `localStorage` read itself fails
-   (Section 8.2's `"read_failed"`), that key's migration is skipped and retried on a later
-   load, per the same write-protection principle as Section 7 — a failed read must never
-   be treated as "confirmed nothing to migrate."
+2. **Migrate existing browser data without loss.** For each of the 7 repository-boundary
+   domains (10 keys): read each existing `localStorage` value (still present, untouched)
+   and copy its exact string into IndexedDB under a per-domain, fail-closed completion
+   marker — **not** run through a migration function first (corrected by Revision 7
+   above). If a `localStorage` read itself fails (Section 8.2's `"read_failed"`), that
+   domain's migration is skipped and retried on a later run, per the same
+   write-protection principle as Section 7 — a failed read must never be treated as
+   "confirmed nothing to migrate." **Done, unwired** — see the note above. Not yet
+   done: anything that actually *calls* this migration engine from the running
+   application (an explicit, separate, future wiring decision).
 3. **Verify migrated data before considering cleanup of legacy storage.** A separate,
-   later step, never an automatic consequence of a successful first read.
+   later step, never an automatic consequence of a successful first read. Still
+   undesigned and unimplemented.
 4. **Before IndexedDB becomes the authoritative write target, obtain a separately
    approved activation-and-rollback design.** Retaining legacy `localStorage` (step 2) is
    **not, by itself, a safe rollback strategy once the application starts writing new
@@ -1656,21 +1672,31 @@ questions.
 
 ### 10.1 Explicit handling of each required migration risk
 
-- **Interrupted migrations.** Per-key migration (step 2) must be independently retryable:
-  if the browser closes mid-migration after key #3 but before key #4, the next load must
-  detect that #4 is not yet migrated and migrate it, without re-migrating #1-#3 in a way
-  that could duplicate or corrupt already-migrated data. This requires each per-key
-  migration step to be idempotent at the IndexedDB-write side, not just at the existing
-  `migrate*` function's side (already idempotent per ADR-0005) — the latter must be
-  designed explicitly at implementation time.
+- **Interrupted migrations.** Per-domain migration (step 2) must be independently
+  retryable: if the browser closes mid-migration after domain #3 but before domain #4,
+  the next run must detect that #4 is not yet migrated and migrate it, without
+  re-migrating #1-#3 in a way that could duplicate or corrupt already-migrated data.
+  **Resolved (Revision 7, ADR-0016):** each domain's target commit is idempotent at the
+  IndexedDB-write side via its own fail-closed completion marker, re-checked inside the
+  same atomic transaction that writes it — independent of the existing `migrate*`
+  functions' own idempotency (ADR-0005), since those functions are never invoked by the
+  migration engine at all (Decision 1).
 - **Partially migrated domains.** Migration state must be tracked per-domain, not as one
-  global boolean — a partial migration is a normal, expected intermediate state. Where
-  this per-domain flag lives is an open question (Section 13) — it must not silently
-  become an undecided 11th `localStorage` key.
-- **Malformed JSON.** Handled identically to today — degrades to absent/default, never
-  thrown as a fatal error, during the read-for-migration step.
-- **Unknown schema versions.** Handled identically to today for domains #4-#7; "unknown
-  version" doesn't apply to domains #1-#3 (unversioned).
+  global boolean — a partial migration is a normal, expected intermediate state.
+  **Resolved (Revision 7, ADR-0016):** each domain's marker lives in the `metadata`
+  object store ADR-0015 already reserved for exactly this — never an 11th `localStorage`
+  key.
+- **Malformed JSON.** **Corrected (Revision 7, ADR-0016):** the migration read copies a
+  malformed or legacy serialized string unchanged — it never parses it, and never
+  degrades it to absent/default itself. Degradation to absent/default (identical to
+  today) happens only later, when the existing, unchanged repository hydration logic
+  interprets the copied value at read time — never during the copy step, which has no
+  interpretation logic of its own at all (Decision 1).
+- **Unknown schema versions.** **Corrected (Revision 7, ADR-0016):** the migration
+  engine does not evaluate a schema version at all — every value is copied verbatim,
+  whatever it contains. Schema-version interpretation happens identically to today only
+  later, inside each existing repository's unchanged migration function, for domains
+  #4-#7; "unknown version" doesn't apply to domains #1-#3 (unversioned).
 - **Duplicate records.** Existing dedup rules (e.g. Assessment migration's `seenIds`
   check, `migration.ts:429-436`) must be preserved, not bypassed, by the migration step —
   they run inside the unchanged `migrate*` functions. Session History has no existing
@@ -1899,9 +1925,11 @@ consumes it; that `localStorage` deletion is never automatic after a first succe
 migrated read; that session archiving is not composed into one repository method in
 Phase 1; that characterization tests precede production wiring changes (Section 11).
 
-**Explicitly deferred**: per-domain migration-progress tracking's storage location; the
-exact equality-check mechanism for pre-deletion validation; the IndexedDB
-activation-and-rollback mechanism (Section 10, step 4); ~~a transactional/safer-ordered
+**Explicitly deferred**: ~~per-domain migration-progress tracking's storage location~~
+(resolved by `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`: the
+`metadata` object store ADR-0015 reserved for exactly this); the exact equality-check
+mechanism for pre-deletion validation; the IndexedDB activation-and-rollback mechanism
+(Section 10, step 4); ~~a transactional/safer-ordered
 session-archive operation~~ (a safer-ordered, coordinated — but not transactional —
 operation is now resolved by `docs/adr/0014-session-archive-write-ordering.md`; true
 cross-key transactionality remains deferred to whatever future IndexedDB adapter
