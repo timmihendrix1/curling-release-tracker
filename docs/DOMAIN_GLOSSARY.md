@@ -1002,6 +1002,93 @@ ever rewriting an already-recorded shot value. Must be idempotent. See
 `SYSTEM_ARCHITECTURE.md` for the full set of migration rules and the `blocks: []`
 invariant.
 
+## Local Adoption
+
+**[Proposed, incomplete design — `docs/adr/0019-cloud-identity-and-data-authority-transition.md`,
+not implemented.]** The explicit, **one-time** protocol that uploads a device's
+*pre-existing legacy* local data into a signed-in athlete's cloud account, then commits
+that account/domain to cloud authority via a server-side **Adoption Run** (a
+**seven-outcome** query model — `prepared`, `committed`, `aborted`, plus four distinct,
+never-conflated, fail-closed failure outcomes including a "no such run" result, which is
+never treated as an authoritative `aborted`; commit/abort are mutually exclusive) plus a
+local **Adoption Transition Fence** (a new, exactly-validated, discriminated
+`Prepared`/`Committed` record binding the account, domain, run, and source fingerprint —
+stored under **one stable key per domain, not scoped by account**, so a valid fence is
+discoverable, and quarantines the legacy data it adopted, with no identity, no cloud
+capability, and no **Claim Marker** required; never a reuse of ADR-0016's or ADR-0017's
+marker/witness/ledger namespaces) and a one-envelope **role-B archive**. The Claim
+Marker itself never carries an "adopted" state, but authority is never derived from the
+fence either — **the server-side `AccountDomainAuthorityRecord` alone determines
+account-domain authority** (ADR-0019 Decision 6); a committed fence is local-generation
+evidence only. A committed fence **permanently quarantines** the legacy local data it
+adopted from ordinary application flows — it is never physically deleted by this
+protocol, since `localStorage` has no compare-and-swap. **A discovered fence proves only
+that this browser's legacy generation is permanently quarantined and records which
+adoption originally caused that quarantine — it never proves which account currently
+holds cloud authority for the domain, and the currently signed-in account is never
+required to match the account the fence happens to record.** A currently signed-in
+account may use its own cloud repository only when its own
+`AccountDomainAuthorityRecord`, `SessionAccessibility`, and RLS authorize it — a
+mismatched, unauthenticated, or `disabled` session sees the domain as blocked, never
+silently as reachable — these three concerns (local evidence, server authority, and
+this session's own accessibility) are tracked as three independent state machines,
+never one combined value, and never cross-checked against each other's identity
+fields. A **second device that never
+locally adopted a domain still discovers its cloud authority correctly**, by querying a
+server-side account-domain authority registry keyed by `(accountScopeId, domain)` — one
+**transactionally-maintained, exact discriminated-union record per pair**, created at
+account bootstrap with `authorityRevision` explicitly `"0"` and never deleted, updated
+in the same transaction as every Adoption Run state change, with an exact-format
+`authorityRevision` string compared only by equality, never a value the browser
+reconstructs by sorting runs — it never needs, and this ADR never gives it, a local
+fence of its own. On first discovering that registry record, such a device writes
+and validates a permanent local **`RemoteAuthorityBarrier`** *before* exposing any cloud
+repository — using the same exclusive domain lock adoption itself uses, since
+establishing a barrier is an authority transition, not an ordinary write — an exact,
+discriminated record distinct from the fence, surviving logout, reload, and account
+switch, and never overwritten by a later sign-in. If the device had pre-existing local
+content when the barrier was created, that content is preserved as a **read-only
+quarantined branch, for every participating build** — never appended to by ordinary
+application flows, never displayed by them, never uploaded to Supabase automatically,
+visible only through a future, separately designed recovery/export UI; if it had none,
+the barrier still prevents that device's participating builds from creating new legacy
+content for the domain going forward. **This does not prove the underlying bytes can
+never change**: a non-participating old build ignores the protocol entirely and can
+still write legacy keys directly; a barrier only makes a later, participating
+resolution detect that drift, by re-comparing the current snapshot against the
+fingerprint recorded when the barrier was created, never by preventing the write. Once
+drift is detected, it is recorded in its own permanent local artifact,
+`RemoteAuthorityDriftEvidence`, so the detection survives a reload rather than being a
+purely live, in-memory comparison re-derived on every resolution. A
+device that instead observes the registry record as merely `adoption_prepared` (a
+still-unsettled adoption in progress, elsewhere) and holds none of that specific run's
+own local artifacts must not upload, finalize, abort, or fabricate evidence for it — it
+reports a distinct, session-level `adoption_in_progress_elsewhere` result and waits.
+Every ordinary write to the legacy local data is serialized by **one stable,
+domain-scoped mutation lock** (never scoped by account, since the legacy generation is
+one shared resource), held in shared mode by ordinary writes and in exclusive mode by
+adoption itself. **Once a domain is quarantined on a given browser, no second,
+ordinary, writable local workspace is created for it** — anonymous use and any
+non-owning account are explicitly blocked from local use of that domain on that browser
+(a proposed MVP restriction); a non-owning account may only use its
+own, separately server-authoritative domain, resolved independently of this browser's
+fence or barrier. Deliberately distinct from **Migration** (below), which repairs a
+domain's own stored shape on every load, on the same device.
+
+**Local Adoption is not the same operation as ongoing synchronization of newly created
+data.** Once a domain is cloud-authoritative, uploading each subsequently completed
+record (e.g. a newly finished training session) requires a separately designed,
+mandatory **transfer/outbox protocol** — not another Local Adoption, and not automatic
+**Branch Reconciliation** either. A device whose own pre-existing local content was
+preserved rather than reconciled into an already-adopted account/domain is a distinct,
+read-only **quarantined branch** (`local_branch_quarantined`) for every participating
+build — never silently treated as part of the adopted record and never a second
+writable copy of it there — though a non-participating old build can still mutate it
+directly, a residual this protocol durably records once detected but cannot prevent. See
+ADR-0019 for the full authority model, the `RemoteAuthorityBarrier`, the account-scoped
+local namespace, and the non-participating-build limitation this protocol cannot fully
+close.
+
 ## External Release-Time Source
 
 **[Prepared, not implemented.]** `ReleaseTimeSource` (a type alias of `TimingProviderType`

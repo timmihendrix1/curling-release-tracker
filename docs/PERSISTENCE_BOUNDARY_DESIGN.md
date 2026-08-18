@@ -107,6 +107,142 @@ blocked, as a whole**, since it requires both halves resolved together and neith
 ADR-0018 does not recommend enabling activation on the basis of probability, telemetry, or
 a bake period. Nothing in Revision 11 is implemented.
 
+**Revision 12 records that the cloud-identity/data-authority boundary this document's
+§12 named as deferred to "the cloud/login spike" now has a proposed, still-incomplete
+design** — see `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
+(**Proposed. Incomplete design — genuine architecture blockers remain, not merely
+missing implementation**): `localStorage` remains authoritative for a device-local,
+unowned workspace and for any not-yet-adopted domain after login; a domain becomes
+Supabase-authoritative only through a **committed, server-side Adoption Run record**
+(never mere row existence) confirming an explicit, per-account, per-domain **Local
+Adoption** (deliberately distinct from this document's own IndexedDB copy-migration
+markers — different transport, unit of work, evidence location, and failure mode), never
+automatically. ADR-0019 is explicit that this authority is scoped per `(scope, domain)`
+pair, not per bare domain name, because reconstructing one device's repository proves
+only that device's own consistency, never exclusive authority across devices — a device
+holding unreconciled local writes for an already-cloud-authoritative domain is named as
+an `account_local_branch`, with reconciliation left as an open, named blocker. Cloud
+identity work is explicitly decoupled from this document's own still-unresolved
+IndexedDB activation question (Revisions 8-11): adoption reads `localStorage` directly,
+never IndexedDB, so ADR-0017/0018's bundled prerequisite is neither resolved nor
+required to be resolved by it. **Second through eighth corrections to ADR-0019**
+progressively design, and then structurally simplify, the actual cross-system commit
+this two-backend transition requires (`localStorage` → Supabase, which cannot share one
+atomic transaction). The structure as of the seventh correction replaced one earlier,
+single overloaded scope model with **three independent state machines**:
+`LocalGenerationState` (this browser storage partition's own legacy Role-A evidence
+only), `AccountDomainAuthority` (server-side canonical ownership for one exact
+`(accountScopeId, domain)` pair, resolved from a new account-domain authority registry
+ADR-0020 must design — never derived from local evidence, which is what lets a second
+device that never locally adopted a domain still discover its cloud authority
+correctly), and `SessionAccessibility` (whether this session may actually use a domain
+already resolved to `cloud_authoritative` — requiring `ready` cloud capability, a
+matching authenticated identity, and reachable, RLS-authorized access). A discovered
+local fence never by itself implies authority or accessibility. The Transition Fence is
+stored under **one stable, per-domain key for the legacy generation, never scoped by
+account**; one stable, **domain-scoped mutation lock** serializes ordinary writes
+(shared mode) against adoption's own exclusive lease; a companion Claim Marker schema
+drops a redundant "adopted" state; a local artifact, the **`AbortCleanupCursor`**,
+anchors abort-cleanup recovery once the fence itself is deleted, since the marker alone
+could not distinguish an ordinary pre-fence upload from cleanup already in progress; a
+one-envelope role-B archive schema; a server-side run with **a seven-outcome query model
+containing four distinct, fail-closed failure outcomes**; a fingerprint-first,
+idempotent Source-Drift Resolution chain; and a fixed, crash-resumable local cleanup
+order anchored by the cursor. **The Device Workspace Pointer mechanism, present in an
+intermediate correction, is removed from the MVP decision entirely**: once a domain is
+quarantined on a browser, anonymous use and any non-owning account are explicitly
+blocked from local use of it there. Nothing in Revision 12 is implemented, and this
+document's own status (IndexedDB unimplemented/unactivated) is unchanged.
+
+**Revision 13 corrects a durability gap found on review of Revision 12's own local
+generation model**: the prior `local_branch_detected` reclassification, and this
+document's own prior mention of an `account_local_branch`, described only an in-memory,
+per-session concept that vanished on logout or reload — silently re-exposing a
+device's own legacy data as an ordinary, writable workspace on a later visit. ADR-0019
+now defines a permanent local artifact, the **`RemoteAuthorityBarrier`** (one exact
+schema, one fixed per-domain key), written and validated **before** a cloud repository
+is ever exposed on a device that discovers remote authority it did not itself
+establish — never overwritten by a later sign-in, and surviving logout, reload, and
+account switch. It resolves to one of two new, equally permanent
+`LocalGenerationState` values: `remote_authority_quarantined` (no local content existed
+at discovery) or `local_branch_quarantined` (local content existed, or was later
+detected by drift-aware re-resolution). **A quarantined local branch is read-only for
+every participating build** — never appended to by ordinary application flows, and
+never uploaded to Supabase automatically — correcting Revision 12's
+`account_local_branch` description, which did not state this and could be read as still
+accepting new writes; this restores the invariant that a cloud-authoritative domain
+never has a second, ordinary, writable local authority, **for participating builds**. A
+non-participating old build is not prevented from writing legacy keys directly; the
+barrier's own re-resolution (comparing the current snapshot against the fingerprint
+recorded at creation) only detects such drift afterward, surfacing a diagnostic outcome
+rather than reverting or masking it — a per-resolution comparison later found, in
+Revision 14 below, to have no durable memory of its own across a reload. The
+account-domain authority registry ADR-0020 must
+design is now required to be **one transactionally-maintained record per
+`(accountScopeId, domain)`**, updated in the same transaction as every Adoption Run
+state change — never derived by sorting runs. A second device observing a
+`prepared`-but-not-yet-terminal remote adoption with no matching local evidence now
+reports a distinct `adoption_in_progress_elsewhere` result and never fabricates local
+adoption artifacts for another device's snapshot. The prior single accessibility table
+is replaced by a **total repository-selection matrix** covering every account-domain
+authority outcome, not only the cloud-authoritative one. The `AbortCleanupCursor`
+gains explicit preconditions checked before cleanup begins; the previously
+under-specified "superseded-run local cleanup" path is removed and fails closed instead
+of being automatically repaired without proof it is reachable. Source-Drift recovery's
+one-hop wording is clarified to the exact crash window in which it applies. Status
+discipline now says **proposed MVP restriction**, never "accepted." Nothing in Revision
+13 is implemented, and this document's own status (IndexedDB unimplemented/unactivated)
+is unchanged.
+
+**Revision 14 corrects six further defects found on review of Revision 13's own
+mechanism.** Detected drift (Revision 13's per-resolution comparison) is now recorded
+in its own new, permanent local artifact, **`RemoteAuthorityDriftEvidence`** — the
+per-resolution comparison alone had no durable memory across a reload, so bytes
+reverting to the original baseline after a drift event could silently, incorrectly
+re-report `remote_authority_quarantined`, contradicting Revision 13's own
+"one-directional" claim; the new evidence, once written, makes
+`local_branch_quarantined` unconditional regardless of what the bytes currently look
+like. Fingerprinting is split into **`captureDomainSnapshot`** (I/O) and
+**`fingerprintDomainSnapshot`** (a pure function over an explicit snapshot), replacing
+an ambiguous combined operation that different sections used to mean differently; a
+canonical empty-domain fingerprint is now defined explicitly. `adoption_prepared`
+recovery is restructured from five overlapping local-evidence-first cases into an
+**ordered, server-state-first decision tree** — the prior structure's own
+compatibility table described a fence-present row as eligible for a case that
+explicitly required no fence, a direct contradiction; resolving server state first
+removes it. **Committed-fence catch-up is now its own 11-step exclusive recovery
+protocol**, since a crash releases the original lock and catch-up cannot resume
+without reacquiring and re-validating it, and two concurrent attempts must converge on
+one committed fence rather than race. The `AbortCleanupCursor`'s recovery is now an
+**exact four-checkpoint matrix**, replacing a broad "operationally irrelevant" claim
+about coexisting artifacts — a malformed or mismatched marker or archive at any
+checkpoint now fails cleanup closed rather than being waved through. The
+account-domain authority registry's bootstrap model gains an explicit
+`authorityRevision: "0"` starting value and a **future-domain backfill migration**
+requirement for domains introduced after an account already exists — otherwise a
+missing row for a genuinely new domain would be misread as corruption. `not_initialized`
+is corrected to mean only a present, persisted row, never a missing one, and a
+committed fence is corrected to prove local-generation quarantine only, never which
+account currently holds cloud authority — the signed-in account is never required to
+match the fence's own recorded account. Nothing in Revision 14 is implemented, and
+this document's own status (IndexedDB unimplemented/unactivated) is unchanged.
+
+**Revision 15 is a narrow correction pass over Revision 14's own mechanisms**, fixing
+four remaining defects rather than introducing new ones: (1) a prepared fence's Claim
+Marker is now deliberately left unread by the local resolver until the server's own
+state for that run is known, since validating it locally beforehand made
+committed-fence catch-up's "the marker is unreachable" rule unreachable in practice;
+(2) drift evidence now preserves the exact fingerprint that first proved drift occurred,
+rather than a later, separately re-captured in-lock snapshot that a non-participating
+old build could have already reverted to baseline by the time it was taken; (3)
+committed-fence catch-up's concurrent-attempt convergence now fully validates a found
+committed fence's schema, bindings, and archive before accepting it as this attempt's
+own success, rather than trusting status and run ID alone; and (4) a stale enum comment
+describing "any fixed-key artifact, including any Claim Marker" as unconditionally
+fail-closed is corrected to state the marker's fail-closed behavior is conditional on
+reachability. Nothing in Revision 15 is implemented, and this document's own status
+(IndexedDB unimplemented/unactivated) is unchanged.
+
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
 `SessionRepository.archiveCurrentToHistory` method was removed — Phase 1 is strictly

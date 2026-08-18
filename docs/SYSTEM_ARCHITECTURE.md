@@ -1332,6 +1332,109 @@ through direct `localStorage` calls scattered across components — see
   whole**, and no activation is recommended on the strength of probability, telemetry, or
   a bake period.
 
+**Cloud identity and data authority (Proposed, incomplete design — genuine architecture
+blockers remain) — `docs/adr/0019-cloud-identity-and-data-authority-transition.md`.**
+Proposes the authority boundary for the transition from today's anonymous, device-local
+application to authenticated Supabase-backed accounts using **three independent state
+machines**: `LocalGenerationState` (this browser storage partition's own legacy Role-A
+evidence only — `legacy_active`, `adoption_prepared`, `legacy_quarantined`,
+`abort_cleanup_pending`, `remote_authority_quarantined`, `local_branch_quarantined`,
+`invalid_local_transition_evidence`); `AccountDomainAuthority` (server-side canonical
+ownership for one exact `(accountScopeId, domain)` pair, resolved from a new
+**account-domain authority registry** ADR-0020 must design as **one exact,
+discriminated-union record per pair, created for every known cloud-eligible domain at
+account bootstrap and never deleted** (so a missing row after bootstrap is always
+corruption, never `not_initialized`), updated in the same transaction as every Adoption
+Run state change, with an exact-format `authorityRevision` string (starting at `"0"` at
+bootstrap, incremented only by the authoritative server transaction) compared only by
+equality — never derived by sorting a list of runs); and
+`SessionAccessibility` (whether *this session, right now*
+may use a domain `AccountDomainAuthority` has already resolved to `cloud_authoritative`
+— requiring `ready` cloud capability, a matching authenticated identity, and reachable,
+RLS-authorized access). **No one of the three substitutes for another**, and a
+discovered local fence or barrier never by itself implies authority or accessibility. A
+domain becomes cloud-authoritative only through a committed, server-side **Adoption
+Run** record (a distinct concept from the migrations above — see the Domain Glossary),
+never through mere row existence, automatically, or by dual-write. The existing combined
+`session` domain is not assumed to also be the final cloud-authority unit: the
+in-progress capture draft stays permanently device-local, while completed session
+history needs both an explicit, unbuilt domain split *and* a separately designed,
+mandatory transfer/outbox protocol before it can become cloud-authoritative. The
+cross-system commit itself (`localStorage` → Supabase, which cannot share one atomic
+transaction) is designed as a nine-step, crash-resumable protocol using a local
+**Adoption Transition Fence**, stored under **one stable, per-domain key for the legacy
+generation, never scoped by account**. Every ordinary write to the legacy generation is
+serialized by **one stable, domain-scoped mutation lock** (never account-scoped, since
+the legacy generation is one shared resource across every account and anonymous
+session), held in shared mode by ordinary writes and exclusive mode by adoption itself.
+A companion Claim Marker schema drops a redundant `adopted` state; a local artifact, the
+**`AbortCleanupCursor`**, anchors abort-cleanup recovery once the fence itself is
+deleted — its own preconditions (matching fence, matching pending marker, a validated
+referenced archive, a consistent `archiveKey`, no coexisting committed fence, the
+exclusive lock held) are all checked before cleanup ever begins, and its ordinary
+cleanup is a fixed five-step sequence (write cursor; delete fence; delete archive;
+delete marker; delete cursor), each step confirmed absent before the next. Against a
+server-side run, this uses **a seven-outcome query model containing four distinct,
+fail-closed failure outcomes** — `server_run_missing`, `query_failed`,
+`authorization_failed`, and `malformed_response` are each distinct from, and never
+conflated with, an authoritative `aborted`. Supersession is represented solely as
+`aborted` plus an immutable `supersededByRunId` reference; Source-Drift Resolution
+fingerprints the source *before* creating and binding a replacement run, and recovery
+follows **at most one** validated supersession edge, and only within the specific crash
+window between the server's own transaction and the Claim Marker's update — a second
+edge, a cycle, or any mismatch fails closed. A **new, permanent local artifact, the
+`RemoteAuthorityBarrier`** (one exact schema, one fixed per-domain key), is written and
+validated *before* a cloud repository is ever exposed on a device that discovers remote
+authority it did not itself establish, under the same exclusive domain lock adoption
+itself uses (an authority-transition operation, never an unsynchronized write) —
+surviving logout, reload, and account switch, and never overwritten by a later sign-in —
+resolving to `remote_authority_quarantined` (no local content existed at discovery) or
+`local_branch_quarantined` (local content existed, or was later detected by drift-aware
+re-resolution). Detected drift is recorded in its own permanent local artifact,
+**`RemoteAuthorityDriftEvidence`**, so the detection is durable across a reload rather
+than a purely live, in-memory comparison — correcting a gap where the one-directional
+drift claim had no way to survive a reload on its own. **A quarantined branch is
+read-only for every participating build** — never appended to, never auto-uploaded,
+visible only through a future dedicated recovery UI — but a non-participating old build
+is not prevented from writing legacy keys directly; the barrier does not prove the
+underlying bytes can never change, only that a later, participating resolution will
+detect drift by re-comparing the current snapshot against the fingerprint recorded at
+creation, computed by one shared, pure fingerprinting function over an explicitly
+captured snapshot rather than an ambiguous combined read-and-hash operation. This closes
+a durability gap in an earlier draft's reclassification, which was only in-memory and
+vanished on logout or reload. A second device that observes a `prepared`, not-yet-terminal
+remote adoption with no matching local evidence reports `adoption_in_progress_elsewhere`
+and never fabricates local adoption artifacts for another device's snapshot — it must
+not upload, finalize, or abort a run it did not itself start. A total
+repository-selection matrix, evaluated after the local and account-domain tables,
+composes every `AccountDomainAuthority` outcome (`cloud_authoritative`,
+`adoption_prepared`, `unavailable`, `not_initialized`/`aborted`) with
+`SessionAccessibility` or `LocalGenerationState` as appropriate, never falling back to
+ordinary Role A while any of those outcomes could still mean the domain is, or may
+become, cloud-authoritative. **Legacy local data is never physically cleared
+automatically.** **The Device Workspace Pointer mechanism is removed from the MVP
+entirely**: once a domain is quarantined on a given browser, anonymous use and any
+non-owning account are explicitly blocked from local use of it there — a named MVP
+limitation, not a second competing local-workspace tree — and a non-owning account
+instead resolves its own, separately server-authoritative domain directly, independent
+of this browser's fence or barrier, via the account-domain authority registry. A claim
+marker's validity is checked only when it remains reachable — a committed fence or a
+barrier make it permanently inert, a cursor makes it reachable only for exact
+checkpoint-matrix recovery, and a prepared fence makes it deliberately unread by the
+local resolver, deferred entirely until the server's own state for that run is known —
+and an `adoption_prepared` recovery decision is resolved by an ordered,
+server-state-first tree rather than local evidence alone, since the same local evidence
+means different things depending on the server's own state for that run (a marker that
+would fail closed if the run is still `adoption_prepared` is fully ignored if the run is
+already `cloud_authoritative`). This is an explicit, analyzed limitation: a
+non-participating (old) build cannot
+be excluded from writing the legacy local keys this protocol relies on, and production
+cloud authority for any domain remains disabled while ADR-0019 itself is Proposed. This
+decouples cloud identity work from IndexedDB production
+activation entirely — adoption reads `localStorage` directly, so the still-unresolved
+ADR-0017/0018 prerequisite above is neither resolved nor required to be resolved by it.
+No production code exists for any of this yet.
+
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 
 Save-effect write-guards (`if (xHydration !== "ready") return;`, above) are necessary but

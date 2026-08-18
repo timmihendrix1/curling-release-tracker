@@ -479,6 +479,28 @@ non-atomic `localStorage` implementation's behavior needs to be preserved beyond
 documented failure semantics (ADR-0014). Not urgent: no activation work is scheduled
 yet.
 
+**Relationship to cloud identity (ADR-0019):** `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
+proposes decoupling the personal-cloud/Supabase transition from this item entirely —
+Local Adoption reads `localStorage` directly and does not wait on IndexedDB production
+activation. ADR-0017/0018's bundled prerequisite (old-build exclusion, row 0b) is
+therefore neither resolved nor required to be resolved by cloud work; it remains exactly
+as open as this section already describes. Any future IndexedDB role would be a new,
+separately designed account-scoped read cache or offline-mutation-queue mechanism for a
+cloud-authoritative domain, never a reuse of ADR-0016's copy-migration markers or
+ADR-0017's activation evidence — see ADR-0019 Decision 14. **ADR-0019 also has its own,
+independently analyzed non-participating-build blocker (Decision 8)**, distinct from
+ADR-0017/0018's: an old build has no code participating in ADR-0019's mutation lock,
+Transition Fence, `RemoteAuthorityBarrier`, or `RemoteAuthorityDriftEvidence`
+establishment sequence, and will keep writing legacy local keys obliviously. That analysis
+concludes the consequence is narrower than ADR-0017/0018's (a stray old-build write can
+never reach committed cloud authority on its own — Supabase never trusts it directly),
+but the write and any resulting old-UI confusion cannot be prevented either, so no
+production Local Adoption finalize may be enabled until a deployment/version strategy or
+an explicit residual-risk decision addresses it, same as ADR-0017/0018 require for
+IndexedDB activation. `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s
+§4.1/§12.1/§18 instructions have been corrected in place (not merely annotated) in the
+same change that introduced ADR-0019 — this is no longer an open documentation-debt item.
+
 ### `react-hooks/set-state-in-effect` lint warning on initial load
 
 **What:** `TrackerApp.tsx`'s mount effect (`localStorage` read → `migrateSession` →

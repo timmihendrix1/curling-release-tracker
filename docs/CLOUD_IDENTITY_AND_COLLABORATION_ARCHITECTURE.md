@@ -4,6 +4,34 @@
 **Version:** 1.0  
 **Date:** 2026-08-11
 
+**Revision note (2026-08-18, consolidated).** `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
+is a **Proposed**, related architectural decision — it proposes, and does not yet
+finally decide, the authority boundary for the Phase 3/4 transition below. This
+document's Accepted status and its identity/product decisions (Sections 3-17) are
+unchanged. The following bullets and phase steps are corrected **in place**, not merely
+annotated with a disclaimer layered above unchanged text:
+
+- §4.1's infrastructure list — IndexedDB is now described as a possible future option
+  for an account-scoped read cache or offline outbox, never a prerequisite.
+- §12.1's heading and list are retitled and reframed as an illustrative, undesigned
+  future sketch — it no longer describes accepted, mandatory mechanics.
+- §18 Phase 2 is retitled to name specifically the ADR-0015/0016/0017/0018 IndexedDB
+  local-backend track, which remains distinct and currently blocked, and is never reused
+  as the name for a future cache/outbox (new, separately numbered work if it is ever
+  built).
+- §18 Phase 3's original "Sync one session through an outbox" step is replaced — ADR-0019
+  instead proposes an **Assessment Adoption development/staging prototype** (ADR-0019
+  Decision 15 stage 11) as the first concrete cloud-authority exercise, stated as a proposal under
+  a Proposed ADR, never as the already-decided MVP mechanism — and its "test offline
+  mutation followed by reconnect" step, which contradicted this same section's own
+  admission that no outbox exists, is replaced with tests appropriate to that prototype
+  (online-required writes, not an offline mutation queue).
+
+IndexedDB may still be selected later for a separately designed, account-scoped read
+cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10) — new, separately
+numbered future work, never a reuse of ADR-0016 migration output or ADR-0017 activation
+evidence.
+
 ## 1. Purpose
 
 This document defines the target architecture for extending the current local-first
@@ -109,12 +137,21 @@ flowchart TD
 ### 4.1 Recommended infrastructure
 
 - Next.js remains the application shell and web delivery layer.
-- IndexedDB becomes the durable browser database.
+- **The existing ADR-0015/0016 IndexedDB migration/activation track remains a distinct,
+  currently blocked local-backend track** (`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`,
+  `docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`) — it is
+  not a prerequisite for cloud identity or Local Adoption, and a future account-scoped
+  read cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10), if built, is a
+  **new, separately designed mechanism**, never a continuation or repurposing of that
+  track. `localStorage` remains the durable local store Local Adoption reads from
+  (corrected per ADR-0019 — see the revision notes above).
 - Supabase Auth provides account authentication.
 - PostgreSQL stores cloud records and relationships.
 - Row Level Security enforces access at the database boundary.
 - Supabase Storage may later store media and large raw sensor artefacts.
-- A small application-owned sync layer connects IndexedDB and PostgreSQL.
+- **A small application-owned sync layer would connect a future local cache/outbox and
+  PostgreSQL, once designed** (corrected per ADR-0019 — not required for the personal-
+  cloud transition itself).
 - The product remains a modular monolith until measured scale requires separation.
 
 ### 4.2 Authority by data category
@@ -630,18 +667,33 @@ model has been inventoried.
 
 ## 12. Synchronisation protocol
 
-### 12.1 Required mechanics
+### 12.1 Illustrative sketch for a possible future offline outbox (undesigned — not a Phase 3/4 requirement)
 
-1. New entities receive client-generated UUIDs.
-2. Every local mutation is committed to IndexedDB first.
-3. A local outbox stores pending mutations.
-4. Every mutation has an idempotency key.
-5. The server acknowledges accepted mutations and assigns a monotonic sync revision or
+**Retitled in this correction pass: this list was never accepted, mandatory mechanics for
+the personal-cloud transition, and is no longer presented under that heading.** It is an
+illustrative sketch of what a future offline mutation-queue/outbox (ADR-0019's Option C)
+might need to address, **if and when that mechanism is separately designed** — it is not
+required for, and does not gate, Phase 3/4 below. ADR-0019 selects a narrower MVP model
+(online-required writes, with at most a separately designed account-scoped read cache)
+precisely because none of the following exists and none of it is designed by ADR-0019
+either (see ADR-0019 Decisions 5 and 10, and Decision 15 stage 14). The IndexedDB-specific
+wording in items 2-3 is retained only as a record of the original sketch's assumptions,
+not as a description of the store Local Adoption actually reads from (`localStorage` —
+ADR-0019 Decision 4).
+
+A future outbox design would need to address, at minimum:
+
+1. New entities receiving client-generated UUIDs.
+2. Whether local mutations are committed to IndexedDB, `localStorage`, or another local
+   store first — undecided.
+3. Whether and how a local outbox stores pending mutations — undecided.
+4. Every mutation needing an idempotency key.
+5. The server acknowledging accepted mutations and assigning a monotonic sync revision or
    equivalent cursor.
-6. The client pulls changes after its last acknowledged cursor.
-7. Deletions use tombstones or `deleted_at` until all relevant clients can observe them.
-8. Mutable records carry a version for optimistic concurrency.
-9. Sync can stop and resume without duplicating sessions, shots or assignments.
+6. The client pulling changes after its last acknowledged cursor.
+7. Deletions using tombstones or `deleted_at` until all relevant clients can observe them.
+8. Mutable records carrying a version for optimistic concurrency.
+9. Sync stopping and resuming without duplicating sessions, shots or assignments.
 
 ### 12.2 Conflict policy
 
@@ -1261,7 +1313,20 @@ Implemented) cover the full inventory, the repository/adapter boundary, and the 
 migration path into a later IndexedDB adapter (Phase 2 below), which remains
 unimplemented.
 
-### Phase 2: IndexedDB migration
+### Phase 2: IndexedDB local-backend migration (a distinct, currently blocked track — not a prerequisite for Phase 3/4)
+
+**Retitled and corrected per the revision notes above.** This phase names specifically
+the ADR-0015/0016/0017/0018 local-backend track (`localStorage` vs. IndexedDB, on one
+device) — `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` and
+`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md` found that
+IndexedDB production activation has a bundled, unresolved blocking prerequisite this
+codebase cannot currently close, and this phase remains blocked on that basis. **Phase
+3/4 do not require this phase to complete first**: Local Adoption (ADR-0019 Decision 4)
+reads its legacy source from `localStorage` and writes cloud data to Supabase — it never
+reads from or depends on this phase's IndexedDB work. **A future account-scoped read
+cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10) is new, separately
+numbered future work if it is ever built — it is not this phase, and this phase's name is
+not reused for it.**
 
 - Implement IndexedDB repositories.
 - Migrate existing local records idempotently.
@@ -1272,14 +1337,34 @@ unimplemented.
 
 ### Phase 3: Technical cloud spike
 
+**Does not require Phase 2 above to be complete** (corrected per the revision note).
+The original "sync one session through an outbox" and "test offline mutation followed by
+reconnect" steps below are replaced: no outbox exists or is designed (§12.1 above), and
+ADR-0019's proposed MVP model for this prototype is online-required writes, not an
+offline mutation queue — retaining an offline-mutation test here would contradict that
+directly. **ADR-0019 instead proposes an Assessment Adoption development/staging
+prototype** as the first concrete cloud-authority exercise — Local Adoption of
+`assessment` data, reading its legacy source from `localStorage` and writing to Supabase
+directly, with no outbox involved (ADR-0019 Decisions 4-6, Decision 15 stage 11). **This
+is a proposal under a Proposed ADR, not yet the decided MVP mechanism**, and is
+explicitly scoped to development/staging only — ADR-0019 Decision 15 requires a separate,
+explicit production-enablement gate, conditioned on ADR-0019 itself reaching Accepted
+status (or being superseded by an Accepted decision), before any cloud authority is
+enabled for real users. Future offline-mutation/outbox testing belongs only in a future
+illustrative-outbox phase, if one is ever designed — not here.
+
 - Create the hosted development and staging Supabase project in the accepted Frankfurt
   region, isolated from production.
 - Implement one login path.
 - Create one profile and athlete.
-- Sync one session through an outbox.
-- Test offline mutation followed by reconnect.
-- Simulate two devices.
-- Verify RLS denies foreign-athlete access.
+- Run an Assessment Adoption development/staging prototype (replaces "sync one session
+  through an outbox" — see above): interrupt and resume a `prepared` Adoption Run.
+- Verify writes are blocked while offline for a cloud-authoritative Assessment domain
+  (replaces "test offline mutation followed by reconnect," which assumed an offline
+  mutation queue that does not exist).
+- Verify reconnecting re-resolves authority correctly.
+- Simulate two devices, without claiming Branch Reconciliation is solved by doing so.
+- Verify RLS denies foreign-account access.
 - Record findings before continuing.
 
 ### Phase 4: Personal cloud sync
