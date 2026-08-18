@@ -413,10 +413,53 @@ wiring and any real activation behind the still-open, bundled old-build-and-boun
 prerequisite above; that prerequisite itself is not a buildable stage this team can
 complete unilaterally.
 
+**`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md` (Proposed,
+incomplete design) is the attempted answer to that bundled prerequisite, and closes
+neither of its two halves.** The bounded gap (row 0b) is **narrowed, not resolved**: a
+proposed `localStorage` Activation Ledger (one entry per domain) is established as a
+barrier *before* IndexedDB evidence finalizes — corrected from an earlier draft that wrote
+it only as a best-effort step after finalize, which left a real crash-window gap — with
+its own mandatory read-back validation, and is deleted as part of both the automatic
+discard path and manual rollback, extended for it. This stops an ordinary, isolated
+witness loss while IndexedDB is unreachable from being silently misread. **It is not
+self-healing** — nothing repairs an already-established ledger entry that is later lost.
+A whole-`localStorage`-origin wipe removes the ledger together with the witness in one
+action, directly recreating the original ambiguity while IndexedDB is unreachable. A
+**targeted deletion of just the ledger entry, with the witness left intact, does not by
+itself** recreate that ambiguity — it only removes this domain's future mitigation
+against a *later*, independent witness loss coincident with IndexedDB being unreachable;
+all three conditions (deletion, later witness loss, simultaneous unreachability) must
+hold together. **Ledger corruption is different still**: an invalid or unreadable ledger
+fails closed and never silently selects `localStorage` — it costs availability, not
+safety. An absent ledger (from either cause) narrows the risk only for as long as the
+entry remains valid and readable; it is not proof a domain was never activated, and row
+0b stays bundled into Decision 3 pending an explicit, separate residual-risk decision —
+**accepting that residual would resolve the pending governance decision, not technically
+eliminate the ambiguity itself**; only unconditional fail-closed behavior does that, at
+the offline-first cost already named.
+Old-build/tab exclusion is **also
+not resolved**: ADR-0018 evaluates staged deployment, service-worker-controlled client
+updates, build/protocol-epoch handshakes, `BroadcastChannel`/`storage` events, and Web
+Locks (including a passive `navigator.locks.query()` presence check, corrected to a
+single acquisition per tab, scoped to this browser's own storage partition) and proves
+each one either cannot reach already-running, non-participating code at all, or — for the
+one candidate that could (manual activation after an explicit client-drain confirmation)
+— cannot be verified by software, only trusted. It declines to recommend enabling
+activation on the strength of probability, telemetry, or a bake period, and states
+directly that closing this half requires either new backend infrastructure paired with a
+materially redesigned, server-authoritative model that could make an obsolete write's
+effect harmless but never prevent the local `localStorage.setItem` call itself (out of
+scope, and contrary to this application's local-first, accountless product principle) or
+a separate, explicit product decision to **accept** the named residual risk — itself a
+governance resolution, not a technical elimination — a call this architecture document
+does not make on its own authority. **ADR-0017 Decision 3 therefore remains blocked as a
+whole, with both bundled halves still open.**
+
 **What remains open:** design doc §10 step 3 (verify before cleanup, entirely
-unresolved); the bundled old-build/version-fencing-and-bounded-gap prerequisite ADR-0017
-depends on but does not solve; every one of ADR-0017's implementation stages that follows
-it; plus true
+unresolved); both of ADR-0018's own halves (old-build/tab exclusion, and row 0b's
+residual whole-origin-wipe gap — the Activation Ledger narrows but does not close it);
+every one of ADR-0017's implementation stages that follows Decision 3's resolution, plus
+ADR-0018's own eleven stages; plus true
 cross-key atomicity for session archiving. ADR-0014 explicitly does not, and cannot, make
 the two writes atomic under either backend — an interruption between them can still
 produce a recoverable duplicate (never a loss, per ADR-0014's chosen ordering, but not

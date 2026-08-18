@@ -1276,6 +1276,61 @@ through direct `localStorage` calls scattered across components — see
   production source of truth and IndexedDB remains unactivated; ADR-0017's
   thirteen-stage implementation sequence gates repository wiring and real activation
   behind that one still-open, bundled prerequisite.
+- **A design exists for that bundled prerequisite, and resolves neither half of it
+  (Design only — `docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`,
+  status: Proposed, incomplete design).** Decision 13 row 0b is **narrowed, not closed**:
+  a proposed `localStorage` record per domain (the Activation Ledger) is established as a
+  barrier *before* IndexedDB evidence finalizes — never as a best-effort write after,
+  which a prior draft got wrong — with its own mandatory read-back validation, and is
+  extended into the existing discard/manual-rollback deletion orders rather than only
+  appended to one of them. This stops an ordinary, isolated witness loss while IndexedDB
+  is unreachable from being silently misread as "never activated." **It is not
+  self-healing**: nothing repairs an already-established ledger entry lost after
+  activation. It does **not** stop a whole-`localStorage`-origin wipe, which removes the
+  ledger together with the witness in one action, while IndexedDB's own evidence
+  survives, unreachable — directly recreating row 0b's original ambiguity. A **targeted
+  deletion** of just the ledger entry, with the witness left untouched, does **not** by
+  itself recreate that ambiguity — it only removes this domain's future mitigation
+  against a *later*, independent witness loss coincident with IndexedDB being
+  unreachable; all three (deletion, later witness loss, simultaneous unreachability)
+  must hold together. **Ledger corruption is a third, distinct case**: an invalid or
+  unreadable ledger fails closed (`invalid_activation_metadata` /
+  `activation_ledger_unreadable`) and never silently selects `localStorage` — it costs
+  availability, not safety. The mitigation narrows the risk only for as
+  long as the ledger entry remains valid and readable; an absent ledger is not proof, and
+  row 0b remains bundled into ADR-0017 Decision 3 pending an explicit, separate
+  residual-risk decision, exactly like the other half. **That decision, if made, resolves
+  the pending governance prerequisite — it does not technically eliminate the ambiguity**;
+  only unconditional fail-closed behavior would do that, at the offline-first cost the ADR
+  names and does not choose unilaterally.
+  **Old-build/tab exclusion, the other half, is not resolved.** The document evaluates
+  staged deployment, service-worker-controlled client updates, build/protocol version
+  handshakes, `BroadcastChannel`/`storage` events, and Web Locks — including
+  `navigator.locks.query()` used as a passive, no-message presence check that queries
+  every historical version of its own lock name, scoped to this browser's own storage
+  partition, never other devices — against whether each can actually prevent an
+  already-running, non-participating build from writing, and finds that none can: a
+  service worker cannot force code that predates it, or that it does not control, to stop
+  running or reload; a handshake or broadcast only notifies clients that already have
+  code to listen; Web Locks excludes only writers that request it; a backend session
+  registry cannot stop already-loaded JavaScript from writing either — not even a
+  materially redesigned, server-authoritative model can prevent that local API call
+  itself, since it has no server in its path; such a redesign could only make the write's
+  effect harmless (a non-authoritative local value other clients ignore, or a rejected
+  server-side mutation from an obsolete client), never prevent the write from happening,
+  and is out of scope here regardless. The best achievable design
+  combines a passive presence check (which detects any tab running current, lease-aware
+  code that is awake or, per an explicitly unverified lifecycle assumption, merely frozen
+  — write-safety for that category never depends on this detection succeeding, only on
+  ADR-0017 Decision 2's mutation lease) with an explicit, honest, software-unverifiable
+  user confirmation for everything the presence check structurally cannot see — proposed
+  in full, but never described as a proof. **Because no fully provable solution exists for
+  either half without either new backend infrastructure this local-first, accountless
+  application does not have, or a separate, explicit product decision to accept a named
+  residual risk — an acceptance that resolves the pending governance decision, never a
+  technical elimination of the risk itself — ADR-0017 Decision 3 remains blocked as a
+  whole**, and no activation is recommended on the strength of probability, telemetry, or
+  a bake period.
 
 ### Readiness gating at the interaction boundary (Phase 1 correction, Implemented)
 

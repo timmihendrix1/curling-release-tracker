@@ -72,6 +72,41 @@ unactivated. Step 3 (verify before cleanup) is a **different problem from ADR-00
 pre-activation verification and remains entirely unresolved** — see the correction to
 this section's step 3, below.
 
+**Revision 11 records the attempted answer to ADR-0017 Decision 3's bundled
+prerequisite, and resolves neither of its two halves** — see
+`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`
+(**Proposed. Incomplete design**): row 0b is **narrowed, not closed**, by a proposed
+`localStorage` "Activation Ledger" (one entry per domain, established as a barrier
+*before* IndexedDB evidence is finalized — never as a best-effort write after — with its
+own read-back validation, and deleted only as part of the discard/rollback procedures
+extended for it). This catches an ordinary, isolated witness loss while IndexedDB is
+unreachable. **It is not self-healing**: nothing repairs an already-established ledger
+entry that is later lost. A whole-`localStorage`-origin wipe removes the ledger together
+with the witness in one action, directly recreating the original ambiguity while
+IndexedDB is unreachable. A targeted deletion of just the ledger entry, with the witness
+left untouched, does **not** by itself recreate that ambiguity — it only removes this
+domain's future mitigation against a later, independent witness loss coincident with
+IndexedDB being unreachable; all three of deletion, later witness loss, and simultaneous
+unreachability must hold together. Ledger corruption is different again: an invalid or
+unreadable ledger fails closed and never silently selects `localStorage`, costing
+availability, not safety. An absent ledger therefore narrows the
+risk of a false `localStorage` resolution only for as long as the entry stays valid and
+readable; it does not prove a domain was never activated, and row 0b remains bundled into
+ADR-0017 Decision 3 pending an explicit, separate residual-risk decision — **a decision
+that, if made, resolves the pending governance prerequisite, not a technical elimination
+of the underlying ambiguity**. Old-build/tab exclusion, the other bundled
+half, is **not resolved**: ADR-0018 evaluates staged deployment, service-worker-controlled
+updates, build/protocol-epoch handshakes, `BroadcastChannel`/`storage` events, and Web
+Locks (including `navigator.locks.query()` as a passive presence check, scoped to this
+browser's own storage partition, never other devices) against the same six questions, and
+proves that none of them — alone or combined — can make an already-running,
+non-participating build's JavaScript stop writing; the best achievable design (a presence
+check plus an explicit, honest, software-unverifiable user confirmation) is fully
+specified but explicitly not claimed as a proof. **ADR-0017 Decision 3 therefore remains
+blocked, as a whole**, since it requires both halves resolved together and neither is;
+ADR-0018 does not recommend enabling activation on the basis of probability, telemetry, or
+a bake period. Nothing in Revision 11 is implemented.
+
 **Revision 1** responded to the product-owner architecture review recorded in
 `PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`: the original draft's
 `SessionRepository.archiveCurrentToHistory` method was removed — Phase 1 is strictly
@@ -1741,7 +1776,31 @@ open questions.
    one, combined, separate decision. Still **not implemented, and not resolved** —
    `localStorage` remains the sole production source of truth; see ADR-0017 for the full
    design and its own implementation sequence, most of which is itself gated on that
-   still-open prerequisite.
+   still-open prerequisite. **`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`
+   (Proposed, incomplete design) is the attempted answer to that bundled decision, and
+   resolves neither half.** The bounded gap above is narrowed, not closed: a proposed,
+   never-(automatically)-deleted `localStorage` Activation Ledger, established as a
+   barrier before IndexedDB evidence finalizes (with its own read-back validation), stops
+   an ordinary witness loss while IndexedDB is unreachable from being silently misread.
+   **It is not self-healing** — nothing repairs an already-established ledger entry that
+   is later lost. A whole-`localStorage`-origin wipe removes the ledger together with the
+   witness in one action, directly recreating the original ambiguity while IndexedDB is
+   unreachable. A targeted deletion of just the ledger entry, with the witness intact,
+   does **not** by itself recreate that ambiguity — it only removes this domain's future
+   mitigation against a *later*, independent witness loss coincident with IndexedDB being
+   unreachable. Ledger corruption is different again: an invalid or unreadable ledger
+   fails closed and never silently selects `localStorage`, costing availability, not
+   safety. An absent ledger (however it arose) remains a narrowed risk, only for as long
+   as the entry stays valid and readable, not proof a domain was never activated.
+   Accepting that
+   residual, if it happens, would resolve the pending governance decision on row 0b — it
+   would not technically eliminate the ambiguity itself. Old-build/tab exclusion remains
+   unresolved: ADR-0018 proves that no candidate it evaluated (staged deployment, a
+   service worker, a version handshake, `BroadcastChannel`/`storage` events, or Web Locks
+   presence detection alone) can make an already-running, non-participating build's
+   JavaScript stop writing, and declines to recommend activation on the strength of
+   probability, telemetry, or a bake period. ADR-0017 Decision 3 remains blocked as a
+   whole, since both bundled halves remain open.
 
 ### 10.1 Explicit handling of each required migration risk
 
@@ -2048,7 +2107,32 @@ writing `localStorage` during or after activation, **and** the same future decis
 also decide row 0b's fate, since that row's current resolution depends specifically on
 production activation being blocked today — it declares automatic production activation
 **blocked** on that one, separate decision (ADR-0017 Decision 3) — not implemented, and
-not resolved; ~~a transactional/safer-ordered
+not resolved. **Neither half of that bundled decision is resolved** by
+`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md` (Proposed,
+incomplete design). **Row 0b's half is narrowed, not closed**: a proposed
+`localStorage`-resident Activation Ledger — corrected there to be established as a
+barrier before IndexedDB evidence finalizes, never as a best-effort write after — replaces
+the accepted trade-off's silent ambiguity with a mechanism that catches an ordinary
+witness loss. It is **not self-healing**: nothing in the design repairs an
+already-established ledger entry that is later lost. A whole-`localStorage`-origin wipe
+still defeats it directly — the ledger is lost with the witness, in one action, while
+IndexedDB's evidence survives, unreachable. A targeted deletion of just the ledger entry,
+without the witness being touched, does **not** by itself defeat it — it only removes
+this domain's future mitigation against a later, independent witness loss coincident with
+IndexedDB being unreachable. Ledger corruption is a third, distinct case: an invalid or
+unreadable ledger fails closed and never silently selects `localStorage`, costing
+availability rather than safety. An absent ledger (from either deletion or a genuine
+whole-origin wipe) remains a narrowed risk, not proof of "never activated." **Old-build/tab
+exclusion, the other half,
+is not resolved** — ADR-0018 proves no candidate it evaluated
+can exclude an already-running, non-participating build's writes, and does not recommend
+activation on probability or a bake period alone — so ADR-0017 Decision 3 remains blocked
+as a whole, with both halves still open, pending a future explicit decision on each.
+**Either future decision, if it accepts the named residual risk, resolves the pending
+governance prerequisite — it does not technically eliminate the hazard it accepts**; only
+unconditional fail-closed behavior (row 0b) or a genuinely new enforcement mechanism
+(old-build exclusion) would do that;
+~~a transactional/safer-ordered
 session-archive operation~~ (a safer-ordered, coordinated — but not transactional —
 operation is now resolved by `docs/adr/0014-session-archive-write-ordering.md`; true
 cross-key transactionality remains deferred to whatever future IndexedDB adapter
