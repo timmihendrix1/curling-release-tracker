@@ -537,6 +537,38 @@ One athlete's execution of one Assessment Template version — the Assessment-do
 counterpart to a Training Session, but with a fixed sequence, a stable template-version
 reference, and stricter immutability once completed.
 
+## Assessment Draft
+
+**[Target — `docs/adr/0021-assessment-draft-history-authority-unit-split.md`, Accepted,
+design complete, not yet implemented.]** The persistence domain owning **the current
+Assessment Run** — not only an active/in-progress one. This includes a **terminal** run
+that has completed or been marked incomplete but is still retained here, pending durable
+archive: `assessmentDraft` continues to own it until its exact content has been durably
+confirmed inserted into Assessment History and the draft has been safely cleared (see
+ADR-0021 Decision 14). Permanently device-local throughout — unlike Assessment History
+(below), no future ADR may make this domain cloud-eligible, and a terminal run temporarily
+retained here does **not** become cloud-eligible merely by existing in this domain; only
+its eventual copy in Assessment History can ever become cloud-authoritative. A draft is
+exactly the kind of frequently-mutated, in-progress (or briefly pending-archive) entity the
+"Session" domain's own `currentSessionDraft` precedent already establishes must stay local.
+Not the same concept as a "Blind Shot Draft" (above) — that is a Training-domain, per-shot
+entry state; this is an Assessment-domain, per-run persistence-authority unit. Distinct
+from Assessment History even while both are, today, still combined in one
+running-application key — current runtime has not yet implemented this split.
+
+## Assessment History
+
+**[Target — `docs/adr/0021-assessment-draft-history-authority-unit-split.md`, Accepted,
+design complete, not yet implemented.]** The persistence domain owning terminal
+(`completed`/`incomplete`) Assessment Runs (today's `AssessmentPersistedState.history`,
+inside the combined `curling-release-tracker-assessment-data` key). The only Assessment
+persistence domain ADR-0021 permits any future ADR to consider for cloud adoption —
+Assessment Draft (above) is permanently excluded. Not the same concept as "History"
+(below), which is the Session-domain equivalent (a `Session[]` list) — the two are
+separate domains that happen to share a naming pattern; use "Assessment History"
+specifically when the Assessment-domain concept is meant, never the bare word "History"
+alone in that context.
+
 ## Assessment Result
 
 The derived evaluation of a completed (or incomplete) Assessment Run. **[Implemented as a
@@ -992,7 +1024,9 @@ the current session. Append-only aside from explicit per-entry or clear-all dele
 **Analyze** (see below) is the visible screen name for the view onto this data — "History"
 remains the correct term for the data concept itself (types, storage key, function names
 like `migrateSessionHistory`); the two are not the same thing and this rename was
-deliberately UI-only. See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`.
+deliberately UI-only. See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`. Not the same
+domain as Assessment History (above) — a separate persistence unit for a separate entity
+type; use "Assessment History" explicitly when that domain is meant.
 
 ## Migration
 

@@ -1345,7 +1345,18 @@ offline mutation queue — retaining an offline-mutation test here would contrad
 directly. **ADR-0019 instead proposes an Assessment Adoption development/staging
 prototype** as the first concrete cloud-authority exercise — Local Adoption of
 `assessment` data, reading its legacy source from `localStorage` and writing to Supabase
-directly, with no outbox involved (ADR-0019 Decisions 4-6, Decision 15 stage 11). **This
+directly, with no outbox involved (ADR-0019 Decisions 4-6, Decision 15 stage 11).
+**Corrected per `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+(Accepted, design complete, not yet implemented):** once that ADR's split is implemented,
+only Assessment *history* (never the in-progress draft) is the cloud-eligible unit this
+prototype could exercise — "Assessment data"/"the Assessment domain" in this phase
+description will mean `assessmentHistory` specifically, not the still-combined domain,
+once implementation lands. ADR-0020 Decision D itself is architecturally resolved by
+ADR-0021 (Accepted, design complete); until ADR-0021 is implemented, this prototype
+remains blocked by ADR-0021's implementation not yet having been performed, plus every
+other independent ADR-0019/ADR-0020 prerequisite (Decision E.2b, Decision E.2c, account
+deletion/anonymization policy, ADR-0019's old-build/local-branch limitation) — never by
+Decision D again. **This
 is a proposal under a Proposed ADR, not yet the decided MVP mechanism**, and is
 explicitly scoped to development/staging only — ADR-0019 Decision 15 requires a separate,
 explicit production-enablement gate, conditioned on ADR-0019 itself reaching Accepted
@@ -1361,7 +1372,9 @@ illustrative-outbox phase, if one is ever designed — not here.
   through an outbox" — see above): interrupt and resume a `prepared` Adoption Run.
 - Verify writes are blocked while offline for a cloud-authoritative Assessment domain
   (replaces "test offline mutation followed by reconnect," which assumed an offline
-  mutation queue that does not exist).
+  mutation queue that does not exist). Once `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+  is implemented, this means `assessmentHistory` specifically — `assessmentDraft` is
+  permanently excluded from cloud authority regardless.
 - Verify reconnecting re-resolves authority correctly.
 - Simulate two devices, without claiming Branch Reconciliation is solved by doing so.
 - Verify RLS denies foreign-account access.
@@ -1370,7 +1383,9 @@ illustrative-outbox phase, if one is ever designed — not here.
 ### Phase 4: Personal cloud sync
 
 - Import all supported personal history.
-- Sync sessions, blocks, shots and assessments.
+- Sync sessions, blocks, shots and Assessment history (`assessmentHistory` specifically,
+  once `docs/adr/0021-assessment-draft-history-authority-unit-split.md` is implemented —
+  `assessmentDraft` is never synced).
 - Implement idempotency, deletion and conflict handling.
 - Add personal export and account deletion foundations.
 - Observe sync failures and data-volume behaviour.

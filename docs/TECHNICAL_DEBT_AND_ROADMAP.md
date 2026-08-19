@@ -323,10 +323,14 @@ backed by the `idb` package, against a two-store (`records`/`metadata`)
 `docs/adr/0015-indexeddb-adapter-unwired.md`. **The copy-migration substage (design doc
 §10 step 2) is also now implemented** —
 `src/lib/persistence/localStorageToIndexedDbMigration.ts` copies exact serialized
-strings for all seven repository-boundary domains into IndexedDB behind fail-closed,
-resumable per-domain markers in the `metadata` store, without invoking any domain's
-migration/repair function (a deliberate exact-string-copy design, not a schema
-migration — see `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`).
+strings for all seven repository-boundary domains (current runtime) into IndexedDB
+behind fail-closed, resumable per-domain markers in the `metadata` store, without
+invoking any domain's migration/repair function (a deliberate exact-string-copy design,
+not a schema migration — see `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`).
+`docs/adr/0021-assessment-draft-history-authority-unit-split.md` (Accepted, design
+complete, not yet implemented) will require this registry to separately cover
+`assessmentDraft`/`assessmentHistory` once implemented, per that ADR's own relationship
+to ADR-0016 — see the Assessment Framework section below.
 Neither the adapter nor the migration engine is wired into any repository singleton or
 component; `localStorage` remains the sole production source of truth and is never
 written to or deleted by the migration engine.
@@ -763,17 +767,26 @@ scope to Phase C's own brief.
 - coach-assigned assessments
 - cloud and workspace permissions
 
-**Cloud authority precondition (ADR-0020):** `docs/adr/0020-supabase-schema-rls-and-adoption-transactions.md`
-names a genuine architecture blocker specific to this domain — `AssessmentPersistedState`
-combines the device-local, in-progress `currentRun` with the cloud-eligible, terminal
-`history` under one `localStorage` key (`ASSESSMENT_STORAGE_KEY`). Cloud authority (via
-ADR-0019 Local Adoption) cannot be piloted or enabled for Assessment history until a
-separate `assessmentDraft`/`assessmentHistory` authority-unit split is designed and
-accepted — moving only `history` to cloud authority under today's combined domain
-would create two writable authorities inside one domain the instant it activated.
+**Cloud authority precondition (ADR-0020), authority-unit split now designed (ADR-0021):**
+`docs/adr/0020-supabase-schema-rls-and-adoption-transactions.md` named a genuine
+architecture blocker specific to this domain — `AssessmentPersistedState` combines the
+device-local, in-progress `currentRun` with the cloud-eligible, terminal `history` under
+one `localStorage` key (`ASSESSMENT_STORAGE_KEY`). `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+(Accepted, design complete) now resolves this specific blocker — it defines
+`assessmentDraft` (permanently device-local) and `assessmentHistory` (the only Assessment
+unit ever eligible for future cloud adoption) as two independent persistence domains,
+with a full structural migration, startup authority resolution, and archive-and-clear
+mutation design. **Implementation has not been performed** — the running application
+still uses the single combined domain/key today, and cloud authority (via ADR-0019 Local
+Adoption) still cannot be piloted or enabled for Assessment history until that
+implementation is carried out. Moving only `history` to cloud authority under today's
+still-combined domain would create two writable authorities inside one domain the instant
+it activated — exactly the hazard ADR-0021 exists to eliminate before implementation.
 ADR-0020 designs the generic server substrate and a target canonical mapping for
 Assessment history, but does not, and cannot, claim the current combined domain is
-pilot-ready. **A second, independent blocker (ADR-0020's Decision E.2b):** `jsonb`'s
+pilot-ready, and ADR-0021 resolves only this one authority-unit blocker — every other
+ADR-0020/ADR-0019 blocker below remains open, unaffected by ADR-0021. **A second,
+independent blocker (ADR-0020's Decision E.2b):** `jsonb`'s
 stricter input rules reject a valid-JSON escape sequence for U+0000 and
 malformed/unpaired Unicode surrogate escapes, both of which the existing TS validators
 currently accept as valid source content. This is now an **unconditional hard block**,
@@ -789,9 +802,12 @@ function existed at `INSERT` time, never that it still exists, still matches, or
 ever actually invoked); no generic dispatch mechanism that looks up and calls a
 domain's mapping handler from `analyze_adoption`/`finalize_adoption` is designed by
 ADR-0020, so a row's mere existence never means a domain's mapping logic actually
-runs. Neither the authority-unit split, the representability question, nor mapping
-execution/dispatch integration is resolved by ADR-0020 itself; all three must close
-before Assessment (or any other domain) is pilot-eligible.
+runs. None of the three is resolved by ADR-0020 itself. The authority-unit split is now
+architecturally resolved by ADR-0021 (design only — not yet implemented); the
+representability question (Decision E.2b) and mapping execution/dispatch integration
+(Decision E.2c) remain fully open and are unaffected by ADR-0021. All three — ADR-0021's
+own implementation, Decision E.2b, and Decision E.2c — must close before Assessment (or
+any other domain) is pilot-eligible.
 
 ### Product validation / research items (not technical debt)
 

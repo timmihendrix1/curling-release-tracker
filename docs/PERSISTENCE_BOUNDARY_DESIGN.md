@@ -323,11 +323,19 @@ implementation-readiness gate.
 
 ## 2. Authoritative persistence inventory (as of commit `dfd06cb`)
 
-**Ten storage keys, seven domain-facing repositories.** This is the single, consistent
-count used throughout this document and its companion ADR. (An earlier Phase 0 audit pass
-reported "8 persisted domains" — that number counted conceptual domains and folded three
-independently-read/written preference keys into one grouping; it is superseded by this
-inventory and is not otherwise referenced below.)
+**Ten storage keys, seven domain-facing repositories — current runtime.** This remains
+the single, consistent count of what the running application actually persists today. (An
+earlier Phase 0 audit pass reported "8 persisted domains" — that number counted conceptual
+domains and folded three independently-read/written preference keys into one grouping; it
+is superseded by this inventory and is not otherwise referenced below. This is unrelated to
+the target 8-domain/11-key count below, which reflects a *future*, not-yet-implemented
+state.)
+
+**Target (not yet implemented):** `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+(Accepted, design complete) splits the Assessment domain/key (#4 below) into two —
+`assessmentDraft` and `assessmentHistory` — bringing the eventual, post-implementation
+total to **8 domains, 11 keys**. Nothing in this document's inventory below reflects that
+split yet; it documents current runtime only, exactly as it exists at commit `dfd06cb`.
 
 Confirmed exhaustively: no `sessionStorage`, IndexedDB, Cache API, or `document.cookie`
 usage exists anywhere in `src/` (grepped with zero hits outside comments). **No key is
@@ -489,8 +497,13 @@ defined by four criteria together, not by key count alone:
 | `SmartRandomProfilesRepository` | #7 | Reusable named Smart Random ranges | Same as above | Quarantine-per-profile + measurement-mode check | Same as above |
 | `AssessmentPreferencesRepository` | #8, #9, #10 | Three independent scalars, all scoped to the Assess-flow UI's prefill concern | No lifecycle; each is a standalone, on-demand preference | No migration function for any of the three (Section 4.A.2 explains why this is still correctly grouped) | None — see Section 4.A.2 |
 
-This yields **7 repositories** covering **10 keys**. There is no remaining reference to an
-"8-repository" grouping anywhere in this document or its companion ADR.
+This yields **7 repositories** covering **10 keys** — current runtime. (The one prior
+"8-repository" grouping this note used to disclaim was the superseded Phase 0 audit
+miscount referenced in §2 above, not a forward-looking count. `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+now separately designs a genuine future 8th repository — `AssessmentRepository` splitting
+into `AssessmentDraftRepository`/`AssessmentHistoryRepository` — which is a target, not yet
+implemented, and does not change the "7 repositories, 10 keys" count above until that
+implementation lands.)
 
 **4.A.2 — Why the three Assessment-preference keys share one repository while remaining
 independently stored.** `AssessmentPreferencesRepository` is a **code-organization
@@ -762,9 +775,18 @@ interface HistoryFiltersRepository {
 
 ### 5.3 `AssessmentRepository`
 
-Owns key #4. Wraps `migrateAssessmentPersistedState` (`assessment/migration.ts`) unchanged.
-Illustrates the quarantine philosophy: unlike `SessionRepository`, there is no partial
-repair here — the whole root state is loaded, or resolves to a fresh empty state.
+**Current runtime, unchanged.** Owns key #4. Wraps `migrateAssessmentPersistedState`
+(`assessment/migration.ts`) unchanged. Illustrates the quarantine philosophy: unlike
+`SessionRepository`, there is no partial repair here — the whole root state is loaded, or
+resolves to a fresh empty state.
+
+**Target (not yet implemented):** `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+splits this single repository into `AssessmentDraftRepository` (owning a new
+`curling-release-tracker-assessment-draft` key) and `AssessmentHistoryRepository` (owning a
+new `curling-release-tracker-assessment-history` key), via a dedicated one-time structural
+migration — see that ADR for the full design (persisted shapes, migration protocol,
+startup authority resolution, and the archive-and-clear mutation replacing
+`archiveCurrentAssessmentRun`). The contract below documents current runtime only.
 
 ```typescript
 /**
@@ -2297,6 +2319,11 @@ identity (Section 12).
 - **`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §18** defines "Phase 1:
   Persistence boundary" at a one-paragraph level; this document and its companion ADR are
   the detailed design for exactly that phase.
+- **ADR-0021** (Assessment draft/history authority-unit split) is a target, accepted-but-
+  not-yet-implemented amendment to this document's §2.1 row #4 and §4.A.1's
+  `AssessmentRepository` row — see §5.3 above. It resolves ADR-0020 Decision D only; it
+  does not change current runtime, and does not touch any other repository or key in this
+  inventory.
 - **`PERSISTENCE_BOUNDARY_REVIEW_HANDOFF.md`** (repository root, untracked) is the
   product-owner review this revision responds to — see its findings A–J for the full
   evidence trail behind every change in this revision.

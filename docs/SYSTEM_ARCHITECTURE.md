@@ -1098,11 +1098,15 @@ through direct `localStorage` calls scattered across components — see
   both `get`/`set` resolve to a typed result (`StorageGetResult` /
   `PersistenceWriteResult`), classifying any raw browser exception
   (`QuotaExceededError`, storage-unavailable, etc.) before it can escape the boundary.
-- **Seven repositories** (`SessionRepository`, `HistoryFiltersRepository`,
+- **Seven repositories, current runtime** (`SessionRepository`, `HistoryFiltersRepository`,
   `AssessmentRepository`, `TrainingPlansRepository`,
   `AccuracyToleranceProfilesRepository`, `SmartRandomProfilesRepository`,
   `AssessmentPreferencesRepository`) each wrap the adapter and one domain's existing
-  migration/serialization logic unchanged. Every `load*` method resolves a
+  migration/serialization logic unchanged. (Target, not yet implemented:
+  `docs/adr/0021-assessment-draft-history-authority-unit-split.md` splits
+  `AssessmentRepository` into `AssessmentDraftRepository`/`AssessmentHistoryRepository`,
+  bringing the eventual total to 8 repositories over 11 keys — see the "Assessments"
+  section below.) Every `load*` method resolves a
   `DomainLoadResult<T>` with three distinct outcomes — `"value"`, `"absent"`, or
   `"read_failed"` — never conflating a genuinely missing key with a storage failure (see
   design doc §8.2 for why that distinction matters:
@@ -1538,9 +1542,12 @@ to the user. Write-failure notification, retry, and recovery UX remain deferred 
 
 This section covers `Session`/`Session History` specifically for the migration rules
 below. **For the complete, re-verified inventory of all 10 persisted `localStorage` keys
-across all 7 independent domains** (Session, History Filters, Assessment, Training
-Plans, Accuracy Tolerance Profiles, Smart Random Profiles, Assessment Preferences) see
-`docs/PERSISTENCE_BOUNDARY_DESIGN.md`.
+across all 7 independent domains, current runtime** (Session, History Filters, Assessment,
+Training Plans, Accuracy Tolerance Profiles, Smart Random Profiles, Assessment
+Preferences) see `docs/PERSISTENCE_BOUNDARY_DESIGN.md`. (A target, not-yet-implemented 8th
+domain/11th key — Assessment splitting into `assessmentDraft`/`assessmentHistory` — is
+designed by `docs/adr/0021-assessment-draft-history-authority-unit-split.md`; it does not
+change this count until implemented.)
 
 Session and Session History are two `localStorage` keys, read and written through
 `SessionRepository` (`src/lib/sessionRepository.ts`). Ordinary per-shot/per-edit
@@ -2223,6 +2230,17 @@ the capture queue's synchronous reads (same rationale as `sessionRef`, ADR-0007)
 rather than an explicit Pause) is force-paused via `pauseAssessmentRun` before ever
 rendering, so capture never silently reactivates without an explicit Resume — see
 ADR-0011 Decision 4 for the reload-recovery/quarantine-notice details.
+
+**Target, not yet implemented:** `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
+(Accepted, design complete) splits this single `AssessmentPersistedState`/
+`ASSESSMENT_STORAGE_KEY` domain into two independent persistence domains —
+`assessmentDraft` (permanently device-local, owning `currentRun`) and `assessmentHistory`
+(owning `history`, the only Assessment unit ever eligible for future cloud adoption) — via
+a dedicated structural migration, a startup authority-resolution gate preceding repository
+construction, and an idempotent, history-first archive-and-clear mutation replacing
+`archiveCurrentAssessmentRun`. This resolves ADR-0020 Decision D's authority-unit blocker
+only; the running application is unchanged until that ADR's implementation sequence is
+carried out.
 
 ### Implemented Assessment Results and Analyze integration (Phase C)
 
