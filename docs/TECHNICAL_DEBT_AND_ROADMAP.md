@@ -763,6 +763,36 @@ scope to Phase C's own brief.
 - coach-assigned assessments
 - cloud and workspace permissions
 
+**Cloud authority precondition (ADR-0020):** `docs/adr/0020-supabase-schema-rls-and-adoption-transactions.md`
+names a genuine architecture blocker specific to this domain — `AssessmentPersistedState`
+combines the device-local, in-progress `currentRun` with the cloud-eligible, terminal
+`history` under one `localStorage` key (`ASSESSMENT_STORAGE_KEY`). Cloud authority (via
+ADR-0019 Local Adoption) cannot be piloted or enabled for Assessment history until a
+separate `assessmentDraft`/`assessmentHistory` authority-unit split is designed and
+accepted — moving only `history` to cloud authority under today's combined domain
+would create two writable authorities inside one domain the instant it activated.
+ADR-0020 designs the generic server substrate and a target canonical mapping for
+Assessment history, but does not, and cannot, claim the current combined domain is
+pilot-ready. **A second, independent blocker (ADR-0020's Decision E.2b):** `jsonb`'s
+stricter input rules reject a valid-JSON escape sequence for U+0000 and
+malformed/unpaired Unicode surrogate escapes, both of which the existing TS validators
+currently accept as valid source content. This is now an **unconditional hard block**,
+not a conditional gate: `transition_adoption_protocol_status` refuses every
+`design_only → pilot` transition, for every domain, until a later, separate, accepted
+ADR either adopts a durable approval-record design or a lossless canonical
+representation — no fixture evidence of any kind is checked or required (a finite
+fixture corpus was never proof over an unbounded future value space, and ADR-0020 no
+longer claims otherwise). **A third, independent blocker (ADR-0020's Decision E.2c):**
+"mapping execution/dispatch integration" — `private.implemented_canonical_mappings`
+rows are migration-time attestations only (a `regprocedure` value proves a named
+function existed at `INSERT` time, never that it still exists, still matches, or is
+ever actually invoked); no generic dispatch mechanism that looks up and calls a
+domain's mapping handler from `analyze_adoption`/`finalize_adoption` is designed by
+ADR-0020, so a row's mere existence never means a domain's mapping logic actually
+runs. Neither the authority-unit split, the representability question, nor mapping
+execution/dispatch integration is resolved by ADR-0020 itself; all three must close
+before Assessment (or any other domain) is pilot-eligible.
+
 ### Product validation / research items (not technical debt)
 
 Release Time Core Assessment v1 is **proposed, not yet externally validated** — targets
