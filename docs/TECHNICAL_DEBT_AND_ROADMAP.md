@@ -978,6 +978,40 @@ feature after the fact.
 
 ---
 
+## Cloud Auth Shell (Supabase)
+
+**Implemented (narrow, alpha slice).** See `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`
+§3.1/§5.4 for the accepted long-term direction this is the first step toward, and
+`docs/SYSTEM_ARCHITECTURE.md`'s "Optional Supabase Auth Shell" section for the
+architecture-level summary. `src/lib/supabase/` provides typed `NEXT_PUBLIC_*`
+configuration resolution (`config.ts`), a lazy Supabase client factory and auth-service
+implementation (`supabaseClient.ts`/`supabaseAuthService.ts` — the only two files
+permitted to import `@supabase/supabase-js`, enforced by an architecture-boundary test),
+an explicit `AuthState` discriminated union and pure reducer (`authState.ts`), and a
+React controller hook (`useSupabaseAuthController.ts`). `AccountControl.tsx` is mounted
+at the top of `TrackerApp.tsx`'s render body, visible (or, cloud-disabled, invisible)
+regardless of `activeView`. Supports: cloud-disabled/invalid-configuration detection
+without constructing a client, session restoration, persistent auto-refreshed sessions,
+six-digit email OTP request/verification, and sign-out — all through the public
+Supabase Auth API only.
+
+### Deliberately deferred to keep this slice focused
+
+- **No cloud data repository, Local Adoption, or Assessment authority change of any
+  kind.** Signing in only establishes a Supabase Auth identity (`AccountIdentity` —
+  an id and an email, nothing else); it never uploads, transforms, or claims local data,
+  and no domain becomes cloud-authoritative as a side effect. That full transition is
+  ADR-0019/ADR-0020/ADR-0021's scope, still proposed/not implemented.
+- **No account bootstrap RPC, RLS, or schema deployment** — ADR-0020's server-side
+  contract is not called or deployed here.
+- **No Google OAuth, password login, or magic-link-only flow** — email OTP only, per
+  the Cloud doc's accepted MVP decision.
+- **No teams, coaches, or collaboration features.**
+- Signed-in identity is not surfaced anywhere else in the app yet (e.g. no
+  account-scoped Settings section) — only the compact header control.
+
+---
+
 ## Open product decisions
 
 These are not technical debt — they are decisions the product owner / domain expert

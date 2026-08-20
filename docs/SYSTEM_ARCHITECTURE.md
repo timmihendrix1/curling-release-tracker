@@ -2565,6 +2565,55 @@ a picker, since there is currently only one valid choice.
 profile" from within the selector itself, and Hog-Hog Smart Random support (an
 [Open decision] independent of this feature — see ADR-0004).
 
+## Optional Supabase Auth Shell (Implemented — narrow alpha slice)
+
+The first accepted step of `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s
+target architecture (§3.1/§5.4): an optional, additive email-OTP sign-in, with no
+change to persistence authority and no cloud data of any kind yet — see
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Cloud Auth Shell (Supabase)" entry for what is
+deliberately deferred.
+
+**Configuration boundary.** `src/lib/supabase/config.ts`'s `resolveCloudConfig()` reads
+the two public, browser-exposed `NEXT_PUBLIC_SUPABASE_URL`/
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` variables and resolves one of `"cloud_disabled"`
+(neither set — the default for this alpha build), `"invalid_configuration"` (one set, or
+either malformed — including a key that isn't a current `sb_publishable_...` publishable
+key, e.g. a mistakenly-pasted `sb_secret_...` secret key or a legacy anon JWT, both
+rejected rather than accepted), or `"configured"`. No Supabase client is constructed for
+the first two outcomes.
+
+**Supabase SDK import boundary.** Exactly two production files import
+`@supabase/supabase-js`: `src/lib/supabase/supabaseClient.ts` (a lazy, cached client
+factory — never constructed eagerly) and `src/lib/supabase/supabaseAuthService.ts` (the
+only place `signInWithOtp`/`verifyOtp`/`getSession`/`onAuthStateChange`/`signOut` are
+called). Everything else depends only on `src/lib/supabase/authService.ts`'s
+`AuthService` interface, which has no SDK import — enforced by an architecture-boundary
+test alongside the existing `localStorage`/`indexedDB`/migration-module checks (see
+`src/lib/persistence/__tests__/architectureBoundary.test.ts`). Neither the real service
+nor a test fake ever exposes a raw provider session, access/refresh token, or OTP value
+past this boundary — only `AccountIdentity` (an id and an email) and a normalized,
+static, user-facing `NormalizedAuthError`.
+
+**State model.** `src/lib/supabase/authState.ts` defines one `AuthState` discriminated
+union (`cloud_disabled` / `invalid_configuration` / `restoring_session` / `signed_out` /
+`requesting_otp` / `awaiting_otp` / `verifying_otp` / `signed_in` / `signing_out` /
+`recoverable_error`) and a pure `reduceAuthState(state, event)` function — the same
+"old state + event → new state, computed outside of `setState` and committed as a plain
+value" pattern `applyTimingResultToSession` (`captureSequence.ts`, ADR-0007) uses.
+`src/lib/supabase/useSupabaseAuthController.ts` is the React controller: it subscribes
+to session restoration and auth-state changes inside a `useEffect` (setState only from
+the callback, never synchronously in the effect body — the sanctioned pattern already
+used by the Timing Simulator wiring), keeps a synchronously-updated `stateRef` mirror so
+a rapid double-click cannot start two overlapping OTP requests, and guards every pending
+async callback against a `disposedRef` set once on unmount.
+
+**UI integration.** `AccountControl.tsx` is mounted at the top of `TrackerApp.tsx`'s
+render body (above the per-view header), so it is visible across every `activeView` —
+or, cloud-disabled, renders nothing at all. It never gates the rest of the app: every
+state (including `recoverable_error`) renders inline alongside whatever screen is
+active, never as a full-page takeover, and the local, accountless application remains
+fully usable in every state.
+
 ## Module responsibilities / architecture boundaries (Implemented)
 
 ### UI components (`src/components/`)
@@ -2640,6 +2689,7 @@ profile" from within the selector itself, and Hog-Hog Smart Random support (an
 | `TrainingPlanStartReview.tsx` | Pre-start summary (ordered steps, stones, handle strategy, total) + Start Training |
 | `TrainingPlanProgress.tsx` | Compact "Step X of Y · Shot N of M" during execution — visually secondary to active shot capture |
 | `TrainingPlanStepTransition.tsx` | "Continue to next step" mid-plan, or a distinct "Plan complete" + Finish Training on the final step — never both at once |
+| `AccountControl.tsx` | Compact, optional account control mounted at the top of `TrackerApp`'s render body — renders nothing when cloud-disabled, a small non-blocking badge when misconfigured, otherwise the email-OTP sign-in/account affordance; never gates the rest of the app |
 
 ### Domain and logic modules (`src/lib/`)
 
@@ -2709,6 +2759,21 @@ an import cycle back into that file.
 | `persistence.ts` | The Training Plan library's own root state and CRUD (`addPlan`/`updatePlan`/`deletePlan`/`duplicatePlan`), pure state-shape functions only |
 | `migration.ts` | `migrateTrainingPlans` — field-by-field repair of the plan library, distinct from `Session.planExecution`'s own migration in `sessionMigration.ts` |
 | `errors.ts` | The `TrainingPlanOutcome<T>`/`ok`/`err` convention, matching `src/lib/assessment/errors.ts` |
+
+### Optional Supabase Auth Shell modules (`src/lib/supabase/`)
+
+See "Optional Supabase Auth Shell" above. Exactly two of these files (`supabaseClient.ts`,
+`supabaseAuthService.ts`) import `@supabase/supabase-js`; the rest depend only on
+`authService.ts`'s contract.
+
+| Module | Responsibility |
+|---|---|
+| `config.ts` | `resolveCloudConfig()` — typed, deterministic `NEXT_PUBLIC_*` resolution into `cloud_disabled`/`invalid_configuration`/`configured`; never constructs a client |
+| `authService.ts` | The `AuthService` contract, `AccountIdentity`, and normalized `NormalizedAuthError` — no SDK import |
+| `supabaseClient.ts` | Lazy, cached Supabase browser client factory — the only other file besides `supabaseAuthService.ts` permitted to import the SDK |
+| `supabaseAuthService.ts` | `createSupabaseAuthService` — the only place `signInWithOtp`/`verifyOtp`/`getSession`/`onAuthStateChange`/`signOut` are called; reduces every provider `Session`/`User` to `AccountIdentity` before it crosses the boundary |
+| `authState.ts` | The `AuthState` discriminated union, `AuthEvent`s, and the pure `reduceAuthState` reducer |
+| `useSupabaseAuthController.ts` | The React controller hook — session-restore/auth-subscription lifecycle, guarded/idempotent user actions, `AccountControl.tsx`'s one dependency |
 
 ### Orchestration — `TrackerApp.tsx`
 

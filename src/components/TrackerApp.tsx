@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import AccountControl from "./AccountControl";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
 import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
@@ -2239,6 +2240,8 @@ export default function TrackerApp() {
 
   return (
     <div className="app-content-clearance space-y-4">
+      <AccountControl />
+
       {activeView === "home" ? (
         <AppHeader />
       ) : (

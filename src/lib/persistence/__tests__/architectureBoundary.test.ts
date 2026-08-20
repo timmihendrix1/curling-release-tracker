@@ -181,3 +181,110 @@ describe("persistence architecture boundary — migration module is not imported
     expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
   });
 });
+
+describe("persistence architecture boundary — supabase client", () => {
+  // See src/lib/supabase/authService.ts's doc comment and
+  // docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md: UI, domain,
+  // repository and general persistence modules must never import
+  // `@supabase/supabase-js` directly. Exactly two production files are
+  // permitted to — the lazy client factory and the auth-service
+  // implementation built on it — everything else must depend only on the
+  // `AuthService` interface (authService.ts), which has no SDK import at all.
+  const ALLOWED_SUPABASE_FILES = [
+    join(SRC_ROOT, "lib", "supabase", "supabaseClient.ts"),
+    join(SRC_ROOT, "lib", "supabase", "supabaseAuthService.ts"),
+  ];
+  const MODULE_NAME = "@supabase/supabase-js";
+  // Matches the bare package OR any subpath import beginning with
+  // "@supabase/supabase-js/" (e.g. a deep import of an internal SDK file) —
+  // but NOT an unrelated package that merely shares the prefix textually
+  // (e.g. "@supabase/supabase-js-extra", which has neither a "/" nor the
+  // closing quote immediately after MODULE_NAME).
+  const QUOTED_MODULE_PATH = `["']${MODULE_NAME}(?:/[^"']*)?["']`;
+  // Same four-form alternation as the migration-module check above (static
+  // import/re-export via `from`, bare side-effect import, dynamic import(),
+  // require()) — a bare package name has no relative-path variability to
+  // worry about, unlike the migration module's `../persistence/...` forms.
+  const IMPORT_PATTERN = new RegExp(
+    [
+      `\\bfrom\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+      `\\brequire\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+    ].join("|")
+  );
+
+  function importsSupabaseSdk(source: string): boolean {
+    return IMPORT_PATTERN.test(stripComments(source));
+  }
+
+  it("the detector itself matches every supported import form and ignores unrelated/comment-only text (non-vacuous)", () => {
+    const positiveCases: Array<[string, string]> = [
+      ["named static import", 'import { createClient } from "@supabase/supabase-js";'],
+      ["type-only static import", 'import type { Session } from "@supabase/supabase-js";'],
+      ["side-effect import (no `from`)", 'import "@supabase/supabase-js";'],
+      ["dynamic import()", 'const mod = await import("@supabase/supabase-js");'],
+      ["require()", 'const mod = require("@supabase/supabase-js");'],
+      [
+        "re-export using from",
+        'export { createClient } from "@supabase/supabase-js";',
+      ],
+      ["re-export-all using from", 'export * from "@supabase/supabase-js";'],
+      [
+        "package-subpath import",
+        'import { GoTrueClient } from "@supabase/supabase-js/dist/module/GoTrueClient";',
+      ],
+      [
+        "package-subpath dynamic import()",
+        'const mod = await import("@supabase/supabase-js/dist/module/index");',
+      ],
+    ];
+    for (const [label, source] of positiveCases) {
+      expect(importsSupabaseSdk(source), `expected to detect: ${label}`).toBe(true);
+    }
+
+    const negativeCases: Array<[string, string]> = [
+      [
+        "comment-only mention",
+        "// This file intentionally does not import @supabase/supabase-js.",
+      ],
+      [
+        "block-comment mention",
+        "/* @supabase/supabase-js is mentioned here only in prose. */",
+      ],
+      ["unrelated static import", 'import { foo } from "./unrelated";'],
+      [
+        "unrelated package sharing a prefix",
+        'import { foo } from "@supabase/supabase-js-extra";',
+      ],
+      [
+        "subpath of an unrelated package sharing a prefix",
+        'import { foo } from "@supabase/supabase-js-extra/dist/index";',
+      ],
+    ];
+    for (const [label, source] of negativeCases) {
+      expect(importsSupabaseSdk(source), `expected NOT to detect: ${label}`).toBe(false);
+    }
+  });
+
+  it("no production file outside the designated Supabase infrastructure boundary imports @supabase/supabase-js", () => {
+    const productionFiles = collectSourceFiles(SRC_ROOT).filter(
+      (path) => !isTestPath(path) && !ALLOWED_SUPABASE_FILES.includes(path)
+    );
+    const offenders = productionFiles.filter((path) =>
+      importsSupabaseSdk(readFileSync(path, "utf8"))
+    );
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("both designated files actually do import @supabase/supabase-js (the exclusion is targeted, not vacuous)", () => {
+    for (const path of ALLOWED_SUPABASE_FILES) {
+      expect(importsSupabaseSdk(readFileSync(path, "utf8"))).toBe(true);
+    }
+  });
+
+  it("the AuthService contract module itself has no @supabase/supabase-js import", () => {
+    const contractFile = join(SRC_ROOT, "lib", "supabase", "authService.ts");
+    expect(importsSupabaseSdk(readFileSync(contractFile, "utf8"))).toBe(false);
+  });
+});
