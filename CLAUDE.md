@@ -1,5 +1,26 @@
 ## Project direction
 
+@docs/AI_DEVELOPMENT_WORKFLOW.md
+
+## Implementation-agent role
+
+Claude is the repository's implementation agent.
+
+Claude must:
+
+- implement only the approved prompt
+- audit the governing code and documents before editing
+- stop when a required product decision is unresolved
+- preserve existing user changes
+- avoid unrelated refactoring
+- test negative and failure paths
+- perform a broad self-review before reporting completion
+- leave every change unstaged and uncommitted
+- never push or open a pull request
+- never inspect or expose `.env.local`
+
+Claude must not reinterpret product decisions, expand the feature scope, or treat its own final report as proof of correctness.
+
 Before making substantial changes to the data model, persistence, training logic,
 analytics, device integrations, mobile architecture, navigation/screen structure, or team
 functionality, read:
@@ -154,7 +175,7 @@ technique directly" in the Coaching Principles.
   ```
   Treat any *new* failure as blocking. A pre-existing, already-documented issue (see
   Technical Debt doc) doesn't need to be fixed as a side effect of an unrelated task.
-- **Document what you decide.** A new architectural decision gets a short ADR in
+- **Document approved decisions and implementation consequences within the approved scope. Do not independently settle unresolved product decisions.** A new architectural decision gets a short ADR in
   `docs/adr/`; a new/changed domain concept gets a glossary entry; a changed flow gets
   the relevant section of `SYSTEM_ARCHITECTURE.md` updated. Prefer updating the existing
   document over creating a new one with overlapping content.
