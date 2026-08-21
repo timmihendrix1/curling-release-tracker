@@ -1,0 +1,23 @@
+# Minimal Supabase CLI project configuration for the Team Foundation beta. This file
+# establishes the conventional repository structure requirement 121 asks for
+# (docs/adr/0022-team-foundation-domain-and-persistence.md) — it has not been run or
+# validated against the Supabase CLI in this environment (no `supabase`/`docker`
+# binary was available; see the final implementation report). Adjust `project_id`
+# before running `supabase link`/`supabase start` for real.
+project_id = "curling-release-mvp"
+
+[db]
+port = 54322
+major_version = 15
+
+[api]
+enabled = true
+port = 54321
+
+[auth]
+enabled = true
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = false
+enable_confirmations = false

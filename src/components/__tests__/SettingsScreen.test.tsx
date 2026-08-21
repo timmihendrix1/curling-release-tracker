@@ -13,6 +13,7 @@ const baseProps = {
   smartRandomProfiles: [],
   defaultSmartRandomProfileId: null,
   onManageSmartRandomProfiles: () => {},
+  onManageTeams: () => {},
 };
 
 describe("SettingsScreen", () => {
@@ -146,6 +147,7 @@ describe("SettingsScreen", () => {
         smartRandomProfiles={[]}
         defaultSmartRandomProfileId={null}
         onManageSmartRandomProfiles={() => {}}
+        onManageTeams={() => {}}
       />
     );
 

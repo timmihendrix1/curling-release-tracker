@@ -24,6 +24,9 @@ type SettingsScreenProps = {
   onManageSmartRandomProfiles: () => void;
   /** Same readiness rule as clearHistoryDisabled, for the Smart Random Profiles domain. */
   manageSmartRandomProfilesDisabled?: boolean;
+  /** Team Foundation (docs/adr/0022) — cloud-backed, so this card always renders;
+   * TeamsScreen itself shows the "sign in" / "not configured" messaging. */
+  onManageTeams: () => void;
 };
 
 /**
@@ -47,6 +50,7 @@ export default function SettingsScreen({
   defaultSmartRandomProfileId,
   onManageSmartRandomProfiles,
   manageSmartRandomProfilesDisabled = false,
+  onManageTeams,
 }: SettingsScreenProps) {
   const defaultProfile =
     accuracyToleranceProfiles.find(
@@ -122,6 +126,26 @@ export default function SettingsScreen({
           className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Manage Smart Random Profiles
+        </button>
+      </div>
+
+      {/* Team Foundation beta (docs/adr/0022) — optional, cloud-backed collaboration
+          layer. Its own card since it's an entirely separate domain from the two
+          reusable-configuration-aid cards above. */}
+      <div className={surfaceClass("hero")}>
+        <h2 className="text-lg font-semibold text-slate-900">Teams</h2>
+
+        <p className="mt-1 text-sm text-slate-600">
+          Optional beta: join or create a named team, invite teammates, and share
+          administration. Requires cloud sign-in.
+        </p>
+
+        <button
+          type="button"
+          onClick={onManageTeams}
+          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+        >
+          Manage Teams
         </button>
       </div>
 

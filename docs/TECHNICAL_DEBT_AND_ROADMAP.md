@@ -802,12 +802,21 @@ function existed at `INSERT` time, never that it still exists, still matches, or
 ever actually invoked); no generic dispatch mechanism that looks up and calls a
 domain's mapping handler from `analyze_adoption`/`finalize_adoption` is designed by
 ADR-0020, so a row's mere existence never means a domain's mapping logic actually
-runs. None of the three is resolved by ADR-0020 itself. The authority-unit split is now
-architecturally resolved by ADR-0021 (design only — not yet implemented); the
-representability question (Decision E.2b) and mapping execution/dispatch integration
-(Decision E.2c) remain fully open and are unaffected by ADR-0021. All three — ADR-0021's
-own implementation, Decision E.2b, and Decision E.2c — must close before Assessment (or
-any other domain) is pilot-eligible.
+runs. None of the three is resolved by ADR-0020 itself. **A fourth, independent
+blocker, named in the fourth Team Foundation correction pass:** ADR-0020's own
+`account_scope_id` — the key every one of its authority/run/assessment tables uses —
+is derived inconsistently across the document itself (`bootstrap_account()` treats it
+as the raw Auth account id; `backfill_domain_authority()` and `assessment_runs`'s own
+`fk_athlete` constraint treat it as `docs/adr/0022`'s independent `Profile.id`), and
+whether Local Adoption authority should be account-scoped or Profile-scoped is a
+genuine, unmade architecture decision — not merely a stale identity assumption like
+the (separately corrected) `profiles`/`athletes` bootstrap step. The authority-unit
+split is now architecturally resolved by ADR-0021 (design only — not yet
+implemented); the representability question (Decision E.2b), mapping execution/
+dispatch integration (Decision E.2c), and the `account_scope_id` scope decision all
+remain fully open and are unaffected by ADR-0021. All four — ADR-0021's own
+implementation, Decision E.2b, Decision E.2c, and the `account_scope_id` scope
+decision — must close before Assessment (or any other domain) is pilot-eligible.
 
 ### Product validation / research items (not technical debt)
 
@@ -1006,9 +1015,84 @@ Supabase Auth API only.
   contract is not called or deployed here.
 - **No Google OAuth, password login, or magic-link-only flow** — email OTP only, per
   the Cloud doc's accepted MVP decision.
-- **No teams, coaches, or collaboration features.**
+- ~~**No teams, coaches, or collaboration features.**~~ — Superseded by the separate
+  Team Foundation beta (see below) built on top of this Auth Shell in a later pass. This
+  bullet described only what this narrow alpha slice itself left out, not a
+  whole-product statement.
 - Signed-in identity is not surfaced anywhere else in the app yet (e.g. no
-  account-scoped Settings section) — only the compact header control.
+  account-scoped Settings section) — only the compact header control (superseded in
+  part by Team Foundation's `AccountControl` "Teams" button, below).
+
+---
+
+## Team Foundation (beta)
+
+**Implemented — domain, service, Route Handlers, and UI.** See
+`docs/adr/0022-team-foundation-domain-and-persistence.md` for the full decision record,
+`docs/SYSTEM_ARCHITECTURE.md`'s "Team Foundation" section for the architecture-level
+summary, and `docs/DOMAIN_GLOSSARY.md` for the domain terms.
+
+### Not yet run against a real database
+
+**What:** `supabase/migrations/*team_foundation*.sql` (schema, RLS, functions) and
+`supabase/tests/team_foundation.test.sql` (a 91-assertion pgTAP suite, expanded and
+corrected across three independent correction passes — see `supabase/tests/README.md`)
+are written and internally reviewed, but have never been executed — no
+`supabase`/`docker` CLI is available in this development environment, in any pass so
+far.
+
+**Impact:** Medium-high. Every RPC name, signature, and SQL syntax choice is currently
+verified only by careful reading (including a full manual statement-by-statement trace
+of the pgTAP file's role/GUC state at each step), not by a real Postgres instance. A typo
+or a PL/pgSQL syntax error would not be caught until the first real execution.
+
+**Recommendation:** before any pilot use, run `supabase start` → `supabase db reset` →
+`supabase test db` in an environment with the CLI available, and treat the first
+execution's findings as expected, ordinary bug-fixing — not a sign the design is
+unsound. `supabase/tests/team_foundation.test.sql` itself now documents five specific
+manual two-session procedures at its end (Admin Request accept-vs-revoke, accept-vs-
+membership-ending, concurrent creation, and — added in the second correction pass —
+`restore_team` racing a final admin's `leave_team`/`relinquish_own_admin`) that pgTAP's
+single-transaction execution model cannot simulate — run those by hand with two real
+concurrent connections once tooling is available, and do not consider the SQL-level
+locking added across both passes (docs/adr/0022 §Admin Request Concurrency, §Team
+Lifecycle Lock Ordering, §Membership Write-Time Locking) proven correct until at least
+those five have actually been run once.
+
+### ~~No way to list a team's own outstanding Admin Requests~~ — Resolved (correction pass)
+
+**What it was:** `TeamService.listAdminRequestsForMe()` only returns Admin Requests
+naming the *signed-in caller* as nominee — there was no method scoped the other way (the
+Team Admin's own view of "requests I've created for this team that are still pending").
+
+**Resolution:** `TeamService.listAdminRequestsForTeam(teamId)` (fake and Supabase-backed
+implementations) fills this gap — scoped to one Team, effectively-pending requests
+only. The Supabase-backed implementation calls a dedicated, genuinely admin-only RPC
+(`list_admin_requests_for_team`, added in a second correction pass) rather than a
+plain RLS-scoped `select` — `team_admin_requests_select`'s policy deliberately also
+permits the nominee to see their own row (for their separate inbox), so a plain select
+was not actually an admin-only boundary on its own, even though `FakeTeamService` was
+already correctly admin-only. `TeamsScreen`'s "Outstanding Admin Requests" section
+(with a Revoke action, gated by a confirmation dialog) is built on it and correctly
+survives leaving and re-entering the team workspace, since it re-fetches from the
+server on every `getTeamWorkspace` call rather than relying on local component state.
+See `docs/adr/0022`'s "§Team-Side Admin Request Read Model".
+
+### `AccountControl`'s "Teams" button has no notification-count badge
+
+**What:** `AccountControl.tsx`'s "Teams" button (visible when signed in) is a plain
+static label — it does not show how many unread notifications or pending Admin Requests
+are waiting, even though `TeamsScreen` itself does show and act on them once opened.
+
+**Impact:** Low (nothing is lost or hidden — opening Teams always shows the current,
+accurate notification/request list; this is purely a "would I know to check" affordance
+gap).
+
+**Recommendation:** if requested, this would need either a shared auth/team-session
+context (so `AccountControl` and `TeamsScreen` aren't two independent
+`useSupabaseAuthController` instances, as they are today) or a second, lightweight
+polling read — neither was built speculatively in this pass to avoid introducing new
+global state infrastructure beyond this feature's reviewed scope.
 
 ---
 

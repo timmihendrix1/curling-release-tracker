@@ -2614,6 +2614,132 @@ state (including `recoverable_error`) renders inline alongside whatever screen i
 active, never as a full-page takeover, and the local, accountless application remains
 fully usable in every state.
 
+## Team Foundation (Implemented — domain/service/UI; SQL written, not yet executed)
+
+The first real collaboration layer built on the Optional Supabase Auth Shell above —
+named Teams, composable member functions, email invitations, and a Team Admin
+succession flow. See `docs/adr/0022-team-foundation-domain-and-persistence.md` for the
+full decision record and `docs/DOMAIN_GLOSSARY.md` for the domain terms (**Profile**,
+**Team Membership**, **Team Function**, **Team Invitation**, **Team Admin Request**).
+`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s Team Workspace/Team Seat
+sections remain the authoritative product/billing model this implements; no billing or
+entitlement logic exists in this code.
+
+**Not yet run against a real database.** `supabase/migrations/` (schema, RLS, functions)
+and `supabase/tests/team_foundation.test.sql` are written and internally reviewed but
+have never been executed — no `supabase`/`docker` CLI is available in this development
+environment. Treat the SQL layer as reviewed-but-unverified until it has actually run
+against Postgres once.
+
+**Domain layer (`src/lib/team/`, `src/lib/email/`).** Pure, fully unit-tested modules —
+`types.ts`, `errors.ts` (`TeamResult<T>`, never throws), `permissions.ts` (the one
+canonical, UI-only permission matrix), `invitationLifecycle.ts`/
+`adminRequestLifecycle.ts` (mirrored state machines), `lastAdminInvariant.ts`,
+`recovery.ts` (exit path only — see ADR-0022 Decision 9), `postgresErrorMapping.ts`
+(parses every RPC's `'<kind>: <message>'` failure convention back into a typed error,
+failing closed to a generic message for anything unrecognized). `teamService.ts` is the
+one application-facing `TeamService` interface; `fakeTeamService.ts` is a full,
+multi-actor in-memory reference implementation used by tests. `src/lib/email/` mirrors
+this discipline for the provider-neutral `EmailService` boundary (`emailService.ts`,
+`fakeEmailService.ts`, `smtpEmailService.ts` — SMTP via `nodemailer`, never a named
+commercial vendor in domain code).
+
+**Production service (`src/lib/supabase/supabaseTeamService.ts`).** The one production
+`TeamService`, constructed via `teamServiceFactory.ts` from the same cached, per-config
+Supabase client `useSupabaseAuthController` already uses. Reads go straight through
+RLS-scoped `select` queries; ordinary mutations call a Postgres RPC directly. The five
+mutations that must also send an email (`createInvitation`, `reviseInvitation`,
+`resendInvitation`, `createAdminRequest`, `removeMember`) instead POST to this app's own
+Next.js Route Handlers.
+
+**Route Handlers (`src/app/api/team/`).** Server-only — `_lib/context.ts` holds the
+shared preamble (bearer-token extraction, a fresh user-scoped Supabase client via
+`supabaseServerClient.ts`, and the `'<kind>: <message>'` error-passthrough
+convention). Four of the five routes — invitation create/revise/resend and Admin
+Request create — build an email accept link via `buildAcceptUrl`/
+`resolveAppOriginConfig` from the ONE explicitly configured `APP_ORIGIN`
+environment variable — never from the request's own URL/Host, which is attacker- or
+proxy-influenced input and must never determine where a link carrying a secret
+points (the invitation link carries the raw one-time invitation token; the Admin
+Request link carries only the request's non-secret id). If `APP_ORIGIN` is
+absent/invalid, only these four routes' email send is skipped, reported as an
+honest `emailSent: false` — the fifth route, member removal, has no accept link at
+all and reports `notificationEmailSent` independently of `APP_ORIGIN` entirely (see
+docs/adr/0022 §Canonical Email Link Origin). Each handler calls its RPC through
+`callMutationRpc` (a real exception boundary — a rejected mutation promise, not
+merely a resolved `{ error }`, still yields a stable sanitized response), then —
+entirely inside one `bestEffort` call, so a synchronous construction failure can't
+escape either — constructs the SMTP service via `createSmtpEmailServiceFromEnv()`
+and attempts exactly one email send (`null` from that factory, or a rejection, is
+reported as an honest `emailSent: false`/`notificationEmailSent: false` on its own
+route, never fabricated — see the `APP_ORIGIN` breakdown above for which of the two
+fields it can affect), then records the delivery outcome durably for invitation/
+admin-request routes. Every caught error at
+this boundary is logged (server-side only) through `safeErrorCategory`
+(`src/lib/safeErrorCategory.ts`) — a stable label plus one of a small, fixed set of
+HARD-CODED categories (e.g. `"TypeError"`, generic `"Error"`, `"provider_error"`,
+`"unknown_error"`), chosen only by the caught value's runtime type, never by any
+field value read off it — an `Error`'s own `.name`, or a plain object's `code`/
+`status`, is runtime-controlled and therefore never logged, since either could
+carry a request fragment, a recipient address, a raw token, or SMTP credentials.
+Classifying that runtime type is itself a TOTAL, non-throwing operation: even a
+hostile value whose own reflection behavior throws while merely being inspected
+(a `Proxy` whose `getPrototypeOf` or `has` trap throws, which `instanceof`/`in`
+would otherwise propagate) fails closed to the same hard-coded `"unknown_error"`
+category an unrecognized shape already produces, so categorizing a caught error can
+never itself become the thing that lets an exception escape a best-effort boundary
+after a durable mutation has already succeeded. `supabaseServerClient.ts` is the
+one additional file (beyond
+`supabaseClient.ts`/`supabaseAuthService.ts`) permitted to import
+`@supabase/supabase-js` — enforced by the same architecture-boundary test as the
+Auth Shell above; the Route Handlers themselves never import the SDK directly.
+
+**UI (`src/components/TeamsScreen.tsx`, `TeamInvitationAcceptOverlay.tsx`,
+`TeamDeepLinkGate.tsx`, `CloudSignInForm.tsx`).** `CloudSignInForm` extracts the
+email/OTP request-and-verify form (plus the shared recoverable-error retry
+affordance) that `AccountControl` already implemented, driven by whichever
+`AuthController` instance the caller passes in — `AccountControl`'s own header
+instance renders it unchanged, and both `TeamInvitationAcceptOverlay` and
+`TeamDeepLinkGate` now render it too, each with their own separate controller
+instance (all backed by the same underlying auth service), so a signed-out recipient
+can sign in directly inside the overlay/prompt an emailed link opened, instead of
+needing to reach the header control behind it (see `docs/adr/0022`'s "§Deep-Link
+Sign-In Continuity"). `TeamsScreen` is a full-screen overlay reached from
+Settings' "Manage Teams" card or `AccountControl`'s "Teams" button when signed in —
+the same toggled-boolean overlay pattern `AccuracyToleranceProfilesScreen`/
+`SmartRandomProfilesScreen` already use, not a new `NAVIGATION_ITEMS` entry (ADR-0009's
+in-memory navigation model is unchanged). It owns no local persisted state of its own —
+every render reflects a fresh or just-mutated read through the injected `TeamService`.
+An emailed invitation link has no dedicated Next.js page route either: it points back at
+the root page with an `inviteToken` query parameter, which `TeamDeepLinkGate` (mounted
+unconditionally in `TrackerApp.tsx`, alongside `AccountControl`) reads directly from
+`window.location` inside an effect — deliberately not `next/navigation`'s
+`useSearchParams`, which would require a Suspense boundary and an App Router context
+that plain component-render tests don't provide, for a purely client-side, one-time URL
+read with no server-rendered variant to keep in sync. An `adminRequestId` link (no
+secret token — see ADR-0022 Decision 4), once the caller is actually signed in, opens
+`TeamsScreen`, whose Notifications/Pending Admin Requests panel already has fuller
+context (team name) than a second, narrower accept UI could show. `TeamDeepLinkGate`
+holds the id in its own local state rather than consuming it immediately — while
+signed out (and cloud is genuinely configured), it renders a small sign-in prompt of
+its own instead, and only calls through to open `TeamsScreen` and clear the parameter
+once sign-in completes; the deep link's intent is not lost merely because the
+recipient wasn't already signed in when they opened it. See `docs/adr/0022`'s
+"§Deep-Link Sign-In Continuity".
+
+**Resolved (Team Foundation correction pass).** `TeamService.listAdminRequestsForTeam
+(teamId)` gives an active Team Admin a Team-scoped view of their own Team's
+outstanding (effectively pending) Admin Requests, distinct from `listAdminRequestsForMe`'s
+nominee-scoped inbox. `SupabaseTeamService` calls a dedicated, genuinely admin-only
+RPC (`list_admin_requests_for_team`) for this — not a plain RLS-scoped `select`, since
+`team_admin_requests_select`'s policy deliberately also permits the nominee to see
+their own row for their separate inbox, which would not make a plain select on that
+table an admin-only boundary on its own (see "§Team-Side Admin Request Read Model" in
+`docs/adr/0022`, corrected in a second pass). `TeamsScreen`'s "Outstanding Admin
+Requests" section (with a Revoke action) is built on this method and survives leaving/
+re-entering the workspace, since it re-fetches from the server rather than relying on
+local component state.
+
 ## Module responsibilities / architecture boundaries (Implemented)
 
 ### UI components (`src/components/`)

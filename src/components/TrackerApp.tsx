@@ -23,6 +23,8 @@ import type { SmartRandomProfileFormValue } from "./SmartRandomProfileForm";
 import SmartRandomProfilesScreen from "./SmartRandomProfilesScreen";
 import { surfaceClass } from "./Surface";
 import TargetTimeSettings from "./TargetTimeSettings";
+import TeamDeepLinkGate from "./TeamDeepLinkGate";
+import TeamsScreen from "./TeamsScreen";
 import TimingSimulatorPanel, {
   type SimulatorDiagnosticEntry,
 } from "./TimingSimulatorPanel";
@@ -295,6 +297,11 @@ export default function TrackerApp() {
     showSmartRandomProfilesManager,
     setShowSmartRandomProfilesManager,
   ] = useState(false);
+
+  // Team Foundation (docs/adr/0022) — entirely cloud-backed, so unlike the two
+  // profile managers above this owns no local persisted state here; TeamsScreen
+  // fetches everything itself once mounted.
+  const [showTeamsScreen, setShowTeamsScreen] = useState(false);
 
   const [historyFilters, setHistoryFilters] = useState<HistoryAnalysisFilters>(
     createDefaultHistoryFilters()
@@ -2240,7 +2247,8 @@ export default function TrackerApp() {
 
   return (
     <div className="app-content-clearance space-y-4">
-      <AccountControl />
+      <AccountControl onOpenTeams={() => setShowTeamsScreen(true)} />
+      <TeamDeepLinkGate onAdminRequestLink={() => setShowTeamsScreen(true)} />
 
       {activeView === "home" ? (
         <AppHeader />
@@ -2301,6 +2309,7 @@ export default function TrackerApp() {
             setShowSmartRandomProfilesManager(true);
           }}
           manageSmartRandomProfilesDisabled={!smartRandomProfilesWritable}
+          onManageTeams={() => setShowTeamsScreen(true)}
         />
       )}
 
@@ -3470,6 +3479,8 @@ export default function TrackerApp() {
           onClose={() => setShowSmartRandomProfilesManager(false)}
         />
       )}
+
+      {showTeamsScreen && <TeamsScreen onClose={() => setShowTeamsScreen(false)} />}
 
       {confirmAction && (
         <ConfirmModal

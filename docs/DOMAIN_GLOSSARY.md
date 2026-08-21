@@ -32,15 +32,114 @@ A coach may review training sessions, provide feedback and assign training.
 
 A coach does not own athlete data.
 
+**Distinct from the Team Function of the same name.** Team Foundation's `coach`
+contextual function (see **Team Function** below) is only a label a Team Admin may
+assign to a member — it grants no access to that member's training data by itself. The
+data-access relationship described in this entry is the separate, not-yet-built
+Coaching capability referenced in
+`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s Coaching model section
+(`TeamDataSharingGrant`, a granted data scope) — see `docs/adr/0022`'s Non-goals. The
+grant is athlete-to-**Team**, not athlete-to-coach: an athlete shares a chosen data
+scope with a Team once, and whoever currently holds that Team's `coach` function may
+use it — never a separate acceptance negotiated with each individually named coach. Do
+not assume holding the `coach` function implies this grant exists.
+
 ---
 
 ## Team
 
-A group of athletes participating together.
+**[Implemented — Team Foundation beta, `docs/adr/0022`]** One Team Workspace — a named,
+cloud-persisted group with its own membership, invitations, and administration,
+independent of any one person's local training history. See **Profile**, **Team
+Membership**, **Team Function**, **Team Invitation**, and **Team Admin Request** below
+for the concepts a Team is actually built from, and
+`docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s Team Workspace/Team Seat
+sections for the product- and billing-level model (a **Team Seat** is one active Team
+Membership *in a Team whose status is `active`*, regardless of which functions it
+holds — not a separate domain concept from Team Membership, only its billing-relevant
+count. A pending invitation, an ended Membership, and an active Membership in an
+`archived` Team all consume zero Team Seats — see
+`docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` §14).
 
-Teams exist independently of individual training history.
+An athlete may belong to different teams over time; a former membership's history is
+preserved, never deleted, when it ends (see **Team Membership**).
 
-An athlete may belong to different teams throughout their career.
+A Team never shares training/performance data with other members — a Team Workspace
+carries identity, function, and (Team Admin-only) member email, and nothing else.
+
+---
+
+## Profile
+
+**[Implemented — Team Foundation beta, `docs/adr/0022` Decision 1]** The stable,
+app-owned identity a Team Foundation record actually points to — never the same value as
+a Supabase Auth account id, and linked to exactly one such account, in both directions,
+for that account's lifetime. Carries a `displayName` (shown to teammates) and nothing
+else — never an email address, which is reachable only through the narrow, Team-Admin-
+gated path described under **Team Membership**.
+
+Distinct from **Athlete**: a Profile is Team Foundation's bare identity record: an
+Athlete is the separate, pre-existing training-data-owning concept above. A Profile does
+not by itself grant or imply Athlete capability.
+
+---
+
+## Team Membership
+
+**[Implemented — Team Foundation beta, `docs/adr/0022`]** One Profile's period of
+belonging to one Team — `active` or `ended` (`left` or `removed`), with an independent
+`participationAsPlayer` flag alongside whatever **Team Function**s are currently
+assigned to it. A Profile has at most one *active* Membership per Team; rejoining after
+leaving creates a new Membership period, never reuses the old one. An ended Membership's
+history is always preserved, never deleted.
+
+Member email is visible only to a Team Admin of that same Team, through one narrow,
+server-enforced path — never a generally browsable field on a Membership or roster
+entry.
+
+---
+
+## Team Function
+
+**[Implemented — Team Foundation beta, `docs/adr/0022` Decision 2]** A composable,
+time-bounded, audited capability attached to one Team Membership: `team_admin`,
+`coach`, or `training_lead`. A Membership may hold several at once (e.g. a player who is
+also `training_lead`). There is no Team Captain function — see `docs/adr/0022` for why.
+
+`team_admin` grants real administrative power over the Team (invitations, membership,
+other members' functions, member email visibility). It reaches an **already-active**
+member only through a **Team Admin Request** the member themselves accepts — never a
+direct peer-assignment by another admin. A **new invitee**, by contrast, may be proposed
+`team_admin` as part of their complete invitation and receive it the moment they accept
+that invitation — accepting the invitation is itself the acceptance step for a brand-new
+member, so this is not a second exception to "never direct," it is the other of the two
+distinct paths to `team_admin` (see **Team Admin Request** and `docs/adr/0022` Decision
+2). `coach` and `training_lead` are directly assignable by any Team Admin on an
+already-active member, take effect immediately, and grant no administrative power —
+`coach` in particular grants no data access (see the **Coach** entry above); both may
+also be freely proposed on a fresh invitation, exactly like `team_admin`.
+
+---
+
+## Team Invitation
+
+**[Implemented — Team Foundation beta, `docs/adr/0022` Decision 5]** A Team Admin's
+proposal for one email address to join a Team with a specific participation/function
+proposal, delivered as an emailed one-time link. `pending`, `accepted`, `expired`,
+`revoked`, or `replaced` — revising or resending an Invitation always replaces it with a
+fresh one (a new secret, a new 14-day expiry) rather than mutating the original in
+place.
+
+---
+
+## Team Admin Request
+
+**[Implemented — Team Foundation beta, `docs/adr/0022` Decision 4]** A Team Admin's
+proposal to promote one *existing, active* Team Membership to hold the `team_admin`
+Team Function — never a direct assignment. Requires the nominee's own explicit
+acceptance. Mirrors **Team Invitation**'s lifecycle (`pending`/`accepted`/`expired`/
+`revoked`/`replaced`) but carries no secret token, since it targets an already-
+authenticated member rather than an arbitrary email address.
 
 ---
 

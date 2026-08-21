@@ -32,6 +32,94 @@ cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10) — new, sepa
 numbered future work, never a reuse of ADR-0016 migration output or ADR-0017 activation
 evidence.
 
+**Revision note (2026-08-20, Team Seat hypothesis).** Section 17.5's provisional
+commercial model now counts each active Team Membership as one uniform `Team Seat`,
+independently of whether that person participates as a player or holds one or several
+contextual team functions. This replaces the earlier split between eight athlete places
+and four non-playing places. Optional Coaching capability remains a separate
+workspace-level module assigned to named coaches; it is not a more expensive kind of
+membership seat. Exact seat quantities, included allowances and prices remain deferred,
+configurable commercial hypotheses for post-pilot validation.
+
+**Revision note (2026-08-20, Team Foundation beta correction pass).**
+`docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` is now the canonical
+product source of truth for the first Team Foundation beta and explicitly supersedes
+several older claims below that predate it. §6.2/§6.3's function vocabulary and §17.2's
+decisions 1, 4, and 5 are corrected **in place** in this revision, not merely annotated:
+
+- §6.2/§6.3: **no Captain function is modeled.** The earlier "athlete and captain"/
+  "athlete, captain and training lead" composition examples and the Captain row in the
+  §6.3 function table are removed — the beta's three contextual functions are Team Admin,
+  Coach, and Training Lead only (see `docs/DOMAIN_GLOSSARY.md`/`docs/adr/0022` Decision 2).
+  On-ice captaincy, if ever surfaced in a future UI, would be a presentational label, not
+  an application permission or a `TeamFunction`.
+- §17.2 item 1: **team creation is not open to any confirmed account.** The beta gates it
+  behind an explicitly granted, closed-pilot capability per profile (never a role or a
+  self-service toggle) — a broader self-service creation model, if adopted after the
+  pilot, is a distinct future product decision this document does not make on its own.
+- §17.2 item 4: **consent is granted to a Team, not separately negotiated per named
+  coach.** The athlete chooses a data scope and grants it to the Team as a whole (with an
+  independent choice about historical sharing); any person who currently holds the
+  Team-scoped Coach function may then use that Team's granted access — access is not a
+  collection of per-coach grants requiring a fresh acceptance each time a new coach is
+  named. Ending the Coach function (or the Team-scoped consent itself) ends access
+  immediately, same as before. See
+  `docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` §13.
+- §17.2 item 5 ("Captain default access") is replaced with a Training Lead default-access
+  decision, since no Captain function exists: a Training Lead may see assignment/workflow
+  status (whether an assigned training was completed, a limited volume indicator such as
+  stones played) needed to coordinate training, but never an athlete's released
+  performance analyses — that remains gated to the Coach function and the athlete's
+  Team-scoped consent, unaffected by also holding Training Lead or Team Admin.
+
+§17.2 item 7 (unclaimed athlete profiles) already describes a **later** target capability
+explicitly deferred beyond this beta ("not part of the first personal-cloud release... the
+later team and coaching implementation") and is not corrected further here — the beta
+specification's own supersession note refers to a claim that this capability is *already
+built*, which this document never claimed.
+
+**Revision note (2026-08-21, remaining stale references corrected in place).** An
+independent review found the prior revision's "corrected in place" claim was
+incomplete: several further sections still treated Captain as an example permission-
+bearing persona, or still described the future Coaching data-sharing grant as a
+person-specific relationship negotiated with each named coach, contradicting §17.2
+item 4's already-corrected Team-scoped model. Corrected in this revision:
+
+- §3.3's role-composition example replaced "captain" with "Training Lead" (a person
+  cannot hold a Captain function at all, so it was never a valid example of a
+  contextual role) and now states explicitly that no Team Captain function exists.
+- §5.1's identity-concepts table replaces `CoachingRelationship` (defined there as "a
+  time-bounded athlete-to-coach relationship") with `TeamDataSharingGrant` — an
+  athlete's chosen data scope shared with a **Team**, usable by whoever currently
+  holds that Team's Coach function, never negotiated per named coach.
+- §6.3's composable-functions example replaced `captain_training_lead` with
+  `admin_coach`, since Captain is not a function this product models at all.
+- §6.6's commercial-layers example replaced "a workspace administered by a captain"
+  with "one of its Team Admins."
+- §7.2/§7.3/§7.4 replace `CoachingRelationship` with `TeamDataSharingGrant`
+  throughout, and state explicitly that the grant is athlete-to-Team, not
+  athlete-to-coach.
+- §17.2 item 6 ("Visibility after coaching ends") previously described continued
+  access as depending on "a separate active coaching relationship" — restoring
+  exactly the person-specific model item 4 (in the prior revision) already replaced
+  with a Team-scoped grant. Corrected to state the same Team-scoped rule item 4 uses:
+  access depends on currently holding Coach for a Team with a live grant, never on a
+  relationship with the specific individual.
+- §17.5's Individual Billing Account example and the closed-pilot evidence bullet
+  both replaced "captain(s)" with "Team Admin(s)" — Captain is not a role this
+  product administers billing or pilot evidence around.
+- §17.5's Team Workspace Coaching model and entitlement-expiry items replace
+  "person-specific `CoachingRelationship`" with the athlete's `TeamDataSharingGrant`
+  to the Team, matching §7.3/§17.2 item 4/6.
+- The Team Seat wording in §17.5's seat-consumption and workspace-scope lists now
+  states explicitly that a Membership becomes non-operational because its **Team**
+  is archived, not because of any status on the Membership record itself, matching
+  `docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` §14.
+
+`docs/DOMAIN_GLOSSARY.md`'s **Coach** entry, which referenced `CoachingRelationship`
+as the future grant's name, is corrected in the same pass to name
+`TeamDataSharingGrant` instead.
+
 ## 1. Purpose
 
 This document defines the target architecture for extending the current local-first
@@ -83,9 +171,11 @@ feedback.
 
 ### 3.3 Contextual roles, not global user types
 
-A person can be an athlete in one team, a captain in the same team, a coach in another
-team and an administrator of an organisation. `coach`, `captain` and `admin` must not be
-global fields on the user account.
+A person can be an athlete in one team, a Training Lead in the same team, a coach in
+another team and an administrator of an organisation. `coach`, `training_lead` and
+`admin` must not be global fields on the user account. There is no modeled Team
+Captain function — on-ice captaincy, if ever surfaced, would be a presentational
+label, never an application permission (see §6.2/§6.3 and `docs/adr/0022` Decision 2).
 
 ### 3.4 Shared content and personal performance are different domains
 
@@ -179,7 +269,7 @@ devices. They are cloud-authoritative. Training capture must never wait for the 
 | `Profile` | A person represented on the platform |
 | `Athlete` | A profile whose sporting performance can be tracked |
 | `TeamMembership` | A time-bounded relationship between a profile and a team |
-| `CoachingRelationship` | A time-bounded athlete-to-coach relationship and access scope |
+| `TeamDataSharingGrant` | An athlete's chosen data scope shared with a **Team** (never negotiated separately per named coach) — usable by whoever currently holds that Team's `Coach` function |
 
 These concepts must not be collapsed into one `User` table.
 
@@ -246,11 +336,12 @@ remain deferred until the youth-account and guardian rules in Section 17.4 are a
 ### 6.2 Roster participation and team functions are independent
 
 `TeamMembership` records whether the person participates as a roster athlete. Team
-functions are assigned independently. This supports all of the following:
+functions are assigned independently. This supports all of the following (no Captain
+function exists — see the revision note above and `docs/adr/0022` Decision 2):
 
 - athlete only;
-- athlete and captain;
-- athlete, captain and training lead;
+- athlete and Training Lead;
+- athlete, Team Admin and Training Lead;
 - non-playing coach;
 - playing coach;
 - coach and training lead;
@@ -261,13 +352,13 @@ functions are assigned independently. This supports all of the following:
 | Function | Primary responsibility | Default permission bundle |
 |---|---|---|
 | Member | Participate in the team | View team and own assignments |
-| Captain | Organise the team | Manage team details, invitations and roster |
 | Training Lead | Prepare training | Manage exercises, plans and assignments |
 | Coach | Develop athletes | Review granted performance data and give feedback |
 | Team Admin | Administer access | Manage settings, roles and permissions |
 
-Functions are composable. The product must not create combined roles such as
-`player_coach` or `captain_training_lead`.
+Functions are composable. The product must not create combined role names that
+conflate them, such as `player_coach` or `admin_coach` — participation and each
+function remain independent fields, never fused into a single named role.
 
 ### 6.4 Coach distinction
 
@@ -283,8 +374,8 @@ power. Coach-specific capabilities may include:
 - later, reviewing technique video.
 
 A coach does not automatically gain permission to invite members, remove members,
-change roles or administer the team. A captain or training lead can organise and assign
-training without being labelled a coach.
+change roles or administer the team. A Training Lead can organise and assign training
+without being labelled a coach.
 
 ### 6.5 Permission vocabulary
 
@@ -324,7 +415,8 @@ The current product direction separates three commercial layers:
 These layers do not replace team functions. `Coach`, `Team Admin` and `Training Lead`
 remain contextual functions even if the corresponding paid capability is inactive. The
 subscriber or billing owner is also separate from the person who performs a function;
-for example, a club may later pay for a workspace administered by a captain.
+for example, a club may later pay for a workspace administered by one of its Team
+Admins, who need not be the payer.
 
 The provisional packaging, seat, payer and lifecycle decisions in Section 17.5 are
 accepted as working hypotheses. Final prices and commercial launch details remain
@@ -358,8 +450,9 @@ Personal performance data is private by default. Sharing is split into at least:
 
 1. **Private:** only the athlete.
 2. **Team summary:** selected aggregated indicators for authorised team members.
-3. **Coaching access:** detailed sessions, measurements, trends and feedback for an
-   authorised coach.
+3. **Coaching access:** detailed sessions, measurements, trends and feedback, shared
+   with a **Team** and usable by whoever currently holds that Team's Coach function —
+   never negotiated separately with each individually named coach.
 
 Team membership alone does not grant access to another athlete's detailed data.
 
@@ -368,11 +461,16 @@ Team membership alone does not grant access to another athlete's detailed data.
 Avoid a generic ACL engine. Use domain-specific grants:
 
 - `AthleteTeamSummarySharing` for team-level summaries;
-- `CoachingRelationship` for detailed coach access;
+- `TeamDataSharingGrant` for detailed coaching access — granted by the athlete to a
+  **Team**, not to a named coach; any person who currently holds that Team's Coach
+  function may use it, and it takes effect immediately for a newly appointed coach
+  with no separate per-coach acceptance step (see
+  `docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` §13);
 - contextual team permissions for team-owned records.
 
-Each grant records scope, granting athlete, grantee, start time, optional end time and
-revocation time.
+Each grant records scope, granting athlete, the Team it is granted to, start time,
+optional end time and revocation time — never a named individual coach as the
+grantee.
 
 ### 7.4 Team exit
 
@@ -383,7 +481,8 @@ When an athlete leaves a team:
 - team-owned plans and administrative history remain with the team;
 - the athlete retains all personal sessions and measurements;
 - past assignment records retain the plan version and completion status;
-- continued detailed coaching access requires a separate active coaching relationship.
+- continued detailed coaching access requires the athlete's `TeamDataSharingGrant` to
+  a Team the athlete is still an active member of.
 
 ## 8. Exercise model and exercise library
 
@@ -865,12 +964,16 @@ All decisions required by this subsection are accepted.
 
 Accepted decisions:
 
-1. **Team creation:** any user with a confirmed account may create a team. The creator
-   becomes the first Team Admin but does not automatically become coach, captain or
-   roster athlete. Participation and additional functions are assigned separately. An
-   active Team Workspace entitlement is required to activate paid administration and
-   collaboration capabilities. The provisional payer, pilot and lapse models are defined
-   in Section 17.5 and remain configurable commercial hypotheses.
+1. **Team creation:** during the first beta, team creation requires an explicitly granted,
+   closed-pilot capability per profile — never a role, and never open to any confirmed
+   account by default (see `docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md`
+   §1). Whether and how creation opens more broadly after the pilot is a distinct future
+   product decision, not settled by this document. The creator becomes the first Team
+   Admin but does not automatically become coach or roster athlete. Participation and
+   additional functions are assigned separately. An active Team Workspace entitlement is
+   required to activate paid administration and collaboration capabilities. The
+   provisional payer, pilot and lapse models are defined in Section 17.5 and remain
+   configurable commercial hypotheses.
 
 2. **Final Team Admin:** an active team must always have at least one Team Admin. The
    final administrator cannot relinquish the function or leave the team until another
@@ -892,36 +995,48 @@ Accepted decisions:
    time; historical retention and already-created team artefacts remain governed by the
    later exit and retention decisions in this subsection.
 
-4. **Person-specific coaching access:** coaching access is granted to individually named
-   coaches, not automatically to every person who currently or later holds the Coach
-   function. A request may present several current coaches together, but acceptance
-   creates a separate grant for each coach. A coach may access an athlete's personal
-   performance data only while both conditions hold: the person has an active Coach
-   function in the relevant team or coaching context, and the athlete has granted that
-   person the required data scope. A newly appointed coach receives no retroactive or
-   automatic access. If the Coach function ends, the personal grant is suspended at
-   minimum; the final visibility and retention rules are decided under item 6 below.
+4. **Team-scoped coaching access (corrected — was person-specific per-coach consent):**
+   consent is granted to a **Team**, not separately negotiated with each individually
+   named coach — the athlete chooses a data scope (and, independently, whether to also
+   share historical data) once, for that Team, rather than repeating the same decision
+   coach by coach (`docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` §13).
+   Any person who currently holds that Team's Coach function may then use the Team's
+   granted access; a newly appointed coach gains it immediately through the existing
+   Team-level grant, with no separate acceptance step for that specific coach. If the
+   Coach function ends for that person, their access ends immediately; the Team-level
+   grant itself remains in force for whoever currently holds Coach. The final visibility
+   and retention rules for a person whose Coach function has ended are decided under item
+   6 below.
 
-5. **Captain default access:** the Captain function grants access to organisational team
-   data and relevant workflow states, including membership, team functions, participation
-   status, invitations and the status of assigned training where the captain is responsible
-   for coordination. It does not grant access to personal performance results, individual
-   sessions, measurements, development trends or coach feedback. Team summaries and any
-   supposedly anonymised team performance statistics require an additional athlete grant,
-   because individuals may remain identifiable in small teams. Additional functions such
-   as Coach or Training Lead do not bypass the required athlete permission.
+5. **Training Lead default access (corrected — was "Captain default access"; no Captain
+   function exists, see the revision note above):** the Training Lead function grants
+   access to organisational team data and relevant workflow states needed to coordinate
+   training — membership, team functions, participation status, invitations, and the
+   status of assigned training such as `assigned`/`started`/`completed`, including a
+   limited volume indicator such as stones played. It does not grant access to personal
+   performance results, individual sessions, measurements, development trends or coach
+   feedback. Team summaries and any supposedly anonymised team performance statistics
+   require an additional athlete grant, because individuals may remain identifiable in
+   small teams. Additional functions such as Coach or Team Admin do not bypass the
+   required athlete permission — a Team Admin who needs Coach-level analysis must
+   separately hold the Coach function.
 
-6. **Visibility after coaching ends:** when a Coach function or its underlying coaching
-   relationship ends, the related access to the athlete's personal performance data ends
-   immediately. The former coach can no longer view earlier or later sessions,
-   measurements or development trends through that relationship. Feedback already created
-   remains available to the athlete and to currently authorised people, and historical team
-   artefacts remain with the team, but neither provides the former coach with continued
-   access to the athlete's data. Access continues only where a separate active coaching
-   relationship exists and the athlete has granted that relationship its own permission.
-   Athlete data cached for coaching is removed from the former coach's device after the
-   next successful synchronisation. Data previously exported or captured outside the
-   platform cannot be withdrawn technically.
+6. **Visibility after coaching ends (corrected — was person-specific "coaching
+   relationship" language that contradicted item 4's Team-scoped grant):** when a
+   person's Coach function for a Team ends, their access to that Team's shared
+   athletes' personal performance data ends immediately — this follows directly from
+   item 4's `TeamDataSharingGrant` model, which authorises whoever *currently* holds
+   Coach for that Team, never the specific individual who once held it. The former
+   coach can no longer view earlier or later sessions, measurements or development
+   trends through that Team's grant. Feedback already created remains available to
+   the athlete and to currently authorised people, and historical team artefacts
+   remain with the team, but neither provides the former coach with continued access.
+   The former coach regains access only by holding Coach again for a Team whose
+   athlete-granted scope currently covers them — never through a separate,
+   person-specific consent negotiated with that individual. Athlete data cached for
+   coaching is removed from the former coach's device after the next successful
+   synchronisation. Data previously exported or captured outside the platform cannot
+   be withdrawn technically.
 
 7. **Claiming and merging athlete profiles:** a Coach or Team Admin may create an
    unclaimed athlete profile with only the minimum required identity information. The
@@ -1089,41 +1204,55 @@ Accepted provisional boundary between free local use and Personal Athlete:
    feedback. Entitlement checks and product configuration must therefore allow the
    boundary to change without a data migration or permission-model redesign.
 
-Accepted provisional Team Workspace and athlete-seat model:
+Accepted provisional Team Workspace, Team Seat and sponsored-entitlement model:
 
-1. A Team Workspace has its own base price for team administration and collaboration.
-   This price remains payable even when every team member already has Personal Athlete,
-   because the workspace provides a separate organisational product capability.
-2. Personal Athlete is not charged automatically for every member of a paid Team
-   Workspace. An athlete who already has an independently funded Personal Athlete
-   entitlement does not require an additional paid team seat.
-3. A Team Workspace may fund a discounted `Sponsored Athlete Seat` for a member who does
+1. Team administration and collaboration are a paid Team Workspace capability distinct
+   from Personal Athlete. Funding that workspace remains commercially distinct even when
+   every team member already has Personal Athlete, because the workspace provides a
+   separate organisational product capability; whether it is packaged through a base
+   price, individual Team Seats or a tiered allowance remains deferred under item 8.
+2. Each active Team Membership consumes exactly one uniform `Team Seat`, independently
+   of whether the person participates as a player or holds the `Team Admin`, `Coach` or
+   `Training Lead` function. A person with several contextual functions still consumes
+   only one Team Seat. Pending invitations, former (ended) Memberships, and current
+   Memberships in an archived, non-operational Team do not consume an active Team
+   Seat — a Team's own status, not a status on the Membership record itself, is what
+   makes a Membership non-operational here.
+3. A Team Seat provides membership capacity in the Team Workspace; it does not by itself
+   grant Personal Athlete capabilities. An athlete who already has an independently
+   funded Personal Athlete entitlement keeps that entitlement and is not charged for a
+   second copy of the same personal capability merely because the athlete joins a team.
+4. A Team Workspace may fund a discounted `Sponsored Athlete Seat` for a member who does
    not otherwise have Personal Athlete. The sponsored seat grants the same personal
    product capability; its funding source does not transfer ownership of the athlete's
    personal data to the team.
-4. A person may have several entitlement sources, including `self_paid`,
+5. A person may have several entitlement sources, including `self_paid`,
    `team_sponsored` and later `club_sponsored` or `promotional`. Overlapping sources do
    not grant duplicate capabilities and must not cause unintended double charging.
-5. For the first commercial release, when team sponsorship is added during an already
+6. For the first commercial release, when team sponsorship is added during an already
    paid personal term, the sponsored entitlement should take effect when that personal
    term ends rather than requiring prorated refunds or credits. This transition rule may
    be refined when the billing provider and cancellation model are selected.
-6. If a sponsored seat ends, the athlete keeps the account and all personal data. Access
+7. If a sponsored seat ends, the athlete keeps the account and all personal data. Access
    continues through any other active entitlement source or otherwise falls back to the
    free local product boundary defined above.
-7. Example working prices of CHF 14.90 per month or CHF 149 per year for the Team
-   Workspace base, and CHF 4.90 per month or CHF 49 per year for each Sponsored Athlete
-   Seat, are commercial hypotheses only. They require validation and must remain product
-   configuration rather than permission or data-model constants.
+8. Whether Team Seats are sold individually, included as a configurable allowance in a
+   workspace base price, or packaged in tiers remains a post-pilot commercial decision.
+   It must not change membership identity, contextual functions, permissions or athlete
+   data ownership.
+9. Exact Team Workspace, Team Seat and Sponsored Athlete Seat prices are commercial
+   hypotheses only. They require post-pilot validation and must remain product
+   configuration rather than permission or data-model constants; the earlier example
+   base-price figures do not settle the newly open Team Seat packaging decision.
 
 Accepted Team Workspace billing-account model:
 
 1. A Team Workspace may be financed by an individual or an organisation. A statement
    that a team pays means technically that an individual or organisation pays on behalf
    of that team.
-2. Billing uses two payer types: an `Individual Billing Account`, such as a captain,
-   coach, team member or sponsor, and an `Organisation Billing Account`, such as a club
-   or federation.
+2. Billing uses two payer types: an `Individual Billing Account`, such as a Team
+   Admin, coach, team member or sponsor, and an `Organisation Billing Account`, such
+   as a club or federation.
 3. The purchased entitlement belongs to the Team Workspace rather than to the payer.
    Changing the payer does not transfer or recreate the workspace, memberships or data.
 4. Billing and invoice-management rights do not grant a team function, administrative
@@ -1141,27 +1270,27 @@ Accepted Team Workspace billing-account model:
 Accepted provisional Team Workspace scope:
 
 1. One Team Workspace represents exactly one team.
-2. The first commercial model includes up to eight active athletes in that workspace.
-   This is intended to cover a regular curling team, substitute players and an extended
-   competitive roster without stretching the workspace into an organisation-wide product.
-3. The workspace additionally includes up to four active non-playing members, such as
-   Team Admins, Training Leads or Coaches.
-4. A person who is both an athlete and holds one or more additional team functions
-   occupies only one athlete place. Assigning several contextual functions to the same
-   person does not create another place or a separately billed function seat.
-5. Former or archived members do not count against the active limits. Their historical
-   memberships, assignments and attribution remain preserved.
-6. `Sponsored Athlete Seats` are independent of workspace membership limits. They decide
+2. Every active member occupies one Team Seat. Player participation and contextual
+   functions do not create different seat classes: a player, a non-playing coach and a
+   Team Admin each consume one seat, and a person who combines all three contexts still
+   consumes only one seat.
+3. Assigning or removing `Team Admin`, `Coach` or `Training Lead` never changes the Team
+   Seat count by itself. Functions describe responsibility and permission context; they
+   are not independently billed role seats.
+4. A former (ended) member, and a current member of an archived, non-operational
+   Team, do not count against the active limits. Their historical memberships,
+   assignments and attribution remain preserved.
+5. `Sponsored Athlete Seats` are independent of workspace membership limits. They decide
    only whose Personal Athlete entitlement the team finances and do not expand or reduce
    the number of people who may belong to the workspace.
-7. A club with several teams uses several Team Workspaces. A later club or federation
+6. A club with several teams uses several Team Workspaces. A later club or federation
    layer may finance and coordinate those workspaces without changing the rule that each
    workspace represents one team.
-8. Larger training groups, academies and national squads require a later organisation
+7. Larger training groups, academies and national squads require a later organisation
    product rather than an expansion of the Team Workspace concept.
-9. The limits of eight active athletes and four additional non-playing members are
-   accepted commercial hypotheses. They must remain configurable product values and must
-   not be hard-coded into roles, permission bundles or the membership data model.
+8. The number of Team Seats included or purchasable for one workspace remains a
+   configurable commercial hypothesis. No numerical limit may be hard-coded into team
+   functions, permission bundles or the membership data model.
 
 Accepted provisional Team Workspace Coaching model:
 
@@ -1175,9 +1304,12 @@ Accepted provisional Team Workspace Coaching model:
    the workspace. This allowance is a configurable commercial hypothesis and must not be
    hard-coded into the function, permission or membership model.
 4. A named coach does not need a separate paid Coaching subscription. Access still
-   requires the contextual `Coach` function, an active person-specific
-   `CoachingRelationship` and the athlete's granted data scope. The paid module alone
+   requires the contextual `Coach` function for that Team and the athlete's
+   `TeamDataSharingGrant` to that same Team — never a separate, person-specific
+   relationship negotiated with the named coach individually. The paid module alone
    grants no access to athlete data.
+   Assigning the module to a named coach does not consume a second Team Seat or turn that
+   person's existing Team Seat into a different role-specific seat.
 5. If the same person coaches two teams, each Team Workspace requires its own active
    Coaching entitlement. The coach may use one global identity across both contexts.
 6. A workspace may reassign a named coach place when a coach changes. Reassignment does
@@ -1207,9 +1339,9 @@ Accepted provisional entitlement-expiry and read-only model:
    members, plans, exercises, assignments and history. Invitations, membership changes,
    new assignments, edits and other team-administration actions are unavailable.
 6. An expired Team Workspace Coaching module permits a named coach to view earlier
-   feedback only while the underlying team context, person-specific CoachingRelationship
-   and athlete-granted data scope remain valid. New analyses, comments, goals and reviews
-   are unavailable.
+   feedback only while the underlying team context and the athlete's
+   `TeamDataSharingGrant` to that Team remain valid. New analyses, comments, goals and
+   reviews are unavailable.
 7. Reactivation during the 90-day read-only period restores the applicable paid
    capabilities without recreating the account, workspace, roles, relationships or
    configuration.
@@ -1221,8 +1353,8 @@ Accepted provisional entitlement-expiry and read-only model:
    retain ownership, access and export rights over their own data independently of the
    former payer or entitlement source.
 10. Billing lifecycle rules never extend a data permission. If an athlete withdraws a
-    grant, a membership or CoachingRelationship ends, or another access condition ceases
-    to be valid, the corresponding access ends immediately regardless of a paid term,
+    `TeamDataSharingGrant`, a membership ends, or another access condition ceases to
+    be valid, the corresponding access ends immediately regardless of a paid term,
     grace period, read-only period or archived state.
 11. The 14-day and 90-day durations are accepted commercial hypotheses and remain
     configurable product values. They must not be embedded in permission rules, data
@@ -1259,8 +1391,8 @@ Accepted product-pilot boundary before commercial preparation:
    but payment execution is deliberately deferred.
 4. Pilot work prioritises product completeness for the intended test scope, reliable
    synchronisation, secure access control, usable onboarding and evidence that athletes,
-   captains and coaches can complete their real training workflow without platform-owner
-   intervention.
+   Team Admins and coaches can complete their real training workflow without
+   platform-owner intervention.
 5. Commercial preparation resumes only after the pilot has produced enough evidence to
    assess product value, missing capabilities, repeated use, operational support burden
    and the stability of the proposed Personal Athlete, Team Workspace and Coaching
@@ -1394,7 +1526,8 @@ illustrative-outbox phase, if one is ever designed — not here.
 
 - Add invitations, memberships and contextual functions.
 - Add bounded permission bundles.
-- Add athlete sharing and coaching relationships.
+- Add the athlete's `TeamDataSharingGrant` — a chosen data scope shared with a
+  **Team**, never negotiated separately per named coach (§7.3, §17.2 item 4).
 - Test team exit and role-transfer lifecycles.
 - Test every RLS path with positive and negative cases.
 

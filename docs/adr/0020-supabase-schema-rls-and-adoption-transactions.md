@@ -2,7 +2,64 @@
 
 ## Status
 
-**Proposed. Incomplete design.**
+**Proposed. Incomplete design. BLOCKED — identity, bootstrap, and Local Adoption
+authority-scope design (below) is not implementation-ready and must not be built as
+written until the blocker is resolved.**
+
+**Identity/authority-scope blocker (fourth Team Foundation correction pass,
+2026-08-21) — read this before treating ANY of Decisions E.3/E.4/E.5/E.6/E.9/E.10,
+`bootstrap_account()`, `backfill_domain_authority()`, the authority-completeness
+proofs, the `assessment_runs`/`adoption_runs` composite foreign keys, the K.5
+RLS/grant matrix, or the state/crash/adversarial-scenario tables in Sections N/O/Q as
+current or executable.**
+
+Two genuinely different problems are corrected here, and must not be conflated:
+
+1. **Profile/Athlete identity — DECIDED, and this document was simply wrong.**
+   `docs/adr/0022-team-foundation-domain-and-persistence.md` Decision 1 is the
+   authoritative, already-implemented identity model: `Profile.id` is its own stable
+   UUID, never equal to the Supabase Auth account id; the two are linked 1:1 through a
+   separate `account_profile_links` table (`account_id` → `profile_id`), resolved by
+   `private.current_profile_id()`, never by `profiles.id = auth.uid()` equality.
+   Decision 10 additionally establishes that `Athlete` is a separate, lazily-created,
+   optional capability — no RPC in the actual, implemented Team Foundation schema ever
+   creates one automatically. This document's Decision E.3 (`public.profiles`) still
+   states `id` (`= auth.users.id`) as a schema fact, and `bootstrap_account()` (Decision
+   H.8 and Section M) still inserts `profiles` AND `athletes` together, unconditionally,
+   for every new account — both directly contradict the real, decided model. These are
+   corrected in place below (Decisions E.3/E.4 and every `bootstrap_account()`
+   description) to state the real model as fact, not as a "read this as stale" footnote.
+2. **Local Adoption's own `account_scope_id` — NOT decided, and this document must not
+   pretend otherwise.** Every table this document's own adoption-transaction design
+   introduces (`private.account_domain_authorities`, `private.adoption_runs`,
+   `public.assessment_runs`, `public.assessment_history_tombstones`, and everything
+   that locks, proves completeness over, or foreign-keys against them) is keyed by an
+   `account_scope_id` column whose intended meaning this document never actually
+   settled: `bootstrap_account()` inserts authority rows with
+   `account_scope_id = auth.uid()` (account-scoped), while `backfill_domain_authority()`
+   inserts them with `account_scope_id` drawn from `profiles.id` (Profile-scoped) — and
+   numerous RLS policies (e.g. `assessment_runs_owner_select`, Decision K) and locking/
+   proof steps (Decision H) assume `account_scope_id = auth.uid()` directly. Under the
+   superseded identity model these two derivations happened to coincide (`profiles.id`
+   *was* `auth.users.id`); under ADR-0022's real model they are two different UUIDs, so
+   this design is internally inconsistent, not merely stale. **Whether Local Adoption
+   authority should be account-scoped or Profile-scoped is a genuine, unmade
+   architecture decision this correction pass does not make** — inventing an answer
+   here would be a new product/architecture decision smuggled into a documentation
+   fix, which this pass is explicitly not authorized to do. Every section listed above
+   is therefore marked, at its own heading, as blocked on this specific open question,
+   and none of their SQL, RPC bodies, or completeness proofs may be treated as
+   implementation-ready until it is resolved by a dedicated decision (a future ADR or
+   an explicit product/architecture decision record) that this document then adopts.
+
+This remains a **targeted identity-model correction, not a wholesale rewrite** of this
+still-Proposed, not-yet-built Local Adoption / cloud-authority-transaction design: the
+SQL bodies affected by the blocker are left as written (removing them would delete
+real design work this pass has no mandate to redo), but are no longer presented as
+current or executable — each is marked in place. Any future implementation of this
+ADR must first resolve the `account_scope_id` blocker, then reconcile every table,
+function, proof, and matrix row named above with whichever scope that decision
+chooses.
 
 This is the **tenth** revision of this document. The first draft contained a factual
 error about ADR-0019's fingerprint algorithm and a unit-of-staging error. The second
@@ -346,8 +403,9 @@ authoritative registry/run queries; and the schema-level target for a future Ass
 development/staging pilot — which, per Decision D, **cannot be activated under the
 current combined Assessment domain**.
 
-**Explicitly excluded:** teams, organisations, `TeamMembership`; coaches, captains,
-`CoachingRelationship`, any team function/permission bundle; invitations, team
+**Explicitly excluded:** teams, organisations, `TeamMembership`; coaches,
+`TeamDataSharingGrant` (there is no modeled Team Captain function — see
+`docs/adr/0022` Decision 2), any team function/permission bundle; invitations, team
 administration, roster management; billing/commercial entitlement layers; public
 exercise publishing/moderation; general offline mutation queues/outbox; Branch
 Reconciliation and export/recovery for `local_branch_quarantined` content; the Session
@@ -1167,18 +1225,47 @@ could even be registered. The `(domain, canonical_mapping_version)` relationship
 checked procedurally, only at the `→ pilot` transition (above), not declared as a
 schema-level constraint on `adoption_protocols` itself.
 
-#### E.3 `public.profiles` (unchanged)
+#### E.3 `public.profiles` — corrected: the superseded identity equality removed
 
-`id` (= `auth.users.id`), `display_name`, `created_at`, `updated_at`. FK `id references
-auth.users(id) on delete restrict` (Decision E.12). `updated_at` is set exclusively by a
-trigger (Decision K.9), never by the client directly.
+**This document previously stated `id` (`= auth.users.id`) with an FK
+`id references auth.users(id) on delete restrict`.** That is superseded and wrong,
+not merely stale: `docs/adr/0022-team-foundation-domain-and-persistence.md` Decision
+1 is the real, implemented model — `Profile.id` is its own stable, independently
+generated UUID (`default gen_random_uuid()`), never equal to and never
+foreign-keyed directly to `auth.users.id`. The link to an Auth account is a
+separate table, `public.account_profile_links` (`account_id` primary key,
+references `auth.users(id)`; `profile_id` unique, references `public.profiles(id)`)
+— at most one Profile per account and vice versa, resolved by
+`private.current_profile_id()`, never by equality on `profiles.id` itself. Columns:
+`id`, `display_name`, `created_at`, `updated_at` (`updated_at` set exclusively by a
+trigger, Decision K.9, never by the client directly) — this part is otherwise
+unchanged. `bootstrap_account()` below (Decision H.8/Section M) must create a
+Profile through this real link model, not through an FK to `auth.users(id)` on
+`profiles.id` itself — see the identity/authority-scope blocker in Status.
 
-#### E.4 `public.athletes` (unchanged)
+#### E.4 `public.athletes` — corrected: not automatically created; still not scope-resolved
 
-`id`, `profile_id` (`UNIQUE`, `on delete restrict`), `created_at`; `unique (id,
-profile_id)` for `assessment_runs`'s composite FK (Decision E.9).
+`id`, `profile_id` (`UNIQUE`, `on delete restrict`, now referencing the corrected
+`public.profiles.id` above), `created_at`; `unique (id, profile_id)` for
+`assessment_runs`'s composite FK (Decision E.9). **This document previously implied
+an `athletes` row is created for every account, together with its `profiles` row,
+by `bootstrap_account()`.** Per ADR-0022 Decision 10, `Athlete` is a separate,
+lazily-created, OPTIONAL capability attached to a Profile — no RPC in the actual,
+implemented Team Foundation schema ever inserts one automatically as a side effect
+of account/Profile bootstrap. `bootstrap_account()`'s unconditional
+`profiles`/`athletes` `INSERT` (Decision H.8/Section M) is wrong on this point and
+must not be built as written — see the identity/authority-scope blocker in Status.
+This entry does not by itself resolve whether `assessment_runs`'s own
+`account_scope_id`-keyed foreign keys (Decision E.9) should reference an Athlete
+scoped by account or by Profile — that is the separate, still-open blocker.
 
 #### E.5 `private.account_domain_authorities` — corrected: full schema given, not "unchanged" prose
+
+**⚠ BLOCKED (identity/authority-scope — see Status).** `account_scope_id` below is
+this table's primary-key component and the identity every downstream lock, proof,
+and RLS policy in this document keys on. Whether it should be the raw Auth account
+id or `profiles.id` is not decided (see Status) — the schema below is not
+implementation-ready as written.
 
 **The defect, stated precisely.** The prior revision described this table only as
 "unchanged," naming `authority_status`/`authority_revision` and the composite PK, but
@@ -1234,6 +1321,10 @@ in **Phase 2** (Decision E.7), alongside `adoption_runs`'s own reverse reference
 both tables exist.
 
 #### E.6 `private.adoption_runs` — corrected: typed source columns, exact fingerprint format, composite protocol FK
+
+**⚠ BLOCKED (identity/authority-scope — see Status).** Same `account_scope_id`
+blocker as E.5 — this table's composite keys/FKs against
+`private.account_domain_authorities` inherit the same open question.
 
 ```sql
 create table private.adoption_runs (
@@ -1401,6 +1492,17 @@ compare-then-classify replaces per-row upsert entirely).
 
 #### E.9 `public.assessment_runs` (unchanged composite identity; header columns expanded)
 
+**⚠ BLOCKED (identity/authority-scope — see Status).** The `fk_athlete` constraint
+below (`foreign key (athlete_id, account_scope_id) references public.athletes (id,
+profile_id)`) asserts `assessment_runs.account_scope_id = athletes.profile_id` —
+i.e. it treats `account_scope_id` as Profile-scoped. `bootstrap_account()`
+(Decision H.8/Section M) instead inserts authority rows with
+`account_scope_id = auth.uid()` — account-scoped. Both cannot be right at once
+under ADR-0022's real model, where `profiles.id` and `auth.uid()` are different
+UUIDs. This composite FK is exactly the concrete, executable proof that the
+account-scope-vs-Profile-scope choice was never actually made — it must not be
+deployed as written until that choice is.
+
 ```sql
 create table public.assessment_runs (
   account_scope_id uuid not null,
@@ -1456,6 +1558,9 @@ and `canonical_mapping_version` (now stored here too, promoted from the registry
 promotion time, for audit).
 
 #### E.10 `public.assessment_history_tombstones` (unchanged)
+
+**⚠ BLOCKED (identity/authority-scope — see Status).** Inherits E.9's
+`account_scope_id` blocker via its FK to `assessment_runs`.
 
 `(account_scope_id, assessment_run_id)` composite PK, FK to `assessment_runs` `on delete
 restrict`, `deleted_at`, `reason`.
@@ -2751,7 +2856,13 @@ each branch distinguished because its remedy differs:
    ```sql
    with
      profile as (
-       select 1 from public.profiles where id = auth.uid()
+       -- Profile existence is resolved through the account/Profile link table, never
+       -- by `profiles.id = auth.uid()` — `Profile.id` is its own stable UUID, linked
+       -- 1:1 to the authenticated account via `account_profile_links` (docs/adr/0022
+       -- Decision 1). `private.current_profile_id()` is the narrow helper that
+       -- performs exactly this lookup elsewhere in the schema; inlined here since
+       -- this CTE's whole point is one single statement/snapshot.
+       select 1 from public.account_profile_links where account_id = auth.uid()
      ),
      authority as (
        select * from private.account_domain_authorities
@@ -2999,7 +3110,11 @@ prerequisite (Decision O), not assumed here.
 
 **Tombstones made authoritative for ordinary reads — at the policy level, not
 duplicated view-side logic.** The owner `SELECT` policy on `assessment_runs` itself
-excludes tombstoned rows:
+excludes tombstoned rows. **⚠ BLOCKED (identity/authority-scope — see Status): this
+policy's `account_scope_id = auth.uid()` condition assumes the account-scoped
+derivation, which `assessment_runs`'s own `fk_athlete` constraint (Decision E.9)
+contradicts by treating `account_scope_id` as Profile-scoped — not
+implementation-ready until that choice is made.**
 
 ```sql
 create policy assessment_runs_owner_select on public.assessment_runs
@@ -3046,8 +3161,8 @@ access for any client-facing role; reachable only through a `SECURITY DEFINER` f
 | `private.adoption_protocols` | none×4 | none×4 (unreachable) | none | none direct — only via `register_adoption_protocol`/`transition_adoption_protocol_status` | reads via functions; writes via the two named operational functions only | full |
 | `private.adoption_protocol_source_keys` | none×4 | none×4 (unreachable) | none | none direct — only via `register_adoption_protocol` | reads via functions; writes via that one function | full |
 | `private.implemented_canonical_mappings` | none×4 | none×4 (unreachable) | none | **none at all — not even `EXECUTE`-mediated write access; no RPC in Decision M ever inserts into this table** (Decision E.2c: a row is added only as part of deploying a mapping handler's own migration/code, an operational step outside the RPC surface entirely) | `SELECT`-only, granted directly to `adoption_protocol_owner` (Decision K.8) — the **only** reader is `transition_adoption_protocol_status`'s `→ pilot` gate (Decision E.2/E.2c), itself currently unreachable behind Decision E.2b's hard block (Task 5) | full (migration/admin-applied `INSERT` only) |
-| `public.profiles` | none×4 | SELECT own row / function-only / **UPDATE (`display_name`) own row only** / none | none (`id = auth.uid()`) | none | INSERT (`bootstrap_account` only) | full |
-| `public.athletes` | none×4 | SELECT own row / function-only / none / none | none (`profile_id = auth.uid()`) | none | INSERT (`bootstrap_account` only) | full |
+| `public.profiles` | none×4 | SELECT own row / function-only / **UPDATE (`display_name`) own row only** / none | none (own-row scoping resolves the caller's Profile through `account_profile_links` — `id = private.current_profile_id()` — never `id = auth.uid()`; `Profile.id` is its own stable UUID, docs/adr/0022 Decision 1) | none | INSERT (`bootstrap_account` only) | full |
+| `public.athletes` | none×4 | SELECT own row / function-only / none / none | none (own-row scoping is `profile_id = private.current_profile_id()`, resolved through `account_profile_links`, never `profile_id = auth.uid()`) | none | INSERT (`bootstrap_account` only) | full |
 | `private.account_domain_authorities` | none×4 | none×4 (unreachable) | none | none direct | all reads/writes via functions | full |
 | `private.adoption_runs` | none×4 | none×4 (unreachable) | none | none direct | all reads/writes via functions | full |
 | `private.adoption_staged_entries` | none×4 | none×4 (unreachable) | none | none direct | all reads/writes via functions (insert-only, Decision F.1) | full |
@@ -3251,6 +3366,14 @@ function outside step 3:**
 **`backfill_domain_authority(domain, protocol_version)` — corrected to describe the
 one, real PostgreSQL transaction this function actually runs in, not a
 partial-progress model no ordinary function/RPC invocation can produce.**
+
+**⚠ BLOCKED (identity/authority-scope — see Status).** The authority-row `INSERT`
+below populates `account_scope_id` from `public.profiles.id` — Profile-scoped —
+which disagrees with `bootstrap_account()`'s own `account_scope_id = auth.uid()`
+(Decision H.8, account-scoped) for the exact same column on the exact same table.
+The transaction/locking/completeness design below remains valid independent of
+which scope is chosen, but the concrete `INSERT ... SELECT` is not
+implementation-ready until the choice is made.
 
 **The defect, stated precisely.** The prior revision described a single call as if it
 could "leave whatever subset of profiles had already been inserted durable" from a
@@ -4200,6 +4323,19 @@ the L/M taxonomy correction, unchanged in count from the prior revision.
 **H.8 `bootstrap_account()` — corrected to close a real MVCC race with
 `backfill_domain_authority` (Decision K.6), not merely restated.**
 
+**⚠ BLOCKED (identity/authority-scope AND Profile/Athlete bootstrap — see Status).**
+Two independent problems, both unresolved as written: (1) the `profiles`/`athletes`
+`INSERT ... ON CONFLICT DO NOTHING` below must not unconditionally create an
+`athletes` row (ADR-0022 Decision 10: Athlete is separate, lazy, optional) and must
+create its `profiles` row through the real `account_profile_links` model (Decision
+E.3 above), not by inserting `profiles` keyed directly by `auth.uid()`; (2) the
+authority-row `INSERT` below uses `account_scope_id = auth.uid()`, which is only one
+of two candidate scopes this document uses inconsistently elsewhere (see Decision
+E.9's `fk_athlete` for the Profile-scoped alternative) — the locking/serialization
+design (the advisory lock, its ordering guarantees) remains valid and independent
+of which scope is eventually chosen, but the concrete `INSERT` statements below are
+not implementation-ready.
+
 **The defect, stated precisely.** The prior revision's `bootstrap_account` inserted
 authority rows only for domains with `activation_status IN ('pilot', 'production')` —
 but `backfill_domain_authority` (Decision K.6) is required to run, and complete, **while
@@ -4309,6 +4445,12 @@ lock-protected reads until that lock is released at commit. **No profile can eve
 reach domain `X`'s eventual `pilot` transition without an authority row for `X`.**
 
 ### N. Corrected state, crash, and threat tables
+
+**⚠ BLOCKED (identity/authority-scope — see Status).** Every "Authority scope" cell
+below, and every `bootstrap_account()`/`backfill_domain_authority()` recovery-action
+cell, inherits the open `account_scope_id` question — these tables describe the
+row/lock structure correctly, but the concrete identity each row keys on is not yet
+decided.
 
 **N.1 State table.** Every row names exactly one authority scope, one readable/writable
 backend, local-data visibility, and one required recovery action. **Every cell below
@@ -4448,9 +4590,17 @@ blank cells.**
 
 ### O. Threat table (unchanged categories; two entries corrected for the byte-representation and grant fixes)
 
+**⚠ BLOCKED (identity/authority-scope — see Status): the first two rows below both
+describe `account_scope_id` as if its derivation were settled and uniform. It is
+neither — `bootstrap_account()` derives it from `auth.uid()`; `backfill_domain_
+authority()` and `assessment_runs`'s own `fk_athlete` derive it from `profiles.id`.
+The mitigations described (never a client parameter; a real PK) remain valid
+regardless of which scope is eventually chosen, but "derives it from `auth.uid()`
+only" below is not accurate as a description of this document's own functions.**
+
 | Threat | Mitigation |
 |---|---|
-| Malicious/forged `account_scope_id` | Never accepted as a parameter; every function derives it from `auth.uid()` only |
+| Malicious/forged `account_scope_id` | Never accepted as a parameter; every function derives it internally — see the identity/authority-scope blocker above for why "from `auth.uid()` only" is not an accurate description of every function as written |
 | Guessed run IDs | Global Lock Order's non-leaking lookup returns `not_found` identically either way |
 | Cross-account stable UUID collision | `assessment_runs`'s composite `(account_scope_id, assessment_run_id)` PK |
 | Overwritten staging retry | Whole-batch compare-then-classify (Decision F.1) — insert-only, no `DO UPDATE` |
@@ -4509,7 +4659,25 @@ actually-invoked guarantee); no generic dispatch mechanism that looks up and cal
 document, so a row's mere existence never means a domain's mapping logic actually
 runs — designing and implementing that live validation/dispatch mechanism is a
 separate, required precondition, independent of, and in addition to, the other two
-blockers above.
+blockers above; **and, named in the fourth Team Foundation correction pass, the
+Local Adoption identity/authority-scope choice** — this document's own
+`account_scope_id` column (Decisions E.5/E.6/E.9/E.10 and every RPC/policy/proof
+built on it) is used as if it were the raw Supabase Auth account id in some places
+(`bootstrap_account()`, Decision H.8; the `assessment_runs_owner_select` RLS
+policy, Decision K) and as if it were `docs/adr/0022`'s independent `Profile.id` in
+others (`backfill_domain_authority()`; `assessment_runs`'s own `fk_athlete`
+constraint, Decision E.9) — genuinely undecided, not merely inconsistently
+described, and this document does not decide it here. Every table, function,
+policy, and proof built on `account_scope_id` remains blocked until a dedicated
+decision (a future ADR, or an explicit product/architecture decision this document
+then adopts) settles which scope Local Adoption authority actually uses.
+Separately, on the already-decided part of the same identity model: Decision
+E.3/E.4's `profiles`/`athletes` schema and `bootstrap_account()`'s own
+`profiles`/`athletes` bootstrap step must be rebuilt against ADR-0022's real,
+already-implemented identity model (`Profile.id` independent of the Auth account
+id, resolved via `account_profile_links`; `Athlete` a separate, lazy, optional
+capability, never auto-created) before implementation — this part is not an open
+decision, only unfinished reconciliation work.
 
 **Corrected implementation sequence** (unchanged ordering rationale from the prior
 revision; stages 6 and 7 updated to name the normalized/materialized tables):
@@ -4520,7 +4688,7 @@ revision; stages 6 and 7 updated to name the normalized/materialized tables):
 | 2 | Define the versioned protocol registry rows for `assessmentHistory` | `adoption_protocol_source_keys` proven contiguous/zero-based by `register_adoption_protocol`; both JSON Schemas proven valid by `jsonschema_is_valid` before `pilot` |
 | 3 | Create extensions and schemas | `pgcrypto`/`pg_jsonschema` present; `private` confirmed unreachable via the Data API |
 | 4 | Create roles and the privilege baseline (`adoption_protocol_owner`) | Grants-diff proves the role holds exactly the privileges in Decision K.8, nothing more |
-| 5 | Create base account/ownership tables | Exactly one `profiles`/`athletes` row per `auth.users` row |
+| 5 | Create base account/ownership tables | **⚠ BLOCKED (Profile/Athlete bootstrap — see Status and Decision E.3/E.4): this stage's own safety proof ("exactly one `profiles`/`athletes` row per `auth.users` row") is the superseded model. The real proof, matching ADR-0022, is: exactly one `profiles` row per `account_profile_links` row, and an `athletes` row created only lazily/optionally, never automatically per account.** |
 | 6 | Create private adoption-state tables, including the normalized source-key, domain-scoped mapping-registry, and materialized analysis/candidate tables (Decision E.1-E.2c, E.5-E.6, E.8, E.11) | Migration applies cleanly in Decision E.7's Phase 1 order |
 | 7 | Add the cyclic/composite constraints (Decision E.7 Phase 2) | All three `ALTER TABLE` statements succeed (`fk_account_domain_authority`, `fk_adoption_run`, `fk_last_adoption_run`, Decision E.5/E.7); a deliberately-reintroduced inline forward reference is proven to fail |
 | 8 | Add exact RLS (`ENABLE` and `FORCE` both), the `security_invoker` view, and grants (Decision K) | Automated RLS test harness proves every matrix cell in Decision K.5, including the tombstone-exclusion policy |

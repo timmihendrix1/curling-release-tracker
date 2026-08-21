@@ -8,6 +8,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ConfiguredCloudConfig } from "./config";
 
+// Re-exported so other production modules (e.g. supabaseTeamService.ts) can name
+// the client's type without importing "@supabase/supabase-js" directly themselves —
+// keeping the SDK import confined to this file and supabaseAuthService.ts.
+export type { SupabaseClient };
+
 let cachedClient: SupabaseClient | null = null;
 let cachedConfigKey: string | null = null;
 

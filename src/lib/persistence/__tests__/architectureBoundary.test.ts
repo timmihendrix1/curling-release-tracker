@@ -193,6 +193,12 @@ describe("persistence architecture boundary — supabase client", () => {
   const ALLOWED_SUPABASE_FILES = [
     join(SRC_ROOT, "lib", "supabase", "supabaseClient.ts"),
     join(SRC_ROOT, "lib", "supabase", "supabaseAuthService.ts"),
+    // Team Foundation (docs/adr/0022): the one additional, server-only file that
+    // constructs a fresh, user-token-scoped Supabase client for the small set of
+    // Route Handlers that must also send email. supabaseTeamService.ts (the
+    // browser-side TeamService) deliberately does NOT import the SDK itself — it
+    // only names the client's TYPE via supabaseClient.ts's re-export.
+    join(SRC_ROOT, "lib", "supabase", "supabaseServerClient.ts"),
   ];
   const MODULE_NAME = "@supabase/supabase-js";
   // Matches the bare package OR any subpath import beginning with
