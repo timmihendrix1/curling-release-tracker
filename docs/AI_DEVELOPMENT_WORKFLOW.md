@@ -60,6 +60,54 @@ Each feature follows this sequence:
 
 Perform a broad adversarial review before producing a correction prompt. Do not create a separate prompt for every minor observation.
 
+## Large cross-layer features
+
+Do not treat a feature that spans product rules, identity, persistence, authorization,
+server APIs, external delivery, authentication continuity, UI, and architecture
+documentation as one undifferentiated implementation task.
+
+Before implementation begins:
+
+1. Record the complete approved product decision set in a canonical repository
+   document. Conversation history, reconstructed requirement citations, and an agent's
+   partial implementation are not substitutes.
+2. Audit relevant existing architecture and ADRs for contradictions. Resolve factual
+   conflicts, clearly mark genuinely blocked designs, and ask the user only for
+   material product decisions. Do not make the implementation agent reconcile an
+   unresolved product model while writing code.
+3. Define explicit vertical stages and acceptance evidence. Typical stages are:
+   domain model and invariants; schema/RLS/transactions; service and API boundaries;
+   authentication and delivery continuity; UI; documentation and repository-wide
+   reconciliation.
+4. Give each stage its own focused implementation scope, negative-case matrix, and
+   independent review gate before starting the next stage. A single prompt may cover
+   several stages only when their combined review surface remains realistically
+   auditable.
+5. Confirm that required verification infrastructure exists before assigning a stage.
+   SQL, RLS, grants, triggers, and concurrency behavior are not verified by TypeScript
+   tests or careful reading. If no real database environment is available, classify
+   the SQL as written but unexecuted, keep database execution as a blocking stage, and
+   do not call the persistence layer complete.
+
+During implementation and review:
+
+- Passing tests prove only the behavior they exercise. Derive negative and adversarial
+  cases from the stated invariants, including authorization, malformed input,
+  concurrency, retry, interruption, stale state, partial external failure, and
+  unexpected thrown values.
+- Prefer completing and reviewing one vertical stage over accumulating domain, SQL,
+  API, UI, and documentation changes in one very large working tree.
+- If correcting one boundary introduces a new abstraction, review that abstraction's
+  own failure modes rather than assuming it closes the original defect by construction.
+- Keep architecture documents as current decision records. Do not turn them into a
+  chronological diary of correction passes or repeat volatile pass counts across
+  indexes and roadmap documents. Preserve only history that materially explains a
+  current decision or accepted limitation.
+- Estimate implementation passes from scope and available verification evidence, not
+  from a desired pass count. For a broad security-sensitive feature, multiple small,
+  independently verified stages are preferable to claiming completion in one or two
+  oversized passes.
+
 ## Working-tree ownership
 
 - Claude and Codex must not modify the same checkout concurrently.
