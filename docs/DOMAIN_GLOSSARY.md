@@ -1285,6 +1285,116 @@ fallback reading supplied *within* an active Capture Sequence; `"simulator"` for
 development-only Timing Simulator; `"external"` reserved for real hardware, not yet
 implemented. Never fabricated by migration. **[Implemented]**
 
+## Exercise
+
+A stable Library identity for one deliberate-practice activity (`{ id, currentVersionId }`,
+`src/lib/exercises/types.ts`). The identity survives content revisions; user-facing
+instructions, diagrams, defaults and provenance live in an immutable **Exercise
+Version**. Version 1 exposes only platform-curated Standard Exercises. Athlete-, Team-
+and Community-authored Exercises are deferred.
+**[Implemented — identity and lookup only; three curated Exercises, no execution and no
+persistence. See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section.]**
+
+## Exercise Version
+
+One immutable, attributable version of an Exercise's sporting meaning and presentation:
+classification, goal, purpose, setup, instructions, observation or evaluation guidance,
+volume, variations, participant and sweeping requirements, compatible Measurement
+Protocols and Diagram. A meaningful correction creates a new version; completed
+executions keep their original version snapshot.
+**[Implemented — immutable versioned content, recursively frozen at runtime, resolvable
+forever by its own Version id. The "completed executions keep their version" half stays
+Planned, because no execution exists to snapshot one yet.]**
+
+## Primary Exercise Focus
+
+The one dimension that determines an Exercise's main training and execution experience:
+**Technique**, **Shotmaking**, or **Measured**. It is independent of Shot Family and
+Training Purpose. `Consistency` is a Training Purpose, not a fourth focus.
+**[Implemented — all three values exist, drive the Library's grouping/filtering and the
+detail renderer's guidance branch, and are validated (a Technique Exercise may not carry
+Shotmaking-score guidance). The focus-specific *execution* experience is Planned.]**
+
+## Shot Family
+
+The curling task an Exercise trains — guard, draw, freeze, tap, take-out, soft take-out
+or sequence — independent of Primary Exercise Focus, and absent on an Exercise where it
+does not apply. A Draw may be either Shotmaking- or Measured-focused.
+**[Implemented — declared per Exercise Version, filterable, and offered as a filter only
+where some Exercise actually declares one.]**
+
+## Training Purpose
+
+What capability an Exercise is intended to develop (repeatability, weight control, line
+control, handle control, release-location control, rotation control, progressive
+distance control, setup discipline, consistency). An Exercise names one primary purpose
+plus optional additional ones. `Consistency` lives here, never as an Exercise focus.
+**[Implemented — declared and displayed per Exercise Version; discovery beyond text
+search and using it for recommendations is Planned.]**
+
+## Exercise Diagram
+
+Instructional content explaining setup, intended path, target or sequence. The domain
+distinguishes a restricted, attributed source image from a versioned structured
+platform diagram in normalised Ice Sheet coordinates. It is not captured position data
+and does not itself perform automatic scoring.
+**[Implemented — both variants are modelled and validated; the structured variant has a
+generic responsive SVG renderer (`normalized-ice-sheet-v1`), and unsupported content
+fails visibly rather than disappearing. No editor, animation, actual positions or
+sensor overlay exists (Planned). No restricted source asset is bundled — see ADR-0023.]**
+
+## Restricted Source Asset
+
+A source image the platform may show only to an explicitly permitted audience. It is
+named by an **opaque asset reference** — never a URL or public path — and is renderable
+only through an explicitly injected authorized resolver. Every uncertain path fails
+closed, including a resolver that throws, and attribution/provenance stay visible either
+way.
+**[Implemented — boundary only. No restricted asset and no authorized resolver exist in
+this repository. See `docs/adr/0023-restricted-source-asset-delivery-boundary.md`.]**
+
+## Measurement Protocol
+
+A reusable definition of what is measured, in which unit, between which reference
+points, by which allowed sources and under which validation rules. It can define a
+standalone Measured Exercise or be attached compatibly to another Exercise; a protocol
+is not duplicated inside every Exercise definition.
+**[Implemented — two versioned release-time protocols reusing the existing
+Measurement Mode semantics, referenced by Exercise Version and rendered on the detail.
+Neither prescribes a target or tolerance, and neither claims hardware capture. Attaching
+a protocol to an actual execution or Measurement record is Planned.]**
+
+## Exercise Catalog Package
+
+The versioned curated content package the Library is delivered in: a package schema
+version, a content language, the Exercises, their Exercise Versions and the Measurement
+Protocols they reference. Compiled with the application, recursively frozen, and
+validated once at import — invalid content fails fast rather than rendering.
+**[Implemented. It stores nothing: a future package schema change requires an explicit
+loader or migration, never a guessed upgrade.]**
+
+## Exercise Execution
+
+One actual performance of one Exercise Version inside a Training Session. It snapshots
+selected variation, volume, Measurements, participants, roles, sweeping and deviations,
+then owns the athlete-associated results and attempts. Version 1 permits one active
+Exercise Execution at a time. **[Planned]**
+
+## Athlete Exercise Result
+
+The athlete-owned result within an Exercise Execution. Several athletes may receive
+individual results in the same Team Session. It may contain attempts, Measurements and
+one private Athlete Note; recorder, device and Team do not become its owner. **[Planned]**
+
+## Shotmaking Evaluation Basis
+
+The provenance for a Shotmaking attempt's 0–4 outcome meaning. The closed beta records
+generic Team/self-assessed values without a platform rubric, so results are not assumed
+comparable across Teams. Future recommended or Team-adjusted rubrics require versioned
+snapshots and never reinterpret history. **[Planned — the curated Shotmaking content
+already declares `team-defined-unstructured` on the Exercise Version and states it in
+the UI, but nothing records a basis against a result yet, because no result exists.]**
+
 ## Training Category
 
 *UI-facing name for `BlockMode` (above) — not a new or competing concept.* The History

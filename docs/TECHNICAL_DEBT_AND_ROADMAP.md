@@ -1096,6 +1096,70 @@ global state infrastructure beyond this feature's reviewed scope.
 
 ---
 
+## Exercise Library and multi-athlete execution
+
+**Stage A implemented. Stages B-E approved but not started.** The canonical product and
+domain boundary is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21
+defines the stages). The full closed-beta catalogue contains three Swiss Curling
+Shotmaking Exercises, four unscored Technique Exercises and two standalone Measured
+Exercises. All user-facing content is English.
+
+**Stage A (domain and curated-content foundation) — implemented.** See
+`docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section for what exists:
+`src/lib/exercises/` (identity/immutable versions, classification, participation and
+sweeping requirements, reusable Measurement Protocols, both Diagram variants, the
+validation boundary, lookup and query), three curated Exercises (Release Point, Eight
+Guards Progressively Longer, standalone Release Time), a generic responsive structured
+Ice Sheet diagram renderer, and read-only discovery/detail as Train's third entry path
+alongside Quick Start and Training Plans. Stage A **stores nothing** — no key, no
+repository, no migration, no `Session`/`TrainingBlock`/`Shot` change.
+
+Known Stage A boundaries, deliberate rather than defects:
+
+- **Read-only.** No start action exists, enabled or disabled. Starting or recording an
+  Exercise is Stage B.
+- **Six of the nine approved Exercises are not authored yet** (Rotation, Laser, Release
+  Gates, the Draw and Soft Take-out Shotmaking Exercises, Rotation Count). They expand
+  the same schemas and renderers; none may require a named, exercise-specific UI branch.
+  This is Stage E.
+- **Release Time references both release-time Measurement Protocols as `optional`.** The
+  requirement is "choose one and keep it for the whole execution", which the Exercise
+  states as a setup instruction. Nothing in the approved content makes either mode the
+  standard for this Exercise, so neither is marked `required`. Whether a Measured
+  Exercise should be able to express "at least one of these protocols is required" as a
+  domain field is a Stage B question, when execution actually needs to enforce it.
+- **No Rotation Count Measurement Protocol.** `MeasurementMetricType` currently has one
+  value; the second arrives with the Exercise that needs it (Stage E).
+- **Search does not match a referenced protocol's name.** `exerciseSearchableText`
+  operates on one Exercise Version without the catalog, so "hog" does not find Release
+  Time via its protocol names. Widen it if discovery feedback asks for it.
+
+**Stages B-E remain planned**, in the specification's order and with its review gates:
+Solo execution, one-device Team execution with bounded offline upload, generalised simple
+Training Plans containing curated Exercise steps, then the remaining approved content and
+release hardening. Existing Release Timing Training Plans and history must remain
+compatible throughout. Exercise authoring, public/community libraries, standardised
+Shotmaking rubrics, advanced analytics, sensor coordinates and video analysis remain
+deliberately deferred.
+
+Stage C additionally requires real database/RLS/transaction verification and a focused
+persistence/upload-protocol design; TypeScript tests alone are not sufficient evidence
+for it.
+
+**Restricted source diagrams.** The supplied Swiss Curling diagrams may be shown only to
+the named one-Team closed beta with visible attribution and genuinely restricted
+delivery. Their inclusion in a public asset bundle does not satisfy that boundary. Stage
+A therefore bundles **no** restricted asset at all: the PDF and its diagrams are not in
+this repository, `Eight Guards, Progressively Longer` uses an independently authored
+structured platform diagram, and the attributed-source-image variant is modelled,
+validated and gated behind ADR-0023's opaque-reference-plus-authorized-resolver boundary
+with no resolver implemented. Actually showing a restricted diagram is therefore a new
+capability to build, not a flag to flip. Before any larger pilot or release, the product
+owner must still record Swiss Curling's permission scope — a safe delivery mechanism is
+not permission to deliver.
+
+---
+
 ## Open product decisions
 
 These are not technical debt — they are decisions the product owner / domain expert

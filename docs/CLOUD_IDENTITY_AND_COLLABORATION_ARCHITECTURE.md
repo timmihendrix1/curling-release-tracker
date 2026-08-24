@@ -4,6 +4,23 @@
 **Version:** 1.0  
 **Date:** 2026-08-11
 
+**Revision note (2026-08-24, shared Training Session recording and corrections).**
+The Exercise Library discovery resolved the Team recording-consent and historical
+correction boundary. Section 17.2 now distinguishes an athlete's explicit prospective
+Team-session recording permission from Team membership and lasting analytics access.
+Sections 12-15 require append-only auditability for result corrections and ordinary
+voiding, and notification of the completed Session's original, still-authorised
+participants after a post-completion change. Ordinary voiding is not hard deletion;
+before-and-after values remain protected by the recipient's current data-sharing grant.
+The Exercise Library's Version 1 Athlete Note is separately private to its athlete and
+is not exposed by Team participation or a Team data-sharing grant. Section 12.4 records
+the separately approved, bounded offline upload path for one-device Team Exercise
+Sessions; it does not turn the Phase 3/4 personal-cloud transition into a generic
+offline-sync implementation. The Exercise Library capability mapping now follows the
+existing Free / Personal Athlete / Team Workspace / Coaching layers in Section 17.5;
+athlete-owned raw Team Session results remain viewable and exportable independently of
+a Personal Athlete entitlement.
+
 **Revision note (2026-08-18, consolidated).** `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
 is a **Proposed**, related architectural decision — it proposes, and does not yet
 finally decide, the authority boundary for the Phase 3/4 transition below. This
@@ -24,8 +41,9 @@ annotated with a disclaimer layered above unchanged text:
   Decision 15 stage 11) as the first concrete cloud-authority exercise, stated as a proposal under
   a Proposed ADR, never as the already-decided MVP mechanism — and its "test offline
   mutation followed by reconnect" step, which contradicted this same section's own
-  admission that no outbox exists, is replaced with tests appropriate to that prototype
-  (online-required writes, not an offline mutation queue).
+  admission that no generic personal-cloud outbox exists for that phase, is replaced
+  with tests appropriate to that prototype (online-required writes, not an offline
+  mutation queue). The later Exercise-specific path in §12.4 is separate.
 
 IndexedDB may still be selected later for a separately designed, account-scoped read
 cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10) — new, separately
@@ -456,6 +474,13 @@ Personal performance data is private by default. Sharing is split into at least:
 
 Team membership alone does not grant access to another athlete's detailed data.
 
+For the Exercise Library Version 1, an Athlete Note attached to an individual Exercise
+Result remains visible and writable only by that athlete. It is not part of Team-summary
+or coaching access and is never created or edited by the active recorder on another
+athlete's behalf. Shared operational notes, Coach Feedback on an Exercise Result and
+deliberate athlete-controlled note sharing require separate future models rather than a
+broader interpretation of `TeamDataSharingGrant`.
+
 ### 7.3 Specialised grants
 
 Avoid a generic ACL engine. Use domain-specific grants:
@@ -718,11 +743,16 @@ Potential `metric_type` values include:
 - `release_angle`;
 - `rotation_count`;
 - `rotation_rate`;
-- `curl_distance`;
-- `shot_score`.
+- `curl_distance`.
 
 Subjective perception remains separate from objective measurements even if both use a
 similar numeric scale.
+
+A Shotmaking score on curling's 0–4 scale is a `ShotOutcome`, not a Measurement. It
+evaluates how completely the intended curling task was achieved; it does not measure a
+physical property merely because it is numeric. A Shot may therefore carry both one
+Shotmaking outcome score and independent Measurements such as release time or rotation
+count, without duplicating the score as a Measurement `metric_type`.
 
 ### 10.4 Large raw data
 
@@ -799,7 +829,7 @@ A future outbox design would need to address, at minimum:
 | Record type | Default policy |
 |---|---|
 | Shot and measurement creation | Append-only, deduplicate by stable ID |
-| Explicit shot correction | New audited revision or explicit correction mutation |
+| Explicit shot correction or ordinary voiding | New audited revision or explicit correction / void mutation; never silent overwrite or hard deletion |
 | Personal note | Last accepted edit with version check |
 | Exercise draft | Version check, surface conflict if both sides changed |
 | Published exercise or plan | Immutable version, create a new version |
@@ -813,6 +843,40 @@ whose silent overwrite would change historical meaning.
 
 Realtime subscriptions may later update coach dashboards or assignment delivery. They
 do not replace durable pull, push, retry, idempotency and conflict handling.
+
+### 12.4 Bounded offline upload for Team Exercise Sessions
+
+The Exercise Library Version 1 requires one feature-specific offline path: one
+authenticated recorder device may capture and complete a multi-athlete Team Exercise
+Session locally, then upload it when connectivity returns. This is a later Exercise
+Library implementation requirement, not an already existing capability and not a
+requirement of the Phase 3/4 personal-cloud transition described above.
+
+The device must already hold the required immutable Exercise Versions, Team Profiles
+and latest known recording-permission state. Cached permission permits local capture
+only; the server remains authoritative at upload. The pending Session is account-scoped,
+durable across restart and composed of stable client-generated IDs for the shared
+coordination record and every athlete-owned child record.
+
+Upload uses a stable Session envelope and per-athlete result bundles. Every mutation is
+idempotent, an uncertain acknowledgement is safely retryable, and local data remains
+pending until explicitly acknowledged. The server derives recorder identity from the
+authenticated account and revalidates current Team membership and recording permission
+for every athlete bundle. A failed authority check blocks only that athlete's bundle;
+it never silently drops the data, reassigns ownership or prevents authorised bundles
+from syncing. The affected athlete may explicitly authorise that concrete Session for a
+later retry.
+
+Required visible states include local draft, locally completed / upload pending, fully
+synced, and partially synced with an athlete bundle blocked. Pending records must not be
+visible after an account switch. An unsynced Session cannot transfer to another device
+in Version 1.
+
+This bounded queue does not provide generic bidirectional domain sync, concurrent
+recording, cross-device continuation, offline role or permission changes, or a general
+conflict-resolution protocol. Its persistence format, account-isolation mechanism,
+atomic server boundary and retry evidence require a focused design and real database
+verification before implementation can be called complete.
 
 ## 13. Security model
 
@@ -853,7 +917,8 @@ Audit events should cover:
 - plan assignment, cancellation and superseding;
 - public exercise publication and moderation;
 - profile claim and merge operations;
-- explicit corrections to historical performance data.
+- explicit corrections to historical performance data; and
+- ordinary voiding of historical performance data.
 
 ## 14. Notifications
 
@@ -870,9 +935,24 @@ Potential notification events include:
 - assignment due soon;
 - coach feedback added;
 - team invitation received;
-- coaching access requested or revoked.
+- coaching access requested or revoked; and
+- post-completion correction or ordinary voiding of a shared Training Session result.
+
+For a post-completion result change, recipients are the original confirmed Session
+participants who are still authorised to receive that Session's operational
+notifications when delivery is evaluated. The event is not broadcast to the whole
+Team, non-participants, later joiners or former participants whose access has ended.
+It carries actor, Session, timestamp, reason and change kind or count. Before-and-after
+performance values are disclosed only where the recipient's current data-sharing grant
+permits them. In-app delivery is required for this workflow; email and push remain
+optional transports.
 
 ## 15. Deletion, export and retention
+
+An athlete's normal request to remove a result from current calculations is an audited
+ordinary voiding under Sections 12 and 13, not account or privacy deletion. It preserves
+the historical revision subject to the applicable retention policy. Irreversible legal
+erasure, account deletion and retention expiry remain separate controlled operations.
 
 ### 15.1 Athlete export
 
@@ -994,6 +1074,16 @@ Accepted decisions:
    separate permission. The athlete may revoke that permission for future access at any
    time; historical retention and already-created team artefacts remain governed by the
    later exit and retention decisions in this subsection.
+
+3a. **Team-session recording permission:** permission for other participants to record
+   an athlete's individual results is a separate, explicit, prospective Team-scoped
+   permission. The athlete grants it once for that Team rather than reconfirming every
+   Training Session. At Session start, the active recorder selects the eligible people
+   actually present; this roster becomes the confirmed participant set. Every confirmed
+   participant, including a Coach, may record during the active Session, but neither
+   Team membership nor participation grants lasting access to personal results or
+   analytics. Revocation prevents recording in future Sessions and does not silently
+   erase completed history.
 
 4. **Team-scoped coaching access (corrected — was person-specific per-coach consent):**
    consent is granted to a **Team**, not separately negotiated with each individually
@@ -1203,6 +1293,25 @@ Accepted provisional boundary between free local use and Personal Athlete:
    using observed activation, retention, conversion, hardware usage and direct customer
    feedback. Entitlement checks and product configuration must therefore allow the
    boundary to change without a data migration or permission-model redesign.
+
+Accepted Exercise Library capability mapping:
+
+1. Browsing the curated Standard Exercise Library, Solo execution with manual 0–4
+   evaluation or manual Measurements, a private Athlete Note and the basic
+   current-execution result are free capabilities.
+2. Cloud backup, multi-device continuity, reusable personal Training Plans,
+   longitudinal analytics and supported automatic hardware capture belong to Personal
+   Athlete.
+3. A multi-athlete Team Session, roster and role coordination, rotation, one active
+   recorder, bounded offline Team capture / later upload and Team-owned or Team-executed
+   Training Plans belong to Team Workspace.
+4. Structured Coach analysis and Coach Feedback remain part of the separately deferred
+   Coaching module rather than the Exercise Library closed beta.
+5. An athlete can always view and export their own raw result created by a Team Session,
+   even without Personal Athlete. Subscription state never transfers data ownership or
+   hides athlete-owned raw data.
+6. The closed beta enables its required capabilities through the reversible pilot
+   entitlement and implements no production payment collection or billing enforcement.
 
 Accepted provisional Team Workspace, Team Seat and sponsored-entitlement model:
 
@@ -1471,9 +1580,10 @@ not reused for it.**
 
 **Does not require Phase 2 above to be complete** (corrected per the revision note).
 The original "sync one session through an outbox" and "test offline mutation followed by
-reconnect" steps below are replaced: no outbox exists or is designed (§12.1 above), and
-ADR-0019's proposed MVP model for this prototype is online-required writes, not an
-offline mutation queue — retaining an offline-mutation test here would contradict that
+reconnect" steps below are replaced: no generic personal-cloud outbox exists or is
+designed for this phase (§12.1 above), and ADR-0019's proposed MVP model for this
+prototype is online-required writes, not an offline mutation queue — retaining an
+offline-mutation test here would contradict that
 directly. **ADR-0019 instead proposes an Assessment Adoption development/staging
 prototype** as the first concrete cloud-authority exercise — Local Adoption of
 `assessment` data, reading its legacy source from `localStorage` and writing to Supabase
@@ -1537,6 +1647,8 @@ illustrative-outbox phase, if one is ever designed — not here.
 - Add versioned training plans and planned sessions.
 - Assign planned sessions to athletes and teams.
 - Cache assignments for offline execution.
+- Implement the bounded, one-recorder completed-Team-Session upload defined in Section
+  12.4, with durable local state, per-athlete authority checks and idempotent retry.
 - Return recipient status and linked athlete session.
 
 ### Phase 7: Closed team pilot

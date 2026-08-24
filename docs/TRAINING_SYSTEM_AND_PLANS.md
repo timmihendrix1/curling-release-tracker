@@ -1128,6 +1128,14 @@ Training Plans
 
 ```
 
+> **Superseded in part (2026-08-24).** Train now offers a **third** entry path,
+> **Exercises**, added by the Exercise Library — still inside the existing `train`
+> view, still with no new primary navigation tab. The two paths above remain exactly as
+> specified; see `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` section 14.1 for
+> the third, and `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section for what is
+> actually built. This document stays authoritative for the Release Timing Training Plan
+> product itself.
+
 Quick Start preserves the current free setup experience.
 
 Training Plans add reuse without replacing flexible training.

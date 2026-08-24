@@ -207,6 +207,16 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     // collection at all) remains fully usable while the library is loading.
     expect(screen.getByRole("button", { name: "Start Training" })).toBeEnabled();
 
+    // Also unrelated: the Exercises pillar renders compiled curated content and
+    // touches no persisted domain at all, so it stays reachable and usable
+    // while the Training Plans library is still loading.
+    const exercisesTab = screen.getByRole("tab", { name: "Exercises" });
+    expect(exercisesTab).toBeEnabled();
+    fireEvent.click(exercisesTab);
+    await waitFor(() => screen.getByText("Eight Guards, Progressively Longer"));
+    fireEvent.click(screen.getByRole("tab", { name: "Quick Start" }));
+    await waitFor(() => screen.getByText("Set Up Training Block"));
+
     fireEvent.click(plansTab);
     // Disabled tab — clicking it must not switch modes.
     expect(screen.queryByText("2 steps · 2 stones")).toBeNull();

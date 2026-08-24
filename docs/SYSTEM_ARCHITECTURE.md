@@ -2310,8 +2310,9 @@ the decisions below.
 
 - Training Plans live entirely inside the existing `"train"` `ActiveView` — no new
   navigation item. `TrainLanding.tsx` (mounted only when there is no active block)
-  offers Quick Start (the pre-existing hero, unchanged) and Training Plans as two
-  equally-reachable entry paths.
+  offers Training Plans as one of Train's three equally-reachable entry paths, alongside
+  Quick Start (the pre-existing hero, unchanged) and Exercises (added by the Exercise
+  Library's Stage A — see that section below).
 - A Training Plan (`TrainingPlan`/`TrainingPlanStep`/`ReleaseTimingPlanStep`/
   `HandleStrategy`/`ShotCountCompletion`/`ReleaseTimingBlockConfiguration`, all in
   `src/types/index.ts` — see ADR-0012 Decision 2 for why they live centrally rather
@@ -2384,9 +2385,9 @@ distinct malformed shapes).
 
 ### UI (`src/components/`)
 
-`TrainLanding.tsx` (Quick Start vs. Training Plans chooser, owning its own
-library/editor/start-review sub-navigation locally — TrackerApp only learns about a
-plan being started/saved/duplicated/deleted), `TrainingPlansLibrary.tsx` (list +
+`TrainLanding.tsx` (Train's Quick Start / Exercises / Training Plans chooser, owning the
+Training Plans library/editor/start-review sub-navigation locally — TrackerApp only
+learns about a plan being started/saved/duplicated/deleted), `TrainingPlansLibrary.tsx` (list +
 Start/Edit/Duplicate/Delete + empty state), `TrainingPlanEditor.tsx` (name/description
 + ordered step list with Move Up/Down, no drag-and-drop),
 `TrainingPlanStepEditor.tsx` (reuses `TrainingSetup.tsx` unmodified for the block-
@@ -2414,6 +2415,238 @@ features, cloud sync, shared/marketplace plans, adaptive plans, Assessment Plan 
 a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface beyond a
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
+
+## Exercise Library (Stage A implemented — domain, curated content, read-only Train UI)
+
+`docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
+domain source; this section is an architecture snapshot of what **Stage A** actually
+built. Stages B-E of that document's section 21 (Solo execution, Team execution on one
+device, generalised Training Plans, content expansion) are **not implemented** — see
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library and multi-athlete execution".
+
+### Current state
+
+- **Implemented:** a versioned curated content package, its validation boundary, the two
+  Diagram variants and their renderers, and read-only discovery/detail inside Train.
+- **Not implemented (Planned):** Exercise Execution, Shot Attempt capture, handle or 0-4
+  input, Athlete Notes, Athlete Exercise Results, analytics, Team participants/roles/
+  rotation, offline upload, Exercise Training Plan steps, Exercise authoring, and any
+  persistence at all for this domain.
+- Stage A **stores nothing**. There is no `localStorage` key, no repository, no
+  migration and no `Session`/`TrainingBlock`/`Shot` schema change. Existing Sessions,
+  Training Blocks, Shots, Assessments, Quick Start, Training Plans, navigation guards,
+  analytics and persistence are behaviourally unchanged.
+
+### Domain (`src/lib/exercises/`)
+
+Its own module, not `src/types/index.ts`: nothing in the central types file references an
+Exercise, so there is no dependency cycle to avoid. This follows
+`src/lib/assessment/types.ts` rather than ADR-0012 Decision 2, whose central placement
+was forced specifically by `Session.planExecution`.
+
+- `types.ts` — `Exercise` (stable identity: `{ id, currentVersionId }`) separate from
+  `ExerciseVersion` (one immutable version of the content). Independent classification
+  dimensions, never one overloaded `type`: `ExercisePrimaryFocus`
+  (`technique`/`shotmaking`/`measured`), `ExerciseShotFamily`,
+  `ExerciseTrainingPurpose` (which is where `consistency` lives), `ExerciseDifficulty`
+  (`level` 1-6 or a bounded `range`, and **optional** — an Exercise whose source states
+  no level stays unrated rather than being assigned an invented one),
+  `ExerciseParticipationProfile`, `ExerciseSweepingRequirement`, equipment, ordered
+  instructions, variations, `ExerciseSource` (+ provenance), and the
+  `ExerciseCatalogPackage` these are delivered in.
+- **`ExerciseGuidance` is a discriminated union**, and it is what makes the detail
+  renderer generic: `observation` (Technique and Measured — what to look for, plus an
+  explicit statement that the app produces no score) or `generic-shotmaking-score`
+  (Shotmaking — curling's exact 0-4/0-25-50-75-100 scale, plus a
+  `team-defined-unstructured` evaluation basis retained with the content so later
+  analytics cannot mistake it for a standardised rubric). A Technique Exercise carrying
+  Shotmaking-score guidance is rejected by validation, not merely avoided by convention.
+- `ExerciseSourceReferenceGoal.evaluated` is the literal type `false`, so a curated
+  source goal such as "6 of 8 stones at the correct length" is structurally incapable of
+  becoming a pass/fail result (spec 11.5). It is also validated at runtime for untrusted
+  data.
+- `measurementProtocols.ts` — reusable, versioned Measurement Protocols, not fields
+  duplicated per Exercise. Stage A defines release time for both existing Measurement
+  Modes and **reuses the existing Training semantics directly**: `MeasurementMode` from
+  `src/types/index.ts`, `measurementModeLabel` from `src/lib/trainingBlocks.ts`, and
+  `TimingProviderType` for `allowedSources` — no second definition of Backline-Hog or
+  Hog-Hog exists. `allowedSources` is exactly `["manual"]` and `target` is validated as
+  `null`: no curated protocol prescribes a target or tolerance, and none implies
+  hardware capture that does not exist.
+- `content.ts` — the three approved Stage A Exercises (Release Point, Eight Guards
+  Progressively Longer, Release Time), each at version 1. All user-facing strings are
+  English. Original German source titles exist only under
+  `source.nonDisplayedSourceMetadata`, which no component renders (it feeds attribution
+  traceability and Library search only).
+- `diagrams.ts` — the independently authored structured diagram for Eight Guards.
+- `catalog.ts` — assembles the package, **recursively `deepFreeze`s** it (runtime
+  immutability, not merely a `readonly` type — the same local helper as
+  `src/lib/assessment/templates.ts`), and calls
+  `assertValidExerciseCatalogPackage` **once at module import time**. Invalid curated
+  content throws with one actionable message listing every problem, before anything
+  renders.
+- `validation.ts` — treats the package as untrusted even though it is authored in code,
+  checking every field it will render at runtime rather than trusting its TypeScript
+  type. Rejects: wrong package/content/diagram schema version; unsupported content
+  language; duplicate Exercise ids, Version ids and per-Exercise version numbers;
+  non-positive or non-integer versions; a missing current version or one belonging to
+  another Exercise; a version referencing an unknown Exercise; missing required content;
+  invalid classification, difficulty, guidance, recommended volume or source reference
+  goal; contradictory participation/Sweeper requirements (for example a required Sweeper
+  role under a no-sweeping policy, or required sweeping on a Solo-only Exercise); an
+  unknown, malformed or **duplicated** Measurement Protocol reference; a protocol that
+  lists the same allowed source twice, prescribes a target, or names an unknown metric,
+  unit, mode or source; unsupported diagram kinds, element kinds and coordinate systems;
+  malformed or out-of-range normalised coordinates; a Diagram missing its English caption
+  or accessible summary; and an incomplete or publicly addressable restricted source
+  image.
+- **Optional means absent, never blank.** Every *optional* renderable field is checked
+  too — a role note, an equipment note, a variation description, a counted recommended
+  volume's note, each optional `ExerciseSource` string, and `sourcePage` as a positive
+  integer. The detail renderer decides whether to render each of these purely from its
+  presence, so a present-but-empty value would become an empty label or a dangling "—"
+  separator; it is rejected at this boundary rather than defended against in every
+  component. Every issue is collected and reported, never just the first.
+- **No speculative migration.** Because Stage A persists nothing, exact-schema
+  validation is the whole strategy: a future catalog schema change requires an explicit
+  loader/migration or a deliberate, visible failure. Nothing guesses at an unknown
+  version.
+- `lookup.ts` — deterministic resolution by stable Exercise id, by immutable Exercise
+  Version id, and to an Exercise's current version. `resolveCurrentExerciseVersion`
+  returns `undefined` — never a guess — when the identity is unknown, the named current
+  version is missing, or that version belongs to a different Exercise. Historical
+  versions stay independently resolvable forever, so replacing a Diagram creates a new
+  Exercise Version and leaves the old one byte-identical (proved in
+  `__tests__/versioning.test.ts`, which is also the ADR-0023 review case).
+- `query.ts` — text search plus the essential filters (focus, Shot Family, difficulty
+  including "Not rated", Solo/Team suitability, Sweeper requirement). Results always keep
+  catalog order; there is no relevance score, ranking, recommendation or popularity
+  signal. Filter option lists are **derived from the catalog**, so a value no Exercise
+  carries is never offered. Search matches the non-displayed source aliases (diacritics
+  folded, so "ubung" finds the retained German alias) while displaying only English.
+- `presentation.ts` — the one place every English label for a domain value lives, plus
+  the Library's shared UI copy and its `FeatureExplanation` for the existing shared
+  `InfoButton`. No component hard-codes a label for a focus, purpose or policy.
+- `restrictedAssets.ts` — the restricted source-asset access boundary.
+  `resolveRestrictedAssetAccess` is the only path from an opaque reference to a
+  renderable source, and it fails closed with exactly one of five named reasons:
+  `no-resolver`, `not-authorized`, `distribution-not-restricted`, `invalid-resolution`,
+  and `resolver-error` — an injected resolver that *throws* is a refusal, never a crash,
+  and the thrown value is dropped rather than inspected or rendered, since it may carry a
+  path, a signed URL or the asset id. Obtaining *and* inspecting the returned resolution
+  both happen inside that boundary, because a resolver may hand back an object or `Proxy`
+  whose `src` getter throws; `src` is read exactly once, so a getter cannot pass
+  validation and then substitute a different value. See **ADR-0023**.
+
+### Diagrams
+
+Two variants behind one discriminated union, so the renderer branches on declared
+domain semantics and never on which Exercise it is drawing:
+
+- **`structured-platform-diagram`** — a versioned element union (`sheet`, `line`,
+  `house`, `stone`, `path`, `arrow`, `target-zone`, `label`) in the
+  `normalized-ice-sheet-v1` coordinate system: `x` runs *along* the depicted section in
+  the direction of travel (0 = the athlete's edge, 1 = the far edge), `y` runs *across*
+  the sheet (centre line at 0.5), and every radius/length is expressed in `x` units. The
+  diagram declares its own `aspectRatio`, and `ExerciseStructuredDiagram.tsx` renders a
+  `viewBox` of `0 0 100 (100/aspectRatio)` with `w-full h-auto` — so one viewBox unit is
+  the same physical distance on both axes (a `house` radius stays a true circle), and
+  there is no pixel geometry anywhere. This is the seam a future sensor-derived position
+  would arrive through; Stage A implements no editor, animation, dragging, actual
+  positions or coordinate-based scoring.
+- **`attributed-source-image`** — prepared and validated, used by no Stage A Exercise.
+  ADR-0023 governs it.
+
+Accessibility and honest failure, both variants: a semantic `<figure>`/`<figcaption>`,
+`role="img"` with the caption and an English textual summary as the accessible name, and
+**visible failure for unsupported content** — an element kind this build does not know is
+skipped from the drawing but reported in a notice above the caption, never silently
+dropped. The same applies to an unrecognised diagram *kind* in
+`ExerciseDiagramView.tsx`. Validation already rejects both at the content boundary; the
+renderer's notice is the second line of defence.
+
+### Train integration (`src/components/`)
+
+- `TrainLanding.tsx` now offers **three** entry paths inside the existing `"train"`
+  `ActiveView` — Quick Start (default, the pre-existing hero passed through unchanged),
+  Exercises, and Training Plans. No new `ActiveView`, no route, no
+  `NAVIGATION_ITEMS` entry, and no new leave guard: Stage A creates no unsaved work to
+  guard (contrast ADR-0009/ADR-0011). Three short labels stay on one row at 390 px by
+  tightening padding and type scale below the `sm` breakpoint rather than forcing a
+  two-row control (DESIGN_SYSTEM.md §13.2).
+- **The chooser is a complete ARIA tab interface, not just `role="tab"`.** Each tab has
+  a stable id and `aria-controls`; one `role="tabpanel"` element holds whichever entry
+  path is active and is `aria-labelledby` the selected tab. That single reused panel is
+  deliberate — rendering three panels and hiding two would mount the Training Plans
+  library while its tab is still disabled, which is exactly what the readiness gate
+  exists to prevent, and it keeps every `aria-controls` resolving to a real element.
+  Keyboard behaviour is a roving `tabindex` (exactly one tab in the page tab order) plus
+  ArrowLeft/ArrowRight/Home/End with automatic activation over the **enabled** tabs
+  only, so a disabled Training Plans tab is simply not a stop. Focus is moved by
+  querying the tablist container, not by per-item refs.
+- **The active path is always an enabled path.** If the readiness gate disables Training
+  Plans while it is the active one, `TrainLanding` moves `mode` to Quick Start during
+  render — the same "reset state on a prop change" pattern as `ShotEntry.tsx` and
+  `HistoryFilterBar.tsx`, so React discards that pass and retries, and the gated library,
+  editor or start-review screen is never committed to the DOM. Deriving around the
+  invalid state instead would leave a disabled tab marked `aria-selected`, leave the
+  panel labelled by it, and silently reopen Training Plans where the athlete left it the
+  moment readiness recovered; moving the state means they choose it again deliberately,
+  and the plan sub-view is reset rather than restored.
+- `plansTabDisabled` and `startPlanDisabled` keep their exact existing readiness
+  semantics. **Exercises depends on no persisted domain at all** — it reads the compiled
+  `EXERCISE_CATALOG` directly and takes no props — so it stays reachable while the
+  Training Plans library is still loading or write-protected.
+- Entering the Exercises tab resets both its subview and its filters; the filter state
+  is lifted into `TrainLanding` so returning from a detail lands back on the same
+  filtered list.
+- `ExerciseLibrary.tsx` (heading + shared `InfoButton` explanation + filter bar + result
+  count + cards + one honest shared empty state with a reset action). The Info action is
+  a **sibling** of the `h2`, never a child: nesting it folded "About Exercises" into the
+  heading's own accessible name.
+- `ExerciseLibraryFilterBar.tsx` — search always visible, the rest behind one "Filters"
+  toggle. When that panel is collapsed, a compact summary restates what is still applied
+  ("2 active filters: Focus: Technique · Sweepers: Sweeping optional"), built from
+  `describeActiveExerciseLibraryFilters` in `query.ts` — otherwise the narrowing would
+  be invisible the moment the panel closed (DESIGN_SYSTEM.md §23.2). The search term is
+  deliberately not repeated there, since its field stays visible.
+- `ExerciseSummaryCard.tsx` (one generic row), `ExerciseDiagramView.tsx`,
+  `ExerciseStructuredDiagram.tsx`, `ExerciseRestrictedSourceImage.tsx` — the last renders
+  attribution, source organisation, source version, permitted audience and provenance
+  from one shared definition list *outside* its authorized/unavailable branch, so
+  ADR-0023 Decision 5 holds structurally rather than by inspection.
+- `ExerciseDetail.tsx` — **one generic renderer**, following the specification's fixed
+  information order (spec 14.3) across **five** surfaces rather than one card per
+  section (DESIGN_SYSTEM.md §10.2/§10.5 and its "Card Hierarchy" refactor priority):
+  a hero (title, classification badges, attribution, Exercise version); "Goal" (goal,
+  why it matters, then the Diagram); "Setup and instructions" (setup steps, Participants,
+  Equipment, Sweeping, Instructions as divider-separated blocks); the focus-appropriate
+  "What to look for" / "How it is evaluated" (with volume and the descriptive source
+  reference goal); and one grouped container holding Variations, Compatible Measurements
+  and Source and attribution as progressive-disclosure rows. A Measured Exercise's
+  Compatible Measurements row opens by default — branching on the declared Primary
+  Exercise Focus, never on which Exercise it is.
+- **The immutable Exercise Version is shown for every Exercise** ("Exercise version 1"
+  in the hero, repeated in the provenance rows), deliberately worded so it can never be
+  read as the source collection's own version, which appears separately as "Source
+  version" and only where a collection exists.
+- Touch targets follow DESIGN_SYSTEM.md §29.1: the Back action and every disclosure
+  summary carry a ~44 px minimum height, protected by bounding-box assertions in
+  `tests/e2e/exercise-library.spec.ts`.
+- **No development or release language reaches an athlete.** Exercise copy describes the
+  sporting activity and what the app does or does not judge; it never says "this
+  release", never presents planned execution as existing, and never explains
+  implementation status. The Library's own Info panel states plainly that an exercise
+  cannot be started or recorded from the Library.
+- **No exercise-specific UI conditional exists.** This is enforced two ways:
+  `ExerciseRendererGenericity.test.tsx` renders a synthetic Exercise Version that is not
+  in the catalog through the same components, and statically asserts that none of the
+  Exercise UI components contains any catalog Exercise id, Version id or display title.
+- Stage A is read-only: there is deliberately **no start action, enabled or disabled**,
+  on the Library or the detail.
+- Train's page header description now reads "Find an exercise, set up a session, and
+  record release times as you throw." Quick Start remains an entry mechanism, not a
+  synonym for Release Time.
 
 ## Accuracy Tolerance Profiles (Implemented)
 
@@ -2808,7 +3041,14 @@ local component state.
 | `AssessmentTrendChart.tsx` | (Phase C) MAE/Bias/SD/On-Target trend across protocol-compatible completed runs of the same Template+Version, one shared Comparison Threshold |
 | `AssessmentAnalyze.tsx` | (Phase C) Analyze → Assessments landing: Latest Completed Assessment, separate Completed/Incomplete history, empty state, CSV export |
 | `AssessmentHistoryItem.tsx` | (Phase C) One history row (completed or incomplete), with View/Delete actions |
-| `TrainLanding.tsx` | Train's "no active block" landing — Quick Start (unchanged hero) vs. Training Plans, owning the plans library/editor/start-review sub-navigation locally |
+| `TrainLanding.tsx` | Train's "no active block" landing — the Quick Start (unchanged hero) / Exercises / Training Plans chooser, owning both pillars' sub-navigation locally; a complete ARIA tab interface (ids, `aria-controls`, one `role="tabpanel"`, roving `tabindex`, Arrow/Home/End over enabled tabs only) |
+| `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton` explanation, filter bar, result count, generic cards, one honest shared empty state with a reset action |
+| `ExerciseLibraryFilterBar.tsx` | Search (always visible) plus focus/difficulty/Solo-Team/Shot Family/Sweeper filters behind one "Filters" toggle; every option list derived from the catalog; a compact active-selection summary once the panel collapses |
+| `ExerciseSummaryCard.tsx` | One generic Library row from Exercise Version data — title, goal, focus/classification/difficulty/participation/Sweeper badges, `View Details` |
+| `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version; branches only on declared domain semantics, never on an Exercise id or title. No start action in Stage A |
+| `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
+| `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
+| `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |
 | `TrainingPlansLibrary.tsx` | Plan list — summary (steps/stones/mode composition), Start/Edit/Duplicate/Delete, empty state; Start disabled with an inline note for an unexecutable plan |
 | `TrainingPlanEditor.tsx` | Create/edit a plan — name, optional description, ordered step list with Move Up/Down/Duplicate/Delete, "Add Step" |
 | `TrainingPlanStepEditor.tsx` | Configures one Release Timing Plan Step — wraps `TrainingSetup.tsx` unmodified, adding Number of Stones and a Free/Fixed/Alternating Handle Strategy selector |
@@ -2868,6 +3108,28 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 | `result.ts` | (Phase C) Derived, non-persisted Result view: block/target/handle/Variable-Adaptation breakdowns, Protocol Integrity summary, comparison-ineligibility copy, `AssessmentResultView`, `compareAssessmentRuns`, `buildAssessmentTrendSeries`, `resolveAnalysisThresholdSet` |
 | `resultFormatting.ts` | (Phase C) Shared display formatting (percent/seconds/signed/percentage-point-delta) for Result-screen components — kept out of JSX |
 | `export.ts` | (Phase C) `buildAssessmentCsv`/`exportAssessmentRunsToCsv` — one row per attempt; deliberately its own file, never merged with Training's `src/lib/export.ts` |
+
+### Exercise Library domain modules (`src/lib/exercises/`)
+
+Stage A only — curated content and its validation boundary. Nothing here persists
+anything, and no execution/result/attempt/note model exists yet. Types live in this
+folder (not centrally) because nothing in `src/types/index.ts` references an Exercise —
+the same rule ADR-0012 Decision 2 states, applied to a domain that does not create a
+cycle. See "Exercise Library" above and ADR-0023.
+
+| Module | Responsibility |
+|---|---|
+| `types.ts` | `Exercise` (stable identity) vs. `ExerciseVersion` (immutable content), the independent classification dimensions, participation/sweeping/equipment/instruction/variation shapes, the `ExerciseGuidance` and `ExerciseDiagram` unions, `MeasurementProtocol`, `RestrictedAssetReference`/`RestrictedDistribution`, and `ExerciseCatalogPackage` |
+| `errors.ts` | `ExerciseCatalogIssueCode`/`ExerciseCatalogIssue`/`ExerciseCatalogValidationResult` — the same discriminated-result convention as `assessment/templateValidation.ts` |
+| `validation.ts` | `validateExerciseCatalogPackage` — every package, identity, versioning, content, classification, participation/sweeping, protocol-reference and diagram invariant, checked at runtime against untrusted data and reported in full |
+| `measurementProtocols.ts` | The two reusable, versioned release-time Measurement Protocols, reusing the existing `MeasurementMode`/`measurementModeLabel`/`TimingProviderType` semantics; `allowedSources` is `["manual"]` and `target` is always `null` |
+| `diagrams.ts` | The independently authored `normalized-ice-sheet-v1` structured diagram for Eight Guards — hand-authored literals, no source-document geometry |
+| `content.ts` | The three curated Stage A Exercise Versions; English only, with German source titles confined to `nonDisplayedSourceMetadata` |
+| `catalog.ts` | Builds, recursively deep-freezes and import-time-validates `EXERCISE_CATALOG`; `assertValidExerciseCatalogPackage` throws one actionable message rather than rendering broken content |
+| `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
+| `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |
+| `presentation.ts` | Every English label for a domain value, the Library's shared UI copy, and its `FeatureExplanation` for the existing `InfoButton` |
+| `restrictedAssets.ts` | `resolveRestrictedAssetAccess` — the only path from an opaque restricted reference to a renderable source, fail-closed with a named reason (ADR-0023) |
 
 ### Training Plan domain modules (`src/lib/trainingPlans/`)
 

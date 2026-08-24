@@ -200,7 +200,8 @@ const FUNCTIONAL_PAGE_HEADERS: Record<
 > = {
   train: {
     title: "Train",
-    description: "Set up a session and record release times as you throw.",
+    description:
+      "Find an exercise, set up a session, and record release times as you throw.",
   },
   assess: {
     title: "Assess",

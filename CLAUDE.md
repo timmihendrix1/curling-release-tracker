@@ -159,6 +159,28 @@ technique directly" in the Coaching Principles.
   Framework" section (which also documents one known Phase C limitation: returning from
   the Result Screen to Assess remounts `AssessScreen`, losing an in-flight Completion
   Summary in favor of Landing — the archived run itself is unaffected).
+- **The Exercise Library is curated content, not an execution feature — yet.**
+  `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product
+  and domain source; read it before any Exercise-related work. **Stage A is
+  implemented** in `src/lib/exercises/` (stable `Exercise` identity vs. immutable
+  `ExerciseVersion`, the independent classification dimensions, participation/sweeping
+  requirements, reusable versioned Measurement Protocols, both Diagram variants, the
+  untrusted-content validation boundary, lookup, query and English labels) plus a
+  read-only Train UI (`ExerciseLibrary.tsx`, `ExerciseDetail.tsx` and the other
+  `Exercise*`-prefixed components, reached from `TrainLanding.tsx`'s third entry path).
+  See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section. Stage A **stores
+  nothing**: no storage key, no repository, no migration, no `Session`/`TrainingBlock`/
+  `Shot` change, and no start action anywhere. Still **Planned**, per that
+  specification's section 21: Exercise execution, results/attempts/private Athlete Notes
+  and their persistence, multi-athlete Team execution and offline upload, Training Plan
+  integration, and the remaining six approved catalogue Exercises. Build on the existing
+  domain rather than re-deriving equivalent types, keep the detail renderer generic
+  (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never
+  on an Exercise id or title), and read
+  `docs/adr/0023-restricted-source-asset-delivery-boundary.md` before touching anything
+  to do with a restricted source image: no Swiss Curling asset exists in this repository,
+  and a restricted asset may only ever be reached through an opaque reference plus an
+  explicitly authorized resolver that fails closed.
 - **Keep current implementation and future vision clearly separated** in whatever you
   write or say — state which of *Implemented*, *Prepared*, *Planned*, or *Open decision*
   something is, rather than presenting a plan as if it already exists.

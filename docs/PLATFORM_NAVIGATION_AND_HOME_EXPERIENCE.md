@@ -39,11 +39,19 @@ deliberately narrows this:
   section. The Assessment product and domain model this screen implements is defined in
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — read it before any further
   Assess implementation work, alongside this document.
-- **Training Plans (Version 1) are now implemented inside Train** — no new
-  navigation item: `TrainLanding.tsx` offers Quick Start (unchanged) and Training
-  Plans as two entry paths within the existing `"train"` view, per
-  `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
-  Plans" section.
+- **Train now has three entry paths, all inside the existing `"train"` view** — no new
+  navigation item for any of them: `TrainLanding.tsx` offers **Quick Start**
+  (unchanged, and still the default), **Exercises**, and **Training Plans**.
+  - **Training Plans (Version 1) is implemented**, per
+    `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
+    Plans" section.
+  - **The Exercise Library's Stage A is implemented** — read-only discovery and detail
+    for three curated Standard Exercises, with a structured Ice Sheet diagram renderer.
+    Starting or recording an Exercise is **not** built (Stage B onward), and this pillar
+    persists nothing. See `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the
+    authoritative product/domain source), `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise
+    Library" section, and `docs/adr/0023`.
+  - Quick Start remains an entry mechanism, not a synonym for Release Time.
 - **Coach and Team** appear on Home as visually secondary "Coming soon"
   placeholders, per this document's own Home structure below.
 - **Schedule** likewise appears as "Coming soon" — no scheduling/calendar data model
