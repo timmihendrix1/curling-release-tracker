@@ -1,14 +1,49 @@
 # ADR-0022: Team Foundation Domain and Persistence
 
+**Narrowly constrained (2026-08-24) by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted; not implemented).** Decision 1 — `Profile.id` as its own application-owned UUID,
+linked 1:1 to an auth account, never equal to the auth user id — is **retained and is now
+the platform-wide identity model**, not just Team Foundation's. Decision 10's statement that
+**no Team Foundation RPC ever inserts an `athletes` row remains true of the implemented
+service**, and arbitrary Team `Profile` creation still grants nothing. The single narrow
+change: **completed *personal* app onboarding will later be required to establish Athlete
+capability** (Stage B0.2). Nothing in this ADR's implemented behaviour, history, or SQL
+changes as a result.
+
 **Status:** Accepted. Domain layer, `TeamService`/`EmailService` boundaries, and the
-Supabase-backed production implementation are Implemented. Database migrations (schema,
-RLS, functions) and their pgTAP suite are written but have **not been executed against a
-real Postgres instance** — no `supabase`/`docker` CLI has been available in this
-development environment, confirmed in every review pass to date. Route Handlers, UI, and
-documentation completed in this change are Implemented against the fake/in-memory backend
-and unit/component tests; they have not been exercised against the real database either,
-for the same reason. See `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s Team Foundation section
-for the explicit "first real execution" follow-up this implies.
+Supabase-backed production implementation are Implemented. The database migrations
+(schema, RLS, functions) **have been executed** against a real local Supabase Postgres:
+`supabase db reset` applies all three from scratch, the pgTAP suite in
+`supabase/tests/team_foundation.test.sql` passes **101/101**, and the two-session
+concurrency Procedures A–E documented at the end of that file have been run with
+genuinely concurrent sessions (see `supabase/tests/README.md` for the recorded
+outcomes). Route Handlers and UI remain Implemented against the fake/in-memory backend
+and unit/component tests; **they have not been exercised end to end against the real
+database**, which is the remaining follow-up — see
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s Team Foundation section.
+
+Executing the SQL for the first time exposed two defects that no amount of TypeScript
+testing or careful reading could have surfaced, both now fixed in the migrations:
+
+- **RLS policies without table privileges.** The RLS migration defined `SELECT`
+  policies for `authenticated` but granted no table-level `SELECT`. A policy narrows an
+  access the ACL already permits; it never grants one, so every direct client read in
+  `supabaseTeamService.ts` and the Team Route Handler context would have failed with
+  `permission denied for table ...` before any policy was consulted. The migration now
+  issues explicit grants: `authenticated` gets `SELECT` only (and stays constrained by
+  the policies), `anon` gets nothing at all, and no role gets a direct write — every
+  mutation stays SECURITY DEFINER RPC-only. §17 of the pgTAP suite asserts that
+  boundary from the catalog, because adding a write grant or an `anon` `SELECT` grant
+  would otherwise leave every behavioural assertion still passing.
+- **Unqualified pgcrypto calls.** `private.hash_token`/`private.generate_raw_token`
+  called `digest(...)`/`gen_random_bytes(...)` unqualified. pgcrypto lives in the
+  `extensions` schema on Supabase, while every calling RPC pins
+  `search_path = public, pg_temp` (requirement 133) — so no invitation could ever have
+  been created. Both now call `extensions.digest`/`extensions.gen_random_bytes`
+  explicitly, rather than widening a security-sensitive search path to fix two
+  expressions. §4a of the suite proves a real `create_invitation` round-trips: the
+  stored value is exactly SHA-256 of the raw token, the raw token is 32 random bytes,
+  and it is never persisted.
 
 **Product authority.** This is an engineering decision record. The canonical product
 source of truth for this beta's approved scope and behavior is
@@ -124,9 +159,17 @@ matrix rows still asserting or depending on the superseded `profiles.id =
 auth.uid()` identity equality — an internally inconsistent mixture, not a
 reconciled document. `docs/adr/0020` is corrected in place to mark its
 identity/bootstrap/authority-scope design as an explicit, named architecture
-blocker (account-scoped vs. Profile-scoped Local Adoption authority is a genuine
-open decision this pass does not make), rather than presenting individual
-examples as fixed while the underlying design remains contradictory. Finally, this
+blocker (account-scoped vs. Profile-scoped Local Adoption authority was, **at the
+time of that pass**, a genuine open decision it deliberately did not make), rather
+than presenting individual examples as fixed while the underlying design remains
+contradictory. **Since resolved (2026-08-24):**
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted) decided athlete-owned authority is **Profile-scoped** — `Profile.id`,
+the very model this ADR's Decision 1 already implements — and **superseded Local
+Adoption as the forward path entirely**. So that scope question is closed; what
+`docs/adr/0020` still lacks is only its own unperformed internal reconciliation, on
+a route no longer being taken. Nothing in this ADR's own implemented behaviour
+changes. Finally, this
 pass found `.env.example`/ADR-0022/`SYSTEM_ARCHITECTURE.md` imprecisely described
 `APP_ORIGIN`'s effect on `notificationEmailSent` (the member-removal route, which
 carries no accept link and never reads `APP_ORIGIN` at all) and did not distinguish
@@ -542,9 +585,14 @@ archived-exemption in the first place.
 
 Sequential regression coverage for the refactored functions is in
 `supabase/tests/team_foundation.test.sql` §15. The genuine two-session race this fix
-targets is not representable in a single-transaction pgTAP suite — see that file's
-Procedures D and E (documented, unexecuted, run manually against a real Postgres
-instance once available). A third-pass review found the original Procedures D/E
+targets is not representable in a single-transaction pgTAP suite — it is covered by
+that file's Procedures D and E, which **have been executed** against a real Postgres
+with two concurrent sessions in both orderings each. Observed: the second session
+blocked on the per-team advisory lock (`Lock/advisory` in `pg_stat_activity`) and,
+once unblocked, failed with `last_admin_invariant` when a restore had committed first
+and with `forbidden` when the final admin's exit had committed first. No observed
+state contained an active Team with zero active Team Admin functions.
+A third-pass review found the original Procedures D/E
 narrative imprecise about statement-completion timing (describing a `select` that
 has already returned inside an open transaction as "about to block," when a
 completed statement that took a lock is instead HOLDING it) and, in Procedure E,

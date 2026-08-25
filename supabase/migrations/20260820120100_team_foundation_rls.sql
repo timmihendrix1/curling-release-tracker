@@ -1,11 +1,20 @@
--- Team Foundation — Row Level Security (requirement 132). See the schema migration's
--- header note: written, not executed/verified in this environment.
+-- Team Foundation — Row Level Security (requirement 132). Executed and verified
+-- against a real local Supabase Postgres — see the schema migration's header note.
 --
 -- Design: every mutating operation goes through a SECURITY DEFINER RPC (the next
 -- migration) — no table below grants INSERT/UPDATE/DELETE to `authenticated` or
 -- `anon` at all. RLS here therefore only ever needs to define SELECT policies; the
 -- absence of any write policy is itself the "no unrestricted direct browser writes"
 -- enforcement (requirement 130), not merely an omission.
+--
+-- Privileges vs. policies: an RLS policy NARROWS an otherwise-permitted access; it
+-- never GRANTS one. A role with no table-level SELECT privilege is rejected by the
+-- ACL check before any policy is consulted, so a SELECT policy without a matching
+-- grant is dead code. The explicit grant block below is therefore load-bearing, not
+-- decoration — without it every direct client read in
+-- src/lib/supabase/supabaseTeamService.ts and src/app/api/team/_lib/context.ts
+-- fails with `permission denied for table ...` regardless of how permissive the
+-- policy is.
 
 alter table public.profiles enable row level security;
 alter table public.account_profile_links enable row level security;
@@ -18,6 +27,52 @@ alter table public.team_invitations enable row level security;
 alter table public.team_admin_requests enable row level security;
 alter table public.account_notifications enable row level security;
 alter table public.team_audit_events enable row level security;
+
+-- ---------------------------------------------------------------------------------
+-- Table-level privileges (the ACL layer beneath RLS)
+--
+-- The boundary chosen for this beta, stated once here and asserted structurally by
+-- the pgTAP suite's §17:
+--   * `authenticated` receives SELECT only, and remains fully constrained by the
+--     policies below — it can attempt a read, and RLS decides which rows come back;
+--   * `authenticated` receives NO INSERT/UPDATE/DELETE on any table — every mutation
+--     is SECURITY DEFINER RPC-only (requirement 130);
+--   * `anon` receives NOTHING at all. A signed-out direct table read fails closed at
+--     the ACL check with `permission denied`, which is a strictly smaller surface
+--     than granting SELECT and relying on a policy to return zero rows. No product
+--     requirement in this beta asks for any signed-out direct table read.
+-- The explicit REVOKE first makes this independent of whatever default privileges
+-- happen to be configured for the migration-owning role in the target project, so
+-- the resulting ACL is the same on a fresh local reset and on a hosted project.
+-- ---------------------------------------------------------------------------------
+
+revoke all on table
+  public.profiles,
+  public.account_profile_links,
+  public.athletes,
+  public.pilot_team_creation_grants,
+  public.teams,
+  public.team_memberships,
+  public.team_membership_functions,
+  public.team_invitations,
+  public.team_admin_requests,
+  public.account_notifications,
+  public.team_audit_events
+from public, anon, authenticated;
+
+grant select on table
+  public.profiles,
+  public.account_profile_links,
+  public.athletes,
+  public.pilot_team_creation_grants,
+  public.teams,
+  public.team_memberships,
+  public.team_membership_functions,
+  public.team_invitations,
+  public.team_admin_requests,
+  public.account_notifications,
+  public.team_audit_events
+to authenticated;
 
 -- ---------------------------------------------------------------------------------
 -- Helper functions (private schema — never exposed via PostgREST/RPC). SECURITY

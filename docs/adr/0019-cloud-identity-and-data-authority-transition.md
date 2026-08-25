@@ -2,6 +2,29 @@
 
 ## Status
 
+**SUPERSEDED as the forward path (2026-08-24) by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted).**
+
+- **Superseded:** this ADR's optional-account product premise, and the paid-only cloud
+  backup direction it served. Identity is now mandatory; structured raw sporting data is
+  persisted in the cloud for **Free** users (the Free Cloud Core).
+- **Superseded:** Local Adoption as the forward mechanism. Its entire purpose is to
+  reconcile pre-existing *anonymous* local data with a later account; the existing unscoped
+  local data is **disposable early-test data**, discarded once in Stage B0.3 — never
+  adopted, claimed, imported or merged.
+- **Not implemented, and never was.** Nothing in this ADR's transition protocol —
+  `RemoteAuthorityBarrier`, Adoption Transition Fence, `AccountDomainAuthorityRecord`,
+  `RemoteAuthorityDriftEvidence`, the mutation lock — exists in code, and this note does
+  not change that.
+- **Retained and still relevant:** Decision 8's non-participating-old-build analysis. An
+  old build has no code participating in any local authority-transition protocol and will
+  keep writing legacy keys obliviously. That hazard is independent of the accountless
+  premise and applies to any future local-authority transition, including Stage B0.3's.
+- **Authority scope:** ADR-0024 fixes athlete-owned sporting authority as **Profile-scoped**
+  (`Profile.id`, never the auth-provider user id).
+
+The design below is retained as historical reasoning.
+
 **Proposed. Incomplete design. No implementation.** This ADR does not implement
 authentication, a Supabase client, schemas, migrations, repositories, or UI. It
 proposes the authority boundary a later ADR (**ADR-0020**) must design a concrete
@@ -43,7 +66,12 @@ backfill rule for domains introduced after accounts already exist.
 
 ## Context
 
-### Required audit — unchanged, re-verified, not re-derived
+### Required audit — the historical repository audit taken when ADR-0019 was developed
+
+**This is not a current inventory.** It records what the repository looked like at the
+time this ADR's design was derived, and is retained because the design below was shaped by
+it. See "Current status" immediately after the list before citing any item as a
+present-day fact.
 
 1. **Authentication/backend reality: zero.** No `supabase`, `login`, `signin`, `jwt`, or
    `session token` string anywhere in `src/` or `package.json`. No backend of any kind.
@@ -56,6 +84,20 @@ backfill rule for domains introduced after accounts already exist.
 5. **Supabase dependency: absent.**
 6. **A proven per-domain readiness pattern exists** (`TrackerApp.tsx`'s
    `DomainHydrationState`); no single global gate exists.
+
+#### Current status of the items above
+
+- Items 1, 4 and 5 are **out of date**. The Optional Supabase Auth Shell
+  (`src/lib/supabase/`) and the Team Foundation backend — five Route Handlers under
+  `src/app/api/team/`, plus migrations, RLS policies and RPCs under `supabase/` executed
+  and tested against a local Supabase Postgres (ADR-0022) — have since been implemented,
+  along with the `NEXT_PUBLIC_*` environment-variable convention and the Supabase
+  dependency itself.
+- **ADR-0019's own Local Adoption protocol remains entirely unimplemented**, and is
+  superseded as the forward path by ADR-0024. Nothing above should be read as evidence
+  that any part of this ADR's design was built.
+- **Personal sporting persistence remains local and identity-unscoped** — items 2, 3 and 6
+  are still accurate.
 
 ### Prior art — reconciled by editing the actual instructions
 

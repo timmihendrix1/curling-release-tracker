@@ -22,6 +22,15 @@ An athlete owns training sessions, measurements, goals and performance history.
 
 An athlete may belong to multiple teams over time.
 
+**Athlete is a capability attached to a Profile, not an authentication role.**
+
+**[Implemented]** Nothing creates one today — no Team Foundation RPC ever inserts an
+`athletes` row (`docs/adr/0022` Decision 10).
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §3.4,
+`docs/adr/0024`]** Completed *personal* onboarding will establish Athlete capability, along
+with the default Free **Entitlement**. Arbitrary Team **Profile** creation still will not.
+
 ---
 
 ## Coach
@@ -69,6 +78,27 @@ carries identity, function, and (Team Admin-only) member email, and nothing else
 
 ---
 
+## UserAccount
+
+The **authentication identity** used to sign in. It answers *who is acting*, and nothing
+else — it is never the sporting identity, never an ownership key, and never itself a paid
+product.
+
+**[Implemented]** A Supabase Auth account, reachable only as an `AccountIdentity` (an id
+and an email) past `src/lib/supabase/authService.ts`'s boundary. Today it is **optional**:
+the application is fully usable without one.
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2,
+`docs/adr/0024`]** A UserAccount plus a completed personal **Profile** becomes required to
+reach the authenticated application. Deliberately public marketing material stays public.
+Closed-test sign-in methods are six-digit email OTP and Google sign-in; magic links,
+passwords and Apple sign-in stay deferred.
+
+Distinct from **Profile**: one UserAccount is linked 1:1 to one Profile, and the two ids
+are never the same value. Never use a UserAccount id as an ownership or scope key.
+
+---
+
 ## Profile
 
 **[Implemented — Team Foundation beta, `docs/adr/0022` Decision 1]** The stable,
@@ -81,6 +111,75 @@ gated path described under **Team Membership**.
 Distinct from **Athlete**: a Profile is Team Foundation's bare identity record: an
 Athlete is the separate, pre-existing training-data-owning concept above. A Profile does
 not by itself grant or imply Athlete capability.
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2/§4,
+`docs/adr/0024`]** The Profile becomes the platform-wide, mandatory sporting and ownership
+identity: **athlete-owned sporting data, local persistence scope, cloud authority and
+recorder/actor attribution are all Profile-scoped** (`Profile.id`, never the
+authentication-provider user id). This is the answer to `docs/adr/0020`'s open
+`account_scope_id` question — **Profile scope, not account scope** — and it does not by
+itself make ADR-0020 implementation-ready.
+
+---
+
+## Entitlement
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.
+No entitlement code, schema, or lifecycle of any kind exists today.]** The active
+commercial tier or capability set for a Profile or a Team Workspace. **An entitlement is
+not inherently paid:** it covers both the **default Free entitlement** and any
+**additional paid entitlement** (the paid personal tier, Team Workspace, later Coaching).
+Free is a genuine entitlement even though nothing is paid for it.
+
+**The default Free entitlement is granted by completed personal onboarding** — never by
+authentication or Profile creation alone (see **UserAccount**, **Profile**, and
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §3.4). A **paid**
+capability additionally requires the relevant **paid** entitlement to be active,
+alongside the applicable domain permission.
+
+An entitlement is **not** an identity, **not** a **Profile**, **not** a permission, and
+**not** a **Team Function** — all of these, plus data ownership, remain separate concepts.
+An entitlement never transfers ownership of athlete data, payment never transfers
+ownership, and a lapsed *paid* entitlement never withdraws the **Free Cloud Core** for data
+already recorded.
+
+Named layers: **Free** (the default, granted on **completed** personal onboarding, never
+merely because a Profile exists — includes the Free
+Cloud Core), the **paid personal tier** (derived analysis; **its final commercial name is
+undecided** — `Personal Athlete` is a working label only), **Team Workspace**, and the
+deferred **Coaching** module. The closed beta uses reversible **pilot** entitlements and
+collects no payment.
+
+---
+
+## Free Cloud Core
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.1,
+`docs/adr/0024`. No cloud sporting data exists today.]** The set of structured raw sporting
+and training data that is persisted in the cloud for **every Profile holding the Free
+entitlement — that is, every Profile that has completed personal onboarding** — regardless
+of any *paid* entitlement, because it is what is needed to reconstruct the athlete's
+history and compute future analytics — Training Sessions, Training Blocks, Shots,
+Assessment Runs and Attempts, Exercise Executions and Attempts, athlete assignment and
+ownership references, Handle and Shotmaking 0–4 evaluations, "do not score" and
+void/revision facts, Release Time and Rotation Count measurements, the configuration and
+immutable version snapshots needed to interpret results, private Athlete Notes, and the
+provenance/audit records needed to preserve factual history.
+
+**No date cutoff may be imposed on it**, and it includes **basic restore** after signing in
+on a new device. It excludes large or operationally expensive artifacts (video,
+high-frequency sensor streams, large coordinate traces, AI output), which may carry their
+own limits later, and it excludes derived projections and cached aggregates, which are not
+the canonical record and may be recomputed.
+
+**Signing in is required but not sufficient.** The Free entitlement is granted by
+**completed personal onboarding**, never by authentication or Profile creation alone (see
+**Entitlement** above and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
+§3.4). A Profile that is merely resolved or signed in — including one created by the current
+Team-specific bootstrap — holds no entitlement and no Free Cloud Core.
+
+Do not use this term for the paid personal tier's derived analysis, and do not describe
+basic restore as cross-device continuation (see **Sync Status**).
 
 ---
 
@@ -1135,10 +1234,78 @@ ever rewriting an already-recorded shot value. Must be idempotent. See
 `SYSTEM_ARCHITECTURE.md` for the full set of migration rules and the `blocks: []`
 invariant.
 
+## Profile-Scoped Local Data
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §5,
+Stage B0.3. Not implemented.]** Local persistence isolated to one **Profile**. Once a
+device has completed authentication and Profile onboarding, its trusted Profile-scoped
+local state is what makes fully offline training possible; **explicit sign-out or account
+switching immediately hides and locks the previous Profile's local data**, including any
+record still pending upload.
+
+A device with no previously established trusted Profile **may reach the public,
+sign-in and onboarding surfaces while online** — that is how it becomes trusted — but
+**cannot reach any authenticated training or application surface** until authentication and
+Profile onboarding complete, and **cannot bypass that gate by going offline**. Public
+marketing material sits outside the authenticated-app gate entirely.
+
+**Current implementation (transitional):** local persistence is **unscoped** — the seven
+repositories of `docs/adr/0013` read and write one browser's `localStorage` with no concept
+of an authenticated user. The existing unscoped data is disposable early-test data (see
+**Local Adoption** below).
+
+No fixed expiry period for trusted local state is decided. Do not invent one.
+
+## Outbox
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7,
+Stage B0.4. Not implemented — no outbox of any kind exists.]** The durable, Profile-scoped
+local queue of records created offline and not yet acknowledged by the server. Every record
+receives a **stable client-generated ID before upload**; upload is automatic on reconnect
+and **idempotent**, so a retry converges on one cloud record per stable ID rather than
+duplicating sporting data. Before uploading, the client revalidates server authority and
+**fails closed** if authorization is no longer valid. A pending record from one Profile is
+never visible or uploaded under another Profile.
+
+The exact outbox schema, conflict protocol, retry schedule and API contract belong to Stage
+B0.4, not to any current document.
+
+## Sync Status
+
+**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7.
+Not implemented.]** The user-visible truth about where one record actually exists. At least
+three states must be distinguishable:
+
+- **Saved on this device** — durable locally, not yet acknowledged by the server;
+- **Synced** — the server has acknowledged it;
+- **Sync issue** — the upload failed or is uncertain; the local record is preserved and the
+  attempt remains retryable.
+
+**A record is never described as cloud-backed or synced before the server acknowledges
+it** — an observation/interpretation boundary as much as an engineering one (see
+`docs/UX_WRITING_GUIDELINES.md`'s "Separate Facts from Interpretation").
+
+**Basic restore** — recovering an athlete's history after signing in on a new device — is
+part of the **Free Cloud Core**. It is *not* cross-device continuation: continuing the same
+in-progress Session on another device, concurrent multi-device editing, and transferring an
+unsynced Session elsewhere are all deferred and must never be described as available.
+
 ## Local Adoption
 
-**[Proposed, incomplete design — `docs/adr/0019-cloud-identity-and-data-authority-transition.md`,
-not implemented.]** The explicit, **one-time** protocol that uploads a device's
+**[Superseded as the forward path by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted). Retained here as a definition of a historical proposed design — Proposed,
+incomplete, never implemented: `docs/adr/0019-cloud-identity-and-data-authority-transition.md`.]**
+
+**Why it is superseded:** Local Adoption exists to reconcile pre-existing *anonymous* local
+data with a later account. Identity is now mandatory, and the existing unscoped local data
+is disposable early-test data that Stage B0.3 discards once, safely and explicitly —
+**there is no adoption, claim, import, merge or per-session migration flow for it.** Do not
+build against this entry, and do not describe legacy local data as requiring adoption. The
+one conclusion of ADR-0019 that survives independently of the accountless premise is its
+Decision 8 non-participating-old-build hazard, which remains real for any future
+local-authority transition.
+
+The historical design it named: the explicit, **one-time** protocol that uploads a device's
 *pre-existing legacy* local data into a signed-in athlete's cloud account, then commits
 that account/domain to cloud authority via a server-side **Adoption Run** (a
 **seven-outcome** query model — `prepared`, `committed`, `aborted`, plus four distinct,

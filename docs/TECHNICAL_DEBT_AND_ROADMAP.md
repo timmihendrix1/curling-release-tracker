@@ -305,7 +305,21 @@ should decide, explicitly, what the user sees for each of `"storage_unavailable"
 `"quota_exceeded"` / `"unknown"`, and whether/how a `"write_protected"` domain can ever
 retry — neither is designed today.
 
-### IndexedDB adapter and transactional session archiving — adapter and copy migration done, activation/atomicity still open
+### IndexedDB adapter and transactional session archiving — legacy copy/activation track RETIRED; cross-key atomicity still open
+
+**Retired, not merely blocked (2026-08-24).** The `localStorage`→IndexedDB copy migration
+(ADR-0016) and the activation programme (ADR-0017/0018) exist to carry the existing
+unscoped local data forward. Per
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` and
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §9, that data is
+disposable early-test data which **Stage B0.3 discards once, explicitly** — so there is
+nothing left for that track to preserve, and it is **no longer the forward production
+path**. ADR-0015's unwired adapter remains valid infrastructure. **No dormant code is
+deleted by this decision**, and ADR-0017 Decision 3 is neither resolved nor required to be.
+What remains genuinely open from this item is **cross-key atomicity for session
+archiving** (see the end of this entry) and, separately, whichever local store Stage B0.3/B0.4
+selects — a new decision, never a reuse of ADR-0016's markers or ADR-0017's activation
+evidence. Everything below is retained as the record of the retired track.
 
 **What:** `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes a future IndexedDB-backed
 `StorageAdapter` behind the same repository boundary. The sequencing half of this item is
@@ -327,10 +341,11 @@ strings for all seven repository-boundary domains (current runtime) into Indexed
 behind fail-closed, resumable per-domain markers in the `metadata` store, without
 invoking any domain's migration/repair function (a deliberate exact-string-copy design,
 not a schema migration — see `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`).
-`docs/adr/0021-assessment-draft-history-authority-unit-split.md` (Accepted, design
-complete, not yet implemented) will require this registry to separately cover
-`assessmentDraft`/`assessmentHistory` once implemented, per that ADR's own relationship
-to ADR-0016 — see the Assessment Framework section below.
+`docs/adr/0021-assessment-draft-history-authority-unit-split.md` once planned to register
+two separate `assessmentDraft`/`assessmentHistory` migration units here — **retired
+2026-08-24**: this registry will not be extended, because the whole copy-migration track is
+retired and the legacy Assessment key holds disposable data. See ADR-0021 §11.1 and the
+Assessment Framework section below.
 Neither the adapter nor the migration engine is wired into any repository singleton or
 component; `localStorage` remains the sole production source of truth and is never
 written to or deleted by the migration engine.
@@ -453,7 +468,10 @@ activation on the strength of probability, telemetry, or a bake period, and stat
 directly that closing this half requires either new backend infrastructure paired with a
 materially redesigned, server-authoritative model that could make an obsolete write's
 effect harmless but never prevent the local `localStorage.setItem` call itself (out of
-scope, and contrary to this application's local-first, accountless product principle) or
+scope, and — under the product model in force when ADR-0018 was written — contrary to its
+local-first, accountless product principle, since superseded by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`; the technical
+conclusion about already-running old builds does not depend on that premise) or
 a separate, explicit product decision to **accept** the named residual risk — itself a
 governance resolution, not a technical elimination — a call this architecture document
 does not make on its own authority. **ADR-0017 Decision 3 therefore remains blocked as a
@@ -767,6 +785,18 @@ scope to Phase C's own brief.
 - coach-assigned assessments
 - cloud and workspace permissions
 
+**Forward path for Assessment cloud persistence: Stage B0.4 (Free Cloud Data Backbone).**
+Assessment history becomes part of the **Free Cloud Core** through B0.4 — see "Mandatory
+Identity and Free Cloud Foundation" below. **Everything in the remainder of this subsection
+describes ADR-0019/ADR-0020's Local Adoption programme, which is superseded as the forward
+production path** (there is no legacy data to adopt; `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`).
+It is retained because two things in it survive: **ADR-0021's authority-unit split is still
+the accepted Assessment constraint** (`assessmentDraft` device-local, `assessmentHistory`
+the cloud-eligible unit), and the technical problems named below are **real problems any
+cloud design must handle** — B0.4 must solve its own equivalents rather than inheriting
+ADR-0020's specific, unreconciled answers. Read "pilot eligibility", "Local Adoption" and
+the numbered ADR-0020 blockers below as historical scope, not scheduled work.
+
 **Cloud authority precondition (ADR-0020), authority-unit split now designed (ADR-0021):**
 `docs/adr/0020-supabase-schema-rls-and-adoption-transactions.md` named a genuine
 architecture blocker specific to this domain — `AssessmentPersistedState` combines the
@@ -808,15 +838,37 @@ blocker, named in the fourth Team Foundation correction pass:** ADR-0020's own
 is derived inconsistently across the document itself (`bootstrap_account()` treats it
 as the raw Auth account id; `backfill_domain_authority()` and `assessment_runs`'s own
 `fk_athlete` constraint treat it as `docs/adr/0022`'s independent `Profile.id`), and
-whether Local Adoption authority should be account-scoped or Profile-scoped is a
-genuine, unmade architecture decision — not merely a stale identity assumption like
-the (separately corrected) `profiles`/`athletes` bootstrap step. The authority-unit
-split is now architecturally resolved by ADR-0021 (design only — not yet
-implemented); the representability question (Decision E.2b), mapping execution/
-dispatch integration (Decision E.2c), and the `account_scope_id` scope decision all
-remain fully open and are unaffected by ADR-0021. All four — ADR-0021's own
-implementation, Decision E.2b, Decision E.2c, and the `account_scope_id` scope
-decision — must close before Assessment (or any other domain) is pilot-eligible.
+**the architecture/product choice itself is now CLOSED:**
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted)
+fixes athlete-owned authority as **Profile-scoped** (`Profile.id`, an application-owned
+UUID, never the authentication-provider user id). **What remains open is not the choice
+but ADR-0020's own internal consistency:** its tables, RPCs, RLS rules, locks,
+completeness proofs and tests derive the scope inconsistently, and reconciling every one
+of them to Profile scope is a later, focused stage nobody has performed. Do not describe
+the Profile-versus-account choice as an unmade decision.
+
+**And none of this gates the new forward path.** ADR-0019/ADR-0020's Local Adoption is
+**not** the forward production path — there is no legacy data to adopt (see "Mandatory
+Identity and Free Cloud Foundation" below). ADR-0020's remaining unresolved
+questions — the representability question (Decision E.2b) and mapping execution/dispatch
+integration (Decision E.2c) — stay unresolved **inside that historical Local Adoption
+design**, and must not be treated as automatic gates on **Stage B0.4's Free Cloud Data
+Backbone**. B0.4 designs and verifies its **own** schema, representability rules,
+mapping, upload protocol and RLS, against a real database.
+
+**ADR-0021, precisely.** Its **authority-unit split remains the accepted Assessment
+constraint** — `assessmentDraft` is the device-local/in-progress unit, `assessmentHistory`
+the completed-history unit and the only cloud-eligible one. But its **legacy mechanics are
+retired**: the establishment/migration protocol that splits today's combined, unscoped
+`ASSESSMENT_STORAGE_KEY`, the retained legacy residue, and its planned ADR-0016 marker
+registration will **not** be implemented, because that data is disposable and Stage B0.3
+discards it. **B0.3/B0.4 instead establish fresh Profile-scoped draft and history
+persistence for post-onboarding data**, adopting nothing and reusing no retired marker. Its
+old-build/deployment-fencing hazard survives as a real caution for any B0.3
+scope-transition design.
+
+"Pilot eligibility" under ADR-0020's own adoption protocol is now a historical question
+rather than scheduled work; the forward Assessment path is B0.4.
 
 ### Product validation / research items (not technical debt)
 
@@ -987,10 +1039,109 @@ feature after the fact.
 
 ---
 
+## Mandatory Identity and Free Cloud Foundation (Stages B0.1-B0.4)
+
+**Accepted product/architecture direction. Almost nothing is implemented.** Canonical
+product source: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
+Architecture decision: `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted; not implemented). This replaces the older accountless-use and paid-cloud-backup
+assumptions that were spread across the cloud, persistence and commercial documents.
+
+**Stages and their gates:**
+
+| Stage | Scope | State |
+|---|---|---|
+| **B0.1 — Decision Reconciliation** | Documentation and ADR only: the canonical specification, ADR-0024, and reconciliation of the active architecture/persistence/commercial/Exercise/roadmap/glossary/routing documents. | **Documentation reconciliation complete** in the state documented here. B0.1 itself implements no runtime, test, schema or configuration behaviour. This describes B0.1's own scope only — it makes no claim about unrelated corrections that may share a repository commit with it. |
+| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Not started. Not independently releasable** — see the release-unit rule below. |
+| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation including pending uploads; the **one-time** retirement of the disposable unscoped test data. | **Not started.** Completes the releasable unit B0.2 opens. |
+| **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Not started.** **Blocked on real database verification** — see below. |
+| **Exercise Stage B** | Exercise execution — see "Exercise Library and multi-athlete execution" below. | **Not started**, and now behind B0.2-B0.4. |
+
+**B0.2 + B0.3 are one releasable privacy unit** (see
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
+implementation scopes with two independent review gates, but they ship together. **The
+concrete hazard:** B0.2 introduces mandatory authentication and account switching, while the
+seven sporting-data repositories still read and write **one identity-unscoped
+`localStorage` workspace** until B0.3. A separately released B0.2 would therefore let a
+**second authenticated account in the same browser see the first account's sessions, shots
+and assessments** — the gate would invite account switching before anything isolates what
+switching exposes.
+
+- B0.2 may be implemented and independently reviewed **first**.
+- **Its mandatory-gate and account-switching experience must not be enabled for real users,
+  or released as the new product behaviour, until B0.3's Profile isolation and one-time
+  disposal are implemented and independently reviewed.**
+- **The release gate is the combined unit**, and must prove **no Profile can observe another
+  Profile's local data or pending writes**.
+- **B0.2's account-switch negative cases prove authentication/onboarding state transitions
+  only.** Sporting-data confidentiality across a switch is not closed by that review, and
+  B0.2's completion report must say so.
+- Never resolve this by importing, adopting or assigning the unscoped data to whichever
+  account signs in first — it is **discarded**, never adopted. Never move disposal into
+  B0.2. **No deployment or feature-flag mechanism is chosen here**; that belongs to those
+  stages.
+- **B0.2 is never independently release-ready.**
+
+**Current code gaps, stated plainly.** None of the following exists today:
+
+- **No global access gate.** `AccountControl.tsx` is mounted above the per-view header and
+  explicitly never gates the app; every auth state renders inline. The application is fully
+  usable with no account.
+- **No application-wide mandatory personal onboarding**, and therefore no legal acceptance,
+  no marketing-consent separation, and no platform-wide display-name requirement. Signing in
+  yields only an `AccountIdentity` (an id and an email).
+- **No Google sign-in.** `useSupabaseAuthController`/`supabaseAuthService` implement email
+  OTP only.
+- **No entitlement code of any kind**, so no default Free entitlement exists to grant.
+- **No Athlete capability creation.** No implemented RPC inserts an `athletes` row
+  (`docs/adr/0022` Decision 10).
+- **No Profile scoping in local persistence.** The seven repositories of `docs/adr/0013`
+  read and write one browser's `localStorage` with no concept of an authenticated user.
+- **No cloud sporting data at all** — no cloud repository, no upload, no outbox, no restore,
+  no deployed RLS, no sync status anywhere in the UI.
+- **No account deletion, export-before-deletion, or recovery-period behaviour.**
+
+**What does exist, and is not the B0.2 gate.** A **Team-specific Profile bootstrap with
+display-name capture** is already implemented: once signed in, `TeamsScreen` and
+`TeamInvitationAcceptOverlay` call `TeamService.getMyProfile()`, prompt for a display name
+when none exists, and call `TeamService.bootstrapProfile(displayName)`; the fake and Supabase
+Team services both implement that boundary, over a `bootstrap_profile` RPC that now exists
+and is exercised in a real local database by the Team Foundation pgTAP suite, though no
+application flow has been run against that database end to end (see "Team Foundation
+(beta)" below).
+It is reached only from Teams, gates nothing, and grants neither Athlete capability nor an
+entitlement — so B0.2 still has to build the platform onboarding gate, and must decide how
+it subsumes or replaces this Team-local entry step rather than duplicating it.
+
+Runtime code and comments accurately describing the current optional/accountless behaviour
+(`useSupabaseAuthController`, `AccountControl`, the persistence repositories, the Team
+bootstrap flow) are **correct about today's code** and were deliberately left untouched by
+Stage B0.1. They are B0.2/B0.3 implementation gaps, not stale documentation.
+
+**Real database execution remains a blocking requirement.** SQL, RLS, grants, triggers and
+concurrency behaviour are not verified by TypeScript tests or careful reading. Stage B0.4
+is not complete until its SQL has actually run against a real Postgres/Supabase instance —
+the same discipline the Team Foundation beta operates under, which has now cleared that bar
+for its own SQL (see below). If no real database environment is available, classify the SQL
+as **written but unexecuted** and keep database execution as a blocking stage. The Team
+Foundation execution found two defects invisible to TypeScript tests and to review —
+`SELECT` policies with no matching table grant, and unqualified pgcrypto calls under a
+pinned `search_path` — which is precisely why this stage cannot be signed off on reading.
+
+**Decisions deliberately left open** (do not invent them): a fixed expiry period for a
+device's trusted offline Profile state; the final commercial name of the paid personal tier;
+video/sensor/AI storage entitlements, quotas and retention; the exact shared Team-result
+anonymisation and participant-notification behaviour on deletion; minor/guardian workflows;
+billing provider, pricing and market.
+
+---
+
 ## Cloud Auth Shell (Supabase)
 
-**Implemented (narrow, alpha slice).** See `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`
-§3.1/§5.4 for the accepted long-term direction this is the first step toward, and
+**Implemented (narrow, alpha slice) — transitional; Stage B0.2 replaces it.** See the
+"Mandatory Identity and Free Cloud Foundation" section above for the accepted target and
+the concrete gaps, `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §5.3/§5.4 for
+the corrected product decisions, and
 `docs/SYSTEM_ARCHITECTURE.md`'s "Optional Supabase Auth Shell" section for the
 architecture-level summary. `src/lib/supabase/` provides typed `NEXT_PUBLIC_*`
 configuration resolution (`config.ts`), a lazy Supabase client factory and auth-service
@@ -1006,15 +1157,20 @@ Supabase Auth API only.
 
 ### Deliberately deferred to keep this slice focused
 
-- **No cloud data repository, Local Adoption, or Assessment authority change of any
+- **No cloud data repository, no upload, and no Assessment authority change of any
   kind.** Signing in only establishes a Supabase Auth identity (`AccountIdentity` —
   an id and an email, nothing else); it never uploads, transforms, or claims local data,
-  and no domain becomes cloud-authoritative as a side effect. That full transition is
-  ADR-0019/ADR-0020/ADR-0021's scope, still proposed/not implemented.
+  and no domain becomes cloud-authoritative as a side effect. **Corrected 2026-08-24:** the
+  forward path is Stage B0.4's Free cloud data backbone, **not** ADR-0019/ADR-0020's Local
+  Adoption — that protocol is superseded, because the legacy local data is disposable.
+  ADR-0021's `assessmentDraft`/`assessmentHistory` split remains the accepted authority-unit
+  constraint, but its legacy-key migration mechanics and ADR-0016 marker registration are
+  retired — B0.3/B0.4 establish fresh Profile-scoped draft/history persistence instead.
 - **No account bootstrap RPC, RLS, or schema deployment** — ADR-0020's server-side
   contract is not called or deployed here.
-- **No Google OAuth, password login, or magic-link-only flow** — email OTP only, per
-  the Cloud doc's accepted MVP decision.
+- **No Google OAuth, password login, or magic-link-only flow** — email OTP only. **Google
+  sign-in is now part of the accepted closed-test method set** and is a Stage B0.2 gap, not
+  a deferred nice-to-have; passwords, magic links and Apple sign-in remain deferred.
 - ~~**No teams, coaches, or collaboration features.**~~ — Superseded by the separate
   Team Foundation beta (see below) built on top of this Auth Shell in a later pass. This
   bullet described only what this narrow alpha slice itself left out, not a
@@ -1022,6 +1178,8 @@ Supabase Auth API only.
 - Signed-in identity is not surfaced anywhere else in the app yet (e.g. no
   account-scoped Settings section) — only the compact header control (superseded in
   part by Team Foundation's `AccountControl` "Teams" button, below).
+- **The shell never gates the app**, and no Profile, onboarding, legal acceptance or
+  entitlement exists. That is accurate about today's code and is the Stage B0.2 gap.
 
 ---
 
@@ -1032,32 +1190,56 @@ Supabase Auth API only.
 `docs/SYSTEM_ARCHITECTURE.md`'s "Team Foundation" section for the architecture-level
 summary, and `docs/DOMAIN_GLOSSARY.md` for the domain terms.
 
-### Not yet run against a real database
+### ~~Not yet run against a real database~~ — Resolved (SQL layer only)
 
-**What:** `supabase/migrations/*team_foundation*.sql` (schema, RLS, functions) and
-`supabase/tests/team_foundation.test.sql` (a 91-assertion pgTAP suite, expanded and
-corrected across three independent correction passes — see `supabase/tests/README.md`)
-are written and internally reviewed, but have never been executed — no
-`supabase`/`docker` CLI is available in this development environment, in any pass so
-far.
+**What it was:** `supabase/migrations/*team_foundation*.sql` (schema, RLS, functions)
+and the pgTAP suite had never been executed — no `supabase`/`docker` CLI was available
+in this development environment, in any pass up to that point.
 
-**Impact:** Medium-high. Every RPC name, signature, and SQL syntax choice is currently
-verified only by careful reading (including a full manual statement-by-statement trace
-of the pgTAP file's role/GUC state at each step), not by a real Postgres instance. A typo
-or a PL/pgSQL syntax error would not be caught until the first real execution.
+**Resolution:** all three migrations now apply cleanly from scratch via
+`supabase db reset` against a real local Supabase Postgres, and
+`supabase/tests/team_foundation.test.sql` passes **101/101** against it (the suite grew
+from 91 as part of this correction). The five two-session concurrency procedures
+documented at the end of that file — Admin Request accept-vs-revoke,
+accept-vs-membership-ending, concurrent creation, and `restore_team` racing a final
+admin's `leave_team`/`relinquish_own_admin` — have been executed with genuinely
+concurrent sessions in both orderings each, so the SQL-level locking (docs/adr/0022
+§Admin Request Concurrency, §Team Lifecycle Lock Ordering, §Membership Write-Time
+Locking) is now verified rather than reasoned about. See `supabase/tests/README.md` for
+the recorded outcomes.
 
-**Recommendation:** before any pilot use, run `supabase start` → `supabase db reset` →
-`supabase test db` in an environment with the CLI available, and treat the first
-execution's findings as expected, ordinary bug-fixing — not a sign the design is
-unsound. `supabase/tests/team_foundation.test.sql` itself now documents five specific
-manual two-session procedures at its end (Admin Request accept-vs-revoke, accept-vs-
-membership-ending, concurrent creation, and — added in the second correction pass —
-`restore_team` racing a final admin's `leave_team`/`relinquish_own_admin`) that pgTAP's
-single-transaction execution model cannot simulate — run those by hand with two real
-concurrent connections once tooling is available, and do not consider the SQL-level
-locking added across both passes (docs/adr/0022 §Admin Request Concurrency, §Team
-Lifecycle Lock Ordering, §Membership Write-Time Locking) proven correct until at least
-those five have actually been run once.
+**What that first execution cost, and why it was worth it:** two defects that neither
+TypeScript tests nor careful reading could surface. (1) The RLS migration defined
+`SELECT` policies for `authenticated` but granted it no table-level `SELECT` — an RLS
+policy narrows an access the ACL already permits and never grants one, so every direct
+client read in `supabaseTeamService.ts` and the Team Route Handler context would have
+failed with `permission denied for table ...`. (2) `private.hash_token`/
+`private.generate_raw_token` called pgcrypto unqualified while every calling RPC pins
+`search_path = public, pg_temp`; pgcrypto lives in the `extensions` schema, so no
+invitation could ever have been created. Both are fixed, and the suite now asserts the
+table-privilege boundary from the catalog (§17) and the token round-trip from a real
+`create_invitation` (§4a). One documentation defect was corrected the other way: the
+predicted `conflict` outcome for Procedure B's remove-first ordering is actually
+`revoked`, because `remove_member` atomically revokes the pending request and
+`accept_admin_request` checks request status before membership status — the prose was
+wrong, not the precedence.
+
+### Route Handlers and UI have never run against the real database
+
+**What:** only the SQL layer has been executed for real. The Next.js Route Handlers, the
+`supabaseTeamService` client calls, and the whole Teams UI are still verified solely
+against the fake/in-memory `TeamService` and unit/component tests. No end-to-end flow
+(sign in → bootstrap Profile → create team → invite → accept) has been run against a
+live Supabase instance.
+
+**Impact:** Medium. The RPC contracts themselves are now proven, and the missing table
+grants that would have broken every direct client read are fixed — but PostgREST-level
+concerns (embedded-resource select syntax, the RPC parameter-name mapping, auth token
+propagation through the Route Handlers, email delivery) remain unexercised.
+
+**Recommendation:** before any pilot use, run one full manual end-to-end pass against a
+local `supabase start` stack with a real signed-in account, and treat its findings as
+ordinary integration bug-fixing.
 
 ### ~~No way to list a team's own outstanding Admin Requests~~ — Resolved (correction pass)
 
@@ -1142,9 +1324,22 @@ compatible throughout. Exercise authoring, public/community libraries, standardi
 Shotmaking rubrics, advanced analytics, sensor coordinates and video analysis remain
 deliberately deferred.
 
+**Identity/persistence prerequisites added 2026-08-24.** Stage B now sits behind Stages
+B0.2-B0.4 (see "Mandatory Identity and Free Cloud Foundation" above). The Exercise
+specification already assumes every Team participant resolves to an authenticated Profile,
+that the recorder is derived from authentication with no Recorder selector, that private
+Athlete Notes stay private across an account switch, and that pending data must not be
+exposed after one — none of which has a foundation to rest on until B0.2/B0.3 exist.
+**Commercial correction:** structured raw Exercise results, private Athlete Notes, and
+their **Free** cloud persistence and basic restore, are Free (the **Free Cloud Core**) —
+not part of the paid personal tier; Team Session coordination remains a Team Workspace
+capability. See `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §20.
+
 Stage C additionally requires real database/RLS/transaction verification and a focused
 persistence/upload-protocol design; TypeScript tests alone are not sufficient evidence
-for it.
+for it. Much of that durable-queue design is now Stage B0.4's outbox rather than
+Exercise-specific work, but Stage C's own Team-authority revalidation and per-athlete
+partial-rejection behaviour remain its own.
 
 **Restricted source diagrams.** The supplied Swiss Curling diagrams may be shown only to
 the named one-Team closed beta with visible attribution and genuinely restricted

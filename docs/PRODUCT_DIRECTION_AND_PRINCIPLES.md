@@ -441,13 +441,34 @@ reusing or approximating the Back-Hog range.)
 
 ---
 
-## Local-first is a current feature, not a placeholder
+## Local-first means offline-capable after authenticated onboarding
 
-The app works fully offline today, with no login and no backend — this is not merely a
-"not built yet" gap to route around. It is a real, currently-relied-upon property (an
-athlete training in a rink with no signal must not lose functionality). Cloud sync and
-accounts, when they arrive, must be additive to this, not a replacement that assumes
-connectivity. See `docs/SYSTEM_ARCHITECTURE.md`'s "Local-first today" principle.
+**Accepted target direction — not yet implemented. See**
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` **and**
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.
+
+Local-first is a property about *connectivity during training*, not about *identity*. An
+athlete training in a rink with no signal must not lose functionality: once a device has
+completed authentication and personal Profile onboarding, and holds trusted
+Profile-scoped local state, the athlete must be able to start, perform, finish and review
+supported training entirely offline. A permanent active connection is never required
+during training, and missing connectivity must never block completing a training or
+starting another one.
+
+Accountless operation is **not** a target principle. The platform requires a
+`UserAccount` and a completed personal `Profile`; no Profile means no access to the
+authenticated application. First authentication and first onboarding on a device do
+require connectivity, and a first-time, signed-out, or deleted-account device cannot
+bypass that gate by going offline.
+
+**Current implementation (transitional):** the ordinary personal training workflows are
+today fully usable offline, requiring neither sign-in nor backend availability. Backend
+infrastructure does exist — the optional Supabase Auth Shell and the Team Foundation
+backend — but neither currently gates personal training nor persists any personal
+sporting data. That is accurate as a description of today's code, not a statement of
+product direction — the access gate is Stage B0.2 work. See
+`docs/SYSTEM_ARCHITECTURE.md`'s "Local-first today" principle for the same
+current-versus-target split.
 
 ---
 

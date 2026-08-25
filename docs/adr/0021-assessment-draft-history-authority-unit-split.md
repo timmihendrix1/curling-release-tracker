@@ -1,8 +1,28 @@
 # ADR-0021: Assessment Draft/History Authority-Unit Split
 
+**Partially reframed (2026-08-24) by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted).**
+
+- **Still accepted, and binding:** the authority-unit split — `assessmentDraft` is the
+  device-local/in-progress unit, `assessmentHistory` the completed-history unit and the only
+  one ever cloud-eligible (now via the **Free Cloud Core**, Stage B0.4).
+- **Retired as forward work:** the establishment/migration protocol that splits the current
+  *combined, unscoped* `ASSESSMENT_STORAGE_KEY`, the retained legacy residue (Decision 3),
+  and the planned ADR-0016 marker registration (§11.1). That legacy data is disposable
+  early-test data, discarded once in Stage B0.3 — **B0.3 will not implement these
+  mechanics.** B0.3/B0.4 instead establish **fresh Profile-scoped draft/history
+  persistence** for post-onboarding data, adopting nothing and reusing no retired marker.
+- **Still a real caution:** the old-build / deployment-fencing hazard (Decision 8.1) — it
+  does not depend on the accountless premise.
+- **No longer the route:** ADR-0019/ADR-0020 Local Adoption. Its blockers are not B0.4
+  prerequisites. See §11.
+
+The design below is retained; read §11 and §11.1 for the exact boundary.
+
 **Status:** Accepted. Design complete — every decision within this ADR's own scope is a
 deterministic, internally consistent, and (per this revision) actually executable rule.
-Implementation has not been performed (this commit changes documentation only).
+ADR-0021's implementation has not been performed; this ADR revision changes only its own
+documentation and status framing.
 
 **Correction note (this revision — final semantic pass).** Two prior revisions fixed most
 contradictions but left several protocol-level defects: a possible lock re-entrancy
@@ -1673,19 +1693,67 @@ back to (Decision 7) — both resolve a true resolver-level `blocked`.
 
 ## 11. Relationship to cloud adoption (ADR-0019/ADR-0020)
 
+**Reframed by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted, 2026-08-24). Read this before the rest of the section.**
+
+**Still accepted — the authority-unit split itself.** `assessmentDraft` is the
+device-local, in-progress authority unit; `assessmentHistory` is the completed-history unit
+and the only Assessment unit ever eligible for cloud persistence. That constraint is
+unchanged and binding on all future work.
+
+**Changed — the destination and the route.** Assessment history becomes part of the **Free
+Cloud Core**, reached through **Stage B0.4's Free Cloud Data Backbone** — **not** through
+ADR-0019/ADR-0020's Local Adoption, which is superseded as the forward path because the
+existing unscoped local data is disposable and is discarded once in Stage B0.3 rather than
+adopted. Read every "cloud adoption" below as "future cloud eligibility".
+
+**Retired — this ADR's own forward implementation mechanics for the legacy data.** The
+establishment/migration protocol that reads the current *combined, unscoped*
+`ASSESSMENT_STORAGE_KEY` and splits it, the retained legacy residue it preserves
+(Decision 3), and the planned ADR-0016 marker registration in §11.1 are **historical, not
+scheduled**: the data they operate on is disposable early-test data. **Stage B0.3 will not
+implement them.** Instead, **B0.3/B0.4 must establish fresh Profile-scoped draft and
+history persistence for post-onboarding data** — adopting nothing from the discarded
+unscoped test data, and reusing no retired ADR-0016 migration marker or namespace.
+
+**Still a real caution.** The old-build / deployment-fencing hazard this ADR documents
+(Decision 8.1, and the `legacy_branch_detected`/`legacy_residue_missing` classification)
+survives independently of the accountless premise: a non-participating build has no code
+participating in any local authority-transition protocol. Any B0.3 scope-transition design
+must account for it.
+
+**No longer gates on ADR-0020.** ADR-0020 Decisions E.2b/E.2c remain unresolved inside that
+historical Local Adoption design and are **not** gates on B0.4; B0.4 designs and verifies
+its own schema, representability, mapping, upload and RLS against a real database. Stage
+B0.4 does require real database verification of its own.
+
+The original section text follows, retained as the record of the earlier design.
+
 Only `assessmentHistory` may ever be registered for cloud adoption; `assessmentDraft` is
 permanently excluded. **This ADR resolves ADR-0020 Decision D in full** — never again
-"blocked by Decision D." Cloud adoption of `assessmentHistory` remains blocked by: this
-ADR's own implementation not yet performed; ADR-0020 Decision E.2b/E.2c; the account
-deletion/anonymization policy; ADR-0019's old-build/local-branch limitation; and this ADR's
-own production-deployment gate (Decision 8.1) — none of which this ADR resolves or makes
-progress toward.
+"blocked by Decision D." Under the superseded Local Adoption route, cloud adoption of
+`assessmentHistory` was blocked by: this ADR's own implementation not yet performed;
+ADR-0020 Decision E.2b/E.2c; the account deletion/anonymization policy; ADR-0019's
+old-build/local-branch limitation; and this ADR's own production-deployment gate
+(Decision 8.1) — none of which this ADR resolved. That blocker list describes the retired
+route, not Stage B0.4's prerequisites.
 
 ### 11.1 Relationship to ADR-0016 and IndexedDB, and target key/domain cardinality
 
+**RETIRED as forward work (2026-08-24, ADR-0024).** ADR-0016's copy-migration track is
+retired and its markers will not be reused; the legacy combined `assessment` key holds
+disposable early-test data that Stage B0.3 discards. **The "target future relationship"
+below is therefore historical**: no `assessmentDraft`/`assessmentHistory` migration unit
+will be registered with ADR-0016, and the retained-legacy-residue row in the cardinality
+table describes a migration that will not run. What survives is the *structural* target —
+draft and history as two independent, Profile-scoped persistence units — which B0.3/B0.4
+establish fresh for post-onboarding data. The counting discipline below (never totalling
+authoritative domain data with residue and protocol metadata) also remains sound guidance
+for whatever key layout B0.3 chooses.
+
 ADR-0016's registry (`MIGRATION_DOMAINS`) currently registers `assessment` as one domain
 with one source key (`sourceKeys: [ASSESSMENT_STORAGE_KEY]`). This ADR does not modify
-ADR-0016 or that registry in this commit. Target future relationship:
+ADR-0016 or that registry in this commit. The historical target relationship was:
 
 - The existing `assessment` marker (`migration:local-storage-to-indexeddb:v1:assessment`)
   remains historical evidence for the legacy combined key **only** — never reinterpreted as

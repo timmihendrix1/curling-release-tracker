@@ -176,19 +176,32 @@ Manual workflows should always remain available.
 
 ---
 
-# Local First
+# Local First — offline-capable after authenticated onboarding
 
-Athletes should own their training.
+**Corrected 2026-08-24 — see `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
+and `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted;
+not implemented). This section previously said the platform should remain fully usable
+without accounts; that is no longer the product direction.**
 
-The platform should remain fully usable without:
+Athletes should own their training. Ownership is Profile-scoped and never transferred by a
+team, a coach, or a payer.
 
-- accounts
+Local First means **training must not depend on connectivity**. Once a device has completed
+authentication and personal Profile onboarding, the athlete must be able to start, perform,
+finish and review supported training with:
 
-- subscriptions
+- no internet connection
 
-- internet connectivity
+- no paid subscription
 
-Cloud functionality should extend the experience, not define it.
+An **account and a completed Profile are required** — Free is a tier, not an exemption — and
+first authentication and onboarding on a device do need connectivity. What Free includes is
+substantial: recording, the athlete's own raw records, export, and cloud persistence of the
+structured raw sporting record (the **Free Cloud Core**) with basic restore on a new device.
+
+Cloud functionality should extend the experience, not define it: the cloud makes the record
+durable and restorable, and paid tiers sell *derived* analysis — neither may stand between
+the athlete and a training session at the rink.
 
 ---
 

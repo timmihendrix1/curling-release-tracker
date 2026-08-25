@@ -1,5 +1,13 @@
 # Persistence Boundary Design
 
+**Read first (2026-08-24):** two premises of this document are superseded by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` — the
+accountless/no-owner assumption (local persistence becomes **Profile-scoped** in Stage
+B0.3) and the legacy `localStorage`→IndexedDB copy/activation track as the forward
+migration path (**retired** — the data it would carry is disposable). See §1's revision
+note, §10's retirement note, and §12. The implemented repository boundary, hydration model,
+and `localStorage` as today's sole production authority are unchanged.
+
 **Status:** Accepted. Implemented. Companion to
 `docs/adr/0013-application-owned-persistence-repository-boundary.md`. Phase 1
 (everything this document describes: the `StorageAdapter`, all seven repositories, the
@@ -306,6 +314,26 @@ name exactly which controls changed for Session and Assessment. See
 `PERSISTENCE_BOUNDARY_PHASE1_FINAL_CORRECTION_REPORT.md` for the full record.
 
 ## 1. Purpose and scope
+
+**Revision note (2026-08-24, mandatory identity and Free Cloud Foundation).**
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted; not
+implemented) and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
+change two of this document's premises, corrected in place in §10 and §12 below:
+
+- **The accountless / no-owner assumption is superseded.** This document was written to
+  preserve accountless use, and §12 concluded that identity must not scope local
+  persistence. Identity is now mandatory, and **local persistence becomes Profile-scoped
+  in Stage B0.3.** The implemented repository boundary, hydration model, and the fact that
+  `localStorage` is today's sole production authority are all **unchanged and still
+  accurate**.
+- **The legacy copy/activation track (§10 steps 2-4) is retired as the forward migration
+  path.** The unscoped local data it would carry forward is disposable early-test data
+  that Stage B0.3 discards once, explicitly. ADR-0015's unwired adapter remains valid
+  infrastructure; no dormant code is deleted by that decision.
+
+This document is **not** the place to redesign repository APIs for either change. See
+Stage B0.3 (Profile-scoped local persistence) and Stage B0.4 (cloud synchronisation) in
+the specification's Section 11.
 
 This document inventories every current browser-persisted domain, then designs an
 application-owned persistence boundary that can:
@@ -1846,7 +1874,20 @@ stays satisfied. Any *new* adapter-facing capability (e.g. a genuinely atomic mu
 write primitive) is a separate, future, explicitly-approved design decision, not
 authorized by this document.
 
-## 10. Migration path to IndexedDB (staged; documentation only in this pass)
+## 10. Migration path to IndexedDB (staged; documentation only — retired as the forward production path)
+
+**Retired as the forward production migration path (2026-08-24 revision).** Steps 2-4
+below exist to carry the existing unscoped local data forward. That data is disposable
+early-test data which Stage B0.3 will discard once, explicitly — so there is nothing for a
+copy migration or an activation programme to preserve. Step 1's adapter
+(`docs/adr/0015-indexeddb-adapter-unwired.md`) remains valid, unwired infrastructure; step
+2's mechanism (`docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`)
+remains a historical implemented mechanism, never invoked; steps 3-4
+(`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`,
+`docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`) remain useful
+analyses whose proposed activation programme is no longer the selected path. **Dormant code is not deleted
+by that decision.** The rest of this section is retained as the record of what that track
+was, not as scheduled work.
 
 **This section covers Phase 2 (IndexedDB) only.** The Phase 1 (`localStorage`-backed
 repository boundary, including hydration and testing) sequence is now specified once,
@@ -2111,46 +2152,66 @@ proven correct for 4 of 7 domains is not yet trustworthy for the other 3.
 
 ## 12. Future sync compatibility (seam only — not a sync protocol)
 
-- **Local repositories remain authoritative while offline.** The repository interfaces in
-  Section 5 have no concept of "online"/"offline," "authenticated," or "pending sync" —
-  they read and write local storage and return. A future sync layer sits *above* this
-  boundary (composing repository calls the way `TrackerApp.tsx` does today), never inside
-  it. This directly continues ADR-0010's own stated reasoning: "the per-domain local key…
-  make[s] a future sync boundary a matter of syncing one more key/collection, not
-  restructuring existing data" (ADR-0010, Decision 2) — this design's 7-repository split
-  is the natural continuation of that same principle at the code-boundary level, not just
-  the storage-key level.
-- **Where stable IDs, revisions, and sync metadata could live.** Stable IDs already exist
-  (Section 10.1). Sync metadata (last-synced-at, a pending-write flag, a server-assigned
-  revision) does **not** exist on any current domain type, and this design deliberately
-  does not add it now. If/when needed, the natural seam is a wrapper the sync layer
-  maintains *alongside* (not inside) each domain's existing persisted shape — e.g. a
-  separate, sync-layer-owned small record keyed by the same stable ID, not a new required
-  field injected into `Session`/`AssessmentRun`/etc. themselves. This preserves
-  `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §3.6's principle ("Domain
-  concepts remain provider-neutral… their identifiers and APIs must not become core
-  sporting concepts") at the persistence-boundary level specifically.
-- **Storage concerns stay separate from authentication/authorization.** No repository or
-  adapter in this design has any concept of a signed-in user, a `UserAccount`, or a
-  `Profile` (all defined only in `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`
-  §5, none implemented). This is intentional: the local repositories are correct for
-  exactly one athlete's exactly-one-device local data, with or without an account, and
-  must stay that way. A sync layer, when built, is what would associate a repository's
-  data with an authenticated identity — never the repository itself.
-- **Why cloud identity must not leak into local domain entities prematurely.** Adding a
-  `userId`/`ownerId` field to `Session`/`AssessmentRun`/etc. now, in anticipation of sync,
-  would violate the accountless-use guarantee this design is explicitly required to
-  preserve (Section 1) — a locally-created `Session` has no concept of "whose" it is today,
-  by design (`docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first is a current
-  feature, not a placeholder," line 444), and premature identity fields would be dead
-  weight for every accountless user, forever, for a capability that may not ship for a
-  long time.
-- **What can remain deferred until the cloud/login spike.** Per
-  `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §12 (Synchronisation protocol)
-  and §17.1 (decisions blocking personal cloud sync) — the entire conflict-resolution
-  policy, the mutation-outbox design, the idempotency-key scheme, and the cursor/revision
-  protocol are all explicitly out of scope for this document and already flagged as
-  belonging to that later phase.
+**Corrected in the 2026-08-24 revision.** Two of this section's original conclusions are
+superseded by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`:
+
+- **Superseded:** "the local repositories are correct for exactly one athlete's
+  exactly-one-device local data, with or without an account, and must stay that way", and
+  the accountless-use justification for keeping identity out of local persistence entirely.
+  **Local persistence becomes Profile-scoped in Stage B0.3.**
+- **Superseded:** the framing of a future sync layer as an optional, indefinitely deferred
+  capability. A durable outbox and idempotent upload are **required** Stage B0.4
+  deliverables, because Free users record offline and their structured raw data belongs in
+  the **Free Cloud Core**.
+
+**Still valid, and deliberately unchanged:**
+
+- **The local repository is the immediate operational source for active and offline
+  capture; the cloud is the durable authority for an acknowledged record.** (Corrected
+  2026-08-24 — the earlier phrasing, "local repositories remain authoritative while
+  offline," could be read as licensing an offline local mutation to override a sporting fact
+  the server has already acknowledged. It does not.) A device reads and writes locally
+  without waiting for the network, and pending unsynced work lives locally and is
+  authoritative *for itself* until acknowledged; once the server acknowledges a Free Cloud
+  Core record, the cloud holds durable authority for it, and a later offline local edit is a
+  change to be uploaded and reconciled under §12.2's conflict policy — never a silent
+  overwrite of the acknowledged fact. **A sync layer sits *above* this boundary** (composing
+  repository calls the way `TrackerApp.tsx` does today), never inside the adapter. This
+  continues ADR-0010's reasoning — "the per-domain local key… make[s] a future sync boundary
+  a matter of syncing one more key/collection, not restructuring existing data" — at the
+  code-boundary level.
+- **Where stable IDs, revisions and sync metadata could live.** Stable IDs already exist
+  (§10.1). Sync metadata (last-synced-at, a pending-write flag, a server-assigned revision)
+  does **not** exist on any current domain type, and this design still does not add it. The
+  natural seam remains a wrapper the sync layer maintains *alongside* (not inside) each
+  domain's existing persisted shape — a separate, sync-layer-owned record keyed by the same
+  stable ID, not a required field injected into `Session`/`AssessmentRun`. This preserves
+  `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §3.6's provider-neutrality
+  principle at the persistence-boundary level.
+- **Storage concerns stay separate from *authentication*.** No repository or adapter needs
+  a concept of a signed-in `UserAccount`, a provider session, or a token. That separation
+  survives intact.
+
+**What changes, and where it is designed:**
+
+- **Profile scope, not authentication, enters local persistence (Stage B0.3).** The scope
+  key is `Profile.id` — an application-owned UUID, never the authentication-provider user
+  id — so the repositories still never learn anything about the auth provider. Sign-out and
+  account switching must immediately hide and lock the previous Profile's local data,
+  including any record pending upload. **Whether that scope is expressed as a key prefix,
+  a per-Profile store, an adapter-level namespace, or something else is a Stage B0.3
+  decision this document does not make**, and no repository API is redesigned here.
+- **The outbox, conflict protocol, idempotency-key scheme, retry schedule, cursor/revision
+  protocol and API contract are Stage B0.4** — see
+  `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §12.1 (now stated as required
+  behaviour with open design questions, no longer as an illustrative sketch) and
+  `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7. Stage B0.4
+  additionally requires **real database verification**; TypeScript tests do not verify SQL,
+  RLS, grants, triggers or concurrency.
+- **The existing unscoped local data is disposable** and is discarded once, explicitly, in
+  Stage B0.3 — never adopted, claimed, imported or merged. `docs/adr/0019`'s Local Adoption
+  is not the forward path.
 
 ## 13. Required design decisions
 

@@ -1,16 +1,24 @@
 -- Team Foundation — schema (requirements 1-46, 99-138 of the approved Team Foundation
 -- specification; see docs/adr/0022-team-foundation-domain-and-persistence.md).
 --
--- STATUS: written, NOT executed or verified against a real Postgres instance in this
--- environment — no `supabase`/`docker` CLI was available (see the implementation
--- report). Treat this migration as reviewed-but-unexecuted until it has been run
--- through `supabase db reset` + the pgTAP suite under supabase/tests/.
+-- STATUS: executed. This migration has been applied by `supabase db reset --local`
+-- against a real local Supabase Postgres and exercised end to end by the pgTAP suite
+-- under supabase/tests/ (see that directory's README.md for the recorded result).
 --
 -- These are new, cloud-born, cloud-authoritative Team Foundation records. They do
 -- not adopt, upload, or otherwise take authority over local Training or Assessment
 -- data (docs/adr/0019/0020 remain Proposed and untouched by this migration).
 
-create extension if not exists pgcrypto;
+-- pgcrypto lives in the `extensions` schema on Supabase (local and hosted alike),
+-- not in `public`. Every SECURITY DEFINER function in this feature pins
+-- `search_path = public, pg_temp` (requirement 133), which deliberately does NOT
+-- include `extensions` — so pgcrypto is always called SCHEMA-QUALIFIED
+-- (`extensions.digest`, `extensions.gen_random_bytes`) in the functions migration
+-- rather than by widening a security-sensitive search path. Creating it here with an
+-- explicit schema keeps that qualification correct on a database that does not
+-- already have the extension.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 -- A schema for RLS-helper functions that must not be reachable through PostgREST —
 -- only the `public` schema (and explicitly configured extras) are exposed by

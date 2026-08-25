@@ -2,6 +2,17 @@
 
 ## Status
 
+**Superseded in part (2026-08-24) by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.**
+This ADR remains **Accepted and Implemented** for the application-owned repository
+boundary, hydration safety, provider-neutral domain types, and the storage abstraction.
+**Superseded:** its accountless-use guarantee, and Decision 7's conclusion that identity
+must not scope local persistence. Identity is now mandatory, and **local persistence
+becomes Profile-scoped in Stage B0.3** (`Profile.id`, an application-owned UUID — the
+repositories still never learn anything about the authentication provider). Decision 7's
+other conclusions — that a sync layer composes repository calls from *above* the boundary,
+and that provider identifiers never become core sporting concepts — stand unchanged. See
+`docs/PERSISTENCE_BOUNDARY_DESIGN.md` §12 for the corrected seam.
+
 Accepted. Implemented. Accepted by the product owner following review of
 `PERSISTENCE_BOUNDARY_ACCEPTANCE_REPORT.md`. See `docs/PERSISTENCE_BOUNDARY_DESIGN.md`
 for the full design this ADR summarizes. Phase 1 was implemented on
@@ -251,8 +262,10 @@ today) — it does not live inside the repository or adapter layer, and no repos
 adapter gains a dependency on authentication or network state as part of this decision.
 Cloud identity fields (`userId`, `ownerId`, etc.) are explicitly not added to any local
 domain type by this decision — doing so now would violate the accountless-use guarantee
-(`docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`, "Local-first is a current feature, not a
-placeholder") for a capability that may not ship for a long time.
+(then `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`, "Local-first is a current feature, not a
+placeholder"; that section is now "Local-first means offline-capable after authenticated
+onboarding") for a capability that may not ship for a long time. **This specific reasoning
+is superseded — see Status.**
 
 ## Alternatives Considered
 

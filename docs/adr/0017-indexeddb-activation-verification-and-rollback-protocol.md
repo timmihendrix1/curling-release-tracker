@@ -2,6 +2,15 @@
 
 ## Status
 
+**No longer the selected path (2026-08-24) — see
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.** The
+production activation programme this ADR proposes exists to make IndexedDB authoritative
+for existing local data. That data is **disposable early-test data**, discarded once in
+Stage B0.3, so this activation programme is **not scheduled work**. **The analysis below is
+retained in full** — it is the record of why client-only activation cannot be made provably
+safe, and Decision 3 is neither resolved by ADR-0024 nor required to be. Status is otherwise
+unchanged: still Proposed, still incomplete, still no code.
+
 **Proposed. Incomplete design.** No production code, tests, markers, adapters, or UI are
 added by this ADR. **There is exactly one unresolved prerequisite blocking Accepted
 status: Decision 3.** Decision 3 identifies a specific safety prerequisite (old
@@ -459,8 +468,11 @@ not selected:
 - **A staged compatibility rollout** with an enforceable prerequisite (e.g., only enable
   activation once telemetry or a defined bake period gives confidence no
   pre-fencing-aware build remains reachable) — plausible, but "enforceable" is doing a lot
-  of work here: a purely client-side, backend-less, accountless app (per
-  `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first is a current feature") has no
+  of work here: a purely client-side, backend-less, accountless app (per the then-current
+  `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md` principle, since renamed to "Local-first means
+  offline-capable after authenticated onboarding" and its accountless premise superseded by
+  ADR-0024 — see Status; the absence of a server-side session registry is what the argument
+  actually turns on) has no
   server-side session registry to *prove* zero old tabs remain open; any such staging
   would be a confidence measure, not a guarantee, and this ADR does not pretend
   otherwise by choosing it.

@@ -2,6 +2,16 @@
 
 ## Status
 
+**RETIRED as the production migration path (2026-08-24) by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.** This
+migration exists to carry the existing unscoped `localStorage` data forward. That data is
+**disposable early-test data**, which Stage B0.3 will discard once, safely and explicitly —
+so there is nothing left for this mechanism to preserve, and it is no longer the forward
+path. It **remains a historical, implemented, never-invoked mechanism** and its reasoning
+below (exact-serialized-string copy rather than a second implementation of every domain's
+repair policy) is retained. **No code is deleted by that decision.** ADR-0015's adapter is
+unaffected.
+
 Accepted. Implemented (mechanism only — not invoked by the app). Phase 2, Stage 3 of the
 IndexedDB migration path `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes. Builds
 directly on `docs/adr/0015-indexeddb-adapter-unwired.md` (the adapter this migration

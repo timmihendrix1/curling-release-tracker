@@ -244,7 +244,14 @@ The athlete's data is not.
 
 ## Local-first today
 
-The current implementation is local-first.
+The current implementation is local-first **and still accountless-capable** — a
+transitional state, not the target. See the accepted target in "Mandatory identity and
+the Free Cloud Foundation (Accepted target — not implemented)" below, and its canonical
+sources: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` and
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.
+
+In the target model, "local-first" means **reliable offline training for a previously
+authenticated and onboarded Profile** — not accountless use.
 
 Future cloud capabilities should extend the architecture without fundamentally changing the domain model.
 
@@ -453,8 +460,13 @@ The architecture should remain as simple as possible today while making tomorrow
 
 ## Domain model (Implemented)
 
-Three types, all in `src/types/index.ts`. There is no backend and no database — a
-`Session` is the entire unit of persistence.
+Personal Release Timing persistence is organized around three of the types declared in
+`src/types/index.ts` — `Session`, `TrainingBlock` and `Shot` — with a `Session` as the
+entire unit of persistence. These core personal-training records remain local: they are
+not persisted by, and have no representation in, the Team backend. Separate Auth and
+Team backend infrastructure does exist elsewhere in this repository (see "Optional
+Supabase Auth Shell" and "Team Foundation" below); neither stores personal training
+data.
 
 ### Session
 
@@ -1329,16 +1341,28 @@ through direct `localStorage` calls scattered across components — see
   ADR-0017 Decision 2's mutation lease) with an explicit, honest, software-unverifiable
   user confirmation for everything the presence check structurally cannot see — proposed
   in full, but never described as a proof. **Because no fully provable solution exists for
-  either half without either new backend infrastructure this local-first, accountless
-  application does not have, or a separate, explicit product decision to accept a named
+  either half without either new backend infrastructure this local-first application does
+  not have (ADR-0017/0018 argued this from the product's then-current accountless model —
+  superseded by ADR-0024; their technical conclusion about already-running old builds does
+  not depend on it), or a separate, explicit product decision to accept a named
   residual risk — an acceptance that resolves the pending governance decision, never a
   technical elimination of the risk itself — ADR-0017 Decision 3 remains blocked as a
   whole**, and no activation is recommended on the strength of probability, telemetry, or
   a bake period.
 
 **Cloud identity and data authority (Proposed, incomplete design — genuine architecture
-blockers remain) — `docs/adr/0019-cloud-identity-and-data-authority-transition.md`.**
-Proposes the authority boundary for the transition from today's anonymous, device-local
+blockers remain; superseded as the forward path by ADR-0024) —
+`docs/adr/0019-cloud-identity-and-data-authority-transition.md`.**
+**Read the whole summary below as historical design reasoning.** ADR-0019's Local Adoption
+protocol exists to reconcile pre-existing *anonymous* local data with a later account;
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted) makes
+identity mandatory and classifies the existing unscoped local data as disposable early-test
+data, to be discarded once rather than adopted. Local Adoption is therefore **not the
+forward production path**, and nothing here is implemented. One conclusion of ADR-0019 that
+does survive independently of the accountless premise: its Decision 8 non-participating-old-
+build hazard remains a real, unresolved risk for any future local-authority transition.
+
+It proposes the authority boundary for a transition from an anonymous, device-local
 application to authenticated Supabase-backed accounts using **three independent state
 machines**: `LocalGenerationState` (this browser storage partition's own legacy Role-A
 evidence only — `legacy_active`, `adoption_prepared`, `legacy_quarantined`,
@@ -2798,13 +2822,21 @@ a picker, since there is currently only one valid choice.
 profile" from within the selector itself, and Hog-Hog Smart Random support (an
 [Open decision] independent of this feature — see ADR-0004).
 
-## Optional Supabase Auth Shell (Implemented — narrow alpha slice)
+## Optional Supabase Auth Shell (Implemented — narrow alpha slice; transitional, to be replaced by Stage B0.2)
 
-The first accepted step of `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md`'s
-target architecture (§3.1/§5.4): an optional, additive email-OTP sign-in, with no
-change to persistence authority and no cloud data of any kind yet — see
-`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Cloud Auth Shell (Supabase)" entry for what is
-deliberately deferred.
+An optional, additive email-OTP sign-in, with no change to persistence authority and no
+cloud data of any kind — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Cloud Auth Shell
+(Supabase)" entry for what is deliberately deferred.
+
+**This is a transitional current implementation, not the target.** The accepted target
+(`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, Accepted —
+not implemented) requires a `UserAccount` **and** a completed personal `Profile` before
+the application is reachable at all. Stage B0.2 replaces this shell with one
+application-level auth authority (email OTP **and** Google sign-in), Profile bootstrap,
+legal acceptance, Athlete capability, a default Free entitlement, and a global access
+gate. Everything described in this section — including the explicit "never gates the rest
+of the app" property below — is an accurate statement about today's code and must not be
+read as product direction.
 
 **Configuration boundary.** `src/lib/supabase/config.ts`'s `resolveCloudConfig()` reads
 the two public, browser-exposed `NEXT_PUBLIC_SUPABASE_URL`/
@@ -2845,9 +2877,97 @@ render body (above the per-view header), so it is visible across every `activeVi
 or, cloud-disabled, renders nothing at all. It never gates the rest of the app: every
 state (including `recoverable_error`) renders inline alongside whatever screen is
 active, never as a full-page takeover, and the local, accountless application remains
-fully usable in every state.
+fully usable in every state. **That last property is a current, transitional fact about
+this shell, not product direction** — Stage B0.2's gate replaces it (see the section that
+follows).
 
-## Team Foundation (Implemented — domain/service/UI; SQL written, not yet executed)
+## Mandatory identity and the Free Cloud Foundation (Accepted target — not implemented)
+
+**Canonical product source:** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
+**Architecture decision:** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted architecture/product direction; **not implemented**).
+
+**None of this target is implemented platform-wide.** Precisely: there is **no global
+access gate**, **no application-wide mandatory personal onboarding** (no legal acceptance,
+no marketing-consent separation), **no Google sign-in**, **no entitlement of any kind**,
+**no Athlete-capability creation**, **no Profile scoping of local persistence**, and **no
+cloud sporting data** — no cloud repository, outbox, restore or deployed RLS.
+
+**What does exist, and must not be mistaken for the target:** the optional email-OTP-only
+auth shell above, unscoped `localStorage` as the sole sporting-persistence authority, and a
+**Team-specific Profile bootstrap** — `TeamsScreen`/`TeamInvitationAcceptOverlay` call
+`TeamService.getMyProfile()`, collect a display name, and call
+`TeamService.bootstrapProfile(displayName)` against a `bootstrap_profile` RPC that now
+exists and is exercised in a real local database (see "Team Foundation" below), though no
+application flow has been run against that database end to end. That is a Teams-feature
+entry step, not the Stage B0.2 platform onboarding gate: it is reached only from Teams,
+gates nothing, and grants neither Athlete capability nor an entitlement.
+
+The sections above describe what is actually built; this one describes the accepted target
+and how it is staged.
+
+**The accepted target.**
+
+- A `UserAccount` **and** a completed personal `Profile` are required to reach the
+  authenticated application. No Profile means no access. Free is a commercial tier, not an
+  exemption from identity; deliberately public marketing material stays public.
+- `Profile.id` is a stable application-owned UUID, never equal to or replaced by the
+  authentication-provider user id (the model ADR-0022 already implements for Teams).
+  **Athlete-owned sporting data, local persistence scope, cloud authority and
+  recorder/actor attribution are Profile-scoped**, never auth-account-scoped.
+- Onboarding is minimal and blocking: display name, Terms acceptance, Privacy
+  acknowledgement; it grants **Athlete capability** and the **default Free entitlement**.
+  Marketing consent is separate, optional and off by default. No training data may be
+  created before it completes.
+- **Offline after onboarding:** first authentication and first onboarding on a device
+  require connectivity; afterwards, a device holding trusted Profile-scoped local state
+  trains fully offline. A first-run, signed-out or deleted-account device cannot bypass the
+  gate offline. Sign-out or account switching immediately hides and locks the previous
+  Profile's local data.
+- **Free Cloud Core:** all supported structured raw sporting/training data needed to
+  reconstruct the athlete's history and compute future analytics is persisted in the cloud
+  for Free users, with no date cutoff, plus basic restore on a new device. The paid
+  personal tier sells value *derived* from that data. Large or operationally expensive
+  artifacts (video, high-frequency sensor streams, large coordinate traces, AI output) are
+  not covered by that guarantee.
+- **Sync truth:** stable client-generated IDs before upload; automatic, idempotent upload
+  on reconnect; a durable outbox; fail-closed authority revalidation before upload; at
+  least *saved on this device* / *synced* / *sync issue*, with nothing called cloud-backed
+  before the server acknowledges it; no silent overwrite of conflicting content under one
+  stable identity.
+- **Legacy local data is disposable.** The existing unscoped `localStorage` data is early-
+  test data, discarded once and explicitly in Stage B0.3 — never adopted, claimed, imported
+  or merged. The ADR-0016/0017/0018 copy-migration and activation track is retired as the
+  forward production path; ADR-0015's unwired adapter remains valid infrastructure; no
+  dormant code is deleted by that decision.
+
+**Staging.** B0.1 (documentation and ADR only — this reconciliation) → B0.2 (identity and
+onboarding gate; no sporting cloud persistence) → B0.3 (Profile-scoped local persistence and
+the one-time retirement of disposable test data) → B0.4 (Free cloud data backbone, which
+**requires real database verification** before it can be called complete) → Exercise Stage
+B. Each stage has its own independent review gate; see the specification's Section 11 and
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
+
+**B0.2 and B0.3 are one releasable privacy unit** (specification §11.1). They stay two
+implementation scopes with two review gates, but they ship together, because B0.2 makes
+identity mandatory and adds account switching while the seven repositories still share **one
+identity-unscoped `localStorage` workspace** until B0.3 — a separately released B0.2 would
+let a second authenticated account in the same browser read the first account's sporting
+data. B0.2 may be built and reviewed first, but **its gate and account-switching experience
+must not be enabled for real users or released as the new product behaviour until B0.3 is
+implemented and independently reviewed**, and the combined release gate must prove **no
+Profile can observe another Profile's local data or pending writes**. B0.2's own
+account-switch review proves authentication/onboarding state transitions only. The unscoped
+data is **discarded** in B0.3, never imported or adopted, and disposal does not move earlier.
+**B0.2 is never independently release-ready.**
+
+**What this does not change.** The domain model, the repository boundary's shape
+(ADR-0013), the `TimingProvider`/`TimingResult` capture boundary, navigation, Assessments
+and the Exercise Library domain are all unaffected as designs. What changes is that local
+persistence gains a Profile scope, and a cloud tier gains authority once it acknowledges a
+record.
+
+## Team Foundation (Implemented — domain/service/UI; SQL layer executed and verified; application integration not yet exercised against a real database)
 
 The first real collaboration layer built on the Optional Supabase Auth Shell above —
 named Teams, composable member functions, email invitations, and a Team Admin
@@ -2858,11 +2978,28 @@ full decision record and `docs/DOMAIN_GLOSSARY.md` for the domain terms (**Profi
 sections remain the authoritative product/billing model this implements; no billing or
 entitlement logic exists in this code.
 
-**Not yet run against a real database.** `supabase/migrations/` (schema, RLS, functions)
-and `supabase/tests/team_foundation.test.sql` are written and internally reviewed but
-have never been executed — no `supabase`/`docker` CLI is available in this development
-environment. Treat the SQL layer as reviewed-but-unverified until it has actually run
-against Postgres once.
+**SQL layer executed and verified.** `supabase db reset` applies all three migrations in
+`supabase/migrations/` (schema, RLS, functions) from scratch against a real local Supabase
+Postgres, and `supabase/tests/team_foundation.test.sql` passes **101/101** against it. The
+two-session concurrency Procedures A–E documented at the end of that file — the races the
+per-team advisory lock and the `for update` membership locks exist to close — have been
+executed with genuinely concurrent sessions in both orderings each; no observed state ever
+contained an active Team with zero active Team Admin functions. See
+`supabase/tests/README.md` for the recorded outcomes.
+
+Two defects that only real execution could expose were found and fixed in the process:
+the RLS migration defined `SELECT` policies for `authenticated` while granting it no
+table-level `SELECT` (a policy narrows an access the ACL permits; it never grants one, so
+every direct client read would have failed with `permission denied`), and the invitation
+token helpers called pgcrypto unqualified while their callers pin
+`search_path = public, pg_temp` — pgcrypto lives in the `extensions` schema, so no
+invitation could have been created. The privilege boundary is now explicit —
+`authenticated` has `SELECT` only, `anon` has no direct table access at all, and every
+mutation remains SECURITY DEFINER RPC-only — and asserted from the catalog by the suite.
+
+**Still not exercised against the real database:** the Route Handlers and the UI. Only the
+SQL layer has been run for real; the application layers above it remain verified against
+the fake/in-memory `TeamService` and unit/component tests.
 
 **Domain layer (`src/lib/team/`, `src/lib/email/`).** Pure, fully unit-tested modules —
 `types.ts`, `errors.ts` (`TeamResult<T>`, never throws), `permissions.ts` (the one

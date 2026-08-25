@@ -15,13 +15,20 @@ before-and-after values remain protected by the recipient's current data-sharing
 The Exercise Library's Version 1 Athlete Note is separately private to its athlete and
 is not exposed by Team participation or a Team data-sharing grant. Section 12.4 records
 the separately approved, bounded offline upload path for one-device Team Exercise
-Sessions; it does not turn the Phase 3/4 personal-cloud transition into a generic
-offline-sync implementation. The Exercise Library capability mapping now follows the
+Sessions. That path is a feature-specific extension built on the durable-outbox and
+idempotent-sync backbone Stage B0.4 already requires — not a second, parallel sync
+implementation. Its Team-specific authority revalidation and partial-bundle rejection
+remain separate Exercise work. The Exercise Library capability mapping now follows the
 existing Free / Personal Athlete / Team Workspace / Coaching layers in Section 17.5;
 athlete-owned raw Team Session results remain viewable and exportable independently of
 a Personal Athlete entitlement.
 
-**Revision note (2026-08-18, consolidated).** `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
+**Revision note (2026-08-18, consolidated) — superseded in part by the 2026-08-24
+mandatory-identity revision below.** Its §12.1 reframing (an outbox as an illustrative,
+non-required sketch) and its §18 Phase 3 replacement (an Assessment Adoption prototype as
+the first cloud-authority exercise) no longer hold: a durable outbox is now a required
+Stage B0.4 deliverable, and Local Adoption is no longer the forward path at all. The rest
+of this note stands. `docs/adr/0019-cloud-identity-and-data-authority-transition.md`
 is a **Proposed**, related architectural decision — it proposes, and does not yet
 finally decide, the authority boundary for the Phase 3/4 transition below. This
 document's Accepted status and its identity/product decisions (Sections 3-17) are
@@ -138,6 +145,35 @@ item 4's already-corrected Team-scoped model. Corrected in this revision:
 as the future grant's name, is corrected in the same pass to name
 `TeamDataSharingGrant` instead.
 
+**Revision note (2026-08-24, mandatory identity and Free Cloud Foundation).**
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` is now the canonical
+product source for identity requirement, onboarding, Profile-scoped ownership, offline
+behaviour after onboarding, and the Free Cloud Core; `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+is the accepted (not implemented) architecture decision. Both **supersede** several
+decisions previously recorded in this document, corrected **in place** below rather than
+annotated above unchanged text:
+
+- **§3.1 no longer promises accountless use.** Local-first is redefined as reliable
+  offline training for a previously authenticated and onboarded Profile.
+- **§5.2/§5.3.** Accountless use is withdrawn as a valid product path. §5.3 now records
+  the mandatory identity gate and minimal onboarding.
+- **§5.5's initial local-history import is withdrawn.** The existing unscoped local data
+  is disposable early-test data and will be discarded once, explicitly — never adopted,
+  claimed, imported or merged. Local Adoption (ADR-0019/0020) is not the forward path.
+- **§4.2's authority table** now names Profile scope and the Free Cloud Core.
+- **§6.6/§17.5.** Basic structured cloud persistence and basic restore move to **Free**.
+  The paid personal tier sells value *derived* from stored data. Its final commercial
+  name is **not decided**; `Personal Athlete` is a working label only.
+- **§15.2's account deletion baseline** loses the "retain as local-only history" option:
+  there is no usable local-only athlete after account deletion.
+- **§17.1 items 1, 2 and 4** are corrected accordingly.
+- **§18's phases** are re-sequenced behind Stages B0.1-B0.4.
+
+Valid Team ownership, permission, notification, sharing and rights decisions elsewhere in
+this document are **unchanged**. Nothing in this revision claims any of the target
+behaviour is implemented — the runtime is still accountless-capable and `localStorage` is
+still the sole production persistence authority.
+
 ## 1. Purpose
 
 This document defines the target architecture for extending the current local-first
@@ -175,11 +211,20 @@ architectural rule described here, this document and the relevant ADR must be up
 
 ## 3. Product and architecture principles
 
-### 3.1 Local-first remains a product capability
+### 3.1 Offline-capable training after authenticated onboarding
 
-An athlete must be able to start, perform and finish training without an account, an
-internet connection or a functioning cloud service. Login and cloud sync are additive.
-They must not replace the local training path.
+**Corrected in the 2026-08-24 revision — this section previously promised accountless
+use.** An athlete must be able to start, perform, finish and review supported training
+without an internet connection or a functioning cloud service, **once that device has
+completed authentication and personal Profile onboarding and holds trusted
+Profile-scoped local state**. A permanent active connection is never required during
+training, and missing connectivity must never block completing a training or starting
+another one.
+
+Identity itself is **not** optional. First authentication and first onboarding on a
+device require connectivity, and a first-time, signed-out, or deleted-account device
+cannot bypass the gate by going offline. See
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2 and §5.
 
 ### 3.2 Athlete-centred ownership
 
@@ -214,29 +259,49 @@ choices. Their identifiers and APIs must not become core sporting concepts.
 
 ### 3.7 Progressive complexity
 
-The first cloud release should solve individual backup and multi-device continuity.
-Team collaboration follows after this foundation is proven. Microservices, a generic
-access-control language and speculative high-volume infrastructure are out of scope.
+The first cloud release should solve individual backup and **basic restore after signing
+in on a new device** (corrected 2026-08-24 — cross-device *continuation* of in-progress
+work remains deferred; see §12 and §16). Microservices, a generic access-control language
+and speculative high-volume infrastructure are out of scope.
+
+**The Team Foundation collaboration baseline already exists** — Teams, invitations,
+Memberships, the three composable contextual functions, and the administration/exit/Team
+Admin succession lifecycles, with their SQL layer executed and verified (ADR-0022). What
+follows the personal identity and Free Cloud foundation is the *remaining* collaboration
+work: athlete data sharing via the Team-scoped `TeamDataSharingGrant` and the coaching
+access derived from it (§7.3, Phase 5).
 
 ### 3.8 Identity, roles, permissions and commercial entitlements are separate
 
 A user account identifies a person; it is not itself a paid product. Contextual team
-functions describe responsibility, permission bundles describe allowed actions, and
-commercial entitlements determine which paid product capabilities are active for a
-person or workspace. These concepts must not be collapsed into a single role or account
-type.
+functions describe responsibility, permission bundles describe allowed actions, and a
+**commercial entitlement determines the active commercial tier or capability set** for a
+person or workspace. Identity, `Profile`, permission bundles, Team functions, entitlement
+and data ownership must not be collapsed into a single role or account type.
 
-For a paid capability, access requires both the applicable domain permission and an
-active entitlement. Payment never transfers ownership of athlete performance data. A
-lapsed entitlement may make paid collaboration capabilities unavailable or read-only,
-but must not prevent an athlete from accessing or exporting their owned history.
+**An entitlement is not inherently paid** (corrected 2026-08-24): it covers both the
+**default Free entitlement** and any **additional paid entitlement** — the paid personal
+tier, Team Workspace, and later Coaching. Free is a genuine entitlement even though nothing
+is paid for it. **The default Free entitlement is granted by completed personal
+onboarding**, never by authentication or Profile creation alone (§5.3, §6.6, and
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §3.4).
+
+For a **paid** capability, access requires both the applicable domain permission and the
+relevant **paid** entitlement being active. Payment never transfers ownership of athlete
+performance data. A lapsed paid entitlement may make paid collaboration capabilities
+unavailable or read-only, but must not prevent an athlete from accessing or exporting their
+owned history, and must not withdraw the Free entitlement or the Free Cloud Core for data
+already recorded.
+
+**No entitlement implementation, schema or lifecycle exists yet** — see §17.5 for the
+provisional commercial model and `docs/TECHNICAL_DEBT_AND_ROADMAP.md` for the current gap.
 
 ## 4. Target system shape
 
 ```mermaid
 flowchart TD
     UI["Next.js PWA"] --> APP["Application and domain layer"]
-    APP --> LOCAL["IndexedDB and local outbox"]
+    APP --> LOCAL["Profile-scoped local store and durable outbox"]
     LOCAL <--> SYNC["Bounded sync layer"]
     SYNC <--> CLOUD["Supabase Auth, PostgreSQL, RLS and Storage"]
     CLOUD --> JOBS["Background jobs and notifications"]
@@ -245,37 +310,48 @@ flowchart TD
 ### 4.1 Recommended infrastructure
 
 - Next.js remains the application shell and web delivery layer.
-- **The existing ADR-0015/0016 IndexedDB migration/activation track remains a distinct,
-  currently blocked local-backend track** (`docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md`,
-  `docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md`) — it is
-  not a prerequisite for cloud identity or Local Adoption, and a future account-scoped
-  read cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10), if built, is a
-  **new, separately designed mechanism**, never a continuation or repurposing of that
-  track. `localStorage` remains the durable local store Local Adoption reads from
-  (corrected per ADR-0019 — see the revision notes above).
+- **The existing ADR-0015/0016/0017/0018 IndexedDB migration/activation track is RETIRED
+  as the forward production path** (2026-08-24 revision — the data it would carry forward
+  is disposable; see §5.5 and §18 Phase 2). ADR-0015's unwired adapter remains valid
+  infrastructure. **Stage B0.4's required durable outbox, and any local read cache, are a
+  new, separately designed, Profile-scoped mechanism** — never a continuation or
+  repurposing of that track, and never a reuse of ADR-0016's migration markers or
+  ADR-0017's activation evidence. Which local store backs them is a Stage B0.3/B0.4
+  decision.
+- `localStorage` remains the sole production local store today, unscoped by identity.
 - Supabase Auth provides account authentication.
 - PostgreSQL stores cloud records and relationships.
 - Row Level Security enforces access at the database boundary.
 - Supabase Storage may later store media and large raw sensor artefacts.
-- **A small application-owned sync layer would connect a future local cache/outbox and
-  PostgreSQL, once designed** (corrected per ADR-0019 — not required for the personal-
-  cloud transition itself).
+- **Stage B0.4 requires a bounded, application-owned sync layer and a durable
+  Profile-scoped outbox** connecting the local store and PostgreSQL — these are required
+  Free Cloud Core mechanisms, not optional or illustrative ones. Their detailed design is
+  deferred to B0.4, and the local storage technology backing them remains undecided
+  (a B0.3/B0.4 decision; ADR-0015's adapter is available infrastructure but is not
+  selected by ADR-0024).
 - The product remains a modular monolith until measured scale requires separation.
 
 ### 4.2 Authority by data category
 
 | Data category | Immediate authority | Cloud authority after sync |
 |---|---|---|
-| Active training capture | Local device | Athlete cloud record |
-| Personal sessions, shots and measurements | Local-first write | Athlete cloud record |
+| Active training capture | Local device (Profile-scoped) | Athlete cloud record |
+| Personal sessions, shots and measurements | Local-first write (Profile-scoped) | Athlete cloud record — part of the **Free Cloud Core** |
 | Account identity | Authentication service | Authentication service |
+| Profile identity and ownership | Cloud (`Profile.id`, an application-owned UUID) | Cloud |
 | Team memberships and roles | Cloud | Cloud |
 | Assignments | Cloud, locally cached | Cloud |
 | Public exercise publication state | Cloud | Cloud |
-| Draft private exercises created offline | Local | Creator cloud record after sync |
+| Draft private exercises created offline | Local (Profile-scoped) | Creator cloud record after sync |
 
 Team roles and public publication cannot be decided independently on two offline
 devices. They are cloud-authoritative. Training capture must never wait for the cloud.
+
+**All local authority above is Profile-scoped** (`Profile.id`, never the
+authentication-provider user id) — see
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §4 and
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`. A record is
+never described as cloud-backed before the server acknowledges it.
 
 ## 5. Identity model
 
@@ -283,9 +359,9 @@ devices. They are cloud-authoritative. Training capture must never wait for the 
 
 | Concept | Meaning |
 |---|---|
-| `UserAccount` | Authentication identity used to sign in |
-| `Profile` | A person represented on the platform |
-| `Athlete` | A profile whose sporting performance can be tracked |
+| `UserAccount` | Authentication identity used to sign in — answers *who is acting*, never an ownership or scope key |
+| `Profile` | A person represented on the platform. `Profile.id` is an application-owned UUID and **is** the ownership, authority, local-persistence and recorder/actor scope |
+| `Athlete` | A capability on a Profile whose sporting performance can be tracked — established by completed personal onboarding (§5.3) |
 | `TeamMembership` | A time-bounded relationship between a profile and a team |
 | `TeamDataSharingGrant` | An athlete's chosen data scope shared with a **Team** (never negotiated separately per named coach) — usable by whoever currently holds that Team's `Coach` function |
 
@@ -293,53 +369,122 @@ These concepts must not be collapsed into one `User` table.
 
 ### 5.2 Account linkage
 
-- A `Profile` may be linked to zero or one `UserAccount`.
-- A signed-in account normally controls one personal `Profile`.
+- **Every operational `Profile` is linked to exactly one `UserAccount`, and an onboarded
+  account controls exactly one personal `Profile`** (corrected in the 2026-08-24 revision —
+  this previously read "zero or one"). A zero-account Profile exists only as the deferred,
+  **non-operational** administrative placeholder of §5.6: it cannot access the application,
+  cannot be a Session participant, and cannot own newly recorded sporting records.
+- A signed-in account controls exactly one personal `Profile`.
+- **`Profile.id` is a stable application-owned UUID, never equal to or replaced by the
+  authentication-provider user id** (already implemented for Team Foundation — see
+  `docs/adr/0022-team-foundation-domain-and-persistence.md` Decision 1).
 - An `Athlete` is a capability attached to a `Profile`, not an authentication role.
+  **Completed personal onboarding establishes it** (§5.3). Arbitrary Team `Profile`
+  creation still does not — ADR-0022 Decision 10 remains true of the implemented Team
+  Foundation service.
 - A profile may be both an athlete and a coach.
 - Authentication-provider IDs are stored only in the identity adapter or account link.
+- **Athlete-owned sporting data, local persistence scope, cloud authority and
+  recorder/actor attribution are Profile-scoped**, never auth-account-scoped. This
+  answers `docs/adr/0020-supabase-schema-rls-and-adoption-transactions.md`'s open
+  `account_scope_id` question in favour of Profile scope — **without** making ADR-0020
+  implementation-ready; its affected tables, RPCs, RLS rules, locks and proofs still
+  need a later focused reconciliation.
 
-### 5.3 Accountless use
+### 5.3 Mandatory identity and minimal onboarding
 
-The current accountless path remains valid:
+**Replaces the former "Accountless use" section entirely (2026-08-24 revision).
+Accountless use is withdrawn as a valid product path.** The canonical decision set is
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2-§3; the summary:
 
-1. The app creates stable local UUIDs for the local athlete and their data.
-2. Training is stored in IndexedDB.
-3. When the athlete signs in, the app offers to attach the local data to the signed-in
-   profile.
-4. Nothing is uploaded until the athlete confirms the import.
-5. The import is idempotent and resumable.
+1. A `UserAccount` **and** a completed personal `Profile` are required. **No Profile
+   means no access to the authenticated application.** Deliberately public marketing
+   material may stay public.
+2. A **Free** plan exists; Free users must still sign in. Free is a commercial tier, not
+   an exemption from identity.
+3. After successful authentication, exactly one personal `Profile` is created or
+   resolved.
+4. Before first application access the user must provide a **display name**, **accept the
+   current Terms of Service**, and **accept or acknowledge the current Privacy Policy** as
+   legally appropriate. Legal acceptance must be versionable and auditable; its schema is
+   not designed here. **Marketing consent is separate, optional and off by default**, and
+   is never bundled into required legal acceptance.
+5. Completed onboarding grants the Profile **Athlete capability** and the **default Free
+   entitlement**. It asks for no team, club, country, position, skill level or goals, and
+   forces no permanent role choice.
+6. **No training data may be created before onboarding completes.**
+7. Every person who accesses the application — including every participating athlete,
+   recorder and coach in a multi-athlete Team Session — has their own account and
+   Profile. They do not all sign into the recorder's device, and the active recorder is
+   derived automatically from the authenticated Profile on that device (no "Recorded by"
+   selector).
+
+**Not implemented.** This is Stage B0.2 work; see §18.
 
 ### 5.4 Initial authentication experience
 
-The technical cloud spike uses a six-digit email one-time code. After successful
-authentication, the session remains active on that device and is refreshed
-automatically. A new code is normally required only after explicit logout, on a new
-device or browser profile, after local browser data has been cleared, or when the
-session can no longer be refreshed securely.
+**The closed-test sign-in methods are a six-digit email one-time code and Google
+sign-in** (corrected in the 2026-08-24 revision: Google is part of the closed-test set,
+not a later addition). After successful authentication, the session remains active on that
+device and is refreshed automatically. A new code or re-authentication is normally
+required only after explicit logout, on a new device or browser profile, after local
+browser data has been cleared, or when the session can no longer be refreshed securely.
 
-Google sign-in is added as an alternative for the closed beta. Magic links, passwords
-and Apple sign-in are deferred. The authentication method must not require the athlete
-to sign in whenever the app is opened.
+Magic links, passwords, Apple sign-in and additional providers remain deferred unless a
+later platform requirement changes that decision. The authentication method must not
+require the athlete to sign in whenever the app is opened.
 
-### 5.5 Initial local-history import
+**Current implementation (transitional):** only email OTP exists, and it is optional and
+additive — see `docs/SYSTEM_ARCHITECTURE.md`'s "Optional Supabase Auth Shell". Google
+sign-in and the access gate are Stage B0.2 work.
 
-After the first login, the app detects supported local training history and asks the
-athlete once whether all of it should be added to the signed-in account. The first
-version does not require per-session selection.
+### 5.5 Legacy local data is disposable — there is no initial import
 
-The import is idempotent, resumable and protected against duplicates. Local records
-remain available until the cloud has acknowledged them successfully. A failed or
-interrupted import never deletes or invalidates the local history.
+**Replaces the former "Initial local-history import" section entirely (2026-08-24
+revision).** The existing unscoped local data was produced only during early testing and
+is **explicitly disposable**. There is **no Legacy Local Adoption, claim, import, merge or
+per-session migration flow** for it. Stage B0.3 (Profile-scoped Local Data — the scope key
+is `Profile.id`, see §5.2) will discard it once, safely and explicitly.
 
-### 5.6 Unclaimed athlete profiles
+Consequently, `docs/adr/0019-cloud-identity-and-data-authority-transition.md`'s Local
+Adoption protocol and `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`'s
+copy migration are **not the forward production path**. ADR-0015's unwired IndexedDB
+adapter remains valid infrastructure. Dormant migration code is not deleted by this
+decision.
+
+What *is* required, for data created after onboarding, is ordinary synchronisation: stable
+client-generated IDs before upload, automatic idempotent upload on reconnect, honest sync
+status, and **basic restore after signing in on a new device — included in Free** (§6.6,
+§12). Basic restore is not cross-device continuation of an in-progress Session, which
+remains deferred.
+
+### 5.6 Unclaimed athlete profiles (deferred administrative placeholder)
 
 The target model supports a Coach or Team Admin creating an athlete profile before the
-athlete has an account. This capability is not part of the first personal-cloud release;
-it belongs to the later team and coaching implementation. Claiming and merging follow
-the accepted rules in Section 17.2, including explicit athlete confirmation, stable
-technical redirects and audited server-side transactions. Unclaimed profiles for minors
-remain deferred until the youth-account and guardian rules in Section 17.4 are accepted.
+athlete has an account. **This is a deferred administrative placeholder, not a way to use
+the platform, and it is bounded by four hard rules** (corrected 2026-08-24 — see
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2):
+
+- **It cannot access the application.** There is no sign-in for an unclaimed placeholder,
+  and no authenticated surface it can reach.
+- **It cannot be selected as a Training Session participant.** Every participating athlete,
+  recorder and coach in a Training or Exercise Session resolves to an authenticated Profile
+  with a completed onboarding (§5.3, and
+  `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §8.1).
+- **It cannot own or receive newly recorded performance results.** No new athlete-owned
+  sporting history may be created against a placeholder — a Coach cannot record shots,
+  attempts, measurements or evaluations "for" an unclaimed person.
+- **Only administrative facts may attach to it** — a Team Membership, a pending assignment,
+  administrative attribution — and those may be transferred to the athlete's own
+  authenticated personal Profile during a future audited claim flow. **Transferring
+  administrative records is never broadened into transferring performance-data ownership,
+  because no performance data can exist there to transfer.**
+
+This capability is not part of the first personal-cloud release; it belongs to the later
+team and coaching implementation. Claiming and merging follow the accepted rules in Section
+17.2, including explicit athlete confirmation, stable technical redirects and audited
+server-side transactions. Unclaimed profiles for minors remain deferred until the
+youth-account and guardian rules in Section 17.4 are accepted.
 
 ## 6. Team and organisation model
 
@@ -420,15 +565,39 @@ editing is deferred until a real use case requires it.
 
 ### 6.6 Provisional commercial capability layers
 
-The current product direction separates three commercial layers:
+**Corrected in the 2026-08-24 revision: a Free layer now carries structured cloud
+persistence.** The current product direction separates four commercial layers:
 
-1. **Personal Athlete:** a lower-priced individual product for self-directed training
-   and personal progression.
+0. **Free:** the default entitlement of every Profile that has **completed personal
+   onboarding** — granted by that completion, never by authentication or Profile creation
+   alone (§5.3, and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
+   §3.4). Free is still a **signed-in** tier, not an accountless one: signing in is
+   required but not sufficient. A Profile that is merely resolved or created — including one
+   created by the current Team-specific bootstrap — holds **no** entitlement, no Athlete
+   capability, and no eligibility to pass the application gate. Free includes recording,
+   the athlete's own raw records, basic result and session summaries, export, **and the
+   Free Cloud Core** — cloud persistence of all supported structured raw sporting and
+   training data needed to reconstruct the athlete's history and compute future analytics,
+   with no date cutoff, plus **basic restore after signing in on a new device**. See
+   `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.
+1. **The paid personal tier:** value *derived* from the stored data — longitudinal
+   analytics, comparisons, trends, benchmarks, recommendations, supported automatic
+   hardware capture, reusable personal Training Plans, and later personal video, sensor or
+   AI-assisted capabilities. **Its final commercial name is not decided.** `Personal
+   Athlete` is retained below as a working label only, and must not be treated as final.
 2. **Team Workspace:** an additional paid entitlement for team administration and
    collaboration, including team exercises, training plans and assignments.
 3. **Coaching:** an additional paid entitlement for developing other athletes, including
    cross-athlete review, structured feedback, goals and assignment review within the
    athlete's granted data scope.
+
+Upgrading must expose existing Free history to paid analytics with no migration, re-import
+or re-recording. Downgrading never deletes raw sporting history: Free recording and Free
+cloud persistence continue, and only premium views and workflows become unavailable.
+Re-upgrading restores paid analysis over the complete retained history. Large or
+operationally expensive data — video, high-frequency sensor streams, large coordinate
+traces, AI-generated artifacts — is **not** automatically covered by the Free Cloud Core
+and may later carry its own entitlements, limits or retention rules.
 
 These layers do not replace team functions. `Coach`, `Team Admin` and `Training Lead`
 remain contextual functions even if the corresponding paid capability is inactive. The
@@ -764,13 +933,13 @@ processing costs must be treated separately from normal shot records.
 
 ```mermaid
 erDiagram
-    USER_ACCOUNT o|--|| PROFILE : controls
-    PROFILE o|--o| ATHLETE : may_be
+    USER_ACCOUNT ||--|| PROFILE : authenticates
+    PROFILE ||--o| ATHLETE : capability_on_onboarding
     PROFILE ||--o{ TEAM_MEMBERSHIP : joins
     TEAM ||--o{ TEAM_MEMBERSHIP : contains
-    TEAM_MEMBERSHIP ||--o{ TEAM_ROLE_ASSIGNMENT : has
-    ATHLETE ||--o{ COACHING_RELATIONSHIP : grants
-    PROFILE ||--o{ COACHING_RELATIONSHIP : coaches
+    TEAM_MEMBERSHIP ||--o{ TEAM_FUNCTION_ASSIGNMENT : has
+    ATHLETE ||--o{ TEAM_DATA_SHARING_GRANT : grants_scope_to_team
+    TEAM ||--o{ TEAM_DATA_SHARING_GRANT : receives_scope
 
     PROFILE ||--o{ EXERCISE : creates
     EXERCISE ||--|{ EXERCISE_VERSION : versions
@@ -794,35 +963,97 @@ This ERD is conceptual. It does not prescribe exact table names, columns or Post
 types. Those belong in the database design and migration ADR after the current local
 model has been inventoried.
 
+**Corrected 2026-08-24.** Four things changed, all to match decisions already recorded
+elsewhere in this document:
+
+- **`COACHING_RELATIONSHIP` is removed.** It represented person-specific coaching consent,
+  which §17.2 item 4 / §7.3 already replaced with `TeamDataSharingGrant`. The grant is
+  **athlete-to-Team**: an Athlete grants a chosen data scope to a **Team**. There is no
+  per-coach consent edge, no stored per-coach grant, and no person-specific consent
+  relationship of any kind — and none may be reintroduced.
+- **`TEAM_ROLE_ASSIGNMENT` is renamed `TEAM_FUNCTION_ASSIGNMENT`**, matching the accepted
+  `TeamFunction` vocabulary (`team_admin`, `coach`, `training_lead`; no Captain).
+- **No edge connects `TEAM_FUNCTION_ASSIGNMENT` to `TEAM_DATA_SHARING_GRANT`**, and none
+  should be added. **Coaching access is derived at authorization time**, from the
+  conjunction of two independently stored facts:
+  1. a **current, active Team Membership holding the `coach` function for that Team**; and
+  2. the **athlete's active `TeamDataSharingGrant` to that same Team**.
+
+  Neither fact references the other, so a stored many-to-many relationship between them
+  would misrepresent the model — and a generic edge would wrongly imply that *any* function
+  assignment consumes grants. **`team_admin` or `training_lead` alone never consumes the
+  grant** (§17.2 items 4-6). Losing either fact — the `coach` function ending, or the grant
+  being withdrawn — ends access immediately, because the conjunction is re-evaluated on each
+  authorization rather than materialised.
+- **Account-to-Profile cardinality is mandatory; Profile-to-Athlete is not.** An onboarded
+  operational account has **exactly one** personal `Profile`, and every operational
+  `Profile` is linked to **exactly one** account (§5.2) — the former optional `o|--o|`
+  account edge described the accountless model. **`PROFILE ||--o| ATHLETE` is deliberately
+  zero-or-one**, because the `Athlete` capability is established by **completed personal
+  onboarding** (§5.3), not by authentication or Profile creation:
+  - **A Profile may exist with no `Athlete` capability.** Authentication may create or
+    resolve a Profile before onboarding completes, and that Profile has none — it also holds
+    no entitlement and cannot pass the application gate (§6.6 layer 0). The current
+    **Team-specific Profile bootstrap** is a live example: it creates a Profile with no
+    legal acceptance, no `Athlete` capability and no entitlement.
+  - **Every Profile eligible to pass the authenticated application gate has completed
+    personal onboarding, and therefore has exactly one `Athlete` capability.** The
+    zero-Athlete case is confined to Profiles that have not (yet) completed onboarding.
+
+**Deferred unclaimed administrative placeholders are deliberately not drawn.** They are
+non-operational: they cannot access the application, cannot be selected as Session
+participants, and cannot own or receive newly recorded sporting records (§5.6). Modelling
+them as an ordinary `PROFILE` here would wrongly suggest they can own an `ATHLETE`
+capability or a `TRAINING_SESSION`.
+
 ## 12. Synchronisation protocol
 
-### 12.1 Illustrative sketch for a possible future offline outbox (undesigned — not a Phase 3/4 requirement)
+### 12.1 Required synchronisation behaviour and visible truth (Stage B0.4)
 
-**Retitled in this correction pass: this list was never accepted, mandatory mechanics for
-the personal-cloud transition, and is no longer presented under that heading.** It is an
-illustrative sketch of what a future offline mutation-queue/outbox (ADR-0019's Option C)
-might need to address, **if and when that mechanism is separately designed** — it is not
-required for, and does not gate, Phase 3/4 below. ADR-0019 selects a narrower MVP model
-(online-required writes, with at most a separately designed account-scoped read cache)
-precisely because none of the following exists and none of it is designed by ADR-0019
-either (see ADR-0019 Decisions 5 and 10, and Decision 15 stage 14). The IndexedDB-specific
-wording in items 2-3 is retained only as a record of the original sketch's assumptions,
-not as a description of the store Local Adoption actually reads from (`localStorage` —
-ADR-0019 Decision 4).
+**Reframed in the 2026-08-24 revision.** This subsection previously described a
+*possible, undesigned* offline outbox that explicitly did not gate the cloud phases. A
+**durable outbox is now a required part of Stage B0.4** (§18), because Free users record
+offline and their structured raw data must reach the Free Cloud Core. The **detailed
+design** — the exact outbox schema, conflict protocol, retry schedule, API contract and
+database transaction design — still belongs to that stage, not to this document.
 
-A future outbox design would need to address, at minimum:
+Accepted behaviour, per
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7:
 
-1. New entities receiving client-generated UUIDs.
-2. Whether local mutations are committed to IndexedDB, `localStorage`, or another local
-   store first — undecided.
-3. Whether and how a local outbox stores pending mutations — undecided.
-4. Every mutation needing an idempotency key.
-5. The server acknowledging accepted mutations and assigning a monotonic sync revision or
-   equivalent cursor.
-6. The client pulling changes after its last acknowledged cursor.
-7. Deletions using tombstones or `deleted_at` until all relevant clients can observe them.
-8. Mutable records carrying a version for optimistic concurrency.
-9. Sync stopping and resuming without duplicating sessions, shots or assignments.
+1. Offline-created records receive **stable client-generated IDs before upload**.
+2. **Local pending data is strictly Profile-scoped.** A pending record from one Profile
+   must never be visible or uploaded under another Profile after sign-out or account
+   switching.
+3. Upload is **automatic when connectivity returns**, and **idempotent** — retrying must
+   not create duplicate sporting records.
+4. **Missing connectivity does not block** completing a training or starting another one.
+5. Before uploading, the client **revalidates server authority and fails closed** if
+   authorization is no longer valid.
+6. The product distinguishes at least: **saved on this device**, **synced**, **sync
+   issue**. **A record is not described as cloud-backed or synced until the server
+   acknowledges it.**
+7. **A sync problem preserves the local record and remains retryable.**
+8. **Conflicting content under the same stable identity is never silently overwritten**
+   (§12.2 is the policy table).
+9. **Basic restore on a new device is Free.** Continuing the same in-progress Session on
+   another device, concurrent multi-device editing, and transferring an unsynced Session
+   to another device remain deferred (§16).
+
+Open design questions the Stage B0.4 design must answer, retained from the earlier sketch:
+
+- which local store holds pending mutations, and how;
+- the idempotency-key scheme;
+- how the server acknowledges accepted mutations and assigns a monotonic sync revision or
+  equivalent cursor, and how the client pulls changes after its last acknowledged cursor;
+- whether deletions use tombstones or `deleted_at` until all relevant clients observe them;
+- whether mutable records carry a version for optimistic concurrency;
+- how sync stops and resumes without duplicating sessions, shots or assignments.
+
+The Team Exercise upload path in §12.4 is a **separately specified extension built on this
+backbone** — it consumes the same outbox, stable client-generated IDs and idempotent upload,
+and does not define a parallel sync mechanism. Only its genuinely Exercise-specific
+behaviour is separate: **Team authority revalidation per athlete, the shared Session
+envelope, per-athlete result bundles, and partial rejection with per-bundle retry.**
 
 ### 12.2 Conflict policy
 
@@ -849,20 +1080,27 @@ do not replace durable pull, push, retry, idempotency and conflict handling.
 The Exercise Library Version 1 requires one feature-specific offline path: one
 authenticated recorder device may capture and complete a multi-athlete Team Exercise
 Session locally, then upload it when connectivity returns. This is a later Exercise
-Library implementation requirement, not an already existing capability and not a
-requirement of the Phase 3/4 personal-cloud transition described above.
+Library implementation requirement and not an already existing capability. **Corrected
+2026-08-24:** it is a **separately specified extension built on Stage B0.4's durable outbox,
+stable-ID and idempotent-upload backbone** (§12.1), not a parallel mechanism. What is
+genuinely Exercise-specific is only: **Team authority revalidation per athlete, the shared
+Session envelope, per-athlete result bundles, and partial rejection with per-bundle
+retry.**
 
 The device must already hold the required immutable Exercise Versions, Team Profiles
 and latest known recording-permission state. Cached permission permits local capture
-only; the server remains authoritative at upload. The pending Session is account-scoped,
+only; the server remains authoritative at upload. The pending Session is Profile-scoped
+(corrected 2026-08-24 — the scope key is `Profile.id`, never the auth-provider user id),
 durable across restart and composed of stable client-generated IDs for the shared
 coordination record and every athlete-owned child record.
 
 Upload uses a stable Session envelope and per-athlete result bundles. Every mutation is
 idempotent, an uncertain acknowledgement is safely retryable, and local data remains
-pending until explicitly acknowledged. The server derives recorder identity from the
-authenticated account and revalidates current Team membership and recording permission
-for every athlete bundle. A failed authority check blocks only that athlete's bundle;
+pending until explicitly acknowledged. **The server authenticates the account, resolves its
+linked `Profile`, and derives `recordedByProfileId` / actor identity from that Profile — the
+client never supplies an arbitrary recorder** (corrected 2026-08-24: recorder identity is
+Profile-scoped, not account-scoped). It then revalidates current Team membership and
+recording permission for every athlete bundle. A failed authority check blocks only that athlete's bundle;
 it never silently drops the data, reassigns ownership or prevents authorised bundles
 from syncing. The affected athlete may explicitly authorise that concrete Session for a
 later retry.
@@ -971,8 +1209,19 @@ Account deletion must distinguish:
 - coach feedback relied upon by another athlete;
 - legally or operationally required audit records.
 
-The exact anonymisation and retention policy requires a separate privacy decision before
-public launch.
+**Accepted baseline (2026-08-24 revision — see
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §8):** deletion
+requires recent re-authentication; a complete personal data export is offered before it;
+it begins a **30-day recovery period** during which application access and synchronisation
+are disabled and the user may cancel through a controlled re-authentication flow. After the
+recovery period the authentication account and personal cloud data are deleted, or narrowly
+anonymised where shared Team or audit relationships legally and operationally require
+retention. **Profile-scoped local data on the current device is deleted or made
+inaccessible — there is no usable local-only athlete after account deletion**, and a newly
+created account is never silently linked to the deleted account's data.
+
+The exact shared Team-result anonymisation and participant-notification behaviour requires
+a separate privacy decision (an Exercise Stage C / privacy design) before public launch.
 
 ### 15.3 Team deletion
 
@@ -987,8 +1236,16 @@ needed to interpret assignments.
 - Custom permissions per individual member.
 - Automatic recurring assignment schedules.
 - Open public community publishing before moderation exists.
-- Unclaimed profiles for minors before the youth consent and guardian rules exist.
+- Unclaimed administrative placeholder profiles of any kind (§5.6) — and, separately,
+  unclaimed profiles for minors before the youth consent and guardian rules exist. A
+  placeholder may never access the app, be selected as a Session participant, or own newly
+  recorded performance results.
 - Minor accounts and guardian workflows before a specific policy is accepted.
+- Magic links, passwords, Apple sign-in and additional identity providers.
+- Continuing an in-progress Session on a second device, concurrent multi-device editing of
+  one record, and transferring an unsynced Session to another recorder device.
+- A fixed expiry period for a device's trusted offline Profile state.
+- The final commercial name of the paid personal tier.
 - Video processing and high-frequency sensor pipelines.
 - Organisation-wide analytics and national-programme hierarchy.
 - Database partitioning, read replicas and separate analytics infrastructure before
@@ -1005,25 +1262,35 @@ pilot.
 
 Accepted decisions:
 
-1. **Initial login methods:** the technical cloud spike uses a six-digit email one-time
-   code and persists the authenticated session on the device. Google sign-in is added
-   for the closed beta. Magic links, passwords and Apple sign-in are deferred.
-2. **Local import confirmation:** after explicit one-time confirmation, all supported
-   local history is imported. Per-session selection is not required in the first
-   version. Import is idempotent and resumable, and local data remains intact until
-   cloud acknowledgement.
-3. **Duplicate import behaviour:** imported records are identified by stable entity IDs.
-   An identical record is skipped automatically and included only in the import summary.
-   If the same ID has different content, neither version is silently overwritten; the
-   system preserves both states and raises a conflict for resolution. Similar content
-   with different IDs is not merged automatically because it may represent separate
-   training activity.
-4. **Account deletion baseline:** account deletion requires recent re-authentication,
-   disables the account and stops cloud synchronisation immediately, and starts a
-   30-day recovery period. A data export is offered before deletion but is not required.
-   After the recovery period, the account and its personal cloud data are deleted
-   permanently. On the current device, the user separately chooses whether local
-   training history is deleted or retained as local-only history. Other devices observe
+1. **Initial login methods (corrected 2026-08-24):** the closed-test sign-in methods are
+   a six-digit email one-time code **and Google sign-in**, with the authenticated session
+   persisted on the device. Magic links, passwords, Apple sign-in and additional providers
+   are deferred. **Signing in is required, not optional** — see §5.3.
+2. **Legacy local data (replaces the former "local import confirmation" decision,
+   2026-08-24):** the existing unscoped local data is disposable early-test data. There is
+   **no import, claim, adoption or merge flow**; Stage B0.3 discards it once, explicitly.
+   For data created after onboarding, ordinary synchronisation applies: stable
+   client-generated IDs before upload, automatic idempotent upload on reconnect, no silent
+   overwrite of conflicting content under one stable identity, and **basic Free restore on
+   a new device** (never cross-device continuation).
+3. **Duplicate and conflict behaviour on upload (renamed from "duplicate import
+   behaviour", 2026-08-24 — the rule is unchanged, but it now governs ordinary
+   synchronisation rather than a one-time import):** records are identified by stable
+   client-generated entity IDs. An identical record is skipped automatically, so a retry
+   converges on one cloud record rather than duplicating it. If the same ID has different
+   content, neither version is silently overwritten; the system preserves both states and
+   raises a conflict for resolution. Similar content with different IDs is not merged
+   automatically because it may represent separate training activity.
+4. **Account deletion baseline (corrected 2026-08-24):** account deletion requires recent
+   re-authentication, disables application access and stops cloud synchronisation
+   immediately, and starts a 30-day recovery period during which the user may cancel
+   through a controlled re-authentication flow. **A complete personal data export is
+   offered before deletion.** After the recovery period, the account and its personal
+   cloud data are deleted, or narrowly anonymised where shared Team or audit relationships
+   legally and operationally require retention. **Profile-scoped local data on the current
+   device is deleted or made inaccessible — the former "retain as local-only history"
+   option is withdrawn, because there is no usable local-only athlete.** A newly created
+   account is never silently linked to the deleted account's data. Other devices observe
    the deletion state when they next connect; remote deletion of data held in an offline
    browser or device cannot be guaranteed.
 5. **Cloud region and operational environments:** the production database is hosted in
@@ -1128,21 +1395,31 @@ Accepted decisions:
    synchronisation. Data previously exported or captured outside the platform cannot
    be withdrawn technically.
 
-7. **Claiming and merging athlete profiles:** a Coach or Team Admin may create an
-   unclaimed athlete profile with only the minimum required identity information. The
-   profile has no login and is visibly marked as unclaimed. Claiming requires a personal
+7. **Claiming and merging athlete profiles (deferred — not a Version 1 access path; see
+   §5.6 and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2
+   item 14):** a Coach or Team Admin may create an unclaimed athlete profile with only
+   the minimum required identity information. Such a profile is an administrative
+   placeholder that cannot itself be used to access the application, and is visibly
+   marked as unclaimed. Claiming requires a personal
    invitation and a verified user account. If the invited athlete already has an athlete
    profile, the existing team membership is linked to that profile instead of creating a
    second active profile. Similar names or email addresses produce a warning only;
    profiles are never merged automatically. The athlete must explicitly confirm every
-   merge. Memberships, assignments and attributable training history are transferred to
+   merge. **Memberships, assignments and administrative attribution** are transferred to
    the claimed profile in one audited server-side transaction. The superseded profile is
    retained as a technical redirect so that offline clients cannot recreate it. Merging
    two already claimed profiles additionally requires recent re-authentication and a
-   controlled verification process. Any performance data recorded against an unclaimed
-   profile comes under the athlete's control when the profile is claimed; the team retains
-   only the access that the athlete subsequently grants. Claiming profiles for minors is
-   deferred until the consent model in Section 17.4 is accepted.
+   controlled verification process. **Corrected 2026-08-24: no performance data can exist
+   against an unclaimed placeholder in the first place** — a placeholder cannot access the
+   app, cannot be selected as a Session participant, and cannot own or receive newly
+   recorded results (§5.6). The earlier claim that "any performance data recorded against an
+   unclaimed profile comes under the athlete's control when the profile is claimed" is
+   withdrawn: it implied a Coach could accumulate athlete-owned sporting history for a
+   person who has no account, which contradicts the accepted requirement that every
+   participating athlete, recorder and coach has their own account and completed Profile.
+   Where two *already claimed* profiles are merged, the athlete's own history moves with
+   them and the team retains only the access the athlete subsequently grants. Claiming
+   profiles for minors is deferred until the consent model in Section 17.4 is accepted.
 
 All decisions required by this subsection are accepted.
 
@@ -1261,55 +1538,86 @@ unclaimed minor profile remain deferred capabilities.
 
 Accepted product direction:
 
-1. Personal self-directed training is the lower-priced core paid product.
-2. Team administration and collaboration require an additional Team Workspace
+1. **Free is a signed-in tier, not an accountless one** (2026-08-24 revision). Every
+   Profile receives a default Free entitlement on **completed** onboarding (never merely on
+   a Profile existing — §5.3), and Free includes the Free Cloud Core (§6.6 layer 0).
+2. Personal self-directed *derived analysis* is the lower-priced core paid product. **Its
+   final commercial name is not decided**; `Personal Athlete` below is a working label
+   only.
+3. Team administration and collaboration require an additional Team Workspace
    entitlement.
-3. Coaching capabilities for developing and reviewing other athletes require an
+4. Coaching capabilities for developing and reviewing other athletes require an
    additional Coaching entitlement.
-4. Accounts, contextual functions, permission bundles, subscriptions and entitlements
-   remain separate concepts.
+5. Accounts, Profiles, contextual functions, permission bundles, subscriptions and
+   entitlements remain separate concepts.
 
-Accepted provisional boundary between free local use and Personal Athlete:
+Accepted boundary between Free and the paid personal tier (**replaces the former "free
+local use" boundary entirely, 2026-08-24 revision** — Free is no longer defined as
+accountless local use, and basic structured cloud persistence is no longer paid):
 
-1. The existing local training application remains useful without an account,
-   subscription or internet connection. Free local use includes all existing training
-   modes, manual entry of release times, local session history, existing assessments,
-   CSV export and access to the athlete's own raw data.
-2. Free local use includes a deliberately limited analysis of the current session, such
-   as average release time, average deviation and target-hit rate. It does not include the
-   full analytical workspace or longitudinal development analysis.
-3. Personal Athlete includes automatic time capture through Brower and other supported
-   hardware integrations.
-4. Personal Athlete includes full analytics such as charts, distributions, In/Out-turn
-   comparisons, extended filters, comparisons across sessions, long-term trends,
-   personal benchmarks and goal tracking.
-5. Personal Athlete also includes cloud backup, multi-device synchronisation, reusable
-   personal exercises, session templates, personal training plans and later personal
-   video, sensor or AI-assisted analysis capabilities.
-6. Existing free local core capabilities are not withdrawn merely to create a paid tier.
-   New capabilities are assigned according to their concrete value and operating cost.
-7. This commercial boundary is an accepted working hypothesis, not an irreversible
-   implementation constant. Before or during commercial validation, it may be adjusted
-   using observed activation, retention, conversion, hardware usage and direct customer
-   feedback. Entitlement checks and product configuration must therefore allow the
-   boundary to change without a data migration or permission-model redesign.
+1. Free includes all existing training modes, manual entry of release times, session
+   history, existing assessments, CSV export, and access to the athlete's own raw data —
+   for a signed-in, onboarded Profile.
+2. **Free includes the Free Cloud Core:** cloud persistence of all supported structured
+   raw sporting and training data needed to reconstruct the athlete's history and compute
+   future analytics — Training Sessions, Blocks, Shots, Assessment Runs and Attempts,
+   Exercise Executions and Attempts, athlete assignment/ownership references, Handle and
+   Shotmaking 0–4 evaluations, "do not score" and void/revision facts, Release Time and
+   Rotation Count measurements, the configuration and immutable version snapshots needed
+   to interpret results, private Athlete Notes, and the provenance/audit records needed to
+   preserve factual history — **with no date cutoff**, plus **basic restore after signing
+   in on a new device**. See
+   `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.
+3. Free includes a deliberately limited analysis of the current session, such as average
+   release time, average deviation and target-hit rate. It does not include the full
+   analytical workspace or longitudinal development analysis.
+4. The paid personal tier includes automatic time capture through Brower and other
+   supported hardware integrations.
+5. The paid personal tier includes full analytics such as charts, distributions,
+   In/Out-turn comparisons, extended filters, comparisons across sessions, long-term
+   trends, personal benchmarks and goal tracking.
+6. The paid personal tier also includes reusable personal exercises, session templates,
+   personal training plans, and later personal video, sensor or AI-assisted analysis
+   capabilities. **It does not include, and must never be the gate for, basic durability
+   of the athlete's raw record.**
+7. **Upgrade/downgrade/re-upgrade:** upgrading exposes existing Free history to paid
+   analytics with no migration, re-import or re-recording; downgrading never deletes raw
+   sporting history and leaves Free recording and Free cloud persistence intact;
+   re-upgrading restores paid analysis over the complete retained history.
+8. Large or operationally expensive data — video, high-frequency sensor streams, large
+   coordinate traces, AI-generated artifacts — is **not** automatically guaranteed by the
+   Free Cloud Core and may later carry separate entitlements, limits, storage policies or
+   retention rules. Derived analytical projections and cached aggregates are not the
+   canonical sporting record and may be recomputed.
+9. Existing Free core capabilities are not withdrawn merely to create a paid tier. New
+   capabilities are assigned according to their concrete value and operating cost.
+10. This commercial boundary remains an accepted working hypothesis at the *packaging*
+    level, adjustable from observed activation, retention, conversion, hardware usage and
+    customer feedback — **except** that mandatory identity and the Free Cloud Core are
+    accepted architecture (ADR-0024), not a packaging hypothesis. Entitlement checks and
+    product configuration must allow packaging to change without a data migration or
+    permission-model redesign.
+11. **No vendor price belongs in this document.** Operating cost is a real design input;
+    a quoted Supabase or other vendor price would become a stale claim.
 
-Accepted Exercise Library capability mapping:
+Accepted Exercise Library capability mapping (corrected 2026-08-24 — see
+`docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §20, the canonical version):
 
 1. Browsing the curated Standard Exercise Library, Solo execution with manual 0–4
    evaluation or manual Measurements, a private Athlete Note and the basic
-   current-execution result are free capabilities.
-2. Cloud backup, multi-device continuity, reusable personal Training Plans,
-   longitudinal analytics and supported automatic hardware capture belong to Personal
-   Athlete.
+   current-execution result are **Free** capabilities.
+2. **Structured raw Exercise results, private Athlete Notes and their Free cloud
+   persistence and basic restore are Free.** Reusable personal Training Plans,
+   longitudinal analytics and supported automatic hardware capture belong to the paid
+   personal tier.
 3. A multi-athlete Team Session, roster and role coordination, rotation, one active
    recorder, bounded offline Team capture / later upload and Team-owned or Team-executed
    Training Plans belong to Team Workspace.
 4. Structured Coach analysis and Coach Feedback remain part of the separately deferred
    Coaching module rather than the Exercise Library closed beta.
 5. An athlete can always view and export their own raw result created by a Team Session,
-   even without Personal Athlete. Subscription state never transfers data ownership or
-   hides athlete-owned raw data.
+   **and that result remains stored and accessible to them on Free alone.** Subscription
+   state never transfers data ownership or hides athlete-owned raw data.
 6. The closed beta enables its required capabilities through the reversible pilot
    entitlement and implements no production payment collection or billing enforcement.
 
@@ -1344,7 +1652,8 @@ Accepted provisional Team Workspace, Team Seat and sponsored-entitlement model:
    be refined when the billing provider and cancellation model are selected.
 7. If a sponsored seat ends, the athlete keeps the account and all personal data. Access
    continues through any other active entitlement source or otherwise falls back to the
-   free local product boundary defined above.
+   **Free** boundary defined above (corrected 2026-08-24 — Free includes the Free Cloud
+   Core, so falling back never removes cloud persistence of already-recorded raw data).
 8. Whether Team Seats are sold individually, included as a configurable allowance in a
    workspace base price, or packaged in tiers remains a post-pilot commercial decision.
    It must not change membership identity, contextual functions, permissions or athlete
@@ -1441,9 +1750,12 @@ Accepted provisional entitlement-expiry and read-only model:
    and payment recovery may occur during this period without changing data rights.
 3. When a cancelled paid term ends, or when the 14-day payment grace period expires,
    the affected product enters a restricted read-only state for 90 days.
-4. Personal Athlete in this state continues to permit the free local training boundary,
-   basic current-session analysis and export of the athlete's own data. Cloud sync,
-   automatic time capture and paid analytics or planning capabilities are unavailable.
+4. The paid personal tier in this state falls back to the **Free** boundary above
+   (corrected 2026-08-24 — previously "the free local training boundary"): recording,
+   the Free Cloud Core including basic restore, basic current-session analysis and export
+   of the athlete's own data all continue. Automatic time capture and paid analytics or
+   planning capabilities are unavailable. **A lapsed entitlement never withdraws Free
+   cloud persistence of already-recorded raw data.**
 5. A Team Workspace in this state permits authorised members to view and export existing
    members, plans, exercises, assignments and history. Invitations, membership changes,
    new assignments, edits and other team-administration actions are unavailable.
@@ -1526,6 +1838,37 @@ do not block cloud, team, coaching, exercise or training-plan implementation:
 
 ## 18. Implementation sequence
 
+**Re-sequenced in the 2026-08-24 revision.** The identity and Free-cloud foundation is
+staged as **B0.1 → B0.2 → B0.3 → B0.4**, each with its own independent review gate, per
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11:
+
+| Stage | Scope |
+|---|---|
+| **B0.1 — Decision Reconciliation** | Documentation and ADR only (this revision, the canonical specification, and ADR-0024). No runtime, schema, test or configuration change. |
+| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; Google sign-in; Profile bootstrap; legal acceptance; Athlete capability; Free entitlement; the global access gate; offline identity continuity. **No sporting cloud persistence yet. Not independently releasable — see the release-unit note below.** |
+| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; account-switch/sign-out isolation; the one-time retirement of the disposable unscoped test data. **Completes the releasable unit B0.2 opens.** |
+| **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, sync truth, conflict behaviour — **and real database verification**. |
+
+**B0.2 and B0.3 are one releasable privacy unit** (specification §11.1). They stay two
+implementation scopes with two independent review gates, but B0.2 introduces mandatory
+authentication and account switching while sporting persistence remains identity-unscoped
+until B0.3 — so a separately released B0.2 would let a **second authenticated account in the
+same browser observe the first account's sporting data.** B0.2 may therefore be implemented
+and reviewed first, but **its mandatory-gate and account-switching experience must not be
+enabled for real users or released as the new product behaviour until B0.3's Profile
+isolation and one-time disposal are implemented and independently reviewed.** The **release
+gate is the combined B0.2 + B0.3 unit**, and it must prove that no Profile can observe
+another Profile's local data or pending writes. **B0.2's own account-switch review proves
+authentication/onboarding state transitions only** — sporting-data confidentiality across an
+account switch is not closed until B0.3. This is never a reason to import, adopt or assign
+the unscoped data (it is discarded, §5.5), never a reason to move disposal into B0.2, and
+not a deployment-mechanism decision this document makes. **B0.2 is never independently
+release-ready.**
+
+These replace the former Phase 3/Phase 4 framing below, which assumed an optional account
+and a Local Adoption of pre-existing local history. Phases 5-9 keep their content and now
+sit behind B0.4. **None of B0.2-B0.4 is implemented.**
+
 ### Phase 0: Stable baseline
 
 - Merge the accepted application state.
@@ -1554,11 +1897,21 @@ Implemented) cover the full inventory, the repository/adapter boundary, and the 
 migration path into a later IndexedDB adapter (Phase 2 below), which remains
 unimplemented.
 
-### Phase 2: IndexedDB local-backend migration (a distinct, currently blocked track — not a prerequisite for Phase 3/4)
+### Phase 2: IndexedDB local-backend migration (RETIRED as the forward production path — historical record only)
 
-**Retitled and corrected per the revision notes above.** This phase names specifically
-the ADR-0015/0016/0017/0018 local-backend track (`localStorage` vs. IndexedDB, on one
-device) — `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` and
+**Retired as the forward production path (2026-08-24 revision).** The legacy unscoped
+local data this track exists to carry forward is disposable early-test data that Stage
+B0.3 will discard once, explicitly — so there is nothing for a copy migration or an
+activation programme to preserve. ADR-0015's unwired adapter remains valid
+infrastructure, ADR-0016's mechanism remains a historical implemented mechanism, and
+ADR-0017/0018 remain useful analyses; none of them is the selected path. Dormant code is
+not deleted by this decision. The remainder of this section is retained as a record of
+what that track was, not as scheduled work.
+
+**Retitled and corrected per the earlier revision notes above** (which established it as
+a distinct, blocked track that was never a prerequisite for the cloud phases — still true,
+and now moot). This phase names specifically the ADR-0015/0016/0017/0018 local-backend
+track (`localStorage` vs. IndexedDB, on one device) — `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` and
 `docs/adr/0018-indexeddb-production-activation-fencing-and-outage-policy.md` found that
 IndexedDB production activation has a bundled, unresolved blocking prerequisite this
 codebase cannot currently close, and this phase remains blocked on that basis. **Phase
@@ -1566,8 +1919,12 @@ codebase cannot currently close, and this phase remains blocked on that basis. *
 reads its legacy source from `localStorage` and writes cloud data to Supabase — it never
 reads from or depends on this phase's IndexedDB work. **A future account-scoped read
 cache or offline outbox (ADR-0019 Decision 3 role C / Decision 10) is new, separately
-numbered future work if it is ever built — it is not this phase, and this phase's name is
-not reused for it.**
+numbered future work — it is not this phase, and this phase's name is not reused for it.**
+That last sentence originally read "if it is ever built," reflecting the earlier model in
+which such an outbox was optional. **That model is superseded**: Stage B0.4's durable
+Profile-scoped outbox is now a required part of the Free Cloud Core (§4.1). It remains
+entirely separate from this retired ADR-0016/0017/0018 activation track, and reuses none
+of its markers or activation evidence.
 
 - Implement IndexedDB repositories.
 - Migrate existing local records idempotently.
@@ -1576,70 +1933,99 @@ not reused for it.**
 - Keep a recoverable fallback until migration is verified.
 - Test offline reload, interrupted migration and rollback behaviour.
 
-### Phase 3: Technical cloud spike
+### Phase 3: Identity and onboarding gate (Stage B0.2)
 
-**Does not require Phase 2 above to be complete** (corrected per the revision note).
-The original "sync one session through an outbox" and "test offline mutation followed by
-reconnect" steps below are replaced: no generic personal-cloud outbox exists or is
-designed for this phase (§12.1 above), and ADR-0019's proposed MVP model for this
-prototype is online-required writes, not an offline mutation queue — retaining an
-offline-mutation test here would contradict that
-directly. **ADR-0019 instead proposes an Assessment Adoption development/staging
-prototype** as the first concrete cloud-authority exercise — Local Adoption of
-`assessment` data, reading its legacy source from `localStorage` and writing to Supabase
-directly, with no outbox involved (ADR-0019 Decisions 4-6, Decision 15 stage 11).
-**Corrected per `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
-(Accepted, design complete, not yet implemented):** once that ADR's split is implemented,
-only Assessment *history* (never the in-progress draft) is the cloud-eligible unit this
-prototype could exercise — "Assessment data"/"the Assessment domain" in this phase
-description will mean `assessmentHistory` specifically, not the still-combined domain,
-once implementation lands. ADR-0020 Decision D itself is architecturally resolved by
-ADR-0021 (Accepted, design complete); until ADR-0021 is implemented, this prototype
-remains blocked by ADR-0021's implementation not yet having been performed, plus every
-other independent ADR-0019/ADR-0020 prerequisite (Decision E.2b, Decision E.2c, account
-deletion/anonymization policy, ADR-0019's old-build/local-branch limitation) — never by
-Decision D again. **This
-is a proposal under a Proposed ADR, not yet the decided MVP mechanism**, and is
-explicitly scoped to development/staging only — ADR-0019 Decision 15 requires a separate,
-explicit production-enablement gate, conditioned on ADR-0019 itself reaching Accepted
-status (or being superseded by an Accepted decision), before any cloud authority is
-enabled for real users. Future offline-mutation/outbox testing belongs only in a future
-illustrative-outbox phase, if one is ever designed — not here.
+**Replaces the former "Technical cloud spike" phase (2026-08-24 revision).** That phase
+proposed an Assessment Adoption development/staging prototype as the first concrete
+cloud-authority exercise, because pre-existing accountless local history had to be adopted
+into an account. Legacy local data is now disposable (§5.5), so **Local Adoption is no
+longer the first cloud exercise and is not the forward path at all.** ADR-0019/ADR-0020
+remain Proposed and unimplemented; nothing here revives their transition protocol.
 
 - Create the hosted development and staging Supabase project in the accepted Frankfurt
   region, isolated from production.
-- Implement one login path.
-- Create one profile and athlete.
-- Run an Assessment Adoption development/staging prototype (replaces "sync one session
-  through an outbox" — see above): interrupt and resume a `prepared` Adoption Run.
-- Verify writes are blocked while offline for a cloud-authoritative Assessment domain
-  (replaces "test offline mutation followed by reconnect," which assumed an offline
-  mutation queue that does not exist). Once `docs/adr/0021-assessment-draft-history-authority-unit-split.md`
-  is implemented, this means `assessmentHistory` specifically — `assessmentDraft` is
-  permanently excluded from cloud authority regardless.
-- Verify reconnecting re-resolves authority correctly.
-- Simulate two devices, without claiming Branch Reconciliation is solved by doing so.
-- Verify RLS denies foreign-account access.
-- Record findings before continuing.
+- Implement **one** application-level auth authority — email OTP and Google sign-in.
+- Bootstrap exactly one personal `Profile` per authenticated account, with its own
+  application-owned UUID.
+- Capture versionable, auditable legal acceptance; keep marketing consent separate,
+  optional and off by default.
+- Establish Athlete capability and the default Free entitlement on completed onboarding.
+- Gate the whole authenticated application behind a completed Profile.
+- Establish offline identity continuity: a device with trusted Profile-scoped state trains
+  offline; a first-run, signed-out, or deleted-account device does not.
+- **No sporting cloud persistence in this stage.**
 
-### Phase 4: Personal cloud sync
+Negative cases this stage's review must cover: offline first run, refused legal
+acceptance, interrupted onboarding, signed-out state, revoked or expired session, account
+switch, and a deleted account attempting to re-enter. **The account-switch cases here prove
+authentication and onboarding *state transitions* only — sporting-data confidentiality across
+an account switch stays open until Stage B0.3, because this stage does not change
+persistence scope.** This stage is therefore **not independently releasable**; see the
+release-unit note at the top of §18.
 
-- Import all supported personal history.
-- Sync sessions, blocks, shots and Assessment history (`assessmentHistory` specifically,
-  once `docs/adr/0021-assessment-draft-history-authority-unit-split.md` is implemented —
-  `assessmentDraft` is never synced).
-- Implement idempotency, deletion and conflict handling.
-- Add personal export and account deletion foundations.
-- Observe sync failures and data-volume behaviour.
+### Phase 4: Profile-scoped local data and the Free cloud backbone (Stages B0.3 and B0.4)
+
+**Replaces the former "Personal cloud sync" phase (2026-08-24 revision).** The former
+phase began with "import all supported personal history"; there is no import.
+
+**Stage B0.3 — Profile-scoped local data:**
+
+- Make local persistence Profile-isolated.
+- Make sign-out and account switching immediately hide and lock the previous Profile's
+  local data, including pending uploads.
+- Retire the disposable unscoped test data once, explicitly.
+
+**Stage B0.4 — Free cloud data backbone:**
+
+- Server schema, ownership and RLS for the Free Cloud Core (§6.6 layer 0, §17.5).
+- Stable client-generated IDs before upload; automatic, idempotent upload on reconnect;
+  a durable outbox; retry.
+- Honest sync truth — at least **saved on this device**, **synced**, **sync issue** — with
+  nothing described as cloud-backed before the server acknowledges it.
+- Fail closed for upload when server authority can no longer be revalidated.
+- Conflict behaviour that never silently overwrites conflicting content under one stable
+  identity (§12.2 remains the policy table).
+- **Basic Free restore** after signing in on a new device — never cross-device
+  continuation of an in-progress Session.
+- Personal export and the account-deletion foundations of §15.2.
+
+**Real database verification is a blocking requirement for Stage B0.4.** SQL, RLS, grants,
+triggers and concurrency behaviour are not verified by TypeScript tests or careful reading.
+If no real Postgres/Supabase environment is available, the SQL is classified as written but
+unexecuted and this stage is not complete — the same discipline
+`docs/adr/0022-team-foundation-domain-and-persistence.md` already operates under.
 
 ### Phase 5: Teams and coaching
 
-- Add invitations, memberships and contextual functions.
-- Add bounded permission bundles.
+**Already delivered — the Team Foundation baseline.** This phase does not rebuild any of
+the following; they are implemented and their SQL layer is executed and verified (see
+`docs/adr/0022-team-foundation-domain-and-persistence.md`, with
+`docs/TEAM_FOUNDATION_AND_ADMINISTRATION_BETA_SPECIFICATION.md` as the product
+authority):
+
+- invitations;
+- Memberships;
+- the three composable contextual Team Functions (Team Admin, Coach, Training Lead);
+- bounded permission enforcement, re-derived server-side rather than trusted from the
+  client;
+- administration, team-exit and Team Admin succession lifecycles;
+- Team Foundation RLS/RPC coverage, plus SQL-level lifecycle and two-session concurrency
+  testing.
+
+The Route Handlers, PostgREST client calls, SMTP delivery and Teams UI above that SQL
+have not been exercised end to end against a real database — an integration gap tracked
+in `docs/TECHNICAL_DEBT_AND_ROADMAP.md`, not scope belonging to this phase.
+
+**Remaining Phase 5 work — athlete data sharing and coaching access:**
+
 - Add the athlete's `TeamDataSharingGrant` — a chosen data scope shared with a
   **Team**, never negotiated separately per named coach (§7.3, §17.2 item 4).
-- Test team exit and role-transfer lifecycles.
-- Test every RLS path with positive and negative cases.
+- Apply the permitted data scope that grant carries, including the athlete's
+  historical-data sharing choice.
+- Derive coach access from that Team-scoped grant — whoever currently holds the Team's
+  `Coach` function — rather than from any person-specific coaching relationship (§7.3).
+- Add and test the coaching and data-sharing RLS paths with positive and negative cases,
+  including the team-exit consequences of §7.4.
 
 ### Phase 6: Exercises, plans and assignments
 
@@ -1655,7 +2041,8 @@ illustrative-outbox phase, if one is ever designed — not here.
 
 - Invite the initial test team without requiring payment or billing setup.
 - Enable the necessary product capabilities through a reversible pilot entitlement.
-- Test onboarding, login, personal sync and multi-device continuity with real users.
+- Test onboarding, login, personal sync and basic restore on a new device with real
+  users (corrected 2026-08-24 — cross-device continuation remains deferred).
 - Test invitations, memberships, team functions, athlete sharing and coach access.
 - Test the complete flow from exercise and plan authoring through assignment, athlete
   execution, result synchronisation and coach review.
@@ -1696,21 +2083,46 @@ Claude Code may begin Phase 1 when:
 - existing tests are green;
 - the implementation prompt requires updating affected architecture documents and ADRs.
 
-Claude Code may begin the first Supabase implementation only when:
+**The combined B0.2 + B0.3 unit may be enabled for real users, or released as the new
+product behaviour, only when:**
 
+- **both** stages are implemented and independently reviewed;
+- the review **proves that no Profile can observe another Profile's local data or pending
+  writes**, including anything still pending upload;
+- the one-time disposal of the unscoped test data is explicit and bounded, and is not a
+  silent loss of anything in scope;
+- nothing in either stage imports, adopts, claims or assigns the unscoped data to an
+  account.
+
+**B0.2 alone never satisfies this gate** (§18 release-unit note, and
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1).
+
+Claude Code may begin the first Supabase **sporting-data** implementation (Stage B0.4)
+only when:
+
+- Stages B0.2 and B0.3 are implemented and independently reviewed;
 - the target ERD has been converted into an initial physical schema;
 - the personal-cloud RLS matrix is written;
 - the sync mutation envelope and cursor protocol are specified;
-- the local-to-cloud import rules are accepted;
 - environments, region and secret handling are decided;
-- automated negative access tests are defined.
+- automated negative access tests are defined;
+- a real Postgres/Supabase environment is available to execute the SQL against.
+
+The former "local-to-cloud import rules are accepted" precondition is **withdrawn**
+(2026-08-24 revision): there is no import — see §5.5.
 
 ## 20. Required ADRs
+
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted; not
+implemented) is the durable decision covering mandatory identity, authenticated offline
+operation, Profile-scoped sporting authority, and the Free Cloud Core. Item 2 below is
+**retired** along with the IndexedDB local-backend track (§18 Phase 2).
 
 Create or accept separate ADRs for:
 
 1. Supabase Auth, PostgreSQL and RLS as the first cloud platform.
-2. Local-first IndexedDB with an application-owned sync layer.
+2. ~~Local-first IndexedDB with an application-owned sync layer.~~ **Retired** — see §18
+   Phase 2 and ADR-0024's effect table.
 3. Contextual team functions and bounded permission bundles.
 4. Separation of `UserAccount`, `Profile` and `Athlete`.
 5. Athlete ownership of personal performance data.
@@ -1723,9 +2135,16 @@ Create or accept separate ADRs for:
 This document is accepted as the target architecture and product boundary for the staged
 cloud, identity and collaboration work.
 
+**`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` is the canonical
+product authority for identity, onboarding, Profile scope, post-onboarding offline
+behaviour, and the Free Cloud Core, and takes precedence over this document for those
+subjects.** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` is
+the accepted architecture decision. Neither is implemented.
+
 The following are authoritative for implementation:
 
-- the principles and target models in Sections 3 to 16;
+- the principles and target models in Sections 3 to 16, as corrected by the 2026-08-24
+  revision note above;
 - all decisions explicitly marked accepted in Section 17;
 - `Exercise` as the canonical reusable training entity, with `Drill` retained only as a
   synonym or product label unless a later accepted domain distinction requires otherwise;

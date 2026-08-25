@@ -157,7 +157,9 @@ several items) a compliance/legal check — not something to guess from a produc
   execution, permission prompts, MFi/accessory requirements for certain transports).
 - Offline behavior — does the device (and its data) work without the phone having
   network access? (The app itself must keep working offline regardless — see
-  `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first is a current feature".)
+  `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first means offline-capable after
+  authenticated onboarding" — renamed 2026-08-24; the offline-during-training requirement
+  this bullet relies on is unchanged.)
 - Any data-privacy or permission implications of the chosen connectivity (e.g. Bluetooth
   scanning permissions).
 

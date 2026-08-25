@@ -595,9 +595,10 @@ silently treated as protocol-equivalent.
 The authenticated user submitting an attempt is automatically the recorder. There is
 no Recorder selector or Recorder-change button in Version 1.
 
-For a cloud-backed write, `recordedByProfileId` is derived server-side from the
-authenticated account. The client must not be allowed to claim an arbitrary recorder
-identity.
+For a cloud-backed write, the server **authenticates the account, resolves its linked
+`Profile`, and derives `recordedByProfileId` from that Profile** (clarified 2026-08-24 —
+recorder attribution is Profile-scoped; the account is only how the actor is
+authenticated). The client must not be allowed to claim an arbitrary recorder identity.
 
 `recordedByProfileId` is distinct from the `athleteId` whose result is being captured.
 A Coach may record a stone for an athlete without becoming the owner of that result.
@@ -665,8 +666,9 @@ or interrupted upload must converge on one cloud record per stable ID and must n
 duplicate attempts, Measurements or notifications. Local pending data is not cleared or
 treated as synced until the server explicitly acknowledges it.
 
-At upload, the server derives the recorder from authentication and revalidates the Team,
-participant and recording-permission boundary for each athlete result. If current
+At upload, the server **authenticates the account, resolves its linked `Profile`, and
+derives the recorder from that Profile**, then revalidates the Team, participant and
+recording-permission boundary for each athlete result. If current
 authority is missing, only the affected athlete bundle is blocked; other valid athlete
 results may sync. A blocked bundle is neither discarded nor assigned to another athlete.
 The affected athlete may explicitly approve that concrete Session before its result is
@@ -954,7 +956,7 @@ Technique Exercises rely particularly on notes because Version 1 performs no tec
 analysis. In Solo execution, the athlete may add the note during or after the Exercise.
 In a Team execution, an athlete who is also the active recorder may add their own note
 on the recording device; every other athlete adds or edits their note later through
-their own authenticated account.
+their own authenticated account, and the note is owned by that account's linked `Profile`.
 
 Private Athlete Notes are not included in Team-summary or coaching data grants and are
 not disclosed merely because another person participated in the Session. Editing or
@@ -1287,6 +1289,15 @@ Version 1.
 The closed beta enables every required Exercise Library capability through the existing
 reversible pilot entitlement. It performs no payment collection or production billing.
 
+**Corrected 2026-08-24** per
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6 and
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`: structured raw
+Exercise results, private Athlete Notes, their cloud persistence and basic restore are
+**Free** — part of the **Free Cloud Core**. The paid personal tier sells value *derived*
+from that data. The paid tier's **final commercial name is undecided**; `Personal Athlete`
+below is a working label only. Free is a **signed-in** tier: every participant still needs
+their own account and Profile.
+
 The approved post-pilot capability mapping is:
 
 | Capability | Commercial boundary |
@@ -1294,21 +1305,36 @@ The approved post-pilot capability mapping is:
 | Browse the curated Standard Exercise Library | Free |
 | Solo execution with manual 0–4 evaluation or manual Measurements | Free |
 | Private Athlete Note and basic current-execution result | Free |
-| Cloud backup, multi-device continuity and reusable personal Training Plans | Personal Athlete |
-| Longitudinal analytics and supported automatic hardware capture | Personal Athlete |
+| **Cloud persistence of structured raw Exercise Executions, Attempts, evaluations, Measurements, void/revision facts and Athlete Notes** | **Free** (Free Cloud Core, no date cutoff) |
+| **Basic restore of the athlete's own history after signing in on a new device** | **Free** |
+| Reusable personal Training Plans | Paid personal tier |
+| Longitudinal analytics, comparisons, trends and benchmarks over Exercise history | Paid personal tier |
+| Supported automatic hardware capture | Paid personal tier |
 | Multi-athlete Team Session, roster, roles, rotation and one active recorder | Team Workspace |
 | Bounded offline Team capture and later upload | Team Workspace |
 | Team-owned or Team-executed Training Plans | Team Workspace |
 | Structured Coach analysis and Coach Feedback | Deferred Coaching module |
 
+**Cross-device continuation is not on this table in either column** — continuing an
+in-progress Session on another device, concurrent multi-device editing, and moving an
+unsynced Session to another recorder device are all deferred (§9.2 already states the
+last of these for Version 1).
+
 An athlete may always view and export their own raw result created in a Team Session,
-even without a Personal Athlete entitlement. Subscription state never transfers data
-ownership or hides athlete-owned raw data. Entitlement checks remain configurable and
-separate from identity, permission and persistence models.
+**and that result remains stored and cloud-persisted for them on Free alone.** Subscription
+state never transfers data ownership or hides athlete-owned raw data. Entitlement checks
+remain configurable and separate from identity, permission and persistence models: a Team
+permission is never an entitlement, and an entitlement is never a permission.
 
 No unresolved product decision remains in this specification. Section 5.4's Swiss
 Curling rights clarification is an external gate before a larger test or release, not
 authority for an implementation agent to widen distribution.
+
+Two things this specification depends on but does not decide: the **final commercial name
+of the paid personal tier** (undecided — see above), and the **identity and persistence
+foundation** Stages B0.2-B0.4 provide (see §21's prerequisites). Neither is an unresolved
+*Exercise* decision; both are prerequisites recorded in
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 
 ---
 
@@ -1316,6 +1342,32 @@ authority for an implementation agent to widen distribution.
 
 This feature crosses content, domain, persistence, UI, Team authorization and future
 cloud boundaries. It must not be implemented as one undifferentiated pass.
+
+## Identity and persistence prerequisites (added 2026-08-24)
+
+Stages B and later depend on foundations that do not exist yet. Per
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11 and
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, these must be
+implemented and independently reviewed **before Stage B begins**:
+
+- **Stage B0.2 — Identity and Onboarding Gate.** Required by §9.1 (the recorder is derived
+  from the authenticated Profile, with no Recorder selector), §8.1 (every Team participant
+  resolves to an authenticated Profile), and §12/§13 (each athlete edits only their own
+  private note through their own authenticated account). Every participating athlete,
+  recorder and coach needs their own account and Profile; they do not all sign into the
+  recorder's device.
+- **Stage B0.3 — Profile-scoped Local Data.** Required by §9.2's rule that pending Session
+  data must not be exposed after an account switch, and by the requirement that a private
+  Athlete Note stay invisible to the recorder.
+- **Stage B0.4 — Free Cloud Data Backbone.** Provides the stable-ID, idempotent-upload,
+  durable-outbox and honest sync-status behaviour §9.2's `local draft → locally completed,
+  upload pending → fully synced → partially synced, athlete result blocked` model needs.
+  Stage C's own Team-authority revalidation and per-athlete partial-rejection behaviour
+  remain Stage C's work.
+
+**Earlier documents that assumed optional identity, or that placed basic cloud backup
+behind a paid personal entitlement, are corrected** — see §20 above. Nothing about the
+Exercise domain decisions already approved in this specification changes.
 
 ## Stage 0 — Product and content approval
 
@@ -1343,6 +1395,8 @@ structured platform diagram creates a new Exercise Version without rewriting his
 
 ## Stage B — Solo execution vertical slice
 
+**Prerequisite:** Stages B0.2-B0.4 above, implemented and independently reviewed.
+
 - execute one Technique, one Shotmaking and one Measured Exercise;
 - capture the athlete's private note, handles, 0–4 scores and supported Measurements;
 - preserve standard versus actual configuration;
@@ -1361,7 +1415,8 @@ retained with the result.
 - enforce the athlete's explicit Team recording permission;
 - assign and rotate roles;
 - attribute each attempt and result to the correct athlete;
-- derive recorder identity from authentication;
+- derive recorder identity server-side from the authenticated account's linked `Profile`,
+  never from a client-supplied value;
 - enforce Session-scoped recording permission;
 - prevent the recorder from reading or writing another athlete's private note;
 - allow each athlete to add or edit only their own note through their authenticated

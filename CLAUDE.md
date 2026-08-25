@@ -37,6 +37,10 @@ functionality, read:
   the actual domain model, target model, Blind Weight state machine, data flows, and the
   "Platform Navigation" section)
 - `docs/DOMAIN_GLOSSARY.md`
+- `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` — the canonical
+  product source for the mandatory identity requirement, minimal onboarding,
+  Profile-scoped ownership, offline behaviour after onboarding, and the Free Cloud Core
+  (accepted; **not implemented** — see the Working rules entry below)
 - `docs/adr/` for the reasoning behind existing architectural decisions
 - `docs/TECHNICAL_DEBT_AND_ROADMAP.md` before deciding whether something is worth fixing now
 
@@ -181,6 +185,55 @@ technique directly" in the Coaching Principles.
   to do with a restricted source image: no Swiss Curling asset exists in this repository,
   and a restricted asset may only ever be reached through an opaque reference plus an
   explicitly authorized resolver that fails closed.
+- **Identity is mandatory in the accepted target; the current optional/accountless
+  behavior is transitional.** Before any work touching authentication, onboarding,
+  identity scope, local-persistence scope, cloud persistence, entitlements, sync status,
+  or account deletion, read
+  `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` (the canonical
+  product source) and `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+  (**Accepted architecture/product direction — not implemented**). The accepted target: a
+  `UserAccount` **and** a completed personal `Profile` are required to reach the app (no
+  Profile, no access — Free is a tier, not an exemption); `Profile.id` is an
+  application-owned UUID and is the scope key for athlete-owned data, local persistence,
+  cloud authority and recorder attribution (never the auth-provider user id); training runs
+  fully offline **after** authenticated onboarding on that device; and all supported
+  structured raw sporting data is cloud-persisted for **Free** (the **Free Cloud Core**),
+  with the paid personal tier selling *derived* analysis — its final commercial name is
+  undecided, so don't rename it. Legacy unscoped local data is **disposable**: it is
+  discarded once in Stage B0.3, never adopted/imported/merged, which retires ADR-0016/0017/
+  0018's copy-migration and activation track as the forward path (ADR-0015's adapter stays
+  valid; **delete no dormant code**). ADR-0019/ADR-0020's **Local Adoption is not the
+  forward path**, and ADR-0020's open Decisions E.2b/E.2c are **not gates on B0.4** — B0.4
+  designs and verifies its own schema, representability, mapping, upload and RLS. ADR-0020's
+  authority-scope *choice* is **closed (Profile-scoped)**; only its own unperformed
+  reconciliation to that scope remains. **ADR-0021**'s draft/history split stays an accepted
+  constraint, but its legacy-key migration, retained residue and ADR-0016 marker
+  registration are retired — B0.3/B0.4 establish **fresh** Profile-scoped draft/history
+  persistence for post-onboarding data. Staging is B0.1 (documentation — done) → B0.2
+  (identity/onboarding gate) → B0.3 (Profile-scoped Local Data) → B0.4 (Free cloud
+  backbone, **requiring real database execution**) → Exercise Stage B. **B0.2 and B0.3 are
+  two implementation scopes but ONE releasable privacy unit**: B0.2 adds mandatory
+  authentication and account switching while the seven repositories still share one
+  identity-unscoped `localStorage` workspace, so releasing B0.2 alone would let a second
+  authenticated account in the same browser read the first account's sporting data. Build and
+  review B0.2 first if you like, but **never enable its gate/account-switching experience for
+  real users or call it releasable until B0.3 is implemented and independently reviewed**;
+  B0.2's account-switch review proves auth/onboarding state transitions only, not
+  sporting-data confidentiality. Never "fix" this by importing/adopting/assigning the
+  unscoped data (it is discarded in B0.3), never move disposal into B0.2, and don't invent a
+  flag or deployment mechanism in a documentation pass. Athlete capability and the Free
+  entitlement are granted by **completed onboarding**, never by a Profile merely existing. **The runtime today
+  enforces none of this platform-wide**: `useSupabaseAuthController`/`AccountControl` are an
+  optional, additive email-OTP shell that never gates the app, and `localStorage` is still
+  the unscoped sole production authority. A **Team-specific** Profile bootstrap with
+  display-name capture *does* exist (`TeamsScreen`/`TeamInvitationAcceptOverlay` →
+  `TeamService.getMyProfile()`/`bootstrapProfile()`, over a `bootstrap_profile` RPC that
+  **has been executed and tested at the SQL/RPC level** against a real local Supabase
+  Postgres by the Team Foundation pgTAP suite; the Teams application flow above it —
+  Route Handlers, PostgREST client calls, SMTP delivery and UI — has **not** been
+  exercised end to end against that database) — it is a Teams entry step, **not** the
+  B0.2 gate, and grants no Athlete capability and no entitlement. Describe all of these as current,
+  transitional facts, never as the target. Existing Exercise and Team routing guidance above still applies unchanged.
 - **Keep current implementation and future vision clearly separated** in whatever you
   write or say — state which of *Implemented*, *Prepared*, *Planned*, or *Open decision*
   something is, rather than presenting a plan as if it already exists.

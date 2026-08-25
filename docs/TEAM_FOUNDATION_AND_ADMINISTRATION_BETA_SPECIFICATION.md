@@ -25,8 +25,11 @@ in the repository, especially claims that:
 
 Architecture decisions and implementation details belong in the relevant ADRs. ADRs
 must implement this product model and reference it; they must not silently redefine it.
-The current working tree is still under implementation and review, so this document
-does not by itself claim that any executable behavior is complete.
+Approval of this product specification does not by itself prove implementation
+completeness. Current implementation and verification status are recorded in
+`docs/adr/0022-team-foundation-domain-and-persistence.md`,
+`docs/SYSTEM_ARCHITECTURE.md`'s "Team Foundation" section, and
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md` — not here.
 
 ## 1. Beta boundary
 

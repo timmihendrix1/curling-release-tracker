@@ -1,6 +1,9 @@
 -- Team Foundation — SECURITY DEFINER RPC functions (requirements 47-138). See the
--- schema migration's header note: written, not executed/verified in this
--- environment (no supabase/docker CLI available).
+-- schema migration's header note: executed and exercised against a real local
+-- Supabase Postgres by the pgTAP suite under supabase/tests/. The two-session
+-- concurrency behaviour these functions' locking exists to guarantee has been
+-- verified separately (Procedures A-E, supabase/tests/README.md) — pgTAP runs in one
+-- transaction and cannot represent it.
 --
 -- Every function below:
 --   * is SECURITY DEFINER with an explicit, pinned `search_path` (requirement 133);
@@ -771,19 +774,39 @@ grant execute on function public.leave_team(uuid) to authenticated;
 -- Invitations (requirements 47-66)
 -- ---------------------------------------------------------------------------------
 
+-- Both helpers call pgcrypto SCHEMA-QUALIFIED. pgcrypto is installed into
+-- `extensions` (see the schema migration), and every caller of these two functions is
+-- a SECURITY DEFINER RPC that pins `search_path = public, pg_temp` — an unqualified
+-- `digest(...)`/`gen_random_bytes(...)` cannot be resolved under that path and fails
+-- every invitation operation at runtime. Qualifying the two call sites is the narrow
+-- fix; adding `extensions` to a security-sensitive search_path would widen the
+-- name-resolution surface of every invitation code path to fix two expressions.
+--
+-- Pinning each helper's OWN search_path matters independently of that, and is what
+-- stops this defect from being reintroduced. An unpinned SQL function body is
+-- name-resolved at CREATE time against the migration session's search_path, which on
+-- Supabase is `"$user", public, extensions` — so the unqualified form was accepted by
+-- the migration and only failed later, when called from a caller that pins
+-- `public, pg_temp`. With the pin present, `create function` itself rejects an
+-- unqualified `digest(...)` with `function digest(text, unknown) does not exist`: the
+-- migration fails immediately instead of deferring the failure to the first real
+-- invitation.
 create function private.hash_token(p_raw_token text)
 returns text
 language sql
 immutable
+set search_path = pg_catalog, pg_temp
 as $$
-  select encode(digest(p_raw_token, 'sha256'), 'hex');
+  select encode(extensions.digest(p_raw_token, 'sha256'), 'hex');
 $$;
 
 create function private.generate_raw_token()
 returns text
 language sql
+volatile
+set search_path = pg_catalog, pg_temp
 as $$
-  select encode(gen_random_bytes(32), 'base64');
+  select encode(extensions.gen_random_bytes(32), 'base64');
 $$;
 
 create function private.validate_invitation_proposal(p_email text, p_functions text[])

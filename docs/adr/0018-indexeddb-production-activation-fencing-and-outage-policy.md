@@ -2,6 +2,17 @@
 
 ## Status
 
+**No longer the selected path (2026-08-24) — see
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.** Like
+ADR-0017, this ADR serves an activation programme that is retired as the forward production
+path, because the legacy local data is disposable. **The analysis below is retained in
+full**, and neither half of ADR-0017 Decision 3 is resolved by ADR-0024 or needs to be. One
+framing note: where this ADR calls the application "local-first, accountless" as a *product*
+premise, that premise is superseded — its technical conclusion (an already-running old build
+cannot be prevented from calling `localStorage.setItem`, and no backend changes that) does
+not depend on it. Status is otherwise unchanged: still Proposed, still incomplete, still no
+code.
+
 **Proposed. Incomplete design.** No production code, tests, service worker, or UI are
 added by this ADR. This ADR was commissioned to resolve the single bundled prerequisite
 `docs/adr/0017-indexeddb-activation-verification-and-rollback-protocol.md` Decision 3
@@ -67,10 +78,13 @@ recommendation to enable activation. Where its own protocol cannot be proven com
 says so directly, per the task's explicit instruction, rather than dressing a probability
 argument up as a guarantee.
 
-### Investigated infrastructure — current reality, verified directly against this repository
+### Investigated infrastructure — the historical repository snapshot inspected when this ADR was authored
 
-Every claim below was checked against the actual repository state on this branch, not
-assumed:
+**This is not a current repository inventory.** Every claim below was checked against the
+repository as it stood when ADR-0018 was written, and is retained only to explain which
+alternatives were available to be evaluated at that time. The repository has since gained
+backend infrastructure; see "Current delta" immediately after this list before citing any
+statement in it as a present-day fact.
 
 - **Framework and rendering.** Next.js 16.2.6, App Router, one route (`src/app/page.tsx`)
   rendering a single `"use client"` component tree (`TrackerApp.tsx`); both routes
@@ -79,12 +93,14 @@ assumed:
   src/app -iname "route.ts*"` — zero results). No `middleware.ts`. `next.config.ts`
   defines only a `devIndicators` UI setting — no `headers()`, no `generateBuildId()`, no
   `output: "export"`.
-- **No backend of any kind.** No database, no server-rendered dynamic data, no
-  session/account concept — confirmed by the absence of API routes above, and consistent
-  with `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first is a current feature, not
-  a placeholder" ("no login... no backend"). Any candidate requiring a backend is
-  therefore not a small addition — it is new infrastructure this document must not invent
-  (per the task's explicit instruction) and would contradict a stated product principle.
+- **No backend of any kind (as observed then).** No database, no server-rendered dynamic
+  data, no session/account concept — confirmed by the absence of API routes above, and
+  consistent with the then-current `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md` principle
+  ("no login... no backend"), since renamed to "Local-first means offline-capable after
+  authenticated onboarding" and its accountless premise superseded by ADR-0024 (see
+  Status). Any candidate requiring a backend was therefore not a small addition at the
+  time — it would have been new infrastructure this document must not invent (per the
+  task's explicit instruction) and would have contradicted a stated product principle.
 - **No service worker.** No file matching `*service-worker*`/`sw.js`/`*workbox*` exists
   anywhere in the repository; no `next-pwa`, `serwist`, or `workbox` dependency in
   `package.json`; no `serviceWorker.register(...)` call anywhere in `src/`. A service
@@ -133,8 +149,31 @@ assumed:
   can follow, never as an automated guarantee.
 
 Where this document proposes something new, it says so explicitly and distinguishes it
-from the reality above; nothing above is treated as available infrastructure this design
+from the snapshot above; nothing above is treated as available infrastructure this design
 can lean on beyond what is listed.
+
+#### Current delta — what has changed in the repository since that snapshot
+
+Narrowly, and only what bears on the snapshot above:
+
+- The **Optional Supabase Auth Shell** now exists (`src/lib/supabase/`), providing email
+  OTP authentication.
+- **Five Team Route Handlers** now exist under `src/app/api/team/`, so the "no API routes
+  exist anywhere under `src/app`" observation above is no longer true of the repository.
+- **Team Foundation migrations, RLS policies and RPCs** now exist under `supabase/`, and
+  have been executed and tested against a local Supabase Postgres (ADR-0022).
+- **Personal sporting persistence is nevertheless unchanged**: still `localStorage`, still
+  identity-unscoped, still the sole authority for `Session`/`TrainingBlock`/`Shot` and
+  Assessment data. No personal cloud repository, outbox, sync or restore exists.
+- **No service worker and no IndexedDB production activation have been added.** Those two
+  observations in the snapshot remain true today.
+
+None of this changes this ADR's analysis or its outcome. The candidates it rejected were
+rejected on their own technical merits, and the decisive one is independent of whether a
+backend exists at all: no backend can prevent already-running JavaScript from executing a
+local `localStorage.setItem`. A server-authoritative redesign can only make such a write
+non-authoritative to other clients, or reject a later server-side mutation the obsolete
+client attempts — never stop the local write from happening.
 
 ## Decision
 
@@ -197,7 +236,7 @@ is stated once here and not re-argued per candidate.
 | **E′. `navigator.locks.query()` as a passive presence check** — a genuine, spec-defined refinement of E, not a separate primitive: every participating tab holds a long-lived shared "presence" lock for its entire open lifetime; any other tab can call `query()` to see who currently holds it, with no message, no round-trip, and no cooperation required from the holder beyond having requested the lock once | Same as E for **writes** — does not prevent anything; it only **detects** other participating tabs, which is strictly better than D/C for that narrower purpose (no polling, no missed-message risk, automatically consistent with the browser's own lock bookkeeping, automatically cleaned up on crash/close) | **Only for a tab that was already T2/baseline before freezing or bfcache entry**, and only to the extent the same unverified lock-retention assumption above holds — this table does not claim that assumption is proven. Misses T1/T5/T6 always, regardless of lifecycle state, structurally, exactly as E — freezing or restoring a non-participating tab does not retroactively make it detectable | Yes | No, for the same fundamental reason as every candidate above: it can only ever prove "no *participating* tab is currently present," never "no tab of any kind is present" | N/A — a direct query, not a message with a timeout | Zero reach into non-participating code — the one, unavoidable limit every candidate in this table shares |
 | **F. Manual activation after an explicit client-drain confirmation** (the user is told to close every other tab/window and explicitly confirms having done so) | **Only in the specific sense that, if the user's confirmation is true, no other tab exists to write** — this is the only candidate whose safety claim can be literally, fully true rather than merely "every respondent agreed," because it does not rely on programmatic detection of the excluded parties at all | Covers every category equally well **if honestly followed**, since it does not attempt to detect anything — it removes the premise (other tabs exist) rather than working around it | Yes — no server, no account; and uniquely well-suited to this specific application's shape: the "other clients" needing exclusion are the *same person's* other tabs/windows within the *same browser storage partition* — this application has no cross-device or cross-browser sync, so a tab on another device or in an unrelated browser/profile cannot write this partition's `localStorage` and is outside this threat model entirely — not other people's sessions in a multi-user system | **No absolute software proof** — the application cannot verify the user's claim; its safety depends on user diligence, not on anything checked | N/A in its pure form; can be paired with E′ as a best-effort sanity check that, if it *does* detect another participating tab, blocks activation outright (never proceeds on a mismatch) | The entire remaining risk collapses to "the user was mistaken or untruthful about having closed every tab" — a materially different, and arguably more honest, residual than "the software silently assumed a probability was good enough" |
 | **G. Permanently blocking automatic activation** | Trivially yes (nothing runs, nothing can go wrong) | N/A | Yes | Yes, vacuously | N/A | This is the status quo/fallback if no candidate above is accepted as sufficient — always available, never itself a design |
-| **H. Server-side client or version registration** | **No, and not even in principle — a backend cannot prevent the local API call itself.** A backend registry that knows which sessions/versions exist does not, and structurally cannot, stop JavaScript that has *already loaded and is already running* in an old tab from calling `localStorage.setItem` — that call is a synchronous, local, network-independent browser API no server-side check is in the call path of; registering sessions is a bookkeeping act, not an enforcement one. **A materially redesigned, server-authoritative model could make the *consequence* of that local write harmless — not prevent the write from happening**: it could make the client's locally-cached authority non-authoritative (the server, not the client's own `localStorage` read, becomes the thing every *other, participating* client trusts), and/or reject a server-side mutation an obsolete client attempts to submit — but the obsolete client's own local `setItem` call still executes and still lands in that browser's `localStorage`, exactly as before | N/A without a backend | **No** — directly contradicts `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md`'s "Local-first is a current feature, not a placeholder" (no login, no backend) for an accountless, offline-capable app | No design in this family achieves this — the redesign above changes what a write *means*, never what a write *is permitted to do locally*, and such a redesign is a different architecture, not an addition to this one, out of scope for this ADR | N/A | Rejected outright — not a small addition; a new architectural commitment this ADR is not authorized to make as a side effect. **If a future decision revisits this candidate, it must specify that redesigned, server-authoritative model explicitly, and state plainly that it makes obsolete local writes non-authoritative rather than claiming it prevents them — a registry alone proves nothing, and no backend design proves an already-running local API call was stopped** |
+| **H. Server-side client or version registration** | **No, and not even in principle — a backend cannot prevent the local API call itself.** A backend registry that knows which sessions/versions exist does not, and structurally cannot, stop JavaScript that has *already loaded and is already running* in an old tab from calling `localStorage.setItem` — that call is a synchronous, local, network-independent browser API no server-side check is in the call path of; registering sessions is a bookkeeping act, not an enforcement one. **A materially redesigned, server-authoritative model could make the *consequence* of that local write harmless — not prevent the write from happening**: it could make the client's locally-cached authority non-authoritative (the server, not the client's own `localStorage` read, becomes the thing every *other, participating* client trusts), and/or reject a server-side mutation an obsolete client attempts to submit — but the obsolete client's own local `setItem` call still executes and still lands in that browser's `localStorage`, exactly as before | N/A without a backend | **No** — directly contradicted the then-current `docs/PRODUCT_DIRECTION_AND_PRINCIPLES.md` principle (no login, no backend) for an accountless, offline-capable app; that premise is superseded by ADR-0024 (see Status), and the "not even in principle" conclusion in the previous column does not depend on it | No design in this family achieves this — the redesign above changes what a write *means*, never what a write *is permitted to do locally*, and such a redesign is a different architecture, not an addition to this one, out of scope for this ADR | N/A | Rejected outright — not a small addition; a new architectural commitment this ADR is not authorized to make as a side effect. **If a future decision revisits this candidate, it must specify that redesigned, server-authoritative model explicitly, and state plainly that it makes obsolete local writes non-authoritative rather than claiming it prevents them — a registry alone proves nothing, and no backend design proves an already-running local API call was stopped** |
 
 **No candidate above, alone or combined, can make an already-running, non-participating
 tab's JavaScript stop executing or refuse to write.** That is the one fact every row

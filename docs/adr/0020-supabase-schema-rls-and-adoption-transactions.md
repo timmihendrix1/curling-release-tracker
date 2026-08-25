@@ -2,6 +2,37 @@
 
 ## Status
 
+**SUPERSEDED as the forward path (2026-08-24) by
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted).
+This document is a historical Local Adoption design. It is still Proposed and still not
+implementation-ready. Read the whole body below on that basis.**
+
+- **The `account_scope_id` scope *choice* is CLOSED: Profile-scoped.** Athlete-owned
+  sporting authority is keyed by `Profile.id` — an application-owned UUID, never the
+  authentication-provider user id (the model ADR-0022 already implements). **Nowhere below
+  should the Profile-versus-account choice be read as an open question**; where the body
+  still presents it that way, it is recording the state of an earlier pass.
+- **What is genuinely not implementation-ready is this document's own internal
+  consistency.** Every affected table, RPC, RLS rule, lock, completeness proof,
+  crash/adversarial scenario table and test design that derives `account_scope_id`
+  inconsistently still requires a **focused reconciliation to Profile scope**, and
+  Profile/Athlete bootstrap must be rebuilt against ADR-0022's real identity model. That
+  reconciliation is not performed here and was not performed by ADR-0024.
+- **Local Adoption is not the forward path at all.** ADR-0024 classifies the existing
+  unscoped local data as disposable early-test data, discarded once in Stage B0.3 — so this
+  ADR's adoption-transaction design has no legacy data to adopt.
+- **Decisions E.2b (representability) and E.2c (mapping execution/dispatch) remain
+  unresolved *within this historical design*, and are NOT gates on Stage B0.4.** Stage
+  B0.4's Free Cloud Data Backbone must design and verify its **own** schema,
+  representability rules, canonical mapping, upload protocol and RLS — against a real
+  database — rather than inheriting this document's unreconciled answers or waiting on its
+  open questions. The underlying *problems* E.2b and E.2c name (lossless representation of
+  domain content, and proving a mapping actually executes) are real and B0.4 must solve its
+  own versions of them.
+- **No SQL in this document has ever been executed against a real Postgres instance.**
+
+The original blocker text follows, retained as the record of the earlier pass.
+
 **Proposed. Incomplete design. BLOCKED — identity, bootstrap, and Local Adoption
 authority-scope design (below) is not implementation-ready and must not be built as
 written until the blocker is resolved.**
@@ -29,8 +60,10 @@ Two genuinely different problems are corrected here, and must not be conflated:
    for every new account — both directly contradict the real, decided model. These are
    corrected in place below (Decisions E.3/E.4 and every `bootstrap_account()`
    description) to state the real model as fact, not as a "read this as stale" footnote.
-2. **Local Adoption's own `account_scope_id` — NOT decided, and this document must not
-   pretend otherwise.** Every table this document's own adoption-transaction design
+2. **Local Adoption's own `account_scope_id` — the *choice* is now DECIDED
+   (Profile-scoped, `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`);
+   what this document still lacks is internal consistency with it.** Every table this
+   document's own adoption-transaction design
    introduces (`private.account_domain_authorities`, `private.adoption_runs`,
    `public.assessment_runs`, `public.assessment_history_tombstones`, and everything
    that locks, proves completeness over, or foreign-keys against them) is keyed by an
@@ -42,24 +75,27 @@ Two genuinely different problems are corrected here, and must not be conflated:
    proof steps (Decision H) assume `account_scope_id = auth.uid()` directly. Under the
    superseded identity model these two derivations happened to coincide (`profiles.id`
    *was* `auth.users.id`); under ADR-0022's real model they are two different UUIDs, so
-   this design is internally inconsistent, not merely stale. **Whether Local Adoption
-   authority should be account-scoped or Profile-scoped is a genuine, unmade
-   architecture decision this correction pass does not make** — inventing an answer
-   here would be a new product/architecture decision smuggled into a documentation
-   fix, which this pass is explicitly not authorized to do. Every section listed above
-   is therefore marked, at its own heading, as blocked on this specific open question,
-   and none of their SQL, RPC bodies, or completeness proofs may be treated as
-   implementation-ready until it is resolved by a dedicated decision (a future ADR or
-   an explicit product/architecture decision record) that this document then adopts.
+   this design is internally inconsistent, not merely stale. **At the time of that pass,
+   whether Local Adoption authority should be account-scoped or Profile-scoped was a
+   genuine, unmade architecture decision, and that pass deliberately did not invent an
+   answer. ADR-0024 has since made it: athlete-owned authority is Profile-scoped.** The
+   remaining work is therefore no longer a *decision* but a **focused reconciliation** —
+   every section listed above must be rewritten to derive `account_scope_id` from
+   `Profile.id` consistently, and until that is done none of their SQL, RPC bodies, or
+   completeness proofs may be treated as implementation-ready. Each is still marked, at its
+   own heading, as blocked; read those markers as "blocked on unperformed reconciliation",
+   never as "blocked on an unmade scope decision". **Separately, and more importantly: this
+   whole adoption design is superseded as the forward path** — see the supersession block at
+   the top of this Status section. Stage B0.4 builds its own backbone rather than
+   reconciling this one.
 
 This remains a **targeted identity-model correction, not a wholesale rewrite** of this
 still-Proposed, not-yet-built Local Adoption / cloud-authority-transaction design: the
 SQL bodies affected by the blocker are left as written (removing them would delete
 real design work this pass has no mandate to redo), but are no longer presented as
 current or executable — each is marked in place. Any future implementation of this
-ADR must first resolve the `account_scope_id` blocker, then reconcile every table,
-function, proof, and matrix row named above with whichever scope that decision
-chooses.
+ADR — if one is ever undertaken, which ADR-0024 makes unlikely — must reconcile every
+table, function, proof, and matrix row named above with the decided **Profile scope**.
 
 This is the **tenth** revision of this document. The first draft contained a factual
 error about ADR-0019's fingerprint algorithm and a unit-of-staging error. The second
@@ -1261,11 +1297,12 @@ scoped by account or by Profile — that is the separate, still-open blocker.
 
 #### E.5 `private.account_domain_authorities` — corrected: full schema given, not "unchanged" prose
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** `account_scope_id` below is
+**⚠ BLOCKED (unperformed scope reconciliation — see Status).** `account_scope_id` below is
 this table's primary-key component and the identity every downstream lock, proof,
-and RLS policy in this document keys on. Whether it should be the raw Auth account
-id or `profiles.id` is not decided (see Status) — the schema below is not
-implementation-ready as written.
+and RLS policy in this document keys on. **The scope choice is decided — `profiles.id`
+(ADR-0024)** — but this document still derives it inconsistently, so the schema below is
+not implementation-ready as written. It is also part of a Local Adoption design superseded
+as the forward path; see Status.
 
 **The defect, stated precisely.** The prior revision described this table only as
 "unchanged," naming `authority_status`/`authority_revision` and the composite PK, but
@@ -1322,9 +1359,10 @@ both tables exist.
 
 #### E.6 `private.adoption_runs` — corrected: typed source columns, exact fingerprint format, composite protocol FK
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** Same `account_scope_id`
-blocker as E.5 — this table's composite keys/FKs against
-`private.account_domain_authorities` inherit the same open question.
+**⚠ BLOCKED (unperformed scope reconciliation — see Status).** Same `account_scope_id`
+situation as E.5 — the scope is decided (`profiles.id`, ADR-0024) but not consistently
+derived here, and this table's composite keys/FKs against
+`private.account_domain_authorities` inherit that unreconciled state.
 
 ```sql
 create table private.adoption_runs (
@@ -1492,7 +1530,7 @@ compare-then-classify replaces per-row upsert entirely).
 
 #### E.9 `public.assessment_runs` (unchanged composite identity; header columns expanded)
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** The `fk_athlete` constraint
+**⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status).** The `fk_athlete` constraint
 below (`foreign key (athlete_id, account_scope_id) references public.athletes (id,
 profile_id)`) asserts `assessment_runs.account_scope_id = athletes.profile_id` —
 i.e. it treats `account_scope_id` as Profile-scoped. `bootstrap_account()`
@@ -1559,7 +1597,7 @@ promotion time, for audit).
 
 #### E.10 `public.assessment_history_tombstones` (unchanged)
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** Inherits E.9's
+**⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status).** Inherits E.9's
 `account_scope_id` blocker via its FK to `assessment_runs`.
 
 `(account_scope_id, assessment_run_id)` composite PK, FK to `assessment_runs` `on delete
@@ -3110,7 +3148,7 @@ prerequisite (Decision O), not assumed here.
 
 **Tombstones made authoritative for ordinary reads — at the policy level, not
 duplicated view-side logic.** The owner `SELECT` policy on `assessment_runs` itself
-excludes tombstoned rows. **⚠ BLOCKED (identity/authority-scope — see Status): this
+excludes tombstoned rows. **⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status): this
 policy's `account_scope_id = auth.uid()` condition assumes the account-scoped
 derivation, which `assessment_runs`'s own `fk_athlete` constraint (Decision E.9)
 contradicts by treating `account_scope_id` as Profile-scoped — not
@@ -3367,7 +3405,7 @@ function outside step 3:**
 one, real PostgreSQL transaction this function actually runs in, not a
 partial-progress model no ordinary function/RPC invocation can produce.**
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** The authority-row `INSERT`
+**⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status).** The authority-row `INSERT`
 below populates `account_scope_id` from `public.profiles.id` — Profile-scoped —
 which disagrees with `bootstrap_account()`'s own `account_scope_id = auth.uid()`
 (Decision H.8, account-scoped) for the exact same column on the exact same table.
@@ -4446,7 +4484,7 @@ reach domain `X`'s eventual `pilot` transition without an authority row for `X`.
 
 ### N. Corrected state, crash, and threat tables
 
-**⚠ BLOCKED (identity/authority-scope — see Status).** Every "Authority scope" cell
+**⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status).** Every "Authority scope" cell
 below, and every `bootstrap_account()`/`backfill_domain_authority()` recovery-action
 cell, inherits the open `account_scope_id` question — these tables describe the
 row/lock structure correctly, but the concrete identity each row keys on is not yet
@@ -4590,7 +4628,7 @@ blank cells.**
 
 ### O. Threat table (unchanged categories; two entries corrected for the byte-representation and grant fixes)
 
-**⚠ BLOCKED (identity/authority-scope — see Status): the first two rows below both
+**⚠ BLOCKED (unperformed scope reconciliation; scope itself decided as `profiles.id` — see Status): the first two rows below both
 describe `account_scope_id` as if its derivation were settled and uniform. It is
 neither — `bootstrap_account()` derives it from `auth.uid()`; `backfill_domain_
 authority()` and `assessment_runs`'s own `fk_athlete` derive it from `profiles.id`.
@@ -4666,11 +4704,18 @@ built on it) is used as if it were the raw Supabase Auth account id in some plac
 (`bootstrap_account()`, Decision H.8; the `assessment_runs_owner_select` RLS
 policy, Decision K) and as if it were `docs/adr/0022`'s independent `Profile.id` in
 others (`backfill_domain_authority()`; `assessment_runs`'s own `fk_athlete`
-constraint, Decision E.9) — genuinely undecided, not merely inconsistently
-described, and this document does not decide it here. Every table, function,
-policy, and proof built on `account_scope_id` remains blocked until a dedicated
-decision (a future ADR, or an explicit product/architecture decision this document
-then adopts) settles which scope Local Adoption authority actually uses.
+constraint, Decision E.9) — **which, when this passage was written, was genuinely
+undecided rather than merely inconsistently described, and that pass deliberately
+did not decide it.** **Since resolved:**
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(Accepted) subsequently decided athlete-owned authority is **Profile-scoped**
+(`Profile.id`, never the Auth account id). What was left behind is therefore **not
+an open decision but unperformed internal reconciliation** — every table,
+function, policy and proof built on `account_scope_id` still derives it
+inconsistently and would each need rewriting to Profile scope. **That work is also
+moot for the forward path:** ADR-0024 supersedes Local Adoption entirely (there is
+no legacy data to adopt), so this passage records a historical blocker on a retired
+route, not a prerequisite anyone is waiting on.
 Separately, on the already-decided part of the same identity model: Decision
 E.3/E.4's `profiles`/`athletes` schema and `bootstrap_account()`'s own
 `profiles`/`athletes` bootstrap step must be rebuilt against ADR-0022's real,

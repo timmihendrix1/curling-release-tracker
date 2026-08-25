@@ -2,6 +2,12 @@
 
 ## Status
 
+**Unaffected by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
+(2026-08-24).** ADR-0024 retires the *legacy copy/activation programme* (ADR-0016/0017/0018)
+as the forward production path, because the data it would carry forward is disposable. **This
+adapter is not invalidated by that** — it remains valid, unwired infrastructure that a later
+stage may or may not select. No code is deleted.
+
 Accepted. Implemented (adapter only — not activated). Phase 2, Stage 2 of the IndexedDB
 migration path `docs/PERSISTENCE_BOUNDARY_DESIGN.md` §10 describes. See
 `docs/adr/0013-application-owned-persistence-repository-boundary.md` (the repository
