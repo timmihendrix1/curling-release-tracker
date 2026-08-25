@@ -419,7 +419,7 @@ Accountless use is withdrawn as a valid product path.** The canonical decision s
    derived automatically from the authenticated Profile on that device (no "Recorded by"
    selector).
 
-**Not implemented.** This is Stage B0.2 work; see §18.
+**Not implemented.** This is Stage B0.2 work; see §18. Its accepted architecture — the identity authority, the durable access-barrier protocol, the three-phase startup, the Google flow-correlation rules, and the onboarding completion transaction — is recorded in `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md` (**accepted; no runtime code implements it yet**).
 
 ### 5.4 Initial authentication experience
 
@@ -1962,6 +1962,48 @@ authentication and onboarding *state transitions* only — sporting-data confide
 an account switch stays open until Stage B0.3, because this stage does not change
 persistence scope.** This stage is therefore **not independently releasable**; see the
 release-unit note at the top of §18.
+
+**Accepted design record for this phase.**
+`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
+(**accepted; not implemented**) records the concrete architecture, written before implementation as
+`docs/AI_DEVELOPMENT_WORKFLOW.md` requires for a large cross-layer feature. The decisions that
+materially shape this phase:
+
+- **One authority.** A thin provider, one composition seam, and one coordinator owning **every
+  deliberate identity transition** (including **explicit sign-out**) **and every server-driven
+  invalidation transition** — the latter is forced by a definitive server negative and is never
+  described as deliberate. Today's four separate auth-controller call sites collapse into that one
+  owner, and the controller hook is retired.
+- **A durable deny-by-default barrier**, because the installed Supabase SDK persists the session and
+  emits `SIGNED_IN` *before* the exchange or verification call resolves — so a post-hoc verdict cannot
+  undo an already-durable session. **No raw provider auth event can open the application.** The two
+  categories order it differently: a **deliberate** transition writes the barrier **before** any
+  provider call, navigation or persistent local mutation, and nothing begins if that write fails; a
+  **server-driven invalidation** **denies in memory first**, then attempts the barrier before cleaning
+  trusted state, **falling back to trusted-record removal if the barrier write fails** — and if both
+  fail, denial holds for the page lifetime without claiming durable offline revocation.
+- **Barriers are resolved, never deleted** — the resolution is written under a key derived from that
+  exact barrier id, so an older operation cannot resolve or remove a newer barrier. This is required
+  because the storage boundary offers no compare-and-delete and claims no multi-key atomicity.
+- **Startup runs Phase 0 (OAuth return intake) → Phase A (durable preflight, no identity yet) →
+  Phase B (identity binding).** A legitimate full-page Google return is the intentional continuation
+  mechanism, not a lost session.
+- **Google requires a callback-carried flow selector**, with **no fallback**: a flow-less exchange uses
+  the most recently stored verifier, and a failed exchange removes the verifier it selected, so a stale
+  callback could otherwise destroy a newer valid attempt. If that selector cannot be carried, **Google
+  sign-in fails closed and the stage is not complete** — Google is a required closed-test provider.
+- **Account-scope divergence is not uniform:** a deliberately authenticated account proved by an exact
+  correlation set is an **expected replacement**, not a revocation; an uncorrelated mismatch is an
+  invalidation. A definitive negative does not unconditionally write a durable barrier: it **denies in
+  memory** and **attempts** the barrier before cleaning trusted state, with **trusted-record removal as
+  the fallback** if that persistence fails.
+- **Onboarding completion is completion-first and write-once**, establishing display name, both pinned
+  legal evidence rows, Athlete capability, the default Free entitlement and the completion fact
+  atomically — or none of them. **No Marketing Consent is collected in this stage, and absence never
+  means consent.**
+- **Local identity records are trust hints, not a security boundary.** A forged record can mount the
+  application shell and expose the still-unscoped local workspace, which is an **independent** reason
+  this phase cannot ship before Stage B0.3.
 
 ### Phase 4: Profile-scoped local data and the Free cloud backbone (Stages B0.3 and B0.4)
 

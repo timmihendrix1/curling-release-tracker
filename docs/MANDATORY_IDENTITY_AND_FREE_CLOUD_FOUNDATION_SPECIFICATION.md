@@ -406,6 +406,42 @@ would invite account switching while nothing isolates what switching exposes.
 
 **B0.2 is therefore never described as independently release-ready.**
 
+### 11.2 Where B0.2's architecture is recorded (implementation consequence, not a product decision)
+
+Stage B0.2's architecture is recorded in
+`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
+(**accepted; not implemented**), written before implementation as
+`docs/AI_DEVELOPMENT_WORKFLOW.md`'s "Large cross-layer features" requires.
+
+**That ADR changes no product decision in this document.** It records *how* the decisions in §2, §3
+and §5 are to be built — the identity authority, the durable access-barrier protocol and its
+non-destructive resolution, the three-phase startup including OAuth-return intake, the provider
+flow-correlation rules, the onboarding completion transaction, and the trusted-device record — together
+with the honest limits of each. Where the ADR and this document disagree, **this document governs the
+product rule and the ADR is the defect**.
+
+Three implementation consequences are worth stating here because they are easy to misread as new
+product rules, and are not:
+
+1. **Signing in still grants nothing on its own.** The ADR's barrier, attempt and resolution records are
+   local correlation evidence, not authorisation. Athlete capability, the Free entitlement and gate
+   eligibility continue to come only from **completed onboarding**, exactly as §3.4 requires.
+2. **The offline capability of §5 is unchanged, and no expiry is introduced.** The ADR adds the local
+   trusted-device record that makes §5.2's offline training possible and specifies when a definitive
+   *online* negative result **triggers the deny-ward invalidation protocol**. That protocol *attempts*
+   durable denial — through the invalidation barrier and trusted-record cleanup — and retains the
+   documented limitation that if **both** mechanisms fail, the result is page-lifetime denial with **no
+   durable offline-revocation claim**. It records a negative fact only after that fact has actually been
+   learned online, and **invents no offline expiry period** — §5.8 remains open.
+3. **Marketing consent remains as §3.3 item 7 states.** B0.2 asks for nothing, stores nothing and
+   infers nothing; absence is never consent. Any future marketing capability needs its own separate,
+   explicit, optional, default-off design, never bundled with the required legal steps.
+
+The ADR also records one limitation this document does not need to decide: **browser storage is not a
+security boundary**, so a forged local record can mount the application shell and expose the still
+identity-unscoped local workspace. That is an **additional, independent** reason for §11.1's rule — it
+does not replace the reason already stated there.
+
 ## 12. Current implementation versus accepted target
 
 | Concern | Current implementation (fact) | Accepted target (this document) |

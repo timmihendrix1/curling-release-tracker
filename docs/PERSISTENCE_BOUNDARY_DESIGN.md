@@ -1853,11 +1853,71 @@ repository built on it, can make two `set` calls succeed-or-fail together. Secti
 states plainly what this means for session archiving specifically; no other multi-key
 operation exists in the current codebase.
 
-**No `remove` operation is needed.** Confirmed: nothing in the current codebase calls
-`localStorage.removeItem` (Section 2) — every "delete"/"clear" action is a full overwrite
-with a smaller/empty value. Adding an unused capability now would be speculative; if a
+**No `remove` operation was needed for Phase 1 — superseded for identity records by
+ADR-0025 (Stage B0.2, accepted; not implemented).** The Phase 1 finding stands as a
+historical fact and still describes every **sporting** repository: nothing in the Phase 1
+codebase calls `localStorage.removeItem` (Section 2), and every "delete"/"clear" action
+there is a full overwrite with a smaller/empty value. Adding an unused capability at that
+point would have been speculative, and the condition stated for revisiting it — "if a
 future task introduces real key deletion, add `remove` then, with its own review of what
-"delete" should mean per domain.
+'delete' should mean per domain" — is exactly what has now happened.
+
+Stage B0.2 introduces local **identity** records (a device trust record, an access
+barrier, an interactive-authentication attempt, a barrier resolution and a pending
+deep-link intent) for which removal is a genuine operation rather than an overwrite.
+ADR-0025 therefore adds a **narrowly scoped removable capability that extends — and does
+not replace — the minimal `StorageAdapter` contract above**. Two properties hold for every
+repository that takes it:
+
+- **removal resolves a typed result and never rejects**, matching the never-throw
+  discipline the rest of this section establishes; and
+- the concrete `localStorage` adapter implements it, and the rule that direct
+  `localStorage` access exists only in that adapter is unchanged.
+
+**Two kinds of removal exist here, and they must not be grouped together.** One is
+security-relevant and required; the other is housekeeping whose failure changes nothing.
+
+| Repository | Adapter | Kind of removal |
+|---|---|---|
+| `identityBarrierRepository` | **base `StorageAdapter` only** | **None.** No code path may remove a current barrier as a security transition — a barrier is superseded by writing a newer one and completed by a separate, per-barrier resolution record |
+| `trustedDeviceRepository` | `RemovableStorageAdapter` | **Required** establishment, replacement and removal — but the consequence of a failure differs by case; see the three cases below. Never best-effort |
+| `pendingIntentRepository` | `RemovableStorageAdapter` | **Required** deletion on sign-out and account switch. A failure blocks the transition rather than being ignored |
+| `identityBarrierResolutionRepository` | `RemovableStorageAdapter` | **Best-effort cleanup of already non-current records only.** Never affects authorization; a failure changes nothing |
+| `interactiveAttemptRepository` | `RemovableStorageAdapter` | **Best-effort cleanup of already non-current records only.** Never affects authorization; a failure changes nothing |
+| The seven sporting repositories | **base `get`/`set` contract, unchanged** | None; they never delete |
+
+**The trusted-device row covers three different operations, and they fail differently.**
+Collapsing them into one rule would state something false about at least one of them:
+
+- **Required establishment, or correlated account replacement, after successful
+  authentication.** The provider and server operations **may already have succeeded** —
+  authentication, Profile resolution, onboarding and entitlement can all be done. The
+  failure is therefore *not* "the transition stopped before a provider call"; it is
+  `trusted_state_not_established`, and the consequence is that **no ready state is
+  entered**. This case **does not depend on an unresolved invalidation barrier existing**,
+  because none is written for it.
+- **Removal during explicit sign-out or invitation account recovery.** Required, and the
+  barrier was written first. **A failure blocks provider sign-out**, and the
+  already-written unresolved barrier remains authoritative.
+- **Cleanup during server-driven invalidation.** This occurs **after** immediate in-memory
+  denial and an **attempted** invalidation barrier. **If barrier persistence failed,
+  removal is the fallback durable denial** rather than a follow-up to it. If both fail, the
+  result is **page-lifetime denial only — not durable offline revocation**.
+
+**"Best effort" describes only the two non-current cleanup rows above.** It never describes
+required trusted-state or pending-intent removal.
+
+**Where the barrier does the work, it must actually exist.** For the deliberate transitions
+(sign-out, invitation recovery) the barrier is written first, so a later removal failure is
+safe. That reasoning **does not extend to the case where the barrier write itself failed** —
+there, removal is the remaining durable mechanism, and if it also fails the honest
+limitation stands: denial holds for the page lifetime and **no durable offline revocation is
+claimed**.
+
+**The extended capability is not, and must not be presented as, a solution to multi-key
+atomicity.** A plain `remove` still offers no compare-and-delete, which is precisely why
+ADR-0025 resolves barriers with a key derived from the barrier's own id instead of
+deleting a shared key.
 
 **This interface cannot, by itself, express an IndexedDB transaction.** An IndexedDB
 transaction spans a database connection, an explicit set of object stores, and a

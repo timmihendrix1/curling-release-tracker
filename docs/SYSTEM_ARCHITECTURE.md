@@ -2838,6 +2838,15 @@ gate. Everything described in this section — including the explicit "never gat
 of the app" property below — is an accurate statement about today's code and must not be
 read as product direction.
 
+**Where the replacement is designed.** Stage B0.2's accepted design is recorded in
+`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
+and summarised under "Stage B0.2's accepted gate design" below — **accepted, not
+implemented**. Two consequences for this section specifically: `useSupabaseAuthController`
+is **retired** rather than extended (its four current call sites collapse into one
+coordinator behind a thin provider), and the client's auth options change (PKCE, automatic
+URL detection disabled, flow-id round-trip enabled), so the callback handling described
+here as absent becomes application-owned.
+
 **Configuration boundary.** `src/lib/supabase/config.ts`'s `resolveCloudConfig()` reads
 the two public, browser-exposed `NEXT_PUBLIC_SUPABASE_URL`/
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` variables and resolves one of `"cloud_disabled"`
@@ -2961,11 +2970,104 @@ account-switch review proves authentication/onboarding state transitions only. T
 data is **discarded** in B0.3, never imported or adopted, and disposal does not move earlier.
 **B0.2 is never independently release-ready.**
 
+### Stage B0.2's accepted gate design (Accepted — not implemented)
+
+**Decision record:** `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
+Everything in this subsection is an **accepted design that no runtime code implements yet**. Nothing
+here may be read as a description of current behaviour; the "Optional Supabase Auth Shell" section
+above remains the accurate account of what exists today.
+
+**One authority.** A thin `IdentityProvider` owns React lifecycle, context and rendering; a single
+non-component `identityRuntime` facade is the only composition seam; and one
+`IdentityTransitionCoordinator` owns **every deliberate identity transition** — Google, email OTP,
+locked-screen recovery, **explicit sign-out** and the bounded invitation-recovery transition — **and
+every server-driven invalidation transition**, which no person initiates and which is therefore never
+described as a deliberate one. Both categories are coordinator-owned and deny-ward. OAuth-return
+admission and required trusted-state establishment are steps within those transitions. The four current
+`useSupabaseAuthController` call sites collapse into that one owner, and the hook is retired rather
+than kept as a second orchestrator.
+
+**Why a durable barrier exists.** The installed Supabase SDK **persists the session and emits
+`SIGNED_IN` before `exchangeCodeForSession` or `verifyOtp` resolves**. A post-hoc verdict therefore
+cannot undo a session that already survives a reload. **No raw provider auth event — `SIGNED_IN`
+included — can open the application.**
+
+**The two transition categories order their denial differently.** A **deliberate** identity transition
+establishes the unresolved barrier **before** any provider call, navigation or persistent local
+mutation; if that write fails, nothing begins. A **server-driven invalidation** cannot wait for a
+durable write, because the application is already running: it **denies in memory first**, then attempts
+the invalidation barrier before cleaning trusted state, and **falls back to trusted-record removal if
+the barrier write fails**. If both durable mechanisms fail, denial holds for the page lifetime and
+**durable offline revocation is not claimed**.
+
+**Barriers are resolved, never deleted.** A successful, correlated operation writes a **resolution
+under a key derived from that exact barrier id**, so an older operation can never resolve or remove a
+newer barrier. This matters because `StorageAdapter` offers only `get`/`set` and explicitly claims no
+multi-key atomicity, so a read-then-delete finalization could not be made safe. The barrier, its
+matching attempt and its matching resolution form **one durable correlation set** that survives reload;
+only non-current records are ever cleaned, and that cleanup can never affect authorization.
+
+**Startup has three phases.** **Phase 0** captures the OAuth return once, classifies it, cleans the URL
+and only then inspects durable state — because a legitimate full-page Google return necessarily arrives
+with a valid unresolved barrier, a matching attempt and **no resolution yet**, and is the intentional
+continuation mechanism rather than a lost one. **Phase A** validates a *completed* correlation set
+structurally, with **no account scope checked, because no identity has been restored yet**. **Phase B**
+binds a restored or trusted identity to the resolution's account scope.
+
+**Account-scope divergence is not one case.** A deliberately authenticated account that differs from a
+stale trusted record, **proved by an exact completed correlation set**, is an expected replacement: the
+old record is never honoured, the new account resolves fresh, and the trusted record is replaced before
+any ready state. An *uncorrelated* mismatch, or a restored identity differing from the resolution's
+scope, is an invalidation, which follows the failure-aware ordering described above: deny in memory,
+**attempt** the durable invalidation barrier before cleaning trusted state, fall back to trusted-record
+removal if that write fails, and on double failure hold page-lifetime denial **without claiming durable
+offline revocation**.
+
+**Google correlation.** The client uses PKCE with automatic URL detection disabled and the SDK's
+flow-id round-trip enabled, so a callback carries an exact selector. That selector must match the
+persisted attempt **before** any exchange, and the exchange always passes it explicitly — **never the
+flow-less form**, which would use the most recently stored verifier and, on failure, remove the
+verifier it selected, destroying a newer valid attempt. Callback capture is **page-scoped, single-use
+and React-Strict-Mode-safe**: cleaning the URL in a discarded effect pass must not lock out the
+committed one.
+
+**Onboarding.** `ensure_my_profile()` is the only bare-Profile creation path and grants nothing.
+`complete_personal_onboarding()` is **completion-first and write-once**: it returns an existing
+completion with no writes, or atomically establishes display name, both **pinned** legal evidence rows,
+Athlete capability, the default Free entitlement and the completion fact — or none of them. Gate
+eligibility is derived from those facts; no mutable "gate eligible" flag is persisted, and no browser
+role can write any of them.
+
+**Legal evidence.** Versioned immutable metadata with one-way retirement and atomic rotation; the
+metadata displayed and the ids submitted come from **one snapshot**; an invalid response fails closed as
+a whole; and **a later document change never automatically revokes a completed Profile or forces
+re-acceptance** — that policy is deliberately undecided. **No Marketing Consent is collected in B0.2,
+and absence never means consent.**
+
+**Local records are trust hints, not a security boundary.** A person able to alter browser storage can
+forge a trusted-device record, a barrier, an attempt or a resolution; in B0.2 that can mount the
+application shell and expose whatever sporting data exists in the still-unscoped local workspace. None
+of it grants server-side authority — `auth.uid()`, grants and RLS remain the real boundary. **This is an
+independent reason B0.2 cannot ship before B0.3**, and B0.3 closes ordinary application-level
+cross-Profile isolation without turning browser storage into protection against device-level access.
+
 **What this does not change.** The domain model, the repository boundary's shape
 (ADR-0013), the `TimingProvider`/`TimingResult` capture boundary, navigation, Assessments
-and the Exercise Library domain are all unaffected as designs. What changes is that local
-persistence gains a Profile scope, and a cloud tier gains authority once it acknowledges a
-record.
+and the Exercise Library domain are all unaffected as designs. What changes across the
+whole B0.2-B0.4 programme is that local persistence gains a Profile scope, and a cloud tier
+gains authority once it acknowledges a record.
+
+**Which stage does which — do not read the subsection above as doing any of the last two.**
+
+| Stage | What it introduces | What it explicitly does **not** do |
+|---|---|---|
+| **B0.2** | Identity and onboarding: the gate, the barrier protocol, the onboarding completion transaction, and trusted-device continuity for offline entry | **No Profile scoping of local sporting persistence. No disposal of legacy unscoped data. No cloud sporting persistence of any kind.** The seven repositories still share one identity-unscoped `localStorage` workspace |
+| **B0.3** | **Profile-scoped local sporting persistence**, sign-out/account-switch isolation, and the one-time disposal of the disposable unscoped test data | No cloud sporting persistence |
+| **B0.4** | **Free structured cloud authority** — schema, ownership, RLS, idempotent upload, a durable outbox, restore, retry, sync truth and conflict behaviour | — |
+
+**B0.2 and B0.3 remain one releasable privacy unit** (see the paragraphs above): B0.2 may be built and
+reviewed first, but it is never released on its own, precisely because the isolation that makes its
+account switching safe does not arrive until B0.3.
 
 ## Team Foundation (Implemented — domain/service/UI; SQL layer executed and verified; application integration not yet exercised against a real database)
 

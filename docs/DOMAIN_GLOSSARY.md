@@ -183,6 +183,107 @@ basic restore as cross-device continuation (see **Sync Status**).
 
 ---
 
+## Identity Gate
+
+**[Planned — Stage B0.2, `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
+Accepted; no runtime code implements it. The application is still fully usable with no account.]**
+The blocking boundary that must be passed before any authenticated application surface — including all
+training, Assessment and Analyze functionality — is reachable. Passing it requires an authenticated
+**UserAccount**, a resolved **Profile**, a completed personal onboarding, **Athlete** capability and the
+default **Free** entitlement, all derived from server-authoritative facts rather than a stored flag.
+
+Distinct from **authentication**: signing in is necessary but never sufficient. A Profile that has been
+resolved but has not completed onboarding does not pass the gate.
+
+---
+
+## Identity Access Barrier
+
+**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** A durable, local, deny-by-default record.
+While an **unresolved** barrier exists, the authenticated application is blocked. **The two transition
+categories write it at different points:**
+
+- a **deliberate user transition** — signing in with either method, locked-screen recovery, explicit
+  sign-out or invitation account recovery — writes it **before** that transition's provider call,
+  navigation or persistent local mutation;
+- a **server-driven invalidation**, which no person initiates and which is therefore not a deliberate
+  transition, begins with **immediate in-memory denial**; the barrier is then **attempted** as the
+  first *durable* denial mechanism, and if that attempt fails, **trusted-record removal is attempted as
+  the fallback**.
+
+It exists because the authentication provider persists a session and announces it *before* the calling
+code can judge whether the transition it belongs to actually succeeded; the barrier is the durable
+denial that makes that ordering safe. **A barrier is never deleted as a security transition** — it is
+superseded by writing a newer one, and completed by a separate **Identity Barrier Resolution**.
+
+Distinct from a provider sign-out: provider sign-out is attempted last and may fail without weakening
+the denial.
+
+---
+
+## Identity Barrier Resolution
+
+**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record proving that one exact
+**Identity Access Barrier** was completed by one exact **Interactive Authentication Attempt**. It is
+stored under a key derived from that barrier's own identifier, so writing one can never resolve or
+remove a different barrier.
+
+**A resolution grants nothing on its own.** It establishes only that this barrier was completed; the
+restored session, Profile, onboarding, entitlement, trusted state and account scope are all still
+checked. A resolution belonging to an older barrier binds nothing.
+
+---
+
+## Interactive Authentication Attempt
+
+**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record of one deliberately
+started authentication, bound to the **Identity Access Barrier** written for it and, for the redirect
+provider, to the exact provider flow it created. It is what lets a full-page return be recognised as a
+genuine continuation of *this* attempt rather than a stale or unrelated one.
+
+Distinct from a provider session: an attempt records that a user deliberately began authenticating, not
+that they are authenticated.
+
+---
+
+## Trusted Device Record
+
+**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record establishing that this
+device previously completed authentication and onboarding for one account scope, written **only** from
+a successful server-authoritative result. It is what makes offline entry possible for a previously
+onboarded Profile, and it is keyed to the account scope — a record belonging to a different account can
+never grant access, online or offline.
+
+It holds **no** session, token, verifier or one-time code.
+
+**Its removal is attempted, never assumed — and three different situations remove it for three
+different reasons, under three different protocols.** They must not be treated as one rule.
+
+**A. Explicit sign-out and invitation account recovery.** A fresh unresolved **Identity Access Barrier**
+is established **before** the required removal of this record. **If the removal fails, the application
+stays locked and provider sign-out is not called** — the already-written barrier remains authoritative,
+so a failed removal never leaves a usable grant behind.
+
+**B. Server-driven invalidation.** Access is denied **in memory first**; only then is the invalidation
+barrier attempted, and only after it succeeds is this record removed. **If the barrier write fails,
+removal is attempted as the fallback durable denial.** If **both** fail, access is denied for that page
+lifetime and the situation is reported honestly — **no durable offline revocation is claimed**.
+
+**C. Explicitly correlated account replacement** (ADR-0025 Case A). **This is not an invalidation and
+writes no new invalidation barrier.** The provider authentication and its correlation may already have
+succeeded; what remains is that this record still belongs to the *previous* account. **The old
+account's record is never honoured for the new identity**, and **no ready state is entered until the new
+account's record is durably established or replaced**. A failure to write it yields
+`trusted_state_not_established` — server success does not substitute for it, and **a completed,
+resolved correlation set alone grants no access**.
+
+**Browser storage is not a security boundary.** A person able to alter it can forge this record; doing
+so can mount the application shell and expose whatever sporting data exists in the still-unscoped local
+workspace, but it grants **no** server-side authority. See **Profile-Scoped Local Data** for why this is
+an independent reason Stage B0.2 cannot ship before Stage B0.3.
+
+---
+
 ## Team Membership
 
 **[Implemented — Team Foundation beta, `docs/adr/0022`]** One Profile's period of
