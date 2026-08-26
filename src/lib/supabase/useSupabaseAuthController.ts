@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { resolveCloudConfig, type CloudConfig, type ConfiguredCloudConfig } from "./config";
 import { createSupabaseAuthService } from "./supabaseAuthService";
-import type { AuthService, AuthServiceResult, NormalizedAuthError } from "./authService";
-import { authFailed, authOk } from "./authService";
+import type {
+  AccountIdentity,
+  AuthService,
+  AuthServiceResult,
+  NormalizedAuthChange,
+  NormalizedAuthError,
+  SessionRestoreOutcome,
+} from "./authService";
+import { authFailed, authOk, normalizedAuthError } from "./authService";
 import { initialAuthState, reduceAuthState, type AuthEvent, type AuthState } from "./authState";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -27,6 +34,65 @@ function invalidInput(message: string): NormalizedAuthError {
 // normalization (e.g. Gmail's dot-insensitivity) is applied either.
 function normalizeEmail(rawEmail: string): string {
   return rawEmail.trim();
+}
+
+/**
+ * TRANSITIONAL ADAPTER (Stage B0.2b → retired with this hook in B0.2e).
+ *
+ * `AuthService` now speaks ADR-0025 Decision 2's five session-restore outcomes
+ * and Decision 3's closed set of normalized change reasons. This hook keeps its
+ * own, older `AuthState`/`AuthEvent` machine (`authState.ts`), which predates
+ * both and is deliberately left unchanged: it is retired wholesale when
+ * `IdentityProvider` takes over, and widening it now would mean designing the
+ * gate's states twice.
+ *
+ * These two functions are therefore the whole of the compatibility surface —
+ * one place where the new closed outcomes are mapped onto the existing events,
+ * and nowhere else. They perform no classification of their own: every
+ * distinction they act on was already decided inside the Supabase integration
+ * boundary, which is the only place a provider error is ever inspected.
+ *
+ * This hook remains an OPTIONAL, ADDITIVE sign-in shell that never gates the
+ * app. None of the outcomes below grants access to anything.
+ */
+function restoreOutcomeToEvent(outcome: SessionRestoreOutcome): AuthEvent {
+  switch (outcome.kind) {
+    case "authenticated":
+      return { type: "SESSION_RESTORE_SUCCEEDED", identity: outcome.identity };
+    case "no_session":
+      return { type: "SESSION_RESTORE_SUCCEEDED", identity: null };
+    case "invalid_session":
+      // A definitively invalid stored session is not an error to show and not a
+      // signed-in state: for this additive control it is simply "signed out",
+      // which is also what the provider's own cleanup has already made true.
+      return { type: "SESSION_RESTORE_SUCCEEDED", identity: null };
+    case "temporarily_unavailable":
+      return {
+        type: "SESSION_RESTORE_FAILED",
+        error: normalizedAuthError("temporarily_unavailable"),
+      };
+    case "restore_failed":
+      return {
+        type: "SESSION_RESTORE_FAILED",
+        error: normalizedAuthError("session_restore_failed"),
+      };
+  }
+}
+
+/** The identity a normalized change carries, if any. `signed_out` carries
+ * none by construction; `initial_session`/`other` may carry none. */
+function changeToIdentity(change: NormalizedAuthChange): AccountIdentity | null {
+  switch (change.reason) {
+    case "signed_in":
+    case "token_refreshed":
+    case "user_updated":
+      return change.identity;
+    case "signed_out":
+      return null;
+    case "initial_session":
+    case "other":
+      return change.identity;
+  }
 }
 
 export type AuthController = {
@@ -160,28 +226,21 @@ export function useSupabaseAuthController(
     try {
       // AuthService's contract is to never reject/throw, but a misbehaving
       // real or injected implementation must not be able to throw
-      // synchronously (calling getSession() itself) or asynchronously (an
+      // synchronously (calling restoreSession() itself) or asynchronously (an
       // unhandled rejection) into the void, let alone leave `state` stuck in
       // "restoring_session" forever.
-      authService.getSession().then(
-        (result) => {
-          if (disposed || disposedRef.current) return;
-          if (result.ok) {
-            dispatch({ type: "SESSION_RESTORE_SUCCEEDED", identity: result.value });
-          } else {
-            dispatch({ type: "SESSION_RESTORE_FAILED", error: result.error });
-          }
-        },
-        failSubscription
-      );
+      authService.restoreSession().then((outcome) => {
+        if (disposed || disposedRef.current) return;
+        dispatch(restoreOutcomeToEvent(outcome));
+      }, failSubscription);
     } catch {
       failSubscription();
     }
 
     try {
-      unsubscribe = authService.onAuthChange((identity) => {
+      unsubscribe = authService.onAuthChange((change) => {
         if (disposed || disposedRef.current) return;
-        dispatch({ type: "AUTH_CHANGED", identity });
+        dispatch({ type: "AUTH_CHANGED", identity: changeToIdentity(change) });
       });
     } catch {
       failSubscription();

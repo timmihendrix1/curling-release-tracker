@@ -186,10 +186,11 @@ describe("persistence architecture boundary — supabase client", () => {
   // See src/lib/supabase/authService.ts's doc comment and
   // docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md: UI, domain,
   // repository and general persistence modules must never import
-  // `@supabase/supabase-js` directly. Exactly two production files are
-  // permitted to — the lazy client factory and the auth-service
-  // implementation built on it — everything else must depend only on the
-  // `AuthService` interface (authService.ts), which has no SDK import at all.
+  // `@supabase/supabase-js` directly. Exactly THREE production files are
+  // permitted to — the lazy browser-client factory, the auth-service
+  // implementation built on it, and the server-only per-request client listed
+  // below — and everything else must depend only on the `AuthService` interface
+  // (authService.ts), which has no SDK import at all.
   const ALLOWED_SUPABASE_FILES = [
     join(SRC_ROOT, "lib", "supabase", "supabaseClient.ts"),
     join(SRC_ROOT, "lib", "supabase", "supabaseAuthService.ts"),
@@ -283,14 +284,182 @@ describe("persistence architecture boundary — supabase client", () => {
     expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
   });
 
-  it("both designated files actually do import @supabase/supabase-js (the exclusion is targeted, not vacuous)", () => {
+  it("every designated file actually does import @supabase/supabase-js (the exclusion is targeted, not vacuous)", () => {
+    // Three, not two: an allowance that stopped matching a real importer would
+    // silently widen this boundary.
+    expect(ALLOWED_SUPABASE_FILES).toHaveLength(3);
     for (const path of ALLOWED_SUPABASE_FILES) {
-      expect(importsSupabaseSdk(readFileSync(path, "utf8"))).toBe(true);
+      expect(importsSupabaseSdk(readFileSync(path, "utf8")), relative(SRC_ROOT, path)).toBe(true);
     }
   });
 
   it("the AuthService contract module itself has no @supabase/supabase-js import", () => {
     const contractFile = join(SRC_ROOT, "lib", "supabase", "authService.ts");
     expect(importsSupabaseSdk(readFileSync(contractFile, "utf8"))).toBe(false);
+  });
+});
+
+describe("authorized Team-request boundary — the access token crosses exactly one seam", () => {
+  // See src/lib/supabase/authorizedFetch.ts and ADR-0025 Decision 20. The
+  // bearer token is read in ONE infrastructure helper and passed ONLY into a
+  // validated same-origin request. Confining the import of that helper to one
+  // composition seam is what makes "no component, no domain module and no
+  // TeamService implementation can reach a token" a checkable property rather
+  // than a convention.
+  const CONTRACT_FILE = join(SRC_ROOT, "lib", "supabase", "authorizedTeamRequest.ts");
+  const HELPER_FILE = join(SRC_ROOT, "lib", "supabase", "authorizedFetch.ts");
+  const FACTORY_FILE = join(SRC_ROOT, "lib", "supabase", "teamServiceFactory.ts");
+  const TEAM_SERVICE_FILE = join(SRC_ROOT, "lib", "supabase", "supabaseTeamService.ts");
+
+  const MODULE_NAME = "authorizedFetch";
+  const QUOTED_MODULE_PATH = `["'][^"']*${MODULE_NAME}["']`;
+  // Same four-form alternation as the checks above. `import type ... from` is
+  // excluded from the VALUE-import pattern below by a separate type-only test,
+  // because naming the helper's types is harmless — only importing its runtime
+  // value gives a module the ability to read a token.
+  const ANY_IMPORT_PATTERN = new RegExp(
+    [
+      `\\bfrom\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*${QUOTED_MODULE_PATH}`,
+      `\\bimport\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+      `\\brequire\\s*\\(\\s*${QUOTED_MODULE_PATH}`,
+    ].join("|")
+  );
+  const TYPE_ONLY_IMPORT_PATTERN = new RegExp(
+    `\\bimport\\s+type\\b[^;]*\\bfrom\\s*${QUOTED_MODULE_PATH}`
+  );
+
+  function importsAuthorizedFetch(source: string): boolean {
+    return ANY_IMPORT_PATTERN.test(stripComments(source));
+  }
+
+  function valueImportsAuthorizedFetch(source: string): boolean {
+    const code = stripComments(source);
+    if (!ANY_IMPORT_PATTERN.test(code)) return false;
+    // A file whose ONLY reference is a type-only import is not a value importer.
+    return !TYPE_ONLY_IMPORT_PATTERN.test(code) || ANY_IMPORT_PATTERN.test(code.replace(TYPE_ONLY_IMPORT_PATTERN, ""));
+  }
+
+  it("the detectors match every supported import form and ignore comments and type-only imports (non-vacuous)", () => {
+    const valueImports = [
+      'import { createAuthorizedTeamRequest } from "./authorizedFetch";',
+      'import createAuthorizedTeamRequest from "../supabase/authorizedFetch";',
+      'import "./authorizedFetch";',
+      'const mod = await import("./authorizedFetch");',
+      'const mod = require("./authorizedFetch");',
+      'export { createAuthorizedTeamRequest } from "./authorizedFetch";',
+      'export * from "./authorizedFetch";',
+    ];
+    for (const source of valueImports) {
+      expect(importsAuthorizedFetch(source), source).toBe(true);
+      expect(valueImportsAuthorizedFetch(source), source).toBe(true);
+    }
+
+    const typeOnly = 'import type { AuthorizedFetchOverrides } from "./authorizedFetch";';
+    expect(importsAuthorizedFetch(typeOnly)).toBe(true);
+    expect(valueImportsAuthorizedFetch(typeOnly)).toBe(false);
+
+    for (const source of [
+      "// authorizedFetch is mentioned here only in prose.",
+      "/* authorizedFetch appears only in a block comment. */",
+      'import { foo } from "./unrelated";',
+    ]) {
+      expect(importsAuthorizedFetch(source), source).toBe(false);
+      expect(valueImportsAuthorizedFetch(source), source).toBe(false);
+    }
+  });
+
+  it("teamServiceFactory.ts is the only production value-importer of authorizedFetch.ts", () => {
+    const productionFiles = collectSourceFiles(SRC_ROOT).filter(
+      (path) => !isTestPath(path) && path !== HELPER_FILE
+    );
+    const importers = productionFiles.filter((path) =>
+      valueImportsAuthorizedFetch(readFileSync(path, "utf8"))
+    );
+    expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([
+      relative(SRC_ROOT, FACTORY_FILE),
+    ]);
+  });
+
+  it("that one production construction passes no test overrides", () => {
+    const code = stripComments(readFileSync(FACTORY_FILE, "utf8"));
+    const calls = [...code.matchAll(/createAuthorizedTeamRequest\s*\(([^)]*)\)/g)].map((m) => m[1].trim());
+    // Exactly one call, whose only argument is the shared cached client — no
+    // `fetchImpl` and no `origin` may be supplied in production.
+    expect(calls).toEqual(["client"]);
+    expect(code).not.toContain("fetchImpl");
+    expect(code).not.toContain("origin");
+  });
+
+  it("no component and no module under src/lib/identity or src/lib/team imports authorizedFetch.ts at all", () => {
+    const scoped = collectSourceFiles(SRC_ROOT)
+      .filter((path) => !isTestPath(path))
+      .filter((path) => {
+        const rel = relative(SRC_ROOT, path);
+        return (
+          rel.startsWith("components/") ||
+          rel.startsWith(join("lib", "identity") + "/") ||
+          rel.startsWith(join("lib", "team") + "/")
+        );
+      });
+    // Non-vacuous: there really are files in this scope to check. (src/lib/identity
+    // does not exist yet — it arrives with Stage B0.2c — so the components and
+    // src/lib/team files are what make this count non-zero today.)
+    expect(scoped.length).toBeGreaterThan(10);
+    const offenders = scoped.filter((path) => importsAuthorizedFetch(readFileSync(path, "utf8")));
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("the authorizedTeamRequest.ts contract is SDK-free, fetch-free and helper-free, so it is safe to import anywhere", () => {
+    const code = stripComments(readFileSync(CONTRACT_FILE, "utf8"));
+    expect(/from\s*["']@supabase\/supabase-js["']/.test(code)).toBe(false);
+    expect(importsAuthorizedFetch(code)).toBe(false);
+    expect(/\bfetch\s*\(/.test(code)).toBe(false);
+    expect(/\bgetSession\b/.test(code)).toBe(false);
+    // Non-vacuous: it really does declare the closed route and outcome sets.
+    expect(code).toContain("TeamApiRoute");
+    expect(code).toContain("AuthorizedRequestOutcome");
+  });
+
+  it("SupabaseTeamService no longer performs direct browser session/token access or path construction for the Team routes", () => {
+    const code = stripComments(readFileSync(TEAM_SERVICE_FILE, "utf8"));
+    for (const forbidden of [
+      "auth.getSession",
+      "access_token",
+      "Authorization",
+      "Bearer",
+      "apiBase",
+      "/api/team",
+    ]) {
+      expect(code, forbidden).not.toContain(forbidden);
+    }
+    expect(/\bfetch\s*\(/.test(code)).toBe(false);
+    // Non-vacuous: it still routes the five mutations, via the injected helper.
+    expect(code).toContain("authorizedRequest");
+    expect(code).toContain('kind: "createInvitation"');
+  });
+
+  it("authorizedFetch.ts is the only production file that reads an access token", () => {
+    const CLASSIFIER_FILE = join(SRC_ROOT, "lib", "supabase", "supabaseCallbackClassifier.ts");
+    const productionFiles = collectSourceFiles(SRC_ROOT).filter((path) => !isTestPath(path));
+    const mentions = productionFiles.filter((path) =>
+      /\baccess_token\b/.test(stripComments(readFileSync(path, "utf8")))
+    );
+    // Exactly two files may even name it, for opposite reasons: the helper
+    // READS it, and the callback classifier lists it as an owned implicit-grant
+    // fragment field to STRIP.
+    expect(mentions.map((path) => relative(SRC_ROOT, path)).sort()).toEqual(
+      [relative(SRC_ROOT, HELPER_FILE), relative(SRC_ROOT, CLASSIFIER_FILE)].sort()
+    );
+
+    // The classifier's mention is a quoted field name only — never a property
+    // read off a session object.
+    const classifier = stripComments(readFileSync(CLASSIFIER_FILE, "utf8"));
+    expect(classifier).toContain('"access_token"');
+    expect(/\.access_token\b/.test(classifier)).toBe(false);
+
+    // The helper's mention IS a property read (non-vacuous).
+    const helper = stripComments(readFileSync(HELPER_FILE, "utf8"));
+    expect(/\.access_token\b/.test(helper)).toBe(true);
   });
 });

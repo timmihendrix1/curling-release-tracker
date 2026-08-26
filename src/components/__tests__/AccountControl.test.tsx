@@ -4,7 +4,13 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import AccountControl from "../AccountControl";
-import type { AccountIdentity, AuthService, AuthServiceResult } from "../../lib/supabase/authService";
+import type {
+  AccountIdentity,
+  AuthService,
+  AuthServiceResult,
+  NormalizedAuthChange,
+  SessionRestoreOutcome,
+} from "../../lib/supabase/authService";
 import { authFailed, authOk } from "../../lib/supabase/authService";
 import type { ConfiguredCloudConfig } from "../../lib/supabase/config";
 
@@ -26,15 +32,27 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
+/** TRANSITIONAL (Stage B0.2b): `AuthService` now speaks ADR-0025 Decision 2's
+ * five session-restore outcomes instead of a single `getSession()` result.
+ * These fakes keep expressing their intent as "signed in as X" / "signed out"
+ * / "restore failed" and translate here, so the component behaviour under test
+ * is unchanged. */
+function toRestoreOutcome(
+  result: AuthServiceResult<AccountIdentity | null>
+): SessionRestoreOutcome {
+  if (!result.ok) return { kind: "restore_failed" };
+  return result.value ? { kind: "authenticated", identity: result.value } : { kind: "no_session" };
+}
+
 function createFakeAuthService(initialSession: AuthServiceResult<AccountIdentity | null>) {
-  const listeners = new Set<(identity: AccountIdentity | null) => void>();
+  const listeners = new Set<(change: NormalizedAuthChange) => void>();
   const requestEmailOtp = vi.fn<(email: string) => Promise<AuthServiceResult<void>>>();
   const verifyEmailOtp =
     vi.fn<(email: string, token: string) => Promise<AuthServiceResult<AccountIdentity>>>();
   const signOut = vi.fn<() => Promise<AuthServiceResult<void>>>();
 
   const service: AuthService = {
-    getSession: vi.fn(async () => initialSession),
+    restoreSession: vi.fn(async () => toRestoreOutcome(initialSession)),
     onAuthChange: vi.fn((listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -60,9 +78,9 @@ describe("AccountControl — cloud disabled / misconfigured / restoring", () => 
   });
 
   it("renders a restoring indicator, then settles once the session resolves", async () => {
-    const deferred = createDeferred<AuthServiceResult<AccountIdentity | null>>();
+    const deferred = createDeferred<SessionRestoreOutcome>();
     const service: AuthService = {
-      getSession: vi.fn(() => deferred.promise),
+      restoreSession: vi.fn(() => deferred.promise),
       onAuthChange: vi.fn(() => () => {}),
       requestEmailOtp: vi.fn(),
       verifyEmailOtp: vi.fn(),
@@ -72,7 +90,7 @@ describe("AccountControl — cloud disabled / misconfigured / restoring", () => 
     expect(screen.getByTestId("account-control")).toHaveTextContent(/checking/i);
 
     await act(async () => {
-      deferred.resolve(authOk(null));
+      deferred.resolve({ kind: "no_session" });
       await Promise.resolve();
     });
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();

@@ -4,7 +4,12 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TeamsScreen from "../TeamsScreen";
-import type { AccountIdentity, AuthService, AuthServiceResult } from "../../lib/supabase/authService";
+import type {
+  AccountIdentity,
+  AuthService,
+  AuthServiceResult,
+  SessionRestoreOutcome,
+} from "../../lib/supabase/authService";
 import { authOk } from "../../lib/supabase/authService";
 import type { ConfiguredCloudConfig } from "../../lib/supabase/config";
 import { FakeTeamBackend, FakeTeamService } from "../../lib/team/fakeTeamService";
@@ -20,9 +25,21 @@ const CONFIGURED: ConfiguredCloudConfig = {
 
 const IDENTITY: AccountIdentity = { accountScopeId: "user-1", email: "a@example.com" };
 
+/** TRANSITIONAL (Stage B0.2b): `AuthService` now speaks ADR-0025 Decision 2's
+ * five session-restore outcomes instead of a single `getSession()` result.
+ * These fakes keep expressing their intent as "signed in as X" / "signed out"
+ * / "restore failed" and translate here, so the component behaviour under test
+ * is unchanged. */
+function toRestoreOutcome(
+  result: AuthServiceResult<AccountIdentity | null>
+): SessionRestoreOutcome {
+  if (!result.ok) return { kind: "restore_failed" };
+  return result.value ? { kind: "authenticated", identity: result.value } : { kind: "no_session" };
+}
+
 function signedInAuthService(): AuthService {
   return {
-    getSession: vi.fn(async (): Promise<AuthServiceResult<AccountIdentity | null>> => authOk(IDENTITY)),
+    restoreSession: vi.fn(async () => toRestoreOutcome(authOk(IDENTITY))),
     onAuthChange: vi.fn(() => () => {}),
     requestEmailOtp: vi.fn(),
     verifyEmailOtp: vi.fn(),
@@ -38,7 +55,7 @@ describe("TeamsScreen — not usable", () => {
 
   it("shows a sign-in prompt when configured but signed out", async () => {
     const authService: AuthService = {
-      getSession: vi.fn(async () => authOk(null)),
+      restoreSession: vi.fn(async () => toRestoreOutcome(authOk(null))),
       onAuthChange: vi.fn(() => () => {}),
       requestEmailOtp: vi.fn(),
       verifyEmailOtp: vi.fn(),

@@ -17,7 +17,64 @@ port = 54321
 [auth]
 enabled = true
 
+# The one canonical local origin. Stated explicitly rather than left to the CLI's
+# default because the redirect allow list below is matched against the FULL URL
+# including its query string, and a redirect that fails to match silently falls back
+# to this Site URL instead of erroring — a failure mode that is much easier to see
+# when both values are written down in one place.
+site_url = "http://localhost:3000"
+
+# The local app plus the callback round trip. Wildcards are deliberate and load-bearing
+# for Stage B0.2b: the browser client is constructed with
+# `experimental.appendPkceFlowIdToRedirects` (src/lib/supabase/supabaseClient.ts), so
+# the provider is asked to return to a URL carrying an extra `sb_flow_id` query
+# parameter. An exact, wildcard-free entry stops matching the moment that parameter is
+# appended (see ADR-0025 §E and the SDK's own warning on the flag), which would drop
+# the selector and make a callback impossible to correlate.
+#
+# `http` here is for local development only; a deployed environment configures its own
+# https origins in its own Supabase project, outside this repository.
+additional_redirect_urls = [
+  "http://localhost:3000",
+  "http://localhost:3000/**",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:3000/**",
+]
+
 [auth.email]
 enable_signup = true
 double_confirm_changes = false
 enable_confirmations = false
+
+# Google is the required closed-test provider for Stage B0.2's Google sign-in
+# (ADR-0025 Decision 10). It is configured here but left DISABLED, and that is the
+# committed default: no Google credential exists in this repository or in this local
+# environment, and none may ever be committed.
+#
+# Enabling a real local Google check takes TWO separate steps, and the variables alone
+# are NOT sufficient:
+#
+#   1. Set both named variables in the shell that starts Supabase — never in a
+#      committed file:
+#
+#        SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID
+#        SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET
+#
+#   2. Explicitly enable the provider in an environment-specific Supabase
+#      configuration that is not this committed file — `enabled` stays `false` here.
+#      With `enabled = false`, the two variables are read and then ignored; the
+#      provider is simply off.
+#
+# `env(...)` is the Supabase CLI's own indirection: the names are recorded, the values
+# are read from the environment at start-up. Nothing here asserts that a credential is
+# present, and a real external Google redirect round trip remains a manual /
+# provider-environment check that this repository's automated suite does not and
+# cannot perform.
+[auth.external.google]
+enabled = false
+client_id = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_CLIENT_ID)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_GOOGLE_SECRET)"
+# Where the provider returns to: the local Supabase Auth callback, which then
+# redirects on to an allow-listed application URL from the list above.
+redirect_uri = "http://127.0.0.1:54321/auth/v1/callback"
+skip_nonce_check = false

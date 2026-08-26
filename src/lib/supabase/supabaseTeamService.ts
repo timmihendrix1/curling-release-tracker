@@ -13,7 +13,15 @@
 // perform the RPC AND the email send server-side, then report back an honest
 // `emailSent` outcome (requirements 139-147). Every method resolves a
 // `TeamResult<T>` — never throws (requirement 23).
+//
+// Those five requests go through the injected `AuthorizedTeamRequest`
+// (authorizedTeamRequest.ts — an SDK-free, fetch-free contract), naming a route
+// from a closed set rather than building a path. This file therefore reads no
+// access token, constructs no URL, and calls no `fetch`: the token is read in
+// exactly one infrastructure helper (authorizedFetch.ts), on a request already
+// validated same-origin and confined to `/api/team/` (ADR-0025 Decision 20).
 import type { SupabaseClient } from "./supabaseClient";
+import type { AuthorizedTeamRequest, TeamApiRoute } from "./authorizedTeamRequest";
 import { parsePostgresErrorMessage } from "../team/postgresErrorMapping";
 import { teamOk, teamFailed, type TeamResult } from "../team/errors";
 import { deriveInvitationStatus } from "../team/invitationLifecycle";
@@ -136,39 +144,21 @@ export function mapInvitationCreatedRow(row: { invitation: Record<string, unknow
 export class SupabaseTeamService implements TeamService {
   constructor(
     private readonly client: SupabaseClient,
-    /** Base URL for this app's own Next.js Route Handlers (relative is fine in the
-     * browser) — overridable in tests. */
-    private readonly apiBase: string = "/api/team"
+    /** The one authorized-request helper for this app's own `/api/team/` Route
+     * Handlers. Injected rather than constructed here so this file never reaches
+     * a session, a token, or a URL. */
+    private readonly authorizedRequest: AuthorizedTeamRequest
   ) {}
 
-  private async accessToken(): Promise<string | null> {
-    // Guarded explicitly (in addition to the outer withNeverThrows wrapper —
-    // docs/adr/0022 §TeamService Never-Throws Contract) so a session-lookup failure
-    // here is treated the same as "not signed in" rather than surfacing as an
-    // unhandled rejection through postToRoute's caller.
-    try {
-      const { data } = await this.client.auth.getSession();
-      return data.session?.access_token ?? null;
-    } catch {
-      return null;
-    }
-  }
-
-  private async postToRoute<T>(path: string, body: unknown): Promise<TeamResult<T>> {
-    const token = await this.accessToken();
-    if (!token) {
+  private async postToRoute<T>(route: TeamApiRoute, body: unknown): Promise<TeamResult<T>> {
+    const outcome = await this.authorizedRequest(route, body);
+    if (outcome.kind === "forbidden") {
       return teamFailed("forbidden", "You must be signed in.");
     }
-    let response: Response;
-    try {
-      response = await fetch(`${this.apiBase}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-    } catch {
+    if (outcome.kind === "network_error") {
       return teamFailed("network_error", "Could not reach the server. Check your connection and try again.");
     }
+    const response = outcome.response;
     let json: unknown;
     try {
       json = await response.json();
@@ -376,7 +366,7 @@ export class SupabaseTeamService implements TeamService {
   }
 
   async removeMember(teamId: TeamId, membershipId: MembershipId): Promise<TeamResult<{ notificationEmailSent: boolean }>> {
-    return this.postToRoute<{ notificationEmailSent: boolean }>("/members/remove", { teamId, membershipId });
+    return this.postToRoute<{ notificationEmailSent: boolean }>({ kind: "removeMember" }, { teamId, membershipId });
   }
 
   async leaveTeam(teamId: TeamId): Promise<TeamResult<void>> {
@@ -405,7 +395,7 @@ export class SupabaseTeamService implements TeamService {
     teamId: TeamId,
     proposal: InvitationProposal
   ): Promise<TeamResult<{ invitation: TeamInvitation } & EmailSendOutcome>> {
-    return this.postToRoute("/invitations", {
+    return this.postToRoute({ kind: "createInvitation" }, {
       teamId,
       email: proposal.email,
       participationAsPlayer: proposal.participationAsPlayer,
@@ -417,7 +407,7 @@ export class SupabaseTeamService implements TeamService {
     invitationId: InvitationId,
     proposal: InvitationProposal
   ): Promise<TeamResult<{ invitation: TeamInvitation } & EmailSendOutcome>> {
-    return this.postToRoute(`/invitations/${invitationId}/revise`, {
+    return this.postToRoute({ kind: "reviseInvitation", invitationId }, {
       email: proposal.email,
       participationAsPlayer: proposal.participationAsPlayer,
       proposedFunctions: proposal.proposedFunctions,
@@ -425,7 +415,7 @@ export class SupabaseTeamService implements TeamService {
   }
 
   async resendInvitation(invitationId: InvitationId): Promise<TeamResult<{ invitation: TeamInvitation } & EmailSendOutcome>> {
-    return this.postToRoute(`/invitations/${invitationId}/resend`, {});
+    return this.postToRoute({ kind: "resendInvitation", invitationId }, {});
   }
 
   async revokeInvitation(invitationId: InvitationId): Promise<TeamResult<void>> {
@@ -498,7 +488,7 @@ export class SupabaseTeamService implements TeamService {
   }
 
   async createAdminRequest(teamId: TeamId, membershipId: MembershipId): Promise<TeamResult<{ request: TeamAdminRequest } & EmailSendOutcome>> {
-    return this.postToRoute("/admin-requests", { teamId, membershipId });
+    return this.postToRoute({ kind: "createAdminRequest" }, { teamId, membershipId });
   }
 
   async revokeAdminRequest(requestId: AdminRequestId): Promise<TeamResult<void>> {

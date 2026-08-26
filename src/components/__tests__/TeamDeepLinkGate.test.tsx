@@ -4,7 +4,13 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TeamDeepLinkGate from "../TeamDeepLinkGate";
-import type { AccountIdentity, AuthService, AuthServiceResult } from "../../lib/supabase/authService";
+import type {
+  AccountIdentity,
+  AuthService,
+  AuthServiceResult,
+  NormalizedAuthChange,
+  SessionRestoreOutcome,
+} from "../../lib/supabase/authService";
 import { authOk } from "../../lib/supabase/authService";
 import type { ConfiguredCloudConfig } from "../../lib/supabase/config";
 
@@ -24,9 +30,21 @@ const CONFIGURED: ConfiguredCloudConfig = {
   publishableKey: "sb_publishable_" + "a".repeat(20),
 };
 
+/** TRANSITIONAL (Stage B0.2b): `AuthService` now speaks ADR-0025 Decision 2's
+ * five session-restore outcomes instead of a single `getSession()` result.
+ * These fakes keep expressing their intent as "signed in as X" / "signed out"
+ * / "restore failed" and translate here, so the component behaviour under test
+ * is unchanged. */
+function toRestoreOutcome(
+  result: AuthServiceResult<AccountIdentity | null>
+): SessionRestoreOutcome {
+  if (!result.ok) return { kind: "restore_failed" };
+  return result.value ? { kind: "authenticated", identity: result.value } : { kind: "no_session" };
+}
+
 function fakeAuthService(initialIdentity: AccountIdentity | null): AuthService {
   return {
-    getSession: vi.fn(async (): Promise<AuthServiceResult<AccountIdentity | null>> => authOk(initialIdentity)),
+    restoreSession: vi.fn(async () => toRestoreOutcome(authOk(initialIdentity))),
     onAuthChange: vi.fn(() => () => {}),
     requestEmailOtp: vi.fn(),
     verifyEmailOtp: vi.fn(),
@@ -97,7 +115,7 @@ describe("TeamDeepLinkGate", () => {
     const onAdminRequestLink = vi.fn();
     const identity: AccountIdentity = { accountScopeId: "user-1", email: "admin@example.com" };
     const service = fakeAuthService(null);
-    const listeners = new Set<(identity: AccountIdentity | null) => void>();
+    const listeners = new Set<(change: NormalizedAuthChange) => void>();
     service.onAuthChange = vi.fn((listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -112,7 +130,7 @@ describe("TeamDeepLinkGate", () => {
     // embedded form here or through the header control elsewhere) — every
     // `useSupabaseAuthController` instance backed by the same underlying service
     // observes this the same way.
-    for (const listener of listeners) listener(identity);
+    for (const listener of listeners) listener({ reason: "signed_in", identity });
 
     await waitFor(() => expect(onAdminRequestLink).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(window.location.search).toBe(""));

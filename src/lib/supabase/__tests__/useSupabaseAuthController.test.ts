@@ -4,7 +4,14 @@ import { act, renderHook, type RenderHookResult } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useSupabaseAuthController, type AuthController } from "../useSupabaseAuthController";
-import type { AccountIdentity, AuthService, AuthServiceResult } from "../authService";
+import type { AuthState } from "../authState";
+import type {
+  AccountIdentity,
+  AuthService,
+  AuthServiceResult,
+  NormalizedAuthChange,
+  SessionRestoreOutcome,
+} from "../authService";
 import { authFailed, authOk } from "../authService";
 import type { ConfiguredCloudConfig } from "../config";
 
@@ -29,8 +36,8 @@ function createDeferred<T>() {
  * intermediate pending state and control completion order precisely. Never
  * touches the network, storage, or any real Supabase project. */
 function createFakeAuthService() {
-  const listeners = new Set<(identity: AccountIdentity | null) => void>();
-  const getSessionDeferred = createDeferred<AuthServiceResult<AccountIdentity | null>>();
+  const listeners = new Set<(change: NormalizedAuthChange) => void>();
+  const restoreDeferred = createDeferred<SessionRestoreOutcome>();
   const requestEmailOtpDeferred = createDeferred<AuthServiceResult<void>>();
   const verifyEmailOtpDeferred = createDeferred<AuthServiceResult<AccountIdentity>>();
   const signOutDeferred = createDeferred<AuthServiceResult<void>>();
@@ -43,7 +50,7 @@ function createFakeAuthService() {
   // listener — a shared unsubscribe (removing whichever listener happens to
   // be registered at call time) would silently mask a real "two listeners
   // stayed subscribed" bug under StrictMode's double-mount probe.
-  const onAuthChange = vi.fn((listener: (identity: AccountIdentity | null) => void) => {
+  const onAuthChange = vi.fn((listener: (change: NormalizedAuthChange) => void) => {
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
@@ -52,7 +59,7 @@ function createFakeAuthService() {
   });
 
   const service: AuthService = {
-    getSession: vi.fn(() => getSessionDeferred.promise),
+    restoreSession: vi.fn(() => restoreDeferred.promise),
     onAuthChange,
     requestEmailOtp,
     verifyEmailOtp,
@@ -67,12 +74,30 @@ function createFakeAuthService() {
     requestEmailOtp,
     verifyEmailOtp,
     signOut,
-    resolveGetSession: getSessionDeferred.resolve,
+    /** TRANSITIONAL (Stage B0.2b): the tests below still express intent as
+     * "the session resolved to X" / "it failed"; `AuthService.restoreSession`
+     * now speaks ADR-0025 Decision 2's five outcomes, and this one place
+     * translates. The five outcomes themselves are exercised directly by the
+     * "five restore outcomes" describe block further down, and exhaustively by
+     * supabaseAuthService.test.ts. */
+    resolveGetSession(result: AuthServiceResult<AccountIdentity | null>) {
+      restoreDeferred.resolve(
+        result.ok
+          ? result.value
+            ? { kind: "authenticated", identity: result.value }
+            : { kind: "no_session" }
+          : { kind: "restore_failed" }
+      );
+    },
+    resolveRestoreSession: restoreDeferred.resolve,
     resolveRequestEmailOtp: requestEmailOtpDeferred.resolve,
     resolveVerifyEmailOtp: verifyEmailOtpDeferred.resolve,
     resolveSignOut: signOutDeferred.resolve,
     fireAuthChanged(identity: AccountIdentity | null) {
-      listeners.forEach((listener) => listener(identity));
+      const change: NormalizedAuthChange = identity
+        ? { reason: "signed_in", identity }
+        : { reason: "signed_out" };
+      listeners.forEach((listener) => listener(change));
     },
   };
 }
@@ -211,6 +236,113 @@ describe("useSupabaseAuthController — startup", () => {
     // signed_in state (idempotent), but the listener-count assertion above is
     // what actually proves there is no leak.
     expect(result.current.state).toEqual({ status: "signed_in", identity: IDENTITY });
+  });
+});
+
+describe("useSupabaseAuthController — the five restore outcomes and normalized changes (Stage B0.2b)", () => {
+  // The transitional adapter is the whole compatibility surface between
+  // ADR-0025 Decision 2/3's closed outcomes and this hook's older state
+  // machine. These tests pin every one of its branches, so a later change to
+  // either side cannot silently reinterpret an outcome.
+  //
+  // This hook still never gates the app: none of the states below grants
+  // access to anything, and no barrier, attempt or resolution exists yet.
+  it("maps `authenticated` to signed_in", async () => {
+    const fake = createFakeAuthService();
+    const { result } = renderController(fake);
+
+    await act(async () => {
+      fake.resolveRestoreSession({ kind: "authenticated", identity: IDENTITY });
+      await Promise.resolve();
+    });
+
+    expect(result.current.state).toEqual({ status: "signed_in", identity: IDENTITY });
+  });
+
+  it("maps `no_session` to signed_out", async () => {
+    const fake = createFakeAuthService();
+    const { result } = renderController(fake);
+
+    await act(async () => {
+      fake.resolveRestoreSession({ kind: "no_session" });
+      await Promise.resolve();
+    });
+
+    expect(result.current.state).toEqual({ status: "signed_out" });
+  });
+
+  it("maps `invalid_session` to signed_out — never to signed_in, and never to an error to dismiss", async () => {
+    const fake = createFakeAuthService();
+    const { result } = renderController(fake);
+
+    await act(async () => {
+      fake.resolveRestoreSession({ kind: "invalid_session" });
+      await Promise.resolve();
+    });
+
+    expect(result.current.state).toEqual({ status: "signed_out" });
+  });
+
+  it("maps `temporarily_unavailable` to a recoverable error that says so, distinctly from a restore failure", async () => {
+    const fake = createFakeAuthService();
+    const { result } = renderController(fake);
+
+    await act(async () => {
+      fake.resolveRestoreSession({ kind: "temporarily_unavailable" });
+      await Promise.resolve();
+    });
+
+    const state = result.current.state;
+    expect(state.status).toBe("recoverable_error");
+    if (state.status === "recoverable_error") {
+      expect(state.error.kind).toBe("temporarily_unavailable");
+    }
+  });
+
+  it("maps `restore_failed` to a recoverable session-restore error", async () => {
+    const fake = createFakeAuthService();
+    const { result } = renderController(fake);
+
+    await act(async () => {
+      fake.resolveRestoreSession({ kind: "restore_failed" });
+      await Promise.resolve();
+    });
+
+    const state = result.current.state;
+    expect(state.status).toBe("recoverable_error");
+    if (state.status === "recoverable_error") {
+      expect(state.error.kind).toBe("session_restore_failed");
+    }
+  });
+
+  it("takes the identity from each identity-bearing normalized change, and none from signed_out", async () => {
+    const cases: Array<[NormalizedAuthChange, AuthState]> = [
+      [{ reason: "signed_in", identity: IDENTITY }, { status: "signed_in", identity: IDENTITY }],
+      [{ reason: "token_refreshed", identity: IDENTITY }, { status: "signed_in", identity: IDENTITY }],
+      [{ reason: "user_updated", identity: IDENTITY }, { status: "signed_in", identity: IDENTITY }],
+      [{ reason: "initial_session", identity: IDENTITY }, { status: "signed_in", identity: IDENTITY }],
+      [{ reason: "other", identity: IDENTITY }, { status: "signed_in", identity: IDENTITY }],
+      [{ reason: "signed_out" }, { status: "signed_out" }],
+      [{ reason: "initial_session", identity: null }, { status: "signed_out" }],
+      [{ reason: "other", identity: null }, { status: "signed_out" }],
+    ];
+
+    for (const [change, expected] of cases) {
+      const fake = createFakeAuthService();
+      const { result, unmount } = renderController(fake);
+      await act(async () => {
+        fake.resolveRestoreSession({ kind: "no_session" });
+        await Promise.resolve();
+      });
+
+      await act(async () => {
+        fake.listeners.forEach((listener) => listener(change));
+        await Promise.resolve();
+      });
+
+      expect(result.current.state, change.reason).toEqual(expected);
+      unmount();
+    }
   });
 });
 
