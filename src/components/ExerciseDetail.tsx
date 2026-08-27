@@ -27,6 +27,8 @@ type ExerciseDetailProps = {
   /** Already resolved against the catalog by the caller (see `resolveMeasurementProtocols`). */
   measurementProtocols: readonly ResolvedMeasurementProtocol[];
   onBack: () => void;
+  onStart: () => void;
+  startDisabled?: boolean;
   restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
@@ -111,13 +113,15 @@ function DetailDisclosure({
  * Exercise Focus, and whether an optional field is present. It never compares
  * an Exercise id or title, so adding a curated Exercise needs no change here.
  *
- * Stage A is read-only: there is deliberately no start action, enabled or
- * disabled.
+ * The final action delegates execution to the application shell. This renderer
+ * still knows no Exercise id or title and owns no Session state.
  */
 export default function ExerciseDetail({
   version,
   measurementProtocols,
   onBack,
+  onStart,
+  startDisabled = false,
   restrictedAssetResolver,
 }: ExerciseDetailProps) {
   const { guidance, participation, sweeping, source } = version;
@@ -378,7 +382,30 @@ export default function ExerciseDetail({
             )}
           </div>
         </DetailDisclosure>
-        </section>
+      </section>
+
+      {/* 10. Start action — wording follows focus semantics, never a named Exercise. */}
+      <section className={surfaceClass("hero")}>
+        <h3 className="text-base font-semibold text-slate-900">
+          {version.primaryFocus === "measured" ? "Set up this exercise" : "Ready to practise?"}
+        </h3>
+        <p className="mt-2 text-sm text-slate-600">
+          {version.primaryFocus === "technique" &&
+            "Start a Solo observation exercise. The app records no score; you can keep a private note."}
+          {version.primaryFocus === "shotmaking" &&
+            "Start Solo with no planned stone limit. Record the actual handle and a self-assessed 0–4 outcome for each stone."}
+          {version.primaryFocus === "measured" &&
+            "Continue with the existing Fixed, Variable and Blind Weight setup. No second measurement runner is created."}
+        </p>
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={startDisabled}
+          className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {version.primaryFocus === "measured" ? "Continue to Timing Setup" : "Start Exercise"}
+        </button>
+      </section>
     </div>
   );
 }

@@ -36,11 +36,15 @@ import ShotQualityTrendChart from "./ShotQualityTrendChart";
 import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
-import TrainLanding from "./TrainLanding";
+import ExerciseSoloExecutionScreen from "./ExerciseSoloExecutionScreen";
+import TrainLanding, { type TrainEntryPath } from "./TrainLanding";
 import TrainingPlanProgress from "./TrainingPlanProgress";
 import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
-import { useSportingRepositories } from "./ProfileScopedSportingPersistence";
+import {
+  useSportingProfileId,
+  useSportingRepositories,
+} from "./ProfileScopedSportingPersistence";
 
 import type {
   AccuracyThresholds,
@@ -53,6 +57,9 @@ import type {
   TrainingPlan,
 } from "../types";
 import type { AssessmentRun } from "../lib/assessment/types";
+import { createSoloExerciseExecution } from "../lib/exercises/execution";
+import type { ExerciseExecution } from "../lib/exercises/executionTypes";
+import type { ExerciseVersion } from "../lib/exercises/types";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import {
@@ -90,6 +97,12 @@ import {
   exportSessionToCsv,
 } from "../lib/export";
 import { DEFAULT_ACTIVE_VIEW, type ActiveView } from "../lib/navigation";
+import {
+  attachSoloExerciseExecution,
+  prepareSessionForArchive,
+  replaceExerciseExecution,
+  sessionHasArchivableActivity,
+} from "../lib/exercises/sessionIntegration";
 import type { DomainHydrationState, PersistenceReadError } from "../lib/persistence/types";
 import { createNewSession } from "../lib/sessionMigration";
 import {
@@ -252,7 +265,13 @@ function describeCaptureBreakdown(shots: Shot[]): string | null {
     .join(", ");
 }
 
+/** A persisted provenance snapshot must never retain a live catalog reference. */
+function snapshotExerciseVersion(version: ExerciseVersion): ExerciseVersion {
+  return JSON.parse(JSON.stringify(version)) as ExerciseVersion;
+}
+
 export default function TrackerApp() {
+  const athleteProfileId = useSportingProfileId();
   const {
     session: sessionRepository,
     historyFilters: historyFiltersRepository,
@@ -263,6 +282,17 @@ export default function TrackerApp() {
   } = useSportingRepositories();
   const [activeView, setActiveView] =
     useState<ActiveView>(DEFAULT_ACTIVE_VIEW);
+
+  // Stage B3 keeps the selected Train pillar across the short transitions in
+  // and out of a Solo Exercise runner. Release Timing launched from the
+  // Library reuses Quick Start and carries only this pending catalog snapshot
+  // until the existing block is actually created.
+  const [preferredTrainEntryPath, setPreferredTrainEntryPath] =
+    useState<TrainEntryPath>("quick-start");
+  const [pendingReleaseTimingExerciseVersion, setPendingReleaseTimingExerciseVersion] =
+    useState<ExerciseVersion | null>(null);
+  const [viewingExerciseExecutionId, setViewingExerciseExecutionId] =
+    useState<string | null>(null);
 
   const [currentSession, setCurrentSession] =
     useState<Session | null>(null);
@@ -843,7 +873,10 @@ export default function TrackerApp() {
           // Home is the normal entry point (see docs/adr/0009), except for the one
           // active training situation reload can hand back: a Capture Sequence that
           // was running or paused when the page closed.
-          if (isCaptureSequenceActive(currentResult.value.captureSequence)) {
+          if (
+            isCaptureSequenceActive(currentResult.value.captureSequence) ||
+            currentResult.value.activeExerciseExecutionId !== undefined
+          ) {
             setActiveView("train");
           }
         } else if (currentResult.status === "absent") {
@@ -1069,6 +1102,18 @@ export default function TrackerApp() {
   const smartRandomProfilesWritable = smartRandomProfilesHydration === "ready";
 
   const activeBlock = getActiveBlock(currentSession);
+  const activeExerciseExecution = currentSession.activeExerciseExecutionId
+    ? currentSession.exerciseExecutions?.find(
+        (execution) => execution.id === currentSession.activeExerciseExecutionId
+      )
+    : undefined;
+  const displayedExerciseExecution =
+    activeExerciseExecution ??
+    (viewingExerciseExecutionId
+      ? currentSession.exerciseExecutions?.find(
+          (execution) => execution.id === viewingExerciseExecutionId
+        )
+      : undefined);
   const activeBlockShots = activeBlock
     ? getBlockShots(currentSession, activeBlock.id)
     : [];
@@ -1582,15 +1627,74 @@ export default function TrackerApp() {
     const block = tryCreateTrainingBlock(value);
     if (!block) return;
 
-    setCurrentSession((session) => {
-      if (!session) return session;
-
-      return {
-        ...session,
-        blocks: [block],
-        activeBlockId: block.id,
-      };
+    const session = sessionRef.current;
+    if (!session) return;
+    commitSession({
+      ...session,
+      blocks: [block],
+      activeBlockId: block.id,
+      ...(pendingReleaseTimingExerciseVersion
+        ? {
+            releaseTimingExerciseVersionSnapshot: snapshotExerciseVersion(
+              pendingReleaseTimingExerciseVersion
+            ),
+          }
+        : {}),
     });
+    setPendingReleaseTimingExerciseVersion(null);
+  }
+
+  /**
+   * Starts a curated Solo Exercise. Technique and Shotmaking use the B1/B2
+   * Exercise Execution aggregate. A Measured Exercise deliberately redirects
+   * into the existing Release Timing setup instead of creating a parallel
+   * measurement runner or duplicating Shot data.
+   */
+  function handleStartExercise(version: ExerciseVersion): boolean {
+    if (sessionHydration !== "ready") return false;
+
+    if (version.primaryFocus === "measured") {
+      setPendingReleaseTimingExerciseVersion(snapshotExerciseVersion(version));
+      setPreferredTrainEntryPath("quick-start");
+      return true;
+    }
+
+    const session = sessionRef.current;
+    if (!session) return false;
+    const created = createSoloExerciseExecution(version, {
+      trainingSessionId: session.id,
+      athleteProfileId,
+    });
+    if (!created.ok) {
+      alert(created.error.message);
+      return false;
+    }
+    const attached = attachSoloExerciseExecution(session, created.value);
+    if (!attached.ok) {
+      alert(attached.error.message);
+      return false;
+    }
+
+    commitSession(attached.value);
+    setViewingExerciseExecutionId(created.value.id);
+    return true;
+  }
+
+  function handleReplaceExerciseExecution(execution: ExerciseExecution): boolean {
+    if (sessionHydration !== "ready") return false;
+    const session = sessionRef.current;
+    if (!session) return false;
+    const replacement = replaceExerciseExecution(session, execution);
+    if (!replacement.ok) return false;
+
+    commitSession(replacement.value);
+    setViewingExerciseExecutionId(execution.id);
+    return true;
+  }
+
+  function handleBackToExerciseLibrary() {
+    setViewingExerciseExecutionId(null);
+    setPreferredTrainEntryPath("exercises");
   }
 
   function handleCreateNewBlock(value: TrainingSetupValue) {
@@ -1689,6 +1793,8 @@ export default function TrackerApp() {
 
     setBlockFilter(DEFAULT_SHOT_FILTER);
     setEntryMode("manual");
+    setPendingReleaseTimingExerciseVersion(null);
+    setPreferredTrainEntryPath("quick-start");
   }
 
   function handleCreateAccuracyToleranceProfile(
@@ -1898,19 +2004,29 @@ export default function TrackerApp() {
    * arbitrarily stale.
    */
   async function performSessionArchiveTransition() {
-    const previousSession = sessionRef.current;
+    const currentSnapshot = sessionRef.current;
     const nextCurrentSession = createNewSession();
 
-    if (!previousSession || previousSession.shots.length === 0) {
+    if (!currentSnapshot || !sessionHasArchivableActivity(currentSnapshot)) {
       // Re-checked here, against the authoritative ref, rather than trusting the
       // click-time closure's `shots.length` — a capture result accepted while the
       // confirmation dialog was open could have added a shot after the click but
       // before this queued step actually runs.
       commitSession(nextCurrentSession);
       setBlockFilter(DEFAULT_SHOT_FILTER);
+      setViewingExerciseExecutionId(null);
+      setPendingReleaseTimingExerciseVersion(null);
+      setPreferredTrainEntryPath("quick-start");
       setActiveView("train");
       return;
     }
+
+    // An in-progress library Exercise is a real interruption, not an empty Session.
+    // Persist it as abandoned before the Session becomes terminal; never discard it
+    // and never upload an in-progress execution as archived cloud history.
+    const prepared = prepareSessionForArchive(currentSnapshot);
+    if (!prepared.ok) return;
+    const previousSession = prepared.value;
 
     // Coordinated archive-and-replace: history is durably written before the
     // replacement session is even attempted — never merely "issued first" — so this
@@ -1954,6 +2070,9 @@ export default function TrackerApp() {
 
     commitSession(nextCurrentSession);
     setBlockFilter(DEFAULT_SHOT_FILTER);
+    setViewingExerciseExecutionId(null);
+    setPendingReleaseTimingExerciseVersion(null);
+    setPreferredTrainEntryPath("quick-start");
     setActiveView("train");
   }
 
@@ -2334,7 +2453,15 @@ export default function TrackerApp() {
 
       {activeView === "train" && (
         <>
-          {!activeBlock || !activeBlockAnalysis ? (
+          {displayedExerciseExecution ? (
+            <ExerciseSoloExecutionScreen
+              execution={displayedExerciseExecution}
+              writable={sessionWritable}
+              onReplace={handleReplaceExerciseExecution}
+              onBackToLibrary={handleBackToExerciseLibrary}
+              onStartNewSession={handleStartNewSession}
+            />
+          ) : !activeBlock || !activeBlockAnalysis ? (
             // Quick Start (below) preserves the exact existing hero, unchanged
             // — Training Plans is a second, equally-reachable entry path
             // alongside it, not a replacement (spec section 21/22).
@@ -2347,6 +2474,23 @@ export default function TrackerApp() {
                 // optional detail it is (compositional redesign, not a
                 // Session-card-then-Block-card stack).
                 <div className={surfaceClass("hero")}>
+                  {pendingReleaseTimingExerciseVersion && (
+                    <div
+                      role="status"
+                      className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4"
+                    >
+                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                        From Exercise Library
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-900">
+                        {pendingReleaseTimingExerciseVersion.title}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Choose Fixed Weight, Variable Weight, or Blind Weight below. The existing
+                        Release Timing runner records the session; no duplicate exercise runner is created.
+                      </p>
+                    </div>
+                  )}
                   <h2 className="text-xl font-semibold text-slate-900">
                     Set Up Training Block
                   </h2>
@@ -2392,8 +2536,17 @@ export default function TrackerApp() {
                 </div>
               }
               plans={trainingPlans}
+              initialEntryPath={preferredTrainEntryPath}
+              onEntryPathChange={(path) => {
+                setPreferredTrainEntryPath(path);
+                if (path !== "quick-start") {
+                  setPendingReleaseTimingExerciseVersion(null);
+                }
+              }}
               plansTabDisabled={!trainingPlansWritable}
               startPlanDisabled={!sessionWritable}
+              onStartExercise={handleStartExercise}
+              startExerciseDisabled={!sessionWritable}
               onSavePlan={handleSaveTrainingPlan}
               onDeletePlan={handleDeleteTrainingPlan}
               onDuplicatePlan={handleDuplicateTrainingPlan}

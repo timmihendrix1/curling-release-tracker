@@ -45,12 +45,13 @@ deliberately narrows this:
   - **Training Plans (Version 1) is implemented**, per
     `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
     Plans" section.
-  - **The Exercise Library's Stage A is implemented** — read-only discovery and detail
-    for three curated Standard Exercises, with a structured Ice Sheet diagram renderer.
-    Starting or recording an Exercise is **not** built (Stage B onward), and this pillar
-    persists nothing. See `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the
+  - **The Exercise Library and Solo Stage B are implemented** for three curated Standard
+    Exercises, including the structured Ice Sheet diagram renderer. Technique and
+    Shotmaking use Profile-owned Solo execution; measured Release Time reuses the
+    existing Quick Start runner. Team execution remains planned. See
+    `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the
     authoritative product/domain source), `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise
-    Library" section, and `docs/adr/0023`.
+    Library" section, and `docs/adr/0030`.
   - Quick Start remains an entry mechanism, not a synonym for Release Time.
 - **Coach and Team** appear on Home as visually secondary "Coming soon"
   placeholders, per this document's own Home structure below.

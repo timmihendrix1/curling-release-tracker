@@ -10,7 +10,7 @@
 import "@testing-library/jest-dom/vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExerciseDetail from "../ExerciseDetail";
 import ExerciseSummaryCard from "../ExerciseSummaryCard";
@@ -109,6 +109,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
           { protocol: EXERCISE_CATALOG.measurementProtocols[0], requirement: "required" },
         ]}
         onBack={vi.fn()}
+        onStart={vi.fn()}
       />
     );
 
@@ -147,6 +148,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
         version={{ ...syntheticVersion(), version: 4 }}
         measurementProtocols={[]}
         onBack={vi.fn()}
+        onStart={vi.fn()}
       />
     );
 
@@ -181,6 +183,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
           }}
           measurementProtocols={[]}
           onBack={vi.fn()}
+          onStart={vi.fn()}
         />
       );
 
@@ -190,15 +193,18 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
     }
   });
 
-  it("renders no start action for a synthetic Exercise either", () => {
+  it("renders the generic start action for a synthetic Exercise", () => {
+    const onStart = vi.fn();
     render(
       <ExerciseDetail
         version={syntheticVersion()}
         measurementProtocols={[]}
         onBack={vi.fn()}
+        onStart={onStart}
       />
     );
-    expect(screen.queryByRole("button", { name: /start/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    expect(onStart).toHaveBeenCalledOnce();
   });
 });
 
@@ -211,6 +217,7 @@ describe("no exercise-specific UI conditional exists", () => {
     "ExerciseDiagramView.tsx",
     "ExerciseStructuredDiagram.tsx",
     "ExerciseRestrictedSourceImage.tsx",
+    "ExerciseSoloExecutionScreen.tsx",
     "TrainLanding.tsx",
   ];
 

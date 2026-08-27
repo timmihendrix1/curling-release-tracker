@@ -1,8 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { freshLoad, goToTrain, primaryNavDesktop } from "./utils";
 
-// Stage A of the Exercise Library: Train's three entry paths, read-only
-// discovery/detail, and the structured Ice Sheet diagram at the suite's default
+// Stage A discovery/detail plus Stage B3 Solo execution, at the suite's default
 // mobile viewport (390 x 844 — see playwright.config.ts).
 
 async function openTrainTab(page: import("@playwright/test").Page, name: string) {
@@ -21,7 +20,7 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   expect(overflow.bodyScroll).toBeLessThanOrEqual(overflow.innerWidth);
 }
 
-test.describe("Exercise Library (Stage A)", () => {
+test.describe("Exercise Library and Solo execution", () => {
   test("Train exposes Quick Start, Exercises and Training Plans, all reachable and unclipped at 390 px", async ({
     page,
   }) => {
@@ -91,12 +90,14 @@ test.describe("Exercise Library (Stage A)", () => {
     await page.getByRole("button", { name: "Reset filters" }).first().click();
     await expect(page.getByText("3 exercises")).toBeVisible();
 
-    // Every representative detail opens and returns, with no start action.
+    // Every representative detail opens and returns with one focus-semantic start action.
     for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
       await page.getByRole("button", { name: `View Details: ${title}` }).click();
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
       await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: /Start Exercise/i })).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: /Start Exercise|Continue to Timing Setup/i })
+      ).toHaveCount(1);
       await expectNoHorizontalOverflow(page);
 
       await page.getByRole("button", { name: "← Back to Exercises" }).click();
@@ -318,5 +319,72 @@ test.describe("Exercise Library (Stage A)", () => {
     await expect(page.getByText("Set Up Training Block")).toBeVisible();
     await page.getByRole("button", { name: "Start Training" }).click();
     await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+  });
+
+  test("runs Technique as an unscored observation with a private note", async ({ page }) => {
+    await freshLoad(page);
+    await goToTrain(page);
+    await openTrainTab(page, "Exercises");
+    await page.getByRole("button", { name: "View Details: Release Point" }).click();
+    await page.getByRole("button", { name: "Start Exercise" }).click();
+
+    await expect(page.getByRole("heading", { name: "Release Point", exact: true })).toBeVisible();
+    await expect(page.getByText("Observe and discuss")).toBeVisible();
+    await expect(page.getByRole("button", { name: /points/ })).toHaveCount(0);
+    await page.getByLabel("Private athlete note").fill("Observed by a teammate.");
+    await page.getByRole("button", { name: "Complete Exercise" }).click();
+
+    await expect(page.getByText(/Completed without a score/)).toBeVisible();
+    await expect(page.getByLabel("Private athlete note")).toHaveValue("Observed by a teammate.");
+    await page.getByRole("button", { name: "Back to Exercise Library" }).click();
+    await expect(page.getByText("3 exercises")).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("records zero and an exclusion as distinct Shotmaking outcomes", async ({ page }) => {
+    await freshLoad(page);
+    await goToTrain(page);
+    await openTrainTab(page, "Exercises");
+    await page
+      .getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" })
+      .click();
+    await page.getByRole("button", { name: "Start Exercise" }).click();
+
+    await expect(page.getByTestId("exercise-structured-diagram")).toBeVisible();
+    await page.getByRole("button", { name: "Inhandle" }).click();
+    await page.getByRole("button", { name: "0 points, 0 percent" }).click();
+    await page.getByRole("button", { name: "Record Stone" }).click();
+    await expect(page.getByText("0/4", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 scored · 0 excluded")).toBeVisible();
+
+    await page.getByRole("button", { name: "Outhandle" }).click();
+    await page.getByRole("button", { name: "Do not score this stone" }).click();
+    await page.getByLabel("Reason").selectOption("outcome-not-observable");
+    await page.getByRole("button", { name: "Record Excluded Stone" }).click();
+    await expect(page.getByText("1 scored · 1 excluded")).toBeVisible();
+    await expect(page.getByText("Outcome not observable: 1")).toBeVisible();
+
+    await page.getByRole("button", { name: "Complete Exercise" }).click();
+    await expect(page.getByRole("heading", { name: "Exercise result" })).toBeVisible();
+    await expect(page.getByText("0/4", { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+  });
+
+  test("routes measured Release Time into the existing Fixed Variable Blind setup", async ({ page }) => {
+    await freshLoad(page);
+    await goToTrain(page);
+    await openTrainTab(page, "Exercises");
+    await page.getByRole("button", { name: "View Details: Release Time" }).click();
+    await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
+
+    await expect(page.getByRole("status").filter({ hasText: "From Exercise Library" }))
+      .toContainText("From Exercise Library");
+    await expect(page.getByRole("button", { name: "Fixed Weight", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Variable Weight", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Blind Weight", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Blind Weight", exact: true }).click();
+    await page.getByRole("button", { name: "Start Training" }).click();
+    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Blind Weight Block" })).toBeVisible();
   });
 });

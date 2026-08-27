@@ -1345,10 +1345,10 @@ cloud boundaries. It must not be implemented as one undifferentiated pass.
 
 ## Identity and persistence prerequisites (added 2026-08-24)
 
-Stage B still depends on foundations that are not all complete. Per
+Stage B depended on the following foundations. Per
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11 and
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, these must be
-implemented and independently reviewed **before Stage B begins**:
+implemented and independently reviewed **before Stage B began**:
 
 - **Stage B0.2 — Identity and Onboarding Gate (implemented).** Required by §9.1 (the recorder is derived
   from the authenticated Profile, with no Recorder selector), §8.1 (every Team participant
@@ -1356,10 +1356,10 @@ implemented and independently reviewed **before Stage B begins**:
   private note through their own authenticated account). Every participating athlete,
   recorder and coach needs their own account and Profile; they do not all sign into the
   recorder's device.
-- **Stage B0.3 — Profile-scoped Local Data (implemented; combined review pending).** Required by §9.2's rule that pending Session
+- **Stage B0.3 — Profile-scoped Local Data (implemented and verified).** Required by §9.2's rule that pending Session
   data must not be exposed after an account switch, and by the requirement that a private
   Athlete Note stay invisible to the recorder.
-- **Stage B0.4 — Free Cloud Data Backbone.** Provides the stable-ID, idempotent-upload,
+- **Stage B0.4 — Free Cloud Data Backbone (implemented and verified).** Provides the stable-ID, idempotent-upload,
   durable-outbox and honest sync-status behaviour §9.2's `local draft → locally completed,
   upload pending → fully synced → partially synced, athlete result blocked` model needs.
   Stage C's own Team-authority revalidation and per-athlete partial-rejection behaviour
@@ -1396,6 +1396,21 @@ structured platform diagram creates a new Exercise Version without rewriting his
 ## Stage B — Solo execution vertical slice
 
 **Prerequisite:** Stages B0.2-B0.4 above, implemented and independently reviewed.
+
+**Implementation status (2026-08-27):** Implemented through Stage B3. ADR-0028 implements the Solo domain foundation:
+execution types, lifecycle transitions, immutable content/protocol snapshots, attempts,
+private Athlete Note ownership, strict validation and factual result derivation.
+ADR-0029 implements the second internal slice: Technique and Shotmaking executions embed
+in the existing Profile-owned Training Session, use its strict current/history repository
+and existing Free-cloud `training_session` record, and survive a no-shot Technique archive.
+Active work is explicitly abandoned on Session replacement; archived/cloud state must be
+terminal. ADR-0030 adds the generic Solo start/record/complete UI. Technique remains
+unscored; Shotmaking captures actual handle, 0-4 or an exclusion, private note and the
+basic factual result without asking for planned volume. Release Time opens the unchanged
+Fixed/Variable/Blind Block-and-Shot runner and stores only an exact Library provenance
+snapshot on the Session, never a parallel Measured execution. The three currently curated
+Exercises therefore satisfy the Solo vertical slice; Team execution and further content
+remain later stages.
 
 - execute one Technique, one Shotmaking and one Measured Exercise;
 - capture the athlete's private note, handles, 0–4 scores and supported Measurements;

@@ -14,6 +14,7 @@ import {
 } from "../lib/exercises/query";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import type { TrainingPlan } from "../types";
+import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseDetail from "./ExerciseDetail";
 import ExerciseLibrary from "./ExerciseLibrary";
 import TrainingPlanEditor from "./TrainingPlanEditor";
@@ -56,9 +57,13 @@ type TrainLandingProps = {
   defaultAccuracyToleranceProfileId?: string | null;
   smartRandomProfiles?: SmartRandomProfile[];
   defaultSmartRandomProfileId?: string | null;
+  initialEntryPath?: TrainEntryPath;
+  onEntryPathChange?: (path: TrainEntryPath) => void;
+  onStartExercise: (version: ExerciseVersion) => boolean;
+  startExerciseDisabled?: boolean;
 };
 
-type TrainEntryPath = "quick-start" | "exercises" | "plans";
+export type TrainEntryPath = "quick-start" | "exercises" | "plans";
 
 type PlansSubView =
   | { screen: "library" }
@@ -90,9 +95,8 @@ const TRAIN_ENTRY_PATHS: readonly { id: TrainEntryPath; label: string }[] = [
  * internal phase state — TrackerApp only learns about a plan being started,
  * saved, duplicated or deleted.
  *
- * The Exercises tab is read-only and reads the compiled curated catalog
- * directly, so it needs no props and does not depend on Session or Training
- * Plan persistence readiness.
+ * Exercise discovery reads the compiled curated catalog directly. Starting an
+ * Exercise delegates to TrackerApp, which owns Session persistence.
  */
 export default function TrainLanding({
   quickStartContent,
@@ -107,6 +111,10 @@ export default function TrainLanding({
   defaultAccuracyToleranceProfileId = null,
   smartRandomProfiles = [],
   defaultSmartRandomProfileId = null,
+  initialEntryPath = "quick-start",
+  onEntryPathChange,
+  onStartExercise,
+  startExerciseDisabled = false,
 }: TrainLandingProps) {
   const reactId = useId();
   const tabId = (path: TrainEntryPath) => `${reactId}-tab-${path}`;
@@ -120,7 +128,7 @@ export default function TrainLanding({
   const panelId = `${reactId}-panel`;
   const tablistRef = useRef<HTMLDivElement>(null);
 
-  const [mode, setMode] = useState<TrainEntryPath>("quick-start");
+  const [mode, setMode] = useState<TrainEntryPath>(initialEntryPath);
   const [plansSubView, setPlansSubView] = useState<PlansSubView>({
     screen: "library",
   });
@@ -170,6 +178,7 @@ export default function TrainLanding({
     if (isPathDisabled(next)) return;
 
     setMode(next);
+    onEntryPathChange?.(next);
     if (next === "plans") setPlansSubView({ screen: "library" });
     if (next === "exercises") {
       setExercisesSubView({ screen: "library" });
@@ -278,6 +287,15 @@ export default function TrainLanding({
               openExerciseVersion.compatibleMeasurementProtocols
             )}
             onBack={() => setExercisesSubView({ screen: "library" })}
+            onStart={() => {
+              if (!onStartExercise(openExerciseVersion)) return;
+              if (openExerciseVersion.primaryFocus === "measured") {
+                setExercisesSubView({ screen: "library" });
+                setMode("quick-start");
+                onEntryPathChange?.("quick-start");
+              }
+            }}
+            startDisabled={startExerciseDisabled}
           />
         )}
 

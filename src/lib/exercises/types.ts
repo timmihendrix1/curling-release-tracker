@@ -4,9 +4,9 @@
 // docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md. Stage A implements only the
 // content side of that specification: a stable Exercise identity, immutable
 // Exercise Versions, reusable Measurement Protocols, the two Diagram variants, and
-// the versioned curated catalog package they are delivered in. Execution,
-// results, attempts, notes, participants, Team sessions and persistence are
-// deliberately absent — see that document's section 21 (Stages B-E).
+// the versioned curated catalog package they are delivered in. Stage B1's
+// separate executionTypes.ts builds on these content contracts; Team sessions,
+// persistence and execution UI remain absent — see that document's section 21.
 //
 // These types live in their own module rather than in `src/types/index.ts`,
 // following `src/lib/assessment/types.ts`: nothing in `src/types/index.ts`

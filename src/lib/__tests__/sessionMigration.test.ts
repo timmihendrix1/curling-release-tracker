@@ -2,6 +2,56 @@ import { describe, expect, it } from "vitest";
 import { migrateSession } from "../sessionMigration";
 import { STANDARD_ACCURACY_THRESHOLDS } from "../accuracyThresholds";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
+import {
+  createCompletedTechniqueExecution,
+  createMeasuredExecution,
+  createTechniqueExecution,
+  FIXTURE_SESSION_ID,
+} from "../exercises/__tests__/executionFixtures";
+
+describe("migrateSession — Release Timing Exercise provenance", () => {
+  it("preserves an exact Measured catalog snapshot and remains idempotent", () => {
+    const snapshot = createMeasuredExecution().exerciseVersionSnapshot;
+    const raw = {
+      id: FIXTURE_SESSION_ID,
+      title: "Measured Exercise Session",
+      date: "2026-08-27T10:00:00.000Z",
+      notes: "",
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      releaseTimingExerciseVersionSnapshot: snapshot,
+    };
+
+    const once = migrateSession(raw);
+    expect(once.releaseTimingExerciseVersionSnapshot).toEqual(snapshot);
+    expect(once.releaseTimingExerciseVersionSnapshot).not.toBe(snapshot);
+    expect(migrateSession(JSON.parse(JSON.stringify(once)))).toEqual(once);
+  });
+
+  it("does not carry a rewritten or non-Measured provenance snapshot", () => {
+    const measured = createMeasuredExecution().exerciseVersionSnapshot;
+    const base = {
+      id: FIXTURE_SESSION_ID,
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+    };
+    expect(
+      migrateSession({
+        ...base,
+        releaseTimingExerciseVersionSnapshot: { ...measured, title: "Changed" },
+      }).releaseTimingExerciseVersionSnapshot
+    ).toBeUndefined();
+    expect(
+      migrateSession({
+        ...base,
+        releaseTimingExerciseVersionSnapshot:
+          createTechniqueExecution().exerciseVersionSnapshot,
+      }).releaseTimingExerciseVersionSnapshot
+    ).toBeUndefined();
+  });
+});
 
 describe("migrateSession — legacy pre-block sessions", () => {
   it("migrates a very old session (no blocks key at all) into a single Legacy Block", () => {
@@ -55,6 +105,55 @@ describe("migrateSession — legacy pre-block sessions", () => {
 
     expect(migrated.blocks).toEqual([]);
     expect(migrated.activeBlockId).toBe("");
+  });
+});
+
+describe("migrateSession — Exercise Executions", () => {
+  it("preserves valid embedded Exercise state exactly and idempotently", () => {
+    const execution = createTechniqueExecution();
+    const raw = {
+      id: FIXTURE_SESSION_ID,
+      title: "Exercise Session",
+      date: "2026-08-27T10:00:00.000Z",
+      notes: "Private session",
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      exerciseExecutions: [execution],
+      activeExerciseExecutionId: execution.id,
+    };
+    const once = migrateSession(raw);
+    const twice = migrateSession(JSON.parse(JSON.stringify(once)));
+    expect(once.exerciseExecutions).toEqual([execution]);
+    expect(once.activeExerciseExecutionId).toBe(execution.id);
+    expect(twice).toEqual(once);
+  });
+
+  it("preserves a terminal no-shot Technique execution without an active pointer", () => {
+    const execution = createCompletedTechniqueExecution();
+    const migrated = migrateSession({
+      id: FIXTURE_SESSION_ID,
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      exerciseExecutions: [execution],
+    });
+    expect(migrated.exerciseExecutions).toEqual([execution]);
+    expect(migrated.activeExerciseExecutionId).toBeUndefined();
+  });
+
+  it("does not repair or partially preserve invalid Exercise state", () => {
+    const execution = createTechniqueExecution();
+    const migrated = migrateSession({
+      id: FIXTURE_SESSION_ID,
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      exerciseExecutions: [execution],
+      activeExerciseExecutionId: "40000000-0000-4000-8000-999999999999",
+    });
+    expect(migrated.exerciseExecutions).toBeUndefined();
+    expect(migrated.activeExerciseExecutionId).toBeUndefined();
   });
 });
 

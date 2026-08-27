@@ -2447,33 +2447,35 @@ a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface be
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
 
-## Exercise Library (Stage A implemented — domain, curated content, read-only Train UI)
+## Exercise Library and execution (Stage A + Solo Stage B implemented)
 
 `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
-domain source; this section is an architecture snapshot of what **Stage A** actually
-built. Stages B-E of that document's section 21 (Solo execution, Team execution on one
-device, generalised Training Plans, content expansion) are **not implemented** — see
+domain source; this section is an architecture snapshot of Stage A and Solo Stages B1-B3.
+Team execution, generalised Training Plans and content expansion are **not implemented** — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library and multi-athlete execution".
 
 ### Current state
 
 - **Implemented:** a versioned curated content package, its validation boundary, the two
-  Diagram variants and their renderers, and read-only discovery/detail inside Train.
-- **Not implemented (Planned):** Exercise Execution, Shot Attempt capture, handle or 0-4
-  input, Athlete Notes, Athlete Exercise Results, analytics, Team participants/roles/
-  rotation, offline upload, Exercise Training Plan steps, Exercise authoring, and any
-  persistence at all for this domain.
-- Stage A **stores nothing**. There is no `localStorage` key, no repository, no
-  migration and no `Session`/`TrainingBlock`/`Shot` schema change. Existing Sessions,
-  Training Blocks, Shots, Assessments, Quick Start, Training Plans, navigation guards,
-  analytics and persistence are behaviourally unchanged.
+  Diagram variants and their renderers, read-only discovery/detail inside Train, plus
+  ADR-0028's Solo Exercise Execution domain, ADR-0029's strict embedding of Technique
+  and Shotmaking executions in the existing Profile-owned Session repository and
+  `training_session` Free-cloud record, and ADR-0030's focus-driven Solo rink UI and
+  Release Time Library linkage.
+- **Not implemented (Planned):** Team participants/roles/rotation, offline
+  Team upload, Exercise Training Plan steps, Exercise authoring and Exercise analytics.
+- There is no Exercise `localStorage` key, repository or cloud record kind. Optional
+  `Session.exerciseExecutions`, `activeExerciseExecutionId` and the measured-entry
+  `releaseTimingExerciseVersionSnapshot` provenance field reuse the two
+  existing Session keys, Profile namespace, archive transition and cloud serializer.
+  Legacy and direct-Quick-Start Sessions omit these fields and retain their old wire shape.
+  `TrainingBlock` and `Shot` are unchanged.
 
 ### Domain (`src/lib/exercises/`)
 
-Its own module, not `src/types/index.ts`: nothing in the central types file references an
-Exercise, so there is no dependency cycle to avoid. This follows
-`src/lib/assessment/types.ts` rather than ADR-0012 Decision 2, whose central placement
-was forced specifically by `Session.planExecution`.
+Content and execution types remain in their own module. The central `Session` type has a
+type-only reference to `ExerciseExecution` because ADR-0029 makes the execution a child
+of that aggregate; no runtime dependency cycle is introduced.
 
 - `types.ts` — `Exercise` (stable identity: `{ id, currentVersionId }`) separate from
   `ExerciseVersion` (one immutable version of the content). Independent classification
@@ -2504,6 +2506,27 @@ was forced specifically by `Session.planExecution`.
   Hog-Hog exists. `allowedSources` is exactly `["manual"]` and `target` is validated as
   `null`: no curated protocol prescribes a target or tolerance, and none implies
   hardware capture that does not exist.
+- `executionTypes.ts` / `execution.ts` — ADR-0028's domain-only Solo aggregate and
+  transitions. An execution deep-snapshots its curated Version and enabled Measurement
+  Protocols, retains actual configuration separately, uses one role segment and one
+  athlete-owned result, and never overloads the release-timing `Shot` type.
+- `executionValidation.ts` — the fail-closed boundary for a future persisted aggregate:
+  exact catalog snapshots, schema/lifecycle, ownership, focus, protocol compatibility,
+  globally unique stable IDs, one-based attempt order and Measurement provenance are
+  validated together and all detected issues are returned.
+- `executionResult.ts` — pure factual derivation. Zero is scored, exclusions are retained
+  but omitted from the denominator, maximum points follow actual scored-stone count, and
+  Measurement summaries remain grouped by snapshotted protocol identity.
+- `sessionIntegration.ts` — ADR-0029/0030's strict Training Session boundary and pure
+  transitions. It enforces containing-Session ownership, globally unique child IDs, one
+  active execution, terminal-only history/cloud state, private-note-only terminal edits,
+  and explicit abandonment before archive. Technique and Shotmaking use embedded
+  executions. Measured Release Time stays on the existing Block/Shot path; only its exact
+  catalog Version snapshot is accepted as optional Session provenance.
+- `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic Solo rink screen. It branches on
+  focus/guidance semantics, never catalog identity: observation-only Technique, actual
+  handle plus 0-4/exclusion Shotmaking capture, private note, lifecycle actions and
+  descriptive current/final results.
 - `content.ts` — the three approved Stage A Exercises (Release Point, Eight Guards
   Progressively Longer, Release Time), each at version 1. All user-facing strings are
   English. Original German source titles exist only under
@@ -2601,8 +2624,10 @@ renderer's notice is the second line of defence.
 - `TrainLanding.tsx` now offers **three** entry paths inside the existing `"train"`
   `ActiveView` — Quick Start (default, the pre-existing hero passed through unchanged),
   Exercises, and Training Plans. No new `ActiveView`, no route, no
-  `NAVIGATION_ITEMS` entry, and no new leave guard: Stage A creates no unsaved work to
-  guard (contrast ADR-0009/ADR-0011). Three short labels stay on one row at 390 px by
+  `NAVIGATION_ITEMS` entry or route. B3's active Exercise is durable Session work and
+  resumes when Train is reopened; starting a new Session uses the existing confirmed,
+  history-first archive transition and abandons an interruption explicitly. Three short
+  labels stay on one row at 390 px by
   tightening padding and type scale below the `sm` breakpoint rather than forcing a
   two-row control (DESIGN_SYSTEM.md §13.2).
 - **The chooser is a complete ARIA tab interface, not just `role="tab"`.** Each tab has
@@ -3295,7 +3320,8 @@ local component state.
 | `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton` explanation, filter bar, result count, generic cards, one honest shared empty state with a reset action |
 | `ExerciseLibraryFilterBar.tsx` | Search (always visible) plus focus/difficulty/Solo-Team/Shot Family/Sweeper filters behind one "Filters" toggle; every option list derived from the catalog; a compact active-selection summary once the panel collapses |
 | `ExerciseSummaryCard.tsx` | One generic Library row from Exercise Version data — title, goal, focus/classification/difficulty/participation/Sweeper badges, `View Details` |
-| `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version; branches only on declared domain semantics, never on an Exercise id or title. No start action in Stage A |
+| `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version and focus-semantic start action; branches only on declared domain semantics, never on an Exercise id or title |
+| `ExerciseSoloExecutionScreen.tsx` | Generic Solo Technique/Shotmaking rink screen: snapshotted instructions and actual context, private Athlete Note, 0-4/exclusion Shotmaking attempt capture, factual live/final result and lifecycle/session actions; no catalog-id conditional |
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
 | `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
 | `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |

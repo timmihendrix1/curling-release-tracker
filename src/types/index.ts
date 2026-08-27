@@ -1,3 +1,6 @@
+import type { ExerciseExecution } from "../lib/exercises/executionTypes";
+import type { ExerciseVersion } from "../lib/exercises/types";
+
 // Personal, editable tolerance bands used to judge target accuracy — a Target
 // Accuracy concept, distinct from Prediction Accuracy (Blind Weight). Snapshotted
 // per TrainingBlock at creation time so later default changes never retroactively
@@ -299,4 +302,13 @@ export type Session = {
   // Set only when this Session was started from a Training Plan. See
   // docs/TRAINING_SYSTEM_AND_PLANS.md and docs/adr/0012.
   planExecution?: PlanExecutionState;
+  // Technique and Shotmaking Exercise Library work is embedded in the same
+  // Profile-owned Training Session aggregate. Release Time continues to use
+  // blocks/shots above; it is not duplicated as an ExerciseExecution.
+  exerciseExecutions?: ExerciseExecution[];
+  // Present exactly while one embedded Exercise Execution is in progress.
+  activeExerciseExecutionId?: string;
+  // Present when the Release Time Library entry started this Session's existing
+  // Block/Shot runner. This is instructional provenance, not a parallel execution.
+  releaseTimingExerciseVersionSnapshot?: ExerciseVersion;
 };

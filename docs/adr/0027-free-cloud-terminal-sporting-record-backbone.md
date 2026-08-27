@@ -21,7 +21,9 @@ The first B0.4 units are archived Training Sessions (including Blocks, Shots, sn
 notes and provenance) and terminal (`completed` or `incomplete`) Assessment Runs (including
 Attempts and their snapshots/provenance). The current Training Session and Assessment draft
 remain device-local. Basic restore is history restore, not cross-device continuation.
-Exercise execution will extend this backbone when that domain exists.
+ADR-0029 extends the existing Training Session payload itself with terminal Technique and
+Shotmaking Exercise Executions; it adds no record kind, queue or sync authority. Active
+Exercise work remains current-device state and is abandoned explicitly before archive.
 
 ADR-0021's Assessment split is implemented: draft and history use separate Profile-scoped
 keys, and history alone is cloud-eligible. The former Profile-scoped combined value is split

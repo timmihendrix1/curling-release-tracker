@@ -1566,8 +1566,9 @@ A stable Library identity for one deliberate-practice activity (`{ id, currentVe
 instructions, diagrams, defaults and provenance live in an immutable **Exercise
 Version**. Version 1 exposes only platform-curated Standard Exercises. Athlete-, Team-
 and Community-authored Exercises are deferred.
-**[Implemented — identity and lookup only; three curated Exercises, no execution and no
-persistence. See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section.]**
+**[Implemented — identity and lookup; three curated Exercises. ADR-0028/0029 add the
+Solo execution and Session-persistence foundations; ADR-0030 adds athlete-facing Solo
+start and recording. See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section.]**
 
 ## Exercise Version
 
@@ -1577,17 +1578,17 @@ volume, variations, participant and sweeping requirements, compatible Measuremen
 Protocols and Diagram. A meaningful correction creates a new version; completed
 executions keep their original version snapshot.
 **[Implemented — immutable versioned content, recursively frozen at runtime, resolvable
-forever by its own Version id. The "completed executions keep their version" half stays
-Planned, because no execution exists to snapshot one yet.]**
+forever by its own Version id. ADR-0028 snapshots it into executions and ADR-0029 retains
+those snapshots inside persisted Training Sessions.]**
 
 ## Primary Exercise Focus
 
 The one dimension that determines an Exercise's main training and execution experience:
 **Technique**, **Shotmaking**, or **Measured**. It is independent of Shot Family and
 Training Purpose. `Consistency` is a Training Purpose, not a fourth focus.
-**[Implemented — all three values exist, drive the Library's grouping/filtering and the
-detail renderer's guidance branch, and are validated (a Technique Exercise may not carry
-Shotmaking-score guidance). The focus-specific *execution* experience is Planned.]**
+**[Implemented — all three values drive Library discovery, detail and the B3 execution
+entry. Technique and Shotmaking use their focus-specific Solo UI; Measured Release Time
+opens the existing timing runner. Validation prevents incompatible guidance.]**
 
 ## Shot Family
 
@@ -1635,8 +1636,10 @@ standalone Measured Exercise or be attached compatibly to another Exercise; a pr
 is not duplicated inside every Exercise definition.
 **[Implemented — two versioned release-time protocols reusing the existing
 Measurement Mode semantics, referenced by Exercise Version and rendered on the detail.
-Neither prescribes a target or tolerance, and neither claims hardware capture. Attaching
-a protocol to an actual execution or Measurement record is Planned.]**
+Neither prescribes a target or tolerance, and neither claims hardware capture. Stage B1
+can snapshot an enabled protocol and retain a manual Measurement against it. B2/B3 do not
+persist a parallel Measured execution: Library Release Time opens the existing Block/Shot
+runner and retains only its exact Exercise Version as Session provenance.]**
 
 ## Exercise Catalog Package
 
@@ -1652,22 +1655,29 @@ loader or migration, never a guessed upgrade.]**
 One actual performance of one Exercise Version inside a Training Session. It snapshots
 selected variation, volume, Measurements, participants, roles, sweeping and deviations,
 then owns the athlete-associated results and attempts. Version 1 permits one active
-Exercise Execution at a time. **[Planned]**
+Exercise Execution at a time. **[Implemented for Solo Technique and Shotmaking — ADR-0028
+provides the aggregate, ADR-0029 embeds it in Profile-owned Session persistence, and
+ADR-0030 supplies the generic rink UI. Measured Release Time intentionally uses the
+existing Block/Shot runner with immutable Library provenance rather than an
+`ExerciseExecution`. Team cardinality remains Planned.]**
 
 ## Athlete Exercise Result
 
 The athlete-owned result within an Exercise Execution. Several athletes may receive
 individual results in the same Team Session. It may contain attempts, Measurements and
-one private Athlete Note; recorder, device and Team do not become its owner. **[Planned]**
+one private Athlete Note; recorder, device and Team do not become its owner. **[Implemented
+for the one-athlete Stage B domain; B2 persists that result and private note as part of
+the athlete's Profile-owned Session, and B3 exposes both through the Solo rink UI. Team
+cardinality and shared access remain Planned.]**
 
 ## Shotmaking Evaluation Basis
 
 The provenance for a Shotmaking attempt's 0–4 outcome meaning. The closed beta records
 generic Team/self-assessed values without a platform rubric, so results are not assumed
 comparable across Teams. Future recommended or Team-adjusted rubrics require versioned
-snapshots and never reinterpret history. **[Planned — the curated Shotmaking content
-already declares `team-defined-unstructured` on the Exercise Version and states it in
-the UI, but nothing records a basis against a result yet, because no result exists.]**
+snapshots and never reinterpret history. **[Implemented for Solo execution: the curated
+Version and `ExerciseExecution` both retain `team-defined-unstructured`; no standardised
+rubric or cross-Team comparison exists.]**
 
 ## Training Category
 

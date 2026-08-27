@@ -1267,9 +1267,9 @@ global state infrastructure beyond this feature's reviewed scope.
 
 ## Exercise Library and multi-athlete execution
 
-**Stage A implemented. Stages B-E approved but not started.** The canonical product and
-domain boundary is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21
-defines the stages). The full closed-beta catalogue contains three Swiss Curling
+**Stage A and Solo Stage B (B1-B3) are implemented. Stages C-E remain planned.** The canonical product and domain boundary
+is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
+The full closed-beta catalogue contains three Swiss Curling
 Shotmaking Exercises, four unscored Technique Exercises and two standalone Measured
 Exercises. All user-facing content is English.
 
@@ -1283,10 +1283,11 @@ Ice Sheet diagram renderer, and read-only discovery/detail as Train's third entr
 alongside Quick Start and Training Plans. Stage A **stores nothing** — no key, no
 repository, no migration, no `Session`/`TrainingBlock`/`Shot` change.
 
-Known Stage A boundaries, deliberate rather than defects:
+Known delivery boundaries, deliberate rather than defects:
 
-- **Read-only.** No start action exists, enabled or disabled. Starting or recording an
-  Exercise is Stage B.
+- **Solo execution is implemented for the three current items.** Technique is unscored,
+  Shotmaking records actual handle plus 0-4/exclusion and a private note, and Release Time
+  links to the existing Fixed/Variable/Blind runner without a duplicate outcome record.
 - **Six of the nine approved Exercises are not authored yet** (Rotation, Laser, Release
   Gates, the Draw and Soft Take-out Shotmaking Exercises, Rotation Count). They expand
   the same schemas and renderers; none may require a named, exercise-specific UI branch.
@@ -1294,29 +1295,37 @@ Known Stage A boundaries, deliberate rather than defects:
 - **Release Time references both release-time Measurement Protocols as `optional`.** The
   requirement is "choose one and keep it for the whole execution", which the Exercise
   states as a setup instruction. Nothing in the approved content makes either mode the
-  standard for this Exercise, so neither is marked `required`. Whether a Measured
-  Exercise should be able to express "at least one of these protocols is required" as a
-  domain field is a Stage B question, when execution actually needs to enforce it.
+  standard for this Exercise, so neither is marked `required`. Stage B1 resolves the
+  execution rule without inventing a content preference: every standalone Measured
+  execution must enable at least one compatible protocol, while either protocol remains
+  a valid choice.
 - **No Rotation Count Measurement Protocol.** `MeasurementMetricType` currently has one
   value; the second arrives with the Exercise that needs it (Stage E).
 - **Search does not match a referenced protocol's name.** `exerciseSearchableText`
   operates on one Exercise Version without the catalog, so "hog" does not find Release
   Time via its protocol names. Widen it if discovery feedback asks for it.
 
-**Stages B-E remain planned**, in the specification's order and with its review gates:
-Solo execution, one-device Team execution with bounded offline upload, generalised simple
+**Exercise Solo Stage B is implemented through B3 (ADR-0028 through ADR-0030); Stages C-E
+remain planned.** B2 embeds
+Technique and Shotmaking executions in the existing Profile-owned Session, local
+repository/archive transition and Free-cloud `training_session` record, with strict
+terminal-history validation and no extra storage silo. It deliberately leaves Measured
+Release Time on the current Block/Shot execution path; B3 provides the generic Solo UI
+and stores only immutable Library provenance for a measured entry. The remaining work
+follows the specification's order and review gates: one-device Team execution with
+bounded offline upload, generalised simple
 Training Plans containing curated Exercise steps, then the remaining approved content and
 release hardening. Existing Release Timing Training Plans and history must remain
 compatible throughout. Exercise authoring, public/community libraries, standardised
 Shotmaking rubrics, advanced analytics, sensor coordinates and video analysis remain
 deliberately deferred.
 
-**Identity/persistence prerequisites added 2026-08-24.** Stage B now sits behind Stages
+**Identity/persistence prerequisites added 2026-08-24.** Stage B sits behind Stages
 B0.2-B0.4 (see "Mandatory Identity and Free Cloud Foundation" above). The Exercise
 specification already assumes every Team participant resolves to an authenticated Profile,
 that the recorder is derived from authentication with no Recorder selector, that private
 Athlete Notes stay private across an account switch, and that pending data must not be
-exposed after one — none of which has a foundation to rest on until B0.2/B0.3 exist.
+exposed after one. Those foundations are now implemented and verified.
 **Commercial correction:** structured raw Exercise results, private Athlete Notes, and
 their **Free** cloud persistence and basic restore, are Free (the **Free Cloud Core**) —
 not part of the paid personal tier; Team Session coordination remains a Team Workspace

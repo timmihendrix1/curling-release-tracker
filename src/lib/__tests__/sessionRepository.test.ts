@@ -11,6 +11,11 @@ import type {
   PersistenceWriteResult,
   StorageAdapter,
 } from "../persistence/types";
+import {
+  createCompletedTechniqueExecution,
+  createTechniqueExecution,
+  FIXTURE_SESSION_ID,
+} from "../exercises/__tests__/executionFixtures";
 
 function fakeFailingAdapter(): StorageAdapter {
   return {
@@ -194,6 +199,39 @@ describe("SessionRepository", () => {
         expect(result.error).toEqual({ kind: "storage_unavailable" });
       }
     });
+
+    it("round-trips valid active Exercise state through the current Session key", async () => {
+      localStorage.clear();
+      const execution = createTechniqueExecution();
+      const stored = {
+        ...makeSession(FIXTURE_SESSION_ID),
+        exerciseExecutions: [execution],
+        activeExerciseExecutionId: execution.id,
+      };
+      const repo = createSessionRepository(createLocalStorageAdapter());
+      expect(await repo.saveCurrent(stored)).toEqual({ ok: true });
+      const result = await repo.loadCurrent();
+      expect(result).toEqual({ status: "value", value: stored });
+    });
+
+    it("fails closed instead of silently migrating corrupt Exercise state away", async () => {
+      localStorage.clear();
+      const execution = createTechniqueExecution();
+      localStorage.setItem(
+        CURRENT_SESSION_STORAGE_KEY,
+        JSON.stringify({
+          ...makeSession(FIXTURE_SESSION_ID),
+          exerciseExecutions: [execution],
+          activeExerciseExecutionId: "40000000-0000-4000-8000-999999999999",
+        })
+      );
+      const result = await createSessionRepository(createLocalStorageAdapter()).loadCurrent();
+      expect(result.status).toBe("read_failed");
+      if (result.status === "read_failed") {
+        expect(result.error).toMatchObject({ kind: "unknown" });
+        expect(result.fallback.exerciseExecutions).toBeUndefined();
+      }
+    });
   });
 
   describe("saveCurrent", () => {
@@ -227,6 +265,17 @@ describe("SessionRepository", () => {
       });
       expect(result).toEqual({ ok: false, error: { kind: "storage_unavailable" } });
     });
+
+    it("rejects invalid Exercise state before writing", async () => {
+      localStorage.clear();
+      const execution = createTechniqueExecution();
+      const result = await createSessionRepository(createLocalStorageAdapter()).saveCurrent({
+        ...makeSession(FIXTURE_SESSION_ID),
+        exerciseExecutions: [execution],
+      });
+      expect(result).toMatchObject({ ok: false, error: { kind: "unknown" } });
+      expect(localStorage.getItem(CURRENT_SESSION_STORAGE_KEY)).toBeNull();
+    });
   });
 
   describe("loadHistory", () => {
@@ -259,6 +308,50 @@ describe("SessionRepository", () => {
       if (result.status === "value") {
         expect(result.value).toHaveLength(1);
       }
+    });
+
+    it("round-trips terminal Exercise Executions in history", async () => {
+      localStorage.clear();
+      const stored = {
+        ...makeSession(FIXTURE_SESSION_ID),
+        exerciseExecutions: [createCompletedTechniqueExecution()],
+      };
+      const repo = createSessionRepository(createLocalStorageAdapter());
+      expect(await repo.saveHistory([stored])).toEqual({ ok: true });
+      const result = await repo.loadHistory();
+      expect(result).toEqual({ status: "value", value: [stored] });
+    });
+
+    it("fails the whole history load closed when one Session has corrupt Exercise state", async () => {
+      localStorage.clear();
+      const execution = createTechniqueExecution();
+      localStorage.setItem(
+        SESSION_HISTORY_STORAGE_KEY,
+        JSON.stringify([
+          makeSession("legacy-valid"),
+          {
+            ...makeSession(FIXTURE_SESSION_ID),
+            exerciseExecutions: [execution],
+          },
+        ])
+      );
+      const result = await createSessionRepository(createLocalStorageAdapter()).loadHistory();
+      expect(result).toMatchObject({ status: "read_failed", fallback: [] });
+    });
+
+    it("rejects an in-progress Exercise from archived history", async () => {
+      localStorage.clear();
+      const active = createTechniqueExecution();
+      localStorage.setItem(
+        SESSION_HISTORY_STORAGE_KEY,
+        JSON.stringify([{
+          ...makeSession(FIXTURE_SESSION_ID),
+          exerciseExecutions: [active],
+          activeExerciseExecutionId: active.id,
+        }])
+      );
+      const result = await createSessionRepository(createLocalStorageAdapter()).loadHistory();
+      expect(result).toMatchObject({ status: "read_failed", fallback: [] });
     });
   });
 
@@ -428,6 +521,21 @@ describe("SessionRepository", () => {
       expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_STORAGE_KEY)!)).toHaveLength(
         1
       );
+    });
+
+    it("rejects an invalid Exercise archive before either storage write begins", async () => {
+      const { adapter, callLog } = createControllableAsyncAdapter();
+      const repo = createSessionRepository(adapter);
+      const execution = createTechniqueExecution();
+      const result = await repo.archiveAndReplace(
+        [{
+          ...makeSession(FIXTURE_SESSION_ID),
+          exerciseExecutions: [execution],
+        }],
+        makeSession("c1")
+      );
+      expect(result).toMatchObject({ ok: false, step: "history" });
+      expect(callLog).toEqual([]);
     });
   });
 });

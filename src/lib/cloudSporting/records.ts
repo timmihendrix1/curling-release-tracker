@@ -3,6 +3,10 @@ import { validatePersistedAssessmentRun } from "../assessment/migration";
 import { ASSESSMENT_RUN_SCHEMA_VERSION } from "../assessment/types";
 import { migrateSession } from "../sessionMigration";
 import type { Session } from "../../types";
+import {
+  isSessionExerciseCloudEligible,
+  validateSessionExerciseState,
+} from "../exercises/sessionIntegration";
 import { isCanonicalUuid } from "../uuid";
 import type { CloudSportingRecord, CloudSportingRecordKind } from "./types";
 
@@ -33,7 +37,11 @@ function validTimestamp(value: string): boolean {
 }
 
 export function serializeTrainingSession(session: Session): LocalTerminalRecord | null {
-  if (!isCanonicalUuid(session.id) || !validTimestamp(session.date)) return null;
+  if (
+    !isCanonicalUuid(session.id) ||
+    !validTimestamp(session.date) ||
+    !isSessionExerciseCloudEligible(session)
+  ) return null;
   try {
     const payload = JSON.stringify(session);
     if (!payload) return null;
@@ -75,7 +83,12 @@ export function deserializeTrainingSession(record: CloudSportingRecord): Session
   try {
     const parsed: unknown = JSON.parse(record.payload);
     const migrated = migrateSession(parsed);
-    if (migrated.id !== record.recordId || !sameJsonValue(parsed, migrated)) return null;
+    if (
+      migrated.id !== record.recordId ||
+      !sameJsonValue(parsed, migrated) ||
+      !validateSessionExerciseState(parsed, migrated.id).valid ||
+      !isSessionExerciseCloudEligible(migrated)
+    ) return null;
     // Keep the exact parsed wire shape after validation so a later serialization
     // preserves the cloud payload's property order instead of manufacturing a
     // different digest for semantically identical content.

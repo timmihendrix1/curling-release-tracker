@@ -10,6 +10,10 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TrackerApp from "../TrackerApp";
+import {
+  createTechniqueExecution,
+  FIXTURE_SESSION_ID,
+} from "../../lib/exercises/__tests__/executionFixtures";
 
 const CURRENT_SESSION_KEY = "curling-release-tracker-current-session";
 const SESSION_HISTORY_KEY = "curling-release-tracker-session-history";
@@ -139,6 +143,52 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     const rawHistory = localStorage.getItem(SESSION_HISTORY_KEY);
     const history = rawHistory ? JSON.parse(rawHistory) : [];
     expect(history).toHaveLength(0);
+  });
+
+  it("archives and abandons an active no-shot Technique Exercise instead of discarding it as empty", async () => {
+    const execution = createTechniqueExecution();
+    localStorage.setItem(
+      CURRENT_SESSION_KEY,
+      JSON.stringify({
+        id: FIXTURE_SESSION_ID,
+        title: "Technique Session",
+        date: "2026-08-27T10:00:00.000Z",
+        notes: "",
+        blocks: [
+          {
+            id: "block-1",
+            name: "Existing Release Block",
+            mode: "fixed",
+            measurementMode: "back-hog",
+            targetTime: 3.75,
+            createdAt: "2026-08-27T10:00:00.000Z",
+            accuracyThresholds: { onTarget: 0.1, acceptable: 0.2 },
+          },
+        ],
+        activeBlockId: "block-1",
+        shots: [],
+        exerciseExecutions: [execution],
+        activeExerciseExecutionId: execution.id,
+      })
+    );
+    localStorage.setItem(SESSION_HISTORY_KEY, "[]");
+
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
+    screen.getByRole("button", { name: "Start New Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
+    screen.getByRole("button", { name: "Start" }).click();
+    await waitFor(() => screen.getByText("Set Up Training Block"));
+
+    const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]");
+    expect(history).toHaveLength(1);
+    expect(history[0].shots).toHaveLength(0);
+    expect(history[0].activeExerciseExecutionId).toBeUndefined();
+    expect(history[0].exerciseExecutions[0]).toMatchObject({
+      id: execution.id,
+      status: "abandoned",
+    });
+    expect(history[0].exerciseExecutions[0].abandonedAt).toEqual(expect.any(String));
   });
 
   it("reloads a previously-stored session without falling back to defaults", async () => {

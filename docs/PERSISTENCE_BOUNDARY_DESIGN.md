@@ -377,8 +377,8 @@ key with a smaller/empty value — never a key removal.
 
 | # | Storage key | Owning module | Persisted type | Read path | Write path | Delete/reset path | Schema version | Migration/validation function | Test coverage |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `curling-release-tracker-current-session` | `src/components/TrackerApp.tsx:222-223` (key), `src/lib/sessionMigration.ts` (migration) | `Session` (`src/types/index.ts:288-302`) | `TrackerApp.tsx:757-759`, mount effect | `TrackerApp.tsx:902-909`, effect on `[currentSession]`, guarded by `if (!currentSession) return;` | None (rewritten via `handleStartNewSession`, archiving into history — see Section 6) | None — unversioned, unconditional | `migrateSession(raw): Session` — `sessionMigration.ts:610-640` | `src/lib/__tests__/sessionMigration.test.ts` |
-| 2 | `curling-release-tracker-session-history` | same | `Session[]` | `TrackerApp.tsx:761-763` | `TrackerApp.tsx:918-923`, effect on `[sessionHistory]`, **unguarded** | `handleClearSessionHistory` → `setSessionHistory([])`, then rewritten as `"[]"`, never removed | None | `migrateSessionHistory(raw): Session[]` — `sessionMigration.ts:642-645` (maps `migrateSession`) | same file |
+| 1 | `curling-release-tracker-current-session` | `src/lib/sessionRepository.ts`, `src/lib/sessionMigration.ts` | `Session`, optionally including one active Technique/Shotmaking `ExerciseExecution` (ADR-0029) | `SessionRepository.loadCurrent` | `SessionRepository.saveCurrent` | Rewritten via Start New Session, archiving into history — see Section 6 | No root version; embedded Exercise Executions carry their own schema version | `migrateSession` plus strict `validateSessionExerciseState`; corrupt Exercise state fails closed | `sessionMigration.test.ts`, `sessionRepository.test.ts` |
+| 2 | `curling-release-tracker-session-history` | same | `Session[]`; embedded Exercise state must be terminal | `SessionRepository.loadHistory` | `SessionRepository.saveHistory` / `archiveAndReplace` | Clear History rewrites `"[]"`, never removes the key | Same as current Session | `migrateSessionHistory` plus strict terminal Exercise-state validation | same files |
 | 3 | `curling-release-tracker-history-filters` | `TrackerApp.tsx:226-227` (key), `src/lib/historyAnalysis.ts` (sanitize) | `HistoryAnalysisFilters` | `TrackerApp.tsx:793-795`, wrapped in try/catch (`:797-804`) | `TrackerApp.tsx:911-916`, effect on `[historyFilters]`, **unguarded** | None | None | `sanitizeHistoryFilters(raw)` — `historyAnalysis.ts:139-149`, merges onto `createDefaultHistoryFilters()` (`:85-96`); `sanitizeThresholdComparisonMode` (`:107-130`) repairs one sub-field | Indirect, via History/Analyze component tests — no dedicated migration test file |
 | 4 | `curling-release-tracker-assessment-data` | `src/lib/assessment/persistence.ts:11` | `AssessmentPersistedState` (`persistence.ts:20-24`: `{schemaVersion, currentRun?, history: AssessmentRun[]}`) | `TrackerApp.tsx:807`, own try/catch (`:808-813`) | `TrackerApp.tsx:927-930`, effect on `[assessmentState]`, guarded by `if (!assessmentState) return;` | `deleteAssessmentRunFromHistory` (`persistence.ts:123-131`) — removes one run from the in-memory array; key is always rewritten, never removed | `ASSESSMENT_PERSISTENCE_SCHEMA_VERSION = 1` (`persistence.ts:12`); each `AssessmentRun` also independently carries `ASSESSMENT_RUN_SCHEMA_VERSION = 1` (`assessment/types.ts:220`) | `migrateAssessmentPersistedState(raw)` — `assessment/migration.ts:420`; root version gate at `:423`; per-run validation `validatePersistedAssessmentRun` — `migration.ts:173`, version gate `:178` | `assessment/__tests__/migration.test.ts`, `.../persistence.test.ts` |
 | 5 | `curling-release-tracker-training-plans` | `src/lib/trainingPlans/persistence.ts:12` | `TrainingPlansPersistedState` (`persistence.ts:15-18`: `{schemaVersion, plans: TrainingPlan[]}`) | `TrackerApp.tsx:860` | `TrackerApp.tsx:933-939`, effect on `[trainingPlans]`, **unguarded** | `deletePlan` (`persistence.ts:57-62`) — filters the in-memory array; key always rewritten | `TRAINING_PLANS_SCHEMA_VERSION = 1` (`persistence.ts:13`); each `TrainingPlan` also carries its own `schemaVersion` (`types/index.ts:260`), but `migratePlan` unconditionally overwrites it (`migration.ts:147`) rather than checking it — this per-plan field is currently decorative, not load-bearing | `migrateTrainingPlans(raw)` — `trainingPlans/migration.ts:157-176`; **root-level mismatch is a full-wipe gate** (`:159-161`); within a matching root version, each plan is repaired field-by-field via `migratePlan` (`:134-149`) | `trainingPlans/__tests__/migration.test.ts`, `.../persistence.test.ts` |
@@ -1196,14 +1196,16 @@ original draft's `archiveCurrentToHistory` method:
    application flow** (`TrackerApp.tsx`'s `handleStartNewSession`) — the repository does
    not decide *what* the next state is, only persists what it's given, in the order and
    with the failure semantics ADR-0014 specifies.
-5. **The empty-session guard (`shots.length > 0`) stays in application code**, not inside
-   any repository operation — a repository method has no product-level opinion about
-   whether a session is "worth archiving."
+5. **The activity guard stays in application code**, not inside a repository operation.
+   ADR-0029 expands it from `shots.length > 0` to release-timing Shots **or any embedded
+   Exercise Execution**, because a completed Technique Exercise can legitimately have no
+   Attempt and no Shot. An active Exercise is abandoned explicitly before archival.
 
 As implemented (post-ADR-0014), `handleStartNewSession` calls:
 
 ```
-if (currentSession has at least one shot) {
+if (currentSession has at least one shot or Exercise Execution) {
+  abandon any active Exercise Execution in the archive snapshot;
   const nextHistory = [currentSession, ...existingHistory];
   const result = await sessionRepository.archiveAndReplace(nextHistory, nextCurrentSession);
   // result distinguishes a history-write failure (nothing persisted, React state left

@@ -1,10 +1,12 @@
 // SessionRepository — owns curling-release-tracker-current-session and
 // curling-release-tracker-session-history. Wraps migrateSession/migrateSessionHistory
-// (sessionMigration.ts) unchanged. See docs/PERSISTENCE_BOUNDARY_DESIGN.md §5.1 and
-// ADR-0013. Deliberately has no composed archive operation — see design doc §6 and
-// TrackerApp.tsx's handleStartNewSession, which composes saveCurrent/saveHistory itself,
-// in that order, preserving today's exact write order and lack of deduplication.
+// and coordinates the history-first archive transition. See ADR-0013/0014. ADR-0029
+// adds strict validation for optional embedded Exercise Executions without adding a key.
 import type { Session } from "../types";
+import {
+  isSessionExerciseCloudEligible,
+  validateSessionExerciseState,
+} from "./exercises/sessionIntegration";
 import { createNewSession, migrateSession, migrateSessionHistory } from "./sessionMigration";
 import { localStorageAdapter } from "./persistence/localStorageAdapter";
 import type {
@@ -13,10 +15,30 @@ import type {
   PersistenceWriteResult,
   StorageAdapter,
 } from "./persistence/types";
-import { loadedAbsent, loadedValue, loadFailed } from "./persistence/types";
+import { loadedAbsent, loadedValue, loadFailed, writeFailed } from "./persistence/types";
 
 export const CURRENT_SESSION_STORAGE_KEY = "curling-release-tracker-current-session";
 export const SESSION_HISTORY_STORAGE_KEY = "curling-release-tracker-session-history";
+
+const INVALID_EXERCISE_STATE_MESSAGE =
+  "Stored Training Session contains invalid Exercise Execution state.";
+
+function hasValidExerciseState(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+  const record = value as Record<string, unknown>;
+  const sessionId = typeof record.id === "string" ? record.id : "";
+  return validateSessionExerciseState(record, sessionId).valid;
+}
+
+function hasValidTerminalExerciseState(value: unknown): boolean {
+  if (!hasValidExerciseState(value)) return false;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
+  return isSessionExerciseCloudEligible(value as Session);
+}
+
+function invalidExerciseStateWrite(): PersistenceWriteResult {
+  return writeFailed({ kind: "unknown", message: INVALID_EXERCISE_STATE_MESSAGE });
+}
 
 /**
  * Outcome of `SessionRepository.archiveAndReplace` — see docs/adr/0014 for the full
@@ -113,10 +135,17 @@ export function createSessionRepository(
       } catch {
         return loadedAbsent<Session>();
       }
+      if (!hasValidExerciseState(parsed)) {
+        return loadFailed<Session>(createNewSession(), {
+          kind: "unknown",
+          message: INVALID_EXERCISE_STATE_MESSAGE,
+        });
+      }
       return loadedValue(migrateSession(parsed));
     },
 
     async saveCurrent(session: Session): Promise<PersistenceWriteResult> {
+      if (!hasValidExerciseState(session)) return invalidExerciseStateWrite();
       return adapter.set(CURRENT_SESSION_STORAGE_KEY, JSON.stringify(session));
     },
 
@@ -134,10 +163,22 @@ export function createSessionRepository(
       } catch {
         return loadedAbsent<Session[]>();
       }
+      if (
+        Array.isArray(parsed) &&
+        parsed.some((session) => !hasValidTerminalExerciseState(session))
+      ) {
+        return loadFailed<Session[]>([], {
+          kind: "unknown",
+          message: INVALID_EXERCISE_STATE_MESSAGE,
+        });
+      }
       return loadedValue(migrateSessionHistory(parsed));
     },
 
     async saveHistory(history: Session[]): Promise<PersistenceWriteResult> {
+      if (history.some((session) => !hasValidTerminalExerciseState(session))) {
+        return invalidExerciseStateWrite();
+      }
       return adapter.set(SESSION_HISTORY_STORAGE_KEY, JSON.stringify(history));
     },
 
@@ -145,6 +186,16 @@ export function createSessionRepository(
       nextHistory: Session[],
       nextCurrentSession: Session
     ): Promise<SessionArchiveOutcome> {
+      if (
+        nextHistory.some((session) => !hasValidTerminalExerciseState(session)) ||
+        !hasValidExerciseState(nextCurrentSession)
+      ) {
+        return {
+          ok: false,
+          step: "history",
+          error: { kind: "unknown", message: INVALID_EXERCISE_STATE_MESSAGE },
+        };
+      }
       const historyResult = await adapter.set(
         SESSION_HISTORY_STORAGE_KEY,
         JSON.stringify(nextHistory)

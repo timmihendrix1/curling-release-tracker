@@ -24,6 +24,7 @@ import { createSupabaseSportingCloudService } from "../lib/supabase/supabaseSpor
 import { useIdentity } from "./identity/IdentityProvider";
 
 const SportingPersistenceContext = createContext<SportingRepositories | null>(null);
+const SportingProfileIdContext = createContext<string | null>(null);
 type SportingCloudSyncContextValue = SportingSyncSnapshot & { retry(): void };
 const SportingCloudSyncContext = createContext<SportingCloudSyncContextValue | null>(null);
 let unscopedTestRepositories: SportingRepositories | null = null;
@@ -39,6 +40,15 @@ export function useSportingRepositories(): SportingRepositories {
     return unscopedTestRepositories;
   }
   throw new Error("Sporting persistence requires an authenticated Profile scope.");
+}
+
+export function useSportingProfileId(): string {
+  const profileId = useContext(SportingProfileIdContext);
+  if (profileId !== null) return profileId;
+  if (process.env.NODE_ENV === "test") {
+    return "00000000-0000-4000-8000-000000000001";
+  }
+  throw new Error("Sporting execution requires an authenticated Profile scope.");
 }
 
 export function useSportingCloudSync(): SportingCloudSyncContextValue | null {
@@ -138,14 +148,16 @@ function ProfileScopedSportingPersistenceInstance({
   }
 
   return (
-    <SportingCloudSyncContext.Provider value={{
-      ...syncSnapshot,
-      retry: () => void manager.retry(),
-    }}>
-      <SportingPersistenceContext.Provider value={repositories}>
-        {children}
-      </SportingPersistenceContext.Provider>
-    </SportingCloudSyncContext.Provider>
+    <SportingProfileIdContext.Provider value={profileId}>
+      <SportingCloudSyncContext.Provider value={{
+        ...syncSnapshot,
+        retry: () => void manager.retry(),
+      }}>
+        <SportingPersistenceContext.Provider value={repositories}>
+          {children}
+        </SportingPersistenceContext.Provider>
+      </SportingCloudSyncContext.Provider>
+    </SportingProfileIdContext.Provider>
   );
 }
 

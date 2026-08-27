@@ -56,6 +56,7 @@ function renderTrainLanding(overrides: Partial<Parameters<typeof TrainLanding>[0
     onDeletePlan: vi.fn(),
     onDuplicatePlan: vi.fn(),
     onStartPlan: vi.fn(),
+    onStartExercise: vi.fn(() => true),
     ...overrides,
   };
   const result = render(<TrainLanding {...props} />);
@@ -188,7 +189,7 @@ describe("Exercise Library", () => {
       within(panel).getByText(/What should I practise today/)
     ).toBeInTheDocument();
     expect(
-      within(panel).getByText(/An exercise cannot be started or recorded from here/)
+      within(panel).getByText(/Solo Technique and Shotmaking exercises can be recorded here/)
     ).toBeInTheDocument();
   });
 
@@ -336,14 +337,50 @@ describe("Exercise detail", () => {
     expect(screen.getByText("1 exercise")).toBeInTheDocument();
   });
 
-  it("shows no start action and no other Exercise's content", () => {
-    renderTrainLanding();
+  it("offers the generic start action and shows no other Exercise's content", () => {
+    const { props } = renderTrainLanding();
     openExercises();
     openDetail("Release Point");
 
-    expect(screen.queryByRole("button", { name: /Start Exercise/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Start$/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    expect(props.onStartExercise).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Release Point", primaryFocus: "technique" })
+    );
     expect(screen.queryByText("Eight Guards, Progressively Longer")).toBeNull();
+  });
+
+  it("keeps the detail open when Session persistence refuses a start", () => {
+    const onStartExercise = vi.fn(() => false);
+    renderTrainLanding({ onStartExercise });
+    openExercises();
+    openDetail("Release Point");
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    expect(onStartExercise).toHaveBeenCalledOnce();
+    expect(screen.getByRole("heading", { name: "Release Point" })).toBeInTheDocument();
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("disables Exercise start while Session persistence is not writable", () => {
+    const onStartExercise = vi.fn(() => true);
+    renderTrainLanding({ onStartExercise, startExerciseDisabled: true });
+    openExercises();
+    openDetail("Release Point");
+
+    expect(screen.getByRole("button", { name: "Start Exercise" })).toBeDisabled();
+    expect(onStartExercise).not.toHaveBeenCalled();
+  });
+
+  it("moves a successfully linked Measured Exercise to the existing Quick Start panel", () => {
+    const onEntryPathChange = vi.fn();
+    renderTrainLanding({ onEntryPathChange });
+    openExercises();
+    openDetail("Release Time");
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
+    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(onEntryPathChange).toHaveBeenLastCalledWith("quick-start");
   });
 
   it("renders every section of the specification's information order", () => {

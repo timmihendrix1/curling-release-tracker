@@ -272,7 +272,8 @@ export function exerciseLibraryExplanation(): FeatureExplanation {
       "Seeing what to observe, and what the app does not judge",
     ],
     limitations: [
-      "The Library explains how to set up, perform and judge an exercise. An exercise cannot be started or recorded from here.",
+      "Solo Technique and Shotmaking exercises can be recorded here. Team execution and role rotation are not available yet.",
+      "Measured Release Time uses the existing Fixed, Variable and Blind Weight training flow rather than a separate recorder.",
       "A Technique exercise is never scored by the app, and there is no platform-standardised scoring rubric for any exercise.",
     ],
   };

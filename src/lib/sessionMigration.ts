@@ -22,6 +22,7 @@ import type {
 } from "../types";
 import { resolveAccuracyThresholds } from "./accuracyThresholds";
 import { sanitizeCaptureSequence } from "./captureSequence";
+import { validateSessionExerciseState } from "./exercises/sessionIntegration";
 import { getEffectiveTargetMode } from "./trainingBlocks";
 import {
   DEFAULT_SMART_RANDOM_MAX,
@@ -625,6 +626,7 @@ export function migrateSession(raw: unknown): Session {
 
   const captureSequence = migrateCaptureSequence(source, id, blockIds, shots);
   const planExecution = migratePlanExecution(source, blockIds);
+  const exerciseState = validateSessionExerciseState(source, id);
 
   return {
     id,
@@ -636,6 +638,20 @@ export function migrateSession(raw: unknown): Session {
     shots,
     captureSequence,
     planExecution,
+    ...(exerciseState.valid && source.exerciseExecutions !== undefined
+      ? { exerciseExecutions: exerciseState.executions }
+      : {}),
+    ...(exerciseState.valid && exerciseState.activeExecutionId !== undefined
+      ? { activeExerciseExecutionId: exerciseState.activeExecutionId }
+      : {}),
+    ...(exerciseState.valid && source.releaseTimingExerciseVersionSnapshot !== undefined
+      ? {
+          releaseTimingExerciseVersionSnapshot:
+            JSON.parse(
+              JSON.stringify(source.releaseTimingExerciseVersionSnapshot)
+            ) as Session["releaseTimingExerciseVersionSnapshot"],
+        }
+      : {}),
   };
 }
 
