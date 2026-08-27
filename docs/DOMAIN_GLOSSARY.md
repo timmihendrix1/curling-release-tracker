@@ -185,8 +185,10 @@ basic restore as cross-device continuation (see **Sync Status**).
 
 ## Identity Gate
 
-**[Planned — Stage B0.2, `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
-Accepted; no runtime code implements it. The application is still fully usable with no account.]**
+**[Planned application integration — Stage B0.2,
+`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
+The B0.2c coordinator/domain foundation exists but is dormant; no application-level gate renders or
+invokes it, and the application is still fully usable with no account.]**
 The blocking boundary that must be passed before any authenticated application surface — including all
 training, Assessment and Analyze functionality — is reachable. Passing it requires an authenticated
 **UserAccount**, a resolved **Profile**, a completed personal onboarding, **Athlete** capability and the
@@ -199,7 +201,8 @@ resolved but has not completed onboarding does not pass the gate.
 
 ## Identity Access Barrier
 
-**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** A durable, local, deny-by-default record.
+**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
+`docs/adr/0025`.]** A durable, local, deny-by-default record.
 While an **unresolved** barrier exists, the authenticated application is blocked. **The two transition
 categories write it at different points:**
 
@@ -215,6 +218,9 @@ It exists because the authentication provider persists a session and announces i
 code can judge whether the transition it belongs to actually succeeded; the barrier is the durable
 denial that makes that ordering safe. **A barrier is never deleted as a security transition** — it is
 superseded by writing a newer one, and completed by a separate **Identity Barrier Resolution**.
+If a grant-bearing write completes after its same-page operation lost ownership, a fresh unresolved
+barrier with origin `unconfirmed_grant_fence` retracts that stale grant before another effect section
+runs; this origin is durable history, never a distinct permission.
 
 Distinct from a provider sign-out: provider sign-out is attempted last and may fail without weakening
 the denial.
@@ -223,7 +229,8 @@ the denial.
 
 ## Identity Barrier Resolution
 
-**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record proving that one exact
+**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
+`docs/adr/0025`.]** The local record proving that one exact
 **Identity Access Barrier** was completed by one exact **Interactive Authentication Attempt**. It is
 stored under a key derived from that barrier's own identifier, so writing one can never resolve or
 remove a different barrier.
@@ -236,7 +243,8 @@ checked. A resolution belonging to an older barrier binds nothing.
 
 ## Interactive Authentication Attempt
 
-**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record of one deliberately
+**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
+`docs/adr/0025`.]** The local record of one deliberately
 started authentication, bound to the **Identity Access Barrier** written for it and, for the redirect
 provider, to the exact provider flow it created. It is what lets a full-page return be recognised as a
 genuine continuation of *this* attempt rather than a stale or unrelated one.
@@ -248,7 +256,8 @@ that they are authenticated.
 
 ## Trusted Device Record
 
-**[Planned — Stage B0.2, `docs/adr/0025`. Not implemented.]** The local record establishing that this
+**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
+`docs/adr/0025`.]** The local record establishing that this
 device previously completed authentication and onboarding for one account scope, written **only** from
 a successful server-authoritative result. It is what makes offline entry possible for a previously
 onboarded Profile, and it is keyed to the account scope — a record belonging to a different account can

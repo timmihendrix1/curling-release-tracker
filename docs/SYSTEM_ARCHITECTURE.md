@@ -2970,12 +2970,13 @@ account-switch review proves authentication/onboarding state transitions only. T
 data is **discarded** in B0.3, never imported or adopted, and disposal does not move earlier.
 **B0.2 is never independently release-ready.**
 
-### Stage B0.2's accepted gate design (Accepted — not implemented)
+### Stage B0.2's accepted gate design (B0.2c foundation implemented but dormant; app integration not implemented)
 
 **Decision record:** `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
-Everything in this subsection is an **accepted design that no runtime code implements yet**. Nothing
-here may be read as a description of current behaviour; the "Optional Supabase Auth Shell" section
-above remains the accurate account of what exists today.
+The identity records, repositories, validators, reducer and transition coordinator in
+`src/lib/identity/` implement the dormant B0.2c foundation. They are not composed into the application
+shell, so nothing here may be read as current user-visible behaviour; the "Optional Supabase Auth
+Shell" section above remains the accurate account of what exists today.
 
 **One authority.** A thin `IdentityProvider` owns React lifecycle, context and rendering; a single
 non-component `identityRuntime` facade is the only composition seam; and one
@@ -3005,7 +3006,22 @@ under a key derived from that exact barrier id**, so an older operation can neve
 newer barrier. This matters because `StorageAdapter` offers only `get`/`set` and explicitly claims no
 multi-key atomicity, so a read-then-delete finalization could not be made safe. The barrier, its
 matching attempt and its matching resolution form **one durable correlation set** that survives reload;
-only non-current records are ever cleaned, and that cleanup can never affect authorization.
+ordinary best-effort cleanup touches only non-current records and cannot affect authorization. The one
+distinct required compensation removes the exact just-written resolution only when its post-write proof
+failed and the replacement denial fence could not be stored.
+
+**Same-page identity effects are serialized.** Every mutation and each read that guards a mutation uses
+one page-lifetime effect lane. If a resolution or trusted-record write finishes but its post-write proof
+fails or its operation lost ownership, that same section installs a fresh unresolved
+`unconfirmed_grant_fence` barrier before releasing the lane (or retracts the exact resolution/removes
+the trusted key if the fence write fails), so a reload cannot turn the superseded success into offline
+access when either containment write succeeds. A simultaneous fence
+and compensation failure returns a named storage failure and emits no ready state, without claiming
+durable reload containment. Pending-intent capture uses the coordinator and the same lane
+as invalidation cleanup; a successful invalidation retry clears both the intent and any older cleanup
+tombstone. This does not claim cross-tab atomicity beyond ADR-0025 §8.
+When a different current barrier is already visible, the old derived-key resolution is intrinsically
+non-current; the coordinator leaves that harmless record alone and never overwrites the newer barrier.
 
 **Startup has three phases.** **Phase 0** captures the OAuth return once, classifies it, cleans the URL
 and only then inspects durable state — because a legitimate full-page Google return necessarily arrives

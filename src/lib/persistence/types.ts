@@ -77,13 +77,65 @@ export type StorageGetResult =
 /**
  * The only component that knows about a specific browser storage mechanism, and the
  * only component that classifies its exceptions. Both methods always resolve — neither
- * ever rejects. No multi-key atomicity is claimed or possible through this interface;
- * `remove` is intentionally absent (see docs/PERSISTENCE_BOUNDARY_DESIGN.md §9) since no
- * current code path ever deletes a key.
+ * ever rejects. No multi-key atomicity is claimed or possible through this interface.
+ *
+ * `remove` is deliberately **not** part of this minimal contract: the seven sporting
+ * repositories never delete a key (every "clear" there is a full overwrite with a
+ * smaller or empty value), so depending on a deletion primitive they cannot use would
+ * widen their capability for nothing. Repositories that genuinely delete depend on
+ * `RemovableStorageAdapter` below instead — see docs/PERSISTENCE_BOUNDARY_DESIGN.md §9
+ * for the per-repository inventory and ADR-0025 Decision 19.
  */
 export interface StorageAdapter {
   get(key: string): Promise<StorageGetResult>;
   set(key: string, value: string): Promise<PersistenceWriteResult>;
+}
+
+/** Failure shape a removal can produce. Deliberately narrower than
+ * `PersistenceWriteError` — "quota exceeded" has no meaning for a deletion. */
+export type PersistenceRemoveError =
+  | { kind: "storage_unavailable" }
+  | { kind: "removal_failed"; message: string };
+
+export type PersistenceRemoveResult =
+  | { ok: true }
+  | { ok: false; error: PersistenceRemoveError };
+
+export function removeOk(): PersistenceRemoveResult {
+  return { ok: true };
+}
+
+export function removeFailed(error: PersistenceRemoveError): PersistenceRemoveResult {
+  return { ok: false, error };
+}
+
+/**
+ * The narrow removable extension of `StorageAdapter` — see
+ * docs/PERSISTENCE_BOUNDARY_DESIGN.md §9 and ADR-0025 Decision 19.
+ *
+ * Stage B0.2's identity records (a device trust record, an access barrier, an
+ * interactive-authentication attempt, a barrier resolution and a pending deep-link
+ * intent) are the first records for which removal is a genuine operation rather than
+ * an overwrite. Only the identity repositories that actually delete depend on this
+ * type; **`identityBarrierRepository` deliberately does not**, because no code path
+ * may remove a current barrier as a security transition — a barrier is superseded by
+ * writing a newer one and completed by a separate, per-barrier resolution record.
+ *
+ * Two kinds of removal exist behind this one method and must not be grouped together
+ * (design doc §9): **required** removal, whose failure blocks a transition
+ * (trusted-state invalidation, pending-intent deletion), and **best-effort cleanup**
+ * of records that are already non-current, whose failure changes nothing and never
+ * affects authorization.
+ *
+ * **This is not, and must not be presented as, a solution to multi-key atomicity.**
+ * A plain `remove` still offers no compare-and-delete, which is precisely why
+ * ADR-0025 resolves a barrier with a key derived from that barrier's own id instead
+ * of deleting a shared key.
+ *
+ * `remove` always resolves — never rejects — exactly like `get` and `set`.
+ */
+export interface RemovableStorageAdapter extends StorageAdapter {
+  remove(key: string): Promise<PersistenceRemoveResult>;
 }
 
 /**

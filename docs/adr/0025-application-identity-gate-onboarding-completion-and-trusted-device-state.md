@@ -236,6 +236,92 @@ the newer barrier.
 - **The authoritative cross-reload identity binding is the account scope**, not any generation. No
   durable monotonic counter is invented.
 
+**A third, separate mechanism orders the operations of one page lifetime, and it is not a generation.**
+Neither the durable protocol nor the live generation can order two operations that share the same
+barrier, the same attempt **and** the same live generation — two concurrent verifications of one OTP
+attempt, a trusted-state retry overlapping a background revalidation, a second startup. Every checkpoint
+passes for both simultaneously, so both could write trusted state and both could return ready.
+
+So the coordinator keeps an explicit **page-lifetime operation order**. Every operation that can
+produce, refresh or revoke access takes a strictly increasing sequence and becomes the owner. Claiming
+the slot is **synchronous** — no storage read, and no dependence on anything durable — so ownership
+transfers the instant a newer applicable operation starts. An operation that is no longer the owner
+**must not announce an authoritative progress phase, write or replace trusted state, mutate intent
+state, return ready, or re-tag the gate state with its own identity.**
+
+The word "immediately" is load-bearing about the *slot*, and only about the slot. What an already-issued
+adapter call does after that is a separate question, answered by the effect boundaries below — and the
+answer is an ordering guarantee, not an interruption.
+
+#### The order is enforced at the EFFECT boundaries, by operation-aware critical sections
+
+Ownership is a synchronous fact checked at one instant. Every durable mutation, though, is a
+read → decide → write sequence across awaits supplied by an **injected** adapter. Today's `localStorage`
+adapter resolves promptly; an IndexedDB or network adapter will not, and a defective one may resolve
+arbitrarily late. A check that passes and a write that lands are therefore separated by time an older
+operation does not control — so "a newer operation supersedes an older one immediately" would be a claim
+about presentation state only, not about what reaches storage.
+
+The mechanism is one **page-lifetime effect lane**. Every durable mutation, and every read that guards
+one, runs as a *section* on it:
+
+1. **Sections never interleave.** A section's read → decide → write window is closed against every other
+   section, whatever the adapter's latency, and write order equals section-entry order — which is fixed
+   synchronously when the section is requested, not by how promises happen to be scheduled. **No
+   microtask-timing assumption is made anywhere.**
+2. **Ownership is re-proved inside the section**, after the lane admits it. An operation that lost
+   ownership while queued performs no read and no write at all.
+3. **Every proof is re-taken after an await, immediately before the effect it guards.** A checkpoint, a
+   trusted-record load and a repository read are all asynchronous; a proof taken only before one is a
+   proof about the past.
+
+Concretely: barrier establishment is bound to an operation and is one section (so a delayed older write
+can neither replace a newer latch nor rebase the live generation under a newer transition); the
+resolution write and C7 are one section; a trusted-state write, and a metadata refresh's read →
+compare → write, are each one section; each pre-ready intent settlement is one section; each standalone
+checkpoint is one section that proves ownership on both sides of the read. The Phase-B trusted-record
+load and malformed-record cleanup are also one owned section: ownership is re-proved after the read and
+before removal, so a delayed old snapshot cannot delete a newer same-page record.
+
+**What is deliberately NOT claimed.** Claiming ownership is synchronous and outside the lane, so a newer
+operation can still take the slot while an older section is mid-write. For an ordinary deny-ward write,
+the newer operation's own writes queue behind the older section. A **grant-bearing** resolution or
+trusted-record write needs an additional rule: after that write completes, its post-write proof,
+ownership and the live epoch are checked again. If the proof fails or either marker changed, the same
+section writes a fresh unresolved
+`unconfirmed_grant_fence` barrier before releasing the lane; if that fence cannot be written, it
+retracts the exact just-written resolution or removes the shared trusted record before a newer same-page
+write can run. The old operation emits no ready result,
+and a reload cannot compose its stale grant into offline access when either containment mechanism
+completes. If both the fence write and exact compensating removal fail, the operation reports its named
+storage failure and no ready state is emitted, but — as with §14's simultaneous durable-denial failure —
+durable reload containment cannot honestly be claimed. A section excludes this page's own operations
+only — another tab writing directly to storage is still what §8 describes.
+If a different current barrier is already durably visible, the old derived-key resolution is already
+harmless and is left alone; compensation never overwrites that newer barrier.
+
+Four properties keep the whole thing honest:
+
+- **It is in-memory and page-scoped, and is never durable authority.** It orders the operations of one
+  document and nothing else. Cross-reload and cross-tab ordering remain exactly what §8 says they are.
+- **Only operations that can change access claim it.** A Legal-snapshot refetch and an intent discard
+  cannot, so neither may supersede an in-flight sign-in. A non-claiming event must therefore also **take
+  nothing**: it is accepted only where it is meaningful, and it carries the active operation's
+  correlation forward rather than erasing it — see §A's Legal-refresh rule.
+- **A superseded operation may not BEGIN a denial.** A definitive server negative that arrives after the
+  operation lost the slot describes an identity a newer operation may already have replaced, so it
+  announces nothing and mutates nothing. That is not in tension with the rule below: one is about
+  whether to start, the other about whether to finish.
+- **A denial that has already begun is never abandoned or suppressed as stale.** Once the in-memory
+  denial is announced and the barrier attempted, the transition runs to completion and its report locks
+  the gate whatever started since — abandoning it halfway would leave a partially applied revocation,
+  and suppressing it would invert the rule's entire purpose.
+
+The gate's reducer applies the same order: it carries a **high-water mark** of the highest operation
+sequence it has accepted an event from, so a report from a lower sequence is a no-op. That is a question
+of **order**, never of the sequence events happen to arrive in and never of the kind of state the gate
+is sitting in.
+
 ### 10. Google correlation requires a callback-carried selector, with no fallback
 
 The client is constructed with `flowType: "pkce"`, `detectSessionInUrl: false` and
@@ -303,6 +389,31 @@ honestly — it does not claim durable offline revocation**, and it never contin
 This records a negative fact **only after it has actually been learned online**. It invents no offline
 expiry period.
 
+**The transition's result is a STRUCTURED set of facts, and the single label is derived from it.**
+
+A denial can fail in more than one way at once. One that could neither remove the trusted record nor
+delete the pending intent has **two** outstanding facts; reporting only the first would discard the
+second, and calling the result "exact" while doing so would be worse than not claiming exactness at all.
+
+So an invalidation reports a closed list of **every** required step that did not complete —
+`durable_barrier`, `trusted_state`, `pending_intent`, `outstanding_cleanup_record` — and one derived
+primary label for the UI. The derivation lives in exactly one place and has a fixed priority: both
+durable denial mechanisms failing is `durable_denial_unavailable` (the only outcome that claims no
+durable revocation); otherwise a retained trusted record outranks a retained intent, because the record
+is what could still be honoured; a failed barrier write **alone** does not lower the label, because
+removal succeeded and a durable denial therefore exists.
+
+The full list travels with the result, so **no consumer has to trust the label alone** and nothing is
+lost to the collapse. A **separate denial marker** carries "the application is denied", which is true for
+every outcome. The list says which required steps are outstanding; the marker says the app is closed;
+neither is derived from the other, and no caller re-derives either from a lock verdict. All of this
+travels through every path that can run an invalidation — Phase B, startup, OTP, Google, the
+trusted-state retry, onboarding submission and background revalidation.
+
+**A definitive denial also deletes every pending intent (§22), and that deletion is required.** When it
+fails, the transition does not stop and does not pretend it succeeded: see §22's outstanding-cleanup
+rule.
+
 ### 15. Required trusted-state writes have explicit outcomes; a same-scope refresh failure is not fatal
 
 Server authentication, Profile resolution, onboarding and entitlement may all have succeeded, and the
@@ -327,6 +438,23 @@ fabricated**, and no account scope, Profile identity, onboarding or entitlement 
 - The Profile must already exist; there is **no second creation path** inside completion.
 - Gate eligibility is **derived** from those facts. No freely mutable "gate eligible" boolean is
   persisted, and no browser role may write any of them directly.
+
+**The stored scalar contract is restated once and enforced at every read/write boundary.** The database
+bounds a stored Profile display name (non-blank after trimming, raw length at most 80 characters) and a
+Legal version label (non-blank after trimming, raw length at most 120 characters) as check constraints.
+`complete_personal_onboarding` first trims the submitted display name and then applies the 80-character
+maximum, so its input acceptance is deliberately wider; its stored/RPC result still has to satisfy the
+shared validator. The Supabase mapper, coordinator snapshot, trusted-device validator and Legal parser
+all use those shared stored-value predicates. The Legal rule applies to pinned evidence labels and to
+the `current_*` reporting labels alike.
+
+Two details are deliberate. The **raw** length is bounded, matching the database's own
+`length(value) <= max`, so a value these boundaries accept is a value the database would store. And
+blankness is judged with JavaScript's `trim()`, which removes a slightly wider set than Postgres's
+argument-less `btrim` — making these boundaries marginally **stricter** than the database, which is the
+fail-closed direction. A value violating any of it makes the response **unconfirmed**, never a definitive
+server negative: a malformed success is not the server saying no, and treating it as one would revoke a
+legitimate device.
 
 ### 17. Legal evidence is versioned, pinned, and validated as a whole response
 
@@ -430,6 +558,63 @@ its barrier first and only then marks survival**, every step has a fail-closed o
 unpersisted invitation is never claimed to replay automatically**. Admin-request links are not
 email-bound and get no such recovery.
 
+### An outstanding denial cleanup is a SEPARATE durable record, not a third lifetime
+
+A definitive denial (§14) owes the deletion of whatever intent was stored. When that deletion **fails**,
+the debt has to survive a reload — otherwise it is discharged by simply reloading and authenticating
+again, and the stale intent is then replayed under the new identity.
+
+The debt is recorded as a **tombstone under its own key**, carrying **no intent material at all** — no
+kind, no token, no admin-request id. Its mere presence is the whole fact: *the pending-intent key must be
+empty before any ready state.*
+
+**A separate record, rather than a third `survival` value on the intent itself, is what makes the
+invariant hold.** A same-record marker has two bypasses that no amount of care inside one method closes:
+an ordinary capture can simply overwrite it, and a discharge that reads the marker and then removes the
+key can destroy an intent a newer capture wrote in between. Storing the owed intent's own identity inside
+the tombstone would only move a secret into a second key and invite a comparison this design does not
+need.
+
+Its rules:
+
+- It is written **only** by a definitive denial whose required deletion failed — a write of a *different*
+  key, which is exactly why it can succeed where the removal could not. Recording it is idempotent, and
+  an already-recorded debt is never rewritten.
+- **Ordinary capture and recovery both refuse while it exists**, and refuse equally when it cannot be
+  *ruled out* (unreadable or unparseable). So no legitimate newer intent can come into being while a debt
+  is outstanding — which is precisely why the discharge needs no currency proof and cannot destroy
+  anything a newer operation owns. It also means the debt can never be overwritten by ordinary capture,
+  converted into recovery survival, or replayed.
+- **The coordinator is the capture mutation boundary for the application.** Capture, definitive-denial
+  deletion/tombstone work, recovery marking, settlement and terminal discard all take the same
+  page-lifetime effect lane. A capture that started first therefore lands before the denial deletes it;
+  one admitted afterwards observes the completed cleanup. Repository calls are not a second production
+  orchestration API. This is a same-page guarantee; §8 remains the honest cross-tab limitation.
+- A malformed or unreadable tombstone counts as **present**, never as absence. Concluding "no debt" from
+  material this build cannot read would let corruption discharge a real debt.
+- **The coordinator enforces it, not a later UI layer's discipline.** Every path to a ready state — fresh
+  resolution, optimistic entry, offline continuation, onboarding completion, the trusted-state retry —
+  passes through one pre-ready settlement step. That step clears the intent key **and only then** the
+  tombstone, so a partial discharge leaves the debt in force rather than forgotten; any failure is
+  fail-closed and no ready state is entered. The debt therefore cannot be bypassed by a reload, by a
+  fresh authentication, or by starting a recovery transition, and **the stale intent cannot replay,
+  because no ready gate exists while the debt is present.**
+- A later successful definitive-denial retry clears the pending-intent key and then clears any older
+  cleanup tombstone in the **same effect section**. A successful retry therefore cannot leave a stale
+  debt that permanently blocks every later ready transition.
+- An **ordinary** intent is left completely untouched by that step, which is what keeps a first-run deep
+  link alive across normal authentication and onboarding.
+- The **recovery-survival reset** performed by the same step re-confirms the stored bytes immediately
+  before its write, so a capture that replaced the record between the read and the write is not silently
+  overwritten by the older read's data. That is the narrowest compare-and-set this storage interface can
+  express; the residual window is the write itself, and §8's honest limitation still stands.
+
+**Honest limitation.** If the tombstone write *also* fails, that is reported as its own outstanding fact
+(`outstanding_cleanup_record`, §14), the application is still denied, and **no claim is made that the
+stale intent has been made unreplayable across a future page load**. That is the same class of limitation
+§14 states for a simultaneous failure of both durable denial mechanisms, and it is reported rather than
+papered over.
+
 ### 23. The Team bootstrap path is retired in two steps
 
 The Team-specific profile bootstrap remains reachable while the legacy Team UI still depends on it, and
@@ -442,6 +627,10 @@ function is kept but becomes unreachable by browser roles. **No dormant code is 
 Stage B0.2 has never shipped, so no identity record format has ever been deployed. Each record is
 introduced at `schemaVersion: 1` under its final name and key. **No migration, alias or compatibility
 shim from a prior format is designed, described or claimed.**
+
+This is why §22's cleanup tombstone is a **new record rather than a migration**: it is introduced at
+`schemaVersion: 1` under its own key, and no identity record has ever been written to a real device.
+Nothing needs backfilling, and no prior-format branch exists to add.
 
 ## Operational contracts
 
@@ -457,6 +646,34 @@ that this repository is self-sufficient and no external plan document is needed 
 | With connectivity | Revalidation runs **in the background**; it never blocks entry for an already-trusted device |
 | Definitive negative result | **Denies in memory immediately**, then enters the server-driven invalidation transition (§14) |
 | Transient failure | **Remains distinct from a definitive negative and never revokes trusted state.** Conflating the two would lock out a legitimate device on a bad network |
+
+**"Never blocks entry" is modelled in the event and reducer contract, not left to a UI layer.** A
+background revalidation runs while a ready session is already mounted, so every result it returns —
+and every phase it announces — is **explicitly marked as background**, and the reducer keys its
+behaviour off that marking:
+
+| Background outcome | Effect on a `ready_online` or `ready_offline` state |
+|---|---|
+| Successful same-identity confirmation | The ready session is **refreshed in place**. No lock, no loading state, no flicker — not even while the server call is in flight |
+| Transient or unconfirmed | **No change.** The mounted session stays exactly as it is |
+| Superseded by a newer operation | **No change**, and reported as `superseded` rather than as a transient failure — nothing was transient, a newer operation simply took over |
+| Metadata-refresh failure (§15) | **No change.** Explicitly non-fatal; the existing record is retained and no timestamp is fabricated |
+| Definitive negative | **Denies immediately**, and `identity_denied_in_memory` is still deny-ward from every state, including a ready one |
+
+Its progress phases are still announced, so the operation remains orderable under §9's page-lifetime
+order — they simply **render nothing**. A generic progress event that a later stage had to remember to
+filter by hand would be a defect waiting to happen; this is a property of the contract instead.
+
+**A Legal-snapshot refetch is the other non-blocking operation, and it is governed the same way.** It
+claims no ownership (§9), because refetching a document cannot change who is authenticated. The reducer
+therefore accepts its progress and its result **only from the states where a refetch is meaningful** —
+the onboarding screens, `legal_unavailable`, `signed_out`, and a refetch already in progress — and
+**carries the active operation's correlation forward** rather than clearing it.
+
+Both halves matter. Accepting it anywhere would let a refetch replace the phase a person is waiting on
+mid-authentication. Clearing the correlation would be worse: the refetch never claimed the gate, yet it
+would erase the exact proof `applyVerdict` demands and so disqualify the rightful result of the operation
+that did — a non-owning operation taking the gate hostage.
 
 ### B. Explicit sign-out — ordering and failure semantics
 
@@ -479,6 +696,8 @@ Ordered steps, all coordinator-owned:
 
 **"Best effort" applies only to cleanup of already non-current correlation records.** It never describes
 ordinary-intent deletion, trusted-state invalidation, or trusted-state establishment.
+The exact retraction of a just-written but unconfirmed resolution (§9) is not that cleanup and is not
+best-effort: it is the required compensation when the replacement denial fence could not be written.
 
 ### C. Invitation wrong-account recovery — bounded ordering and failures
 
@@ -487,7 +706,9 @@ wrong-account result:
 
 1. receive the explicit **"Sign in with the invited account"** action;
 2. establish a **new unresolved account-recovery barrier**;
-3. persist **survival for exactly the current invitation**;
+3. persist **survival for exactly the current invitation** — refused outright if that record already
+   carries an outstanding denial cleanup (§22), because a debt owed by the server's denial is never
+   converted into a licence to survive a sign-out;
 4. remove **every other** ordinary pending intent;
 5. remove/invalidate **trusted state**;
 6. **revalidate the barrier**;
@@ -553,7 +774,7 @@ URLs including their query string.
 | `identityBarrierResolutionRepository` | `RemovableStorageAdapter` | **Non-current cleanup only, best-effort** |
 | `interactiveAttemptRepository` | `RemovableStorageAdapter` | **Non-current cleanup only, best-effort** |
 | `trustedDeviceRepository` | `RemovableStorageAdapter` | **Required** establishment, replacement and removal — not best-effort |
-| `pendingIntentRepository` | `RemovableStorageAdapter` | **Required** deletion — not best-effort |
+| `pendingIntentRepository` | `RemovableStorageAdapter` | **Required** deletion — not best-effort. Owns **two** keys: the pending intent, and the outstanding-denial-cleanup tombstone whose pre-ready discharge it performs (§22) |
 | The seven sporting repositories | **base `StorageAdapter`, unchanged** | None; they never delete |
 
 **Removal is not the barrier-safety mechanism.** A plain removal primitive offers no compare-and-delete,

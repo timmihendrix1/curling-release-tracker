@@ -463,3 +463,249 @@ describe("authorized Team-request boundary — the access token crosses exactly 
     expect(/\.access_token\b/.test(helper)).toBe(true);
   });
 });
+
+describe("Stage B0.2c identity layer — dormant, and structurally unable to remove a barrier", () => {
+  // See docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md
+  // Decisions 1, 6 and 19. Three separate properties are checked here, each of
+  // which would otherwise rest on nobody having made a mistake:
+  //
+  //   1. the whole `src/lib/identity` layer is DORMANT — no component imports it,
+  //      so Stage B0.2c changes no user-visible behaviour;
+  //   2. `identityRuntime` is the only production module that constructs the
+  //      coordinator, so there is exactly one composition seam for Stage B0.2e's
+  //      provider to mount;
+  //   3. **no production file removes the current barrier key**, which is the one
+  //      storage operation ADR-0025 Decision 6 forbids outright.
+  const IDENTITY_DIR = join(SRC_ROOT, "lib", "identity");
+  const RUNTIME_FILE = join(IDENTITY_DIR, "identityRuntime.ts");
+  const BARRIER_REPOSITORY_FILE = join(IDENTITY_DIR, "identityBarrierRepository.ts");
+
+  function productionFiles(): string[] {
+    return collectSourceFiles(SRC_ROOT).filter((path) => !isTestPath(path));
+  }
+
+  function importsFrom(source: string, moduleName: string): boolean {
+    const quoted = `["'][^"']*${moduleName}["']`;
+    const pattern = new RegExp(
+      [
+        `\\bfrom\\s*${quoted}`,
+        `\\bimport\\s*${quoted}`,
+        `\\bimport\\s*\\(\\s*${quoted}`,
+        `\\brequire\\s*\\(\\s*${quoted}`,
+      ].join("|")
+    );
+    return pattern.test(stripComments(source));
+  }
+
+  it("the identity layer exists and is non-trivial (non-vacuous)", () => {
+    const files = collectSourceFiles(IDENTITY_DIR).filter((path) => !isTestPath(path));
+    expect(files.length).toBeGreaterThan(15);
+    expect(files.map((path) => relative(IDENTITY_DIR, path))).toContain("identityRuntime.ts");
+    expect(files.map((path) => relative(IDENTITY_DIR, path))).toContain(
+      "identityTransitionCoordinator.ts"
+    );
+  });
+
+  it("no component imports anything from src/lib/identity — the stage is dormant", () => {
+    const components = productionFiles().filter((path) =>
+      relative(SRC_ROOT, path).startsWith("components/")
+    );
+    // Non-vacuous: there really are components to check.
+    expect(components.length).toBeGreaterThan(20);
+    const offenders = components.filter((path) => {
+      const code = stripComments(readFileSync(path, "utf8"));
+      return /\bfrom\s*["'][^"']*\/identity\/[^"']*["']/.test(code);
+    });
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("no page, route handler or other production module outside src/lib/identity imports it either", () => {
+    const outside = productionFiles().filter(
+      (path) => !relative(SRC_ROOT, path).startsWith(join("lib", "identity") + "/")
+    );
+    const offenders = outside.filter((path) =>
+      /\bfrom\s*["'][^"']*\/identity\/[^"']*["']/.test(stripComments(readFileSync(path, "utf8")))
+    );
+    // src/lib/supabase/supabaseIdentityService.ts is the one legitimate outside
+    // importer: it IMPLEMENTS the identity service contract. It is not a consumer
+    // of the gate and mounts nothing.
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([
+      join("lib", "supabase", "supabaseIdentityService.ts"),
+    ]);
+  });
+
+  it("identityRuntime is the ONLY production module that constructs the coordinator", () => {
+    // The declaring module is excluded: it contains the factory's own `export
+    // function` line, which is a declaration rather than a construction.
+    const COORDINATOR_FILE = join(IDENTITY_DIR, "identityTransitionCoordinator.ts");
+    const constructors = productionFiles()
+      .filter((path) => path !== COORDINATOR_FILE)
+      .filter((path) =>
+        /createIdentityTransitionCoordinator\s*\(/.test(stripComments(readFileSync(path, "utf8")))
+      );
+    expect(constructors.map((path) => relative(SRC_ROOT, path))).toEqual([
+      relative(SRC_ROOT, RUNTIME_FILE),
+    ]);
+    // Non-vacuous: the declaring file really does declare exactly one factory.
+    const declaration = stripComments(readFileSync(COORDINATOR_FILE, "utf8"));
+    expect(
+      [...declaration.matchAll(/export function createIdentityTransitionCoordinator\s*\(/g)]
+    ).toHaveLength(1);
+  });
+
+  it("the barrier repository depends on the BASE storage contract, never the removable one", () => {
+    const code = stripComments(readFileSync(BARRIER_REPOSITORY_FILE, "utf8"));
+    expect(code).toContain("StorageAdapter");
+    // Naming the removable type here would be the first step toward a removal path.
+    expect(code).not.toContain("RemovableStorageAdapter");
+    expect(code).not.toContain("removeIdentityRecord");
+    expect(/\.remove\s*\(/.test(code)).toBe(false);
+  });
+
+  it("no production file removes the barrier storage key", () => {
+    // The key is a single literal, so a removal of it would have to name it. Every
+    // production reference is checked, not just the identity layer's.
+    const BARRIER_KEY = "curling.identity.accessBarrier.v1";
+    const referencing = productionFiles().filter((path) =>
+      stripComments(readFileSync(path, "utf8")).includes(BARRIER_KEY)
+    );
+    // Non-vacuous: exactly one production file declares it.
+    expect(referencing.map((path) => relative(SRC_ROOT, path))).toEqual([
+      join("lib", "identity", "identityBarrier.ts"),
+    ]);
+
+    // And no production file anywhere pairs a removal call with the barrier
+    // constant that names it.
+    const offenders = productionFiles().filter((path) => {
+      const code = stripComments(readFileSync(path, "utf8"));
+      return /remove(?:IdentityRecord)?\s*\(\s*[^)]*IDENTITY_BARRIER_STORAGE_KEY/.test(code);
+    });
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("the removable capability is depended on by exactly the four repositories that delete", () => {
+    // docs/PERSISTENCE_BOUNDARY_DESIGN.md §9's inventory, enforced rather than
+    // documented: the barrier repository is deliberately absent from this list.
+    const identityFiles = collectSourceFiles(IDENTITY_DIR).filter((path) => !isTestPath(path));
+    const dependants = identityFiles
+      .filter((path) => {
+        const code = stripComments(readFileSync(path, "utf8"));
+        return /\bRemovableStorageAdapter\b/.test(code);
+      })
+      .map((path) => relative(IDENTITY_DIR, path))
+      .sort();
+    expect(dependants).toEqual(
+      [
+        "identityBarrierResolutionRepository.ts",
+        "interactiveAttemptRepository.ts",
+        "pendingIntentRepository.ts",
+        "trustedDeviceRepository.ts",
+        // The shared containment primitive, which is where the single audited
+        // `remove` call lives.
+        "untrustedValue.ts",
+      ].sort()
+    );
+  });
+
+  it("the seven sporting repositories still compile against the BASE contract", () => {
+    const sporting = [
+      join(SRC_ROOT, "lib", "sessionRepository.ts"),
+      join(SRC_ROOT, "lib", "historyFiltersRepository.ts"),
+      join(SRC_ROOT, "lib", "assessmentPreferencesRepository.ts"),
+    ];
+    for (const path of sporting) {
+      const code = stripComments(readFileSync(path, "utf8"));
+      expect(code, relative(SRC_ROOT, path)).not.toContain("RemovableStorageAdapter");
+    }
+    // Non-vacuous: these files really do depend on the base contract.
+    for (const path of sporting) {
+      expect(stripComments(readFileSync(path, "utf8"))).toContain("StorageAdapter");
+    }
+  });
+
+  it("no identity record carries token, session, authorization-code or verifier material", () => {
+    // ADR-0025 §G. The flow SELECTOR is deliberately persisted and is not a secret;
+    // these five are the values that must never appear in an application-owned
+    // record.
+    const recordModules = [
+      "identityBarrier.ts",
+      "interactiveAttempt.ts",
+      "identityBarrierResolution.ts",
+      "trustedDevice.ts",
+      "pendingIntentRepository.ts",
+    ];
+    for (const name of recordModules) {
+      const code = stripComments(readFileSync(join(IDENTITY_DIR, name), "utf8"));
+      for (const forbidden of [
+        "access_token",
+        "refresh_token",
+        "code_verifier",
+        "provider_token",
+        "authorizationCode",
+      ]) {
+        expect(code, `${name} / ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("makes no false persistence claim anywhere in the identity layer", () => {
+    // ADR-0025 §G: "nothing is persisted", "no token is in browser storage" and
+    // "`sb_flow_id` is never stored" are all FALSE statements and must not appear.
+    const forbiddenPhrases = [
+      "nothing is persisted",
+      "no token is in browser storage",
+      "no tokens are in browser storage",
+      "sb_flow_id is never stored",
+      "the verifier is never persisted",
+      "flowId is never stored",
+    ];
+    const identityFiles = collectSourceFiles(IDENTITY_DIR);
+    expect(identityFiles.length).toBeGreaterThan(20);
+    for (const path of identityFiles) {
+      const source = readFileSync(path, "utf8").toLowerCase();
+      for (const phrase of forbiddenPhrases) {
+        expect(source, `${relative(SRC_ROOT, path)} / ${phrase}`).not.toContain(phrase);
+      }
+    }
+  });
+
+  it("supports no Marketing Consent of any kind", () => {
+    // ADR-0025 Decision 18: none is requested, stored, inferred or recorded —
+    // including as an explicit negative.
+    const identityFiles = collectSourceFiles(IDENTITY_DIR).filter((path) => !isTestPath(path));
+    for (const path of identityFiles) {
+      const source = readFileSync(path, "utf8").toLowerCase();
+      for (const phrase of ["marketing_consent", "marketingconsent", "marketing consent"]) {
+        // The only permitted mentions are the explicit NEGATIVE statements in
+        // module documentation, which this check tolerates by scanning code only.
+        const code = stripComments(source);
+        expect(code, `${relative(SRC_ROOT, path)} / ${phrase}`).not.toContain(phrase);
+      }
+    }
+  });
+
+  it("performs no legacy-data adoption, migration or disposal", () => {
+    // Stage B0.3 owns the one-time disposal of legacy unscoped sporting data, and
+    // ADR-0025 §24 states every identity record is new at schemaVersion 1 with no
+    // prior format, alias or migration.
+    const identityFiles = collectSourceFiles(IDENTITY_DIR).filter((path) => !isTestPath(path));
+    for (const path of identityFiles) {
+      const code = stripComments(readFileSync(path, "utf8"));
+      for (const forbidden of [
+        "curling-release-tracker",
+        "migrateSession",
+        "localStorageToIndexedDbMigration",
+        "schemaVersion: 0",
+      ]) {
+        expect(code, `${relative(SRC_ROOT, path)} / ${forbidden}`).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("no production file imports the identity runtime yet — the seam is prepared, not wired", () => {
+    const importers = productionFiles()
+      .filter((path) => path !== RUNTIME_FILE)
+      .filter((path) => importsFrom(readFileSync(path, "utf8"), "identityRuntime"));
+    expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+});
