@@ -246,7 +246,7 @@ The athlete's data is not.
 
 The current implementation is local-first **and still accountless-capable** — a
 transitional state, not the target. See the accepted target in "Mandatory identity and
-the Free Cloud Foundation (Accepted target — not implemented)" below, and its canonical
+the Free Cloud Foundation (Accepted target — partially implemented foundations)" below, and its canonical
 sources: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` and
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.
 
@@ -2830,7 +2830,7 @@ cloud data of any kind — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Cloud Aut
 
 **This is a transitional current implementation, not the target.** The accepted target
 (`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, Accepted —
-not implemented) requires a `UserAccount` **and** a completed personal `Profile` before
+B0.2 foundations partially implemented, target not yet enforced) requires a `UserAccount` **and** a completed personal `Profile` before
 the application is reachable at all. Stage B0.2 replaces this shell with one
 application-level auth authority (email OTP **and** Google sign-in), Profile bootstrap,
 legal acceptance, Athlete capability, a default Free entitlement, and a global access
@@ -2840,8 +2840,8 @@ read as product direction.
 
 **Where the replacement is designed.** Stage B0.2's accepted design is recorded in
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-and summarised under "Stage B0.2's accepted gate design" below — **accepted, not
-implemented**. Two consequences for this section specifically: `useSupabaseAuthController`
+and summarised under "Stage B0.2's accepted gate design" below — **B0.2a-c foundations
+implemented and verified, application integration pending**. Two consequences for this section specifically: `useSupabaseAuthController`
 is **retired** rather than extended (its four current call sites collapse into one
 coordinator behind a thin provider), and the client's auth options change (PKCE, automatic
 URL detection disabled, flow-id round-trip enabled), so the callback handling described
@@ -2890,17 +2890,20 @@ fully usable in every state. **That last property is a current, transitional fac
 this shell, not product direction** — Stage B0.2's gate replaces it (see the section that
 follows).
 
-## Mandatory identity and the Free Cloud Foundation (Accepted target — not implemented)
+## Mandatory identity and the Free Cloud Foundation (Accepted target — partially implemented foundations)
 
 **Canonical product source:** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 **Architecture decision:** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted architecture/product direction; **not implemented**).
+(Accepted architecture/product direction; **B0.2 implementation in progress**).
 
-**None of this target is implemented platform-wide.** Precisely: there is **no global
-access gate**, **no application-wide mandatory personal onboarding** (no legal acceptance,
-no marketing-consent separation), **no Google sign-in**, **no entitlement of any kind**,
-**no Athlete-capability creation**, **no Profile scoping of local persistence**, and **no
-cloud sporting data** — no cloud repository, outbox, restore or deployed RLS.
+**None of this target is enforced platform-wide yet.** B0.2a implements and verifies the
+identity/onboarding schema, RLS and RPCs, including atomic Athlete-capability and default-Free
+entitlement creation. B0.2b implements the email/Google provider and callback mechanics. B0.2c
+implements the identity records, repositories, validation, coordinator, service and runtime
+foundation. That runtime remains deliberately dormant. Consequently there is still **no global
+access gate**, **no application-wide mandatory personal onboarding UI**, **no user-visible Google
+sign-in**, **no Profile scoping of local sporting persistence**, and **no cloud sporting data** — no
+cloud repository, outbox, restore or sporting-data RLS.
 
 **What does exist, and must not be mistaken for the target:** the optional email-OTP-only
 auth shell above, unscoped `localStorage` as the sole sporting-persistence authority, and a

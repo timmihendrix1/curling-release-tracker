@@ -1041,10 +1041,10 @@ feature after the fact.
 
 ## Mandatory Identity and Free Cloud Foundation (Stages B0.1-B0.4)
 
-**Accepted product/architecture direction. Almost nothing is implemented.** Canonical
+**Accepted product/architecture direction. B0.1 is complete and B0.2 is in progress.** Canonical
 product source: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 Architecture decision: `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted; not implemented). This replaces the older accountless-use and paid-cloud-backup
+(Accepted; partially implemented through B0.2's dormant foundations). This replaces the older accountless-use and paid-cloud-backup
 assumptions that were spread across the cloud, persistence and commercial documents.
 
 **Stages and their gates:**
@@ -1052,7 +1052,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | Stage | Scope | State |
 |---|---|---|
 | **B0.1 — Decision Reconciliation** | Documentation and ADR only: the canonical specification, ADR-0024, and reconciliation of the active architecture/persistence/commercial/Exercise/roadmap/glossary/routing documents. | **Documentation reconciliation complete** in the state documented here. B0.1 itself implements no runtime, test, schema or configuration behaviour. This describes B0.1's own scope only — it makes no claim about unrelated corrections that may share a repository commit with it. |
-| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Not started. Not independently releasable** — see the release-unit rule below. |
+| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **In progress.** B0.2a's database/RPC foundation, B0.2b's provider mechanics and B0.2c's identity domain/coordinator/runtime foundation are implemented and verified. The B0.2c runtime is deliberately dormant: application composition, the global gate/onboarding UI and retirement of the four transitional auth controllers remain. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation including pending uploads; the **one-time** retirement of the disposable unscoped test data. | **Not started.** Completes the releasable unit B0.2 opens. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Not started.** **Blocked on real database verification** — see below. |
 | **Exercise Stage B** | Exercise execution — see "Exercise Library and multi-athlete execution" below. | **Not started**, and now behind B0.2-B0.4. |
@@ -1082,19 +1082,24 @@ switching exposes.
   stages.
 - **B0.2 is never independently release-ready.**
 
-**Current code gaps, stated plainly.** None of the following exists today:
+**Current application gaps, stated plainly.** The completed B0.2a-c foundations do not yet
+change the user-visible application. The following integrations and product behaviours remain absent:
 
 - **No global access gate.** `AccountControl.tsx` is mounted above the per-view header and
   explicitly never gates the app; every auth state renders inline. The application is fully
   usable with no account.
-- **No application-wide mandatory personal onboarding**, and therefore no legal acceptance,
-  no marketing-consent separation, and no platform-wide display-name requirement. Signing in
+- **No application-wide mandatory personal onboarding**, and therefore no user-visible legal
+  acceptance, marketing-consent control, or platform-wide display-name requirement. Signing in
   yields only an `AccountIdentity` (an id and an email).
-- **No Google sign-in.** `useSupabaseAuthController`/`supabaseAuthService` implement email
-  OTP only.
-- **No entitlement code of any kind**, so no default Free entitlement exists to grant.
-- **No Athlete capability creation.** No implemented RPC inserts an `athletes` row
-  (`docs/adr/0022` Decision 10).
+- **No user-visible Google sign-in.** B0.2b implements the provider mechanics, callback
+  classification and flow correlation, but the current optional `AccountControl` UI still exposes
+  email OTP only and the new identity runtime is not mounted.
+- **No application-integrated entitlement resolution.** B0.2a implements the default-Free
+  entitlement schema and onboarding transaction, and B0.2c can consume its gate state, but the
+  dormant runtime does not yet grant application access.
+- **No application-integrated Athlete capability creation.** B0.2a's
+  `complete_personal_onboarding()` atomically creates it; that RPC is not yet reached from a global
+  onboarding UI. ADR-0022 Decision 10 remains true specifically for the Team Foundation RPCs.
 - **No Profile scoping in local persistence.** The seven repositories of `docs/adr/0013`
   read and write one browser's `localStorage` with no concept of an authenticated user.
 - **No cloud sporting data at all** — no cloud repository, no upload, no outbox, no restore,
@@ -1168,9 +1173,11 @@ Supabase Auth API only.
   retired — B0.3/B0.4 establish fresh Profile-scoped draft/history persistence instead.
 - **No account bootstrap RPC, RLS, or schema deployment** — ADR-0020's server-side
   contract is not called or deployed here.
-- **No Google OAuth, password login, or magic-link-only flow** — email OTP only. **Google
-  sign-in is now part of the accepted closed-test method set** and is a Stage B0.2 gap, not
-  a deferred nice-to-have; passwords, magic links and Apple sign-in remain deferred.
+- **No user-visible Google OAuth, password login, or magic-link-only flow** — the current
+  transitional UI exposes email OTP only. B0.2b implements the Google provider mechanics, but they
+  remain behind the dormant B0.2c coordinator until the application-level gate is composed.
+  **Google sign-in is part of the accepted closed-test method set**; passwords, magic links and
+  Apple sign-in remain deferred.
 - ~~**No teams, coaches, or collaboration features.**~~ — Superseded by the separate
   Team Foundation beta (see below) built on top of this Auth Shell in a later pass. This
   bullet described only what this narrow alpha slice itself left out, not a
@@ -1178,8 +1185,9 @@ Supabase Auth API only.
 - Signed-in identity is not surfaced anywhere else in the app yet (e.g. no
   account-scoped Settings section) — only the compact header control (superseded in
   part by Team Foundation's `AccountControl` "Teams" button, below).
-- **The shell never gates the app**, and no Profile, onboarding, legal acceptance or
-  entitlement exists. That is accurate about today's code and is the Stage B0.2 gap.
+- **The shell never gates the app.** The database and dormant identity foundations now model
+  Profile onboarding, legal evidence, Athlete capability and the Free entitlement, but the
+  transitional shell neither invokes nor enforces them. Application composition remains the B0.2 gap.
 
 ---
 

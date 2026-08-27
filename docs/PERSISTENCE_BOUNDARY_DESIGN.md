@@ -1854,7 +1854,7 @@ states plainly what this means for session archiving specifically; no other mult
 operation exists in the current codebase.
 
 **No `remove` operation was needed for Phase 1 — superseded for identity records by
-ADR-0025 (Stage B0.2, accepted; not implemented).** The Phase 1 finding stands as a
+ADR-0025 (Stage B0.2c foundation implemented but dormant).** The Phase 1 finding stands as a
 historical fact and still describes every **sporting** repository: nothing in the Phase 1
 codebase calls `localStorage.removeItem` (Section 2), and every "delete"/"clear" action
 there is a full overwrite with a smaller/empty value. Adding an unused capability at that

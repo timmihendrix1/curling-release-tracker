@@ -1,13 +1,13 @@
 # ADR-0022: Team Foundation Domain and Persistence
 
 **Narrowly constrained (2026-08-24) by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted; not implemented).** Decision 1 — `Profile.id` as its own application-owned UUID,
+(Accepted; B0.2 foundations partially implemented but not mounted).** Decision 1 — `Profile.id` as its own application-owned UUID,
 linked 1:1 to an auth account, never equal to the auth user id — is **retained and is now
 the platform-wide identity model**, not just Team Foundation's. Decision 10's statement that
 **no Team Foundation RPC ever inserts an `athletes` row remains true of the implemented
 service**, and arbitrary Team `Profile` creation still grants nothing. The single narrow
-change: **completed *personal* app onboarding will later be required to establish Athlete
-capability** (Stage B0.2). Nothing in this ADR's implemented behaviour, history, or SQL
+change: **completed *personal* app onboarding is required to establish Athlete capability**;
+B0.2a implements that database transaction, but the application gate is not mounted. Nothing in this ADR's implemented behaviour, history, or SQL
 changes as a result.
 
 **Status:** Accepted. Domain layer, `TeamService`/`EmailService` boundaries, and the

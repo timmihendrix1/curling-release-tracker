@@ -149,7 +149,8 @@ as the future grant's name, is corrected in the same pass to name
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` is now the canonical
 product source for identity requirement, onboarding, Profile-scoped ownership, offline
 behaviour after onboarding, and the Free Cloud Core; `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-is the accepted (not implemented) architecture decision. Both **supersede** several
+is the accepted architecture decision, now partially implemented through B0.2's dormant foundations.
+Both **supersede** several
 decisions previously recorded in this document, corrected **in place** below rather than
 annotated above unchanged text:
 
@@ -293,8 +294,10 @@ unavailable or read-only, but must not prevent an athlete from accessing or expo
 owned history, and must not withdraw the Free entitlement or the Free Cloud Core for data
 already recorded.
 
-**No entitlement implementation, schema or lifecycle exists yet** — see §17.5 for the
-provisional commercial model and `docs/TECHNICAL_DEBT_AND_ROADMAP.md` for the current gap.
+**B0.2a implements the default-Free entitlement schema and onboarding transaction, and B0.2c
+consumes its gate-state fact through the dormant identity foundation.** The application does not yet
+enforce it, and no paid entitlement or billing lifecycle exists — see §17.5 and
+`docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
 
 ## 4. Target system shape
 
@@ -419,7 +422,11 @@ Accountless use is withdrawn as a valid product path.** The canonical decision s
    derived automatically from the authenticated Profile on that device (no "Recorded by"
    selector).
 
-**Not implemented.** This is Stage B0.2 work; see §18. Its accepted architecture — the identity authority, the durable access-barrier protocol, the three-phase startup, the Google flow-correlation rules, and the onboarding completion transaction — is recorded in `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md` (**accepted; no runtime code implements it yet**).
+**Implementation in progress.** B0.2a's identity/onboarding database and RPC foundation, B0.2b's
+provider mechanics, and B0.2c's identity domain/coordinator/runtime foundation are implemented and
+verified. The B0.2c runtime remains deliberately dormant: the global gate, onboarding UI and
+application composition are not implemented. See §18 and
+`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
 
 ### 5.4 Initial authentication experience
 
@@ -434,9 +441,11 @@ Magic links, passwords, Apple sign-in and additional providers remain deferred u
 later platform requirement changes that decision. The authentication method must not
 require the athlete to sign in whenever the app is opened.
 
-**Current implementation (transitional):** only email OTP exists, and it is optional and
-additive — see `docs/SYSTEM_ARCHITECTURE.md`'s "Optional Supabase Auth Shell". Google
-sign-in and the access gate are Stage B0.2 work.
+**Current user-visible implementation (transitional):** the optional, additive
+`AccountControl` shell exposes only email OTP — see `docs/SYSTEM_ARCHITECTURE.md`'s
+"Optional Supabase Auth Shell". B0.2b implements the Google provider/callback mechanics and B0.2c
+implements their coordinator, but both remain unmounted; the access gate and Google sign-in are not
+yet available in the application UI.
 
 ### 5.5 Legacy local data is disposable — there is no initial import
 
@@ -1965,7 +1974,8 @@ release-unit note at the top of §18.
 
 **Accepted design record for this phase.**
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-(**accepted; not implemented**) records the concrete architecture, written before implementation as
+(**accepted; B0.2a-c foundations implemented and verified, application integration pending**) records
+the concrete architecture, written before implementation as
 `docs/AI_DEVELOPMENT_WORKFLOW.md` requires for a large cross-layer feature. The decisions that
 materially shape this phase:
 

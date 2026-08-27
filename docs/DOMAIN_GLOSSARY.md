@@ -124,12 +124,16 @@ itself make ADR-0020 implementation-ready.
 
 ## Entitlement
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.
-No entitlement code, schema, or lifecycle of any kind exists today.]** The active
+**[Foundation implemented in B0.2a/B0.2c; application integration and paid lifecycles planned —
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.]** The active
 commercial tier or capability set for a Profile or a Team Workspace. **An entitlement is
 not inherently paid:** it covers both the **default Free entitlement** and any
 **additional paid entitlement** (the paid personal tier, Team Workspace, later Coaching).
 Free is a genuine entitlement even though nothing is paid for it.
+
+B0.2a implements the default-Free entitlement schema and onboarding transaction, and B0.2c
+validates and consumes that fact through the dormant identity service/runtime foundation. No global
+gate currently uses it, and no paid entitlement or billing lifecycle is implemented.
 
 **The default Free entitlement is granted by completed personal onboarding** — never by
 authentication or Profile creation alone (see **UserAccount**, **Profile**, and

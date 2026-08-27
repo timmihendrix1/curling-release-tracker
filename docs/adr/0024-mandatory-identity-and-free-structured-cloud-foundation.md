@@ -2,10 +2,13 @@
 
 ## Status
 
-**Accepted architecture/product direction. Not implemented.**
+**Accepted architecture/product direction. Partially implemented foundations.**
 
-No runtime code, schema, migration, test or configuration is added by this ADR. It
-records a durable architectural direction and the supersessions that direction causes.
+The ADR's original documentation-only commit added no runtime code, schema, migration, test or
+configuration. Subsequent B0.2a-c commits implement and verify the identity/onboarding database,
+provider mechanics and dormant identity domain/coordinator/runtime foundations. The global gate,
+onboarding UI, application composition, Profile-scoped sporting persistence and Free Cloud Core remain
+unimplemented.
 
 **Product authority.** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
 is the canonical product source for the decisions this ADR implements architecturally.
@@ -23,11 +26,12 @@ anything this ADR decides:
   above the per-view header in `TrackerApp.tsx` and never gates the app; every auth state
   renders inline alongside whatever screen is active.
 - The **Optional Supabase Auth Shell** (`src/lib/supabase/`; no ADR of its own — see
-  `docs/SYSTEM_ARCHITECTURE.md`'s section of that name) implements **email OTP only**, is
+  `docs/SYSTEM_ARCHITECTURE.md`'s section of that name) exposes **email OTP only**, is
   inert unless the two `NEXT_PUBLIC_*` Supabase variables are present, and yields only an
-  `AccountIdentity` (an id and an email). **There is no application-wide mandatory personal
-  onboarding, no global Profile gate, no legal acceptance, no marketing-consent separation,
-  no default Free entitlement, and no Athlete-capability creation.**
+  `AccountIdentity` (an id and an email). B0.2b's Google provider/callback mechanics and B0.2c's
+  identity coordinator exist but are deliberately unmounted. **There is no application-wide mandatory
+  personal-onboarding UI or global Profile gate, and no mounted legal-acceptance or
+  marketing-consent step or default-Free/Athlete-capability grant.**
 - **A Team-specific Profile bootstrap does already exist.** Once signed in, `TeamsScreen`
   (and `TeamInvitationAcceptOverlay`) call `TeamService.getMyProfile()`, collect a display
   name when none exists, and call `TeamService.bootstrapProfile(displayName)`; both the fake
@@ -37,10 +41,11 @@ anything this ADR decides:
   unexercised end to end against that database. This is a Team-feature entry step reached
   only from Teams — **not** the platform onboarding gate Stage B0.2 must build, and it
   grants no Athlete capability and no entitlement.
-- `Profile` exists **only** inside the Team Foundation layer (ADR-0022). Its `id` is
+- The user-visible `Profile` path remains **only** the Team Foundation layer (ADR-0022). Its `id` is
   already an independent application-owned UUID linked 1:1 to an auth account. It is not
-  required to use the app, and no implemented RPC ever creates an `Athlete` row
-  (ADR-0022 Decision 10).
+  required to use the app. B0.2a's verified `complete_personal_onboarding()` now creates an Athlete
+  row and default-Free entitlement atomically, but no application UI invokes it; ADR-0022 Decision 10
+  remains true specifically for Team Foundation RPCs.
 - **`localStorage` is the sole production persistence authority**, unscoped by any
   identity, behind the seven application-owned repositories of ADR-0013. The IndexedDB
   adapter (ADR-0015) and the copy migration (ADR-0016) exist but are unwired; activation
@@ -153,8 +158,8 @@ persistence.**
 
 ### Onboarding
 
-- A blocking, connectivity-requiring onboarding step **must be introduced** ahead of all
-  training (it does not exist today — see "Current implementation reality"): display name,
+- A blocking, connectivity-requiring onboarding step **must be integrated into the application** ahead of all
+  training (its database/RPC and dormant coordinator foundations exist, but no mounted UI or gate does — see "Current implementation reality"): display name,
   Terms acceptance, Privacy acknowledgement. Legal acceptance must be versionable and
   auditable. Marketing consent stays separate, optional and off by default.
 - Onboarding asks for nothing sporting — no team, club, country, position, skill level or
@@ -261,7 +266,7 @@ which parts remain forward-authoritative.
 | **0019** — cloud identity and data-authority transition | **Superseded:** its optional-account product assumption and the paid-only-backup direction it served. Its Local Adoption protocol is not the forward path, because there is no legacy data to adopt. **Not implemented, and this ADR does not claim its transition protocol is.** Its non-participating-build analysis (Decision 8) remains a real, unresolved hazard for any future local-authority transition. |
 | **0020** — Supabase schema, RLS and adoption transactions | **Superseded as the forward path; still Proposed and not implementation-ready.** The authority-scope *choice* is **closed: Profile-scoped** — it is no longer an open decision anywhere. What remains unperformed is this document's own reconciliation to that scope across every affected table, RPC, RLS rule, lock, completeness proof and test design. Its Decisions E.2b (representability) and E.2c (mapping execution/dispatch) stay unresolved **inside this historical Local Adoption design and are NOT gates on Stage B0.4** — B0.4 must design and verify its own schema, representability rules, canonical mapping, upload protocol and RLS against a real database, and solve its own versions of the underlying problems those decisions name. |
 | **0021** — Assessment draft/history authority-unit split | **Split retained as an accepted design constraint**: `assessmentDraft` stays the device-local/in-progress unit, `assessmentHistory` the completed-history unit and the only cloud-eligible one — now via the Free Cloud Core rather than Local Adoption. **Retired as forward work:** its migration from the combined unscoped `assessment` key, the retained legacy residue, and its planned ADR-0016 marker registration. B0.3/B0.4 establish **fresh Profile-scoped draft/history persistence** for post-onboarding data instead, adopting nothing and reusing no retired marker. Its old-build/deployment-fencing hazard survives as a real caution. |
-| **0022** — Team Foundation domain and persistence | **Retained and authoritative** for the separate `Profile` UUID and the 1:1 account link. Its Decision 10 statement — no Team Foundation RPC creates an `athletes` row — **remains true of the implemented service**. **Narrowly constrained:** completed *personal* onboarding will later be required to establish Athlete capability. Arbitrary Team `Profile` creation still grants nothing. |
+| **0022** — Team Foundation domain and persistence | **Retained and authoritative** for the separate `Profile` UUID and the 1:1 account link. Its Decision 10 statement — no Team Foundation RPC creates an `athletes` row — **remains true of the implemented service**. **Narrowly constrained:** completed *personal* onboarding is required to establish Athlete capability; B0.2a implements that separate transaction, while application integration remains pending. Arbitrary Team `Profile` creation still grants nothing. |
 | **0023** — restricted source asset delivery boundary | **Unaffected.** |
 
 ## Alternatives considered

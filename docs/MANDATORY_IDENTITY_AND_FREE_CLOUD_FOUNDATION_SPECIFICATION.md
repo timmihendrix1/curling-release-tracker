@@ -1,6 +1,6 @@
 # Mandatory Identity and Free Cloud Foundation — Approved Product Decisions
 
-**Status:** Approved product specification. **Not implemented.**
+**Status:** Approved product specification. **Partially implemented foundations; not yet enforced by the application.**
 
 **Decision set confirmed complete:** 2026-08-24
 
@@ -15,10 +15,11 @@ It records the decisions approved by the product owner. A later implementation a
 should not need conversation history to implement them.
 
 **Status discipline.** Everything in this document is an **accepted target product
-decision**. Almost none of it is implemented. The current application is still
-accountless-capable and still uses `localStorage` as its sole production persistence
-authority. Section 12 states the current-versus-target split explicitly. Nothing in this
-document may be cited as evidence that runtime behaviour already enforces it.
+decision**. B0.2a-c implement the verified database, provider-mechanics and dormant identity-runtime
+foundations; application composition, the global gate and onboarding UI remain unimplemented. The
+current application is still accountless-capable and still uses `localStorage` as its sole production
+persistence authority. Section 12 states the current-versus-target split explicitly. Nothing in this
+document may be cited as evidence that current user-visible behaviour already enforces the target.
 
 **Authority order.** For the subject matter above, this document supersedes conflicting
 or older product claims elsewhere in the repository — in particular claims that:
@@ -410,7 +411,7 @@ would invite account switching while nothing isolates what switching exposes.
 
 Stage B0.2's architecture is recorded in
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-(**accepted; not implemented**), written before implementation as
+(**accepted; B0.2a-c foundations implemented and verified, application integration pending**), written before implementation as
 `docs/AI_DEVELOPMENT_WORKFLOW.md`'s "Large cross-layer features" requires.
 
 **That ADR changes no product decision in this document.** It records *how* the decisions in §2, §3
@@ -447,15 +448,15 @@ does not replace the reason already stated there.
 | Concern | Current implementation (fact) | Accepted target (this document) |
 |---|---|---|
 | Access | Fully usable with no account. `AccountControl.tsx` never gates the app; every auth state renders alongside the active screen. | `UserAccount` + completed `Profile` required. No Profile, no access. |
-| Sign-in | Optional, additive, **email OTP only** (`src/lib/supabase/`, the "Optional Supabase Auth Shell"), and inert unless `NEXT_PUBLIC_*` Supabase configuration is present. | Required. Email OTP **and** Google sign-in for the closed test. |
-| Onboarding | **No application-wide mandatory onboarding, no global Profile gate, no legal acceptance, no marketing-consent separation, no default Free entitlement.** Signing in yields only an `AccountIdentity` (an id and an email). A **Team-specific** Profile bootstrap does exist: `TeamsScreen` / `TeamInvitationAcceptOverlay` call `TeamService.getMyProfile()`, collect a display name, and call `TeamService.bootstrapProfile(displayName)` (the RPC itself is executed and tested at the SQL/RPC level against a real local Supabase Postgres; the Teams application flow above it has not been exercised end to end against that database) — reached only from Teams, granting no Athlete capability and no entitlement. | Display name, Terms acceptance, Privacy acknowledgement, Athlete capability, Free entitlement — all before first app access, application-wide. |
-| Profile | `Profile` exists **only** in the Team Foundation layer (ADR-0022), with its own UUID linked 1:1 to an auth account, created lazily by that layer's own bootstrap. It is not required to use the app and scopes no sporting data. | The same `Profile.id` UUID model, now mandatory and platform-wide, and the scope key for all athlete-owned data. |
-| Athlete capability | Never created by any implemented RPC (ADR-0022 Decision 10). | Established by completed personal onboarding. |
+| Sign-in | The optional, additive `AccountControl` UI exposes **email OTP only** and is inert unless `NEXT_PUBLIC_*` Supabase configuration is present. B0.2b implements email/Google provider and callback mechanics, and B0.2c implements their coordinator, but the new runtime is not mounted. | Required. Email OTP **and** Google sign-in for the closed test. |
+| Onboarding | **No application-wide mandatory onboarding or global Profile gate is user-visible.** B0.2a implements and verifies the legal-document/onboarding schema plus `ensure_my_profile()` and atomic `complete_personal_onboarding()`; B0.2c implements the dormant client coordination. The existing **Team-specific** bootstrap remains a separate current UI path and grants no Athlete capability or entitlement. | Display name, Terms acceptance, Privacy acknowledgement, Athlete capability, Free entitlement — all before first app access, application-wide. |
+| Profile | The user-visible Profile path is still Team Foundation's optional bootstrap. B0.2a reuses the same application-owned UUID model in `ensure_my_profile()` and the onboarding RPCs, and B0.2c models it in the dormant identity runtime. No Profile is yet required to use the app, and Profiles do not yet scope sporting data. | The same `Profile.id` UUID model, now mandatory and platform-wide, and the scope key for all athlete-owned data. |
+| Athlete capability | B0.2a's verified `complete_personal_onboarding()` creates it atomically with legal evidence and the Free entitlement, but no application UI invokes that flow yet. ADR-0022 Decision 10 remains true specifically for Team Foundation RPCs. | Established by completed personal onboarding. |
 | Persistence authority | `localStorage`, unscoped by identity, via the seven application-owned repositories (ADR-0013). IndexedDB adapter and copy migration exist but are unwired; no activation. | Profile-scoped local persistence (B0.3) plus a Free structured cloud backbone (B0.4). |
 | Cloud sporting data | **None exists.** No cloud repository, no upload, no outbox, no restore. | The Free Cloud Core, with idempotent upload, durable outbox, restore and honest sync status. |
 | Offline | Core personal training works offline and requires neither authentication nor backend availability today. Optional authentication (the Supabase Auth Shell) and the Team Foundation backend do exist, but neither gates personal training nor cloud-persists it. | Works offline **for a previously authenticated and onboarded Profile** on a device with trusted Profile-scoped local state. |
 | Legacy local data | Present, unscoped, disposable early-test data. Dormant copy-migration code exists and is never invoked. | Discarded once, explicitly, in B0.3. Never adopted, claimed, imported or merged. |
-| Commercial model | No entitlement code of any kind. Team Foundation is pilot-gated by a per-profile grant. | Free (including the Free Cloud Core) plus a separately named paid personal tier, Team Workspace and a deferred Coaching module. Still no payment collection. |
+| Commercial model | B0.2a implements the default-Free entitlement schema/transaction and B0.2c consumes its gate-state fact, both outside the mounted application. No paid-entitlement or billing lifecycle exists. Team Foundation is pilot-gated by a per-profile grant. | Free (including the Free Cloud Core) plus a separately named paid personal tier, Team Workspace and a deferred Coaching module. Still no payment collection. |
 
 **Read this table as the honesty contract for the whole specification.** Any statement
 elsewhere that the left column already matches the right column is a defect.

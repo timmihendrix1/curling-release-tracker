@@ -40,7 +40,7 @@ functionality, read:
 - `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` — the canonical
   product source for the mandatory identity requirement, minimal onboarding,
   Profile-scoped ownership, offline behaviour after onboarding, and the Free Cloud Core
-  (accepted; **not implemented** — see the Working rules entry below)
+  (accepted; **B0.2 foundations partially implemented but not mounted** — see the Working rules entry below)
 - `docs/adr/` for the reasoning behind existing architectural decisions
 - `docs/TECHNICAL_DEBT_AND_ROADMAP.md` before deciding whether something is worth fixing now
 
@@ -191,7 +191,8 @@ technique directly" in the Coaching Principles.
   or account deletion, read
   `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` (the canonical
   product source) and `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-  (**Accepted architecture/product direction — not implemented**). The accepted target: a
+  (**Accepted architecture/product direction — B0.2 foundations partially implemented,
+  target not yet enforced**). The accepted target: a
   `UserAccount` **and** a completed personal `Profile` are required to reach the app (no
   Profile, no access — Free is a tier, not an exemption); `Profile.id` is an
   application-owned UUID and is the scope key for athlete-owned data, local persistence,

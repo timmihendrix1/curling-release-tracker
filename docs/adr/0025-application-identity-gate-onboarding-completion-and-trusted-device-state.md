@@ -2,11 +2,14 @@
 
 ## Status
 
-**Accepted architecture decision. Not implemented.**
+**Accepted architecture decision. Implementation in progress.**
 
-This ADR records the durable design decisions for **Stage B0.2 — Identity and Onboarding Gate**. No
-runtime code, schema, migration, test or configuration is added by this ADR; those are Stages B0.2a
-through B0.2f. It exists so that the design is recorded *before* implementation begins, as
+This ADR records the durable design decisions for **Stage B0.2 — Identity and Onboarding Gate**. The
+ADR's original documentation-only commit added no runtime code, schema, migration, test or
+configuration. Subsequent B0.2a-c commits implement and verify the database/RPC foundation, provider
+mechanics and dormant identity domain/coordinator/runtime foundation. Application composition, the
+global gate/onboarding UI and retirement of the transitional auth controllers remain. The ADR existed
+before implementation began, as
 `docs/AI_DEVELOPMENT_WORKFLOW.md`'s "Large cross-layer features" requires.
 
 **Product authority.** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` is the
@@ -31,7 +34,9 @@ Facts about the code on this branch, stated separately from anything this ADR de
 - `useSupabaseAuthController` is called from **four** production components (`AccountControl.tsx:50`,
   `TeamDeepLinkGate.tsx:58`, `TeamInvitationAcceptOverlay.tsx:72`, `TeamsScreen.tsx:441`), each with its
   own state machine and its own `onAuthStateChange` subscription.
-- Sign-in is **email OTP only**, optional and additive, and yields only an `AccountIdentity`.
+- The current optional `AccountControl` UI exposes **email OTP only** and yields only an
+  `AccountIdentity`. B0.2b's Google provider/callback mechanics and B0.2c's coordinator exist but are
+  deliberately unmounted.
 - A **Team-specific** `bootstrap_profile` path exists and is reached only from Teams. It grants no
   Athlete capability and no entitlement.
 - `localStorage` is the **sole production persistence authority**, unscoped by identity, behind the
@@ -771,7 +776,7 @@ URLs including their query string.
 | Repository | Adapter | Removal semantics |
 |---|---|---|
 | `identityBarrierRepository` | **base `StorageAdapter` only** | **None.** No code path may remove a current barrier as a security transition |
-| `identityBarrierResolutionRepository` | `RemovableStorageAdapter` | **Non-current cleanup only, best-effort** |
+| `identityBarrierResolutionRepository` | `RemovableStorageAdapter` | **Required exact retraction of an unconfirmed resolution during coordinator compensation; non-current cleanup is best-effort** |
 | `interactiveAttemptRepository` | `RemovableStorageAdapter` | **Non-current cleanup only, best-effort** |
 | `trustedDeviceRepository` | `RemovableStorageAdapter` | **Required** establishment, replacement and removal — not best-effort |
 | `pendingIntentRepository` | `RemovableStorageAdapter` | **Required** deletion — not best-effort. Owns **two** keys: the pending intent, and the outstanding-denial-cleanup tombstone whose pre-ready discharge it performs (§22) |
