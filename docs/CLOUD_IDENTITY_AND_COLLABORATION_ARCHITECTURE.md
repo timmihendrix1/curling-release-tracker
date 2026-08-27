@@ -175,7 +175,7 @@ Valid Team ownership, permission, notification, sharing and rights decisions els
 this document are **unchanged**. B0.2 and B0.3 now implement the mandatory gate and
 Profile-scoped local sporting persistence. `localStorage` remains the production local
 authority inside each Profile scope; the Free cloud authority described here remains a
-B0.4 target.
+B0.4 implementation recorded by ADR-0027.
 
 ## 1. Purpose
 
@@ -318,11 +318,12 @@ flowchart TD
 - **The existing ADR-0015/0016/0017/0018 IndexedDB migration/activation track is RETIRED
   as the forward production path** (2026-08-24 revision — the data it would carry forward
   is disposable; see §5.5 and §18 Phase 2). ADR-0015's unwired adapter remains valid
-  infrastructure. **Stage B0.4's required durable outbox, and any local read cache, are a
-  new, separately designed, Profile-scoped mechanism** — never a continuation or
+  infrastructure. **Stage B0.4's durable outbox is an implemented, separately designed,
+  Profile-scoped mechanism** — never a continuation or
   repurposing of that track, and never a reuse of ADR-0016's migration markers or
-  ADR-0017's activation evidence. Which local store backs the B0.4 outbox/read cache is
-  a B0.4 decision.
+  ADR-0017's activation evidence. ADR-0027 selects the existing Profile-scoped
+  `localStorage` adapter for the terminal-record queue; no general local read cache is
+  introduced by B0.4.
 - `localStorage` remains the sole production local store today. Stage B0.3 scopes every
   sporting repository namespace by canonical `Profile.id`; identity-control records
   remain origin-level records governed by ADR-0025.
@@ -330,12 +331,11 @@ flowchart TD
 - PostgreSQL stores cloud records and relationships.
 - Row Level Security enforces access at the database boundary.
 - Supabase Storage may later store media and large raw sensor artefacts.
-- **Stage B0.4 requires a bounded, application-owned sync layer and a durable
+- **Stage B0.4 implements a bounded, application-owned sync layer and a durable
   Profile-scoped outbox** connecting the local store and PostgreSQL — these are required
-  Free Cloud Core mechanisms, not optional or illustrative ones. Their detailed design is
-  deferred to B0.4, and the local storage technology backing them remains undecided
-  (a B0.4 decision; ADR-0015's adapter is available infrastructure but is not
-  selected by ADR-0024).
+  Free Cloud Core mechanisms, not optional or illustrative ones. ADR-0027 records their
+  detailed design and selects the existing Profile-scoped `localStorage` adapter for the
+  terminal-record queue; ADR-0015's unwired IndexedDB adapter remains unselected.
 - The product remains a modular monolith until measured scale requires separation.
 
 ### 4.2 Authority by data category
@@ -1025,10 +1025,9 @@ capability or a `TRAINING_SESSION`.
 
 **Reframed in the 2026-08-24 revision.** This subsection previously described a
 *possible, undesigned* offline outbox that explicitly did not gate the cloud phases. A
-**durable outbox is now a required part of Stage B0.4** (§18), because Free users record
+**durable outbox is now an implemented part of Stage B0.4** (§18), because Free users record
 offline and their structured raw data must reach the Free Cloud Core. The **detailed
-design** — the exact outbox schema, conflict protocol, retry schedule, API contract and
-database transaction design — still belongs to that stage, not to this document.
+design** is recorded in ADR-0027; Exercise/Team result bundles remain a later extension.
 
 Accepted behaviour, per
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7:
@@ -1052,15 +1051,17 @@ Accepted behaviour, per
    another device, concurrent multi-device editing, and transferring an unsynced Session
    to another device remain deferred (§16).
 
-Open design questions the Stage B0.4 design must answer, retained from the earlier sketch:
+Stage B0.4 resolves the earlier open design questions for immutable terminal personal
+records as follows:
 
-- which local store holds pending mutations, and how;
-- the idempotency-key scheme;
-- how the server acknowledges accepted mutations and assigns a monotonic sync revision or
-  equivalent cursor, and how the client pulls changes after its last acknowledged cursor;
-- whether deletions use tombstones or `deleted_at` until all relevant clients observe them;
-- whether mutable records carry a version for optimistic concurrency;
-- how sync stops and resumes without duplicating sessions, shots or assignments.
+- the existing Profile-scoped `localStorage` adapter holds exact pending payloads and digests;
+- `(Profile, record kind, stable client UUID)` is the idempotency identity;
+- immutable terminal records need no mutable sync cursor: basic restore lists the Profile's
+  live records, while exact server outcomes acknowledge each queued mutation;
+- permanent tombstones prevent stale resurrection and raw payload rows are deleted in the
+  same transaction;
+- differing content under one stable identity is a visible conflict, never an overwrite;
+- reconnect repeats restore, local reconciliation and idempotent queue drain.
 
 The Team Exercise upload path in §12.4 is a **separately specified extension built on this
 backbone** — it consumes the same outbox, stable client-generated IDs and idempotent upload,
@@ -1880,7 +1881,7 @@ release-ready.**
 
 These replace the former Phase 3/Phase 4 framing below, which assumed an optional account
 and a Local Adoption of pre-existing local history. Phases 5-9 keep their content and now
-sit behind B0.4. **B0.2 and B0.3 are implemented; B0.4 is not.**
+sit behind B0.4. **B0.2, B0.3 and B0.4 are implemented and locally verified.**
 
 ### Phase 0: Stable baseline
 
@@ -2154,8 +2155,8 @@ product behaviour, only when:**
 **B0.2 alone never satisfies this gate** (§18 release-unit note, and
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1).
 
-Claude Code may begin the first Supabase **sporting-data** implementation (Stage B0.4)
-only when:
+The first Supabase **sporting-data** implementation (Stage B0.4) began only after these
+admission conditions were met:
 
 - Stages B0.2 and B0.3 are implemented and independently reviewed;
 - the target ERD has been converted into an initial physical schema;
@@ -2164,6 +2165,9 @@ only when:
 - environments, region and secret handling are decided;
 - automated negative access tests are defined;
 - a real Postgres/Supabase environment is available to execute the SQL against.
+
+ADR-0027 records the resulting implementation. Its migrations and negative-access pgTAP
+suite have been executed against the real local Supabase environment.
 
 The former "local-to-cloud import rules are accepted" precondition is **withdrawn**
 (2026-08-24 revision): there is no import — see §5.5.

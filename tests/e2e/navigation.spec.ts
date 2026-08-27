@@ -369,7 +369,7 @@ test.describe("Settings", () => {
     await expect(page.getByText("About", { exact: true })).toHaveCount(0);
     await expect(
       page.getByText(
-        "Your training data is stored locally on this device. No account, cloud sync or server storage is currently used."
+        "Completed training sessions and Assessment results are saved on this device and synced to your private cloud account when online. In-progress training and Assessment drafts stay on this device."
       )
     ).toBeVisible();
 

@@ -38,6 +38,7 @@ import {
   ASSESSMENT_RUN_SCHEMA_VERSION,
   type AccuracyThresholdSetSource,
   type AssessmentAttempt,
+  type AssessmentAttemptProviderMetadata,
   type AssessmentAttemptStatus,
   type AssessmentRun,
   type AssessmentRunStatus,
@@ -85,6 +86,45 @@ const VALID_THRESHOLD_SOURCES: AccuracyThresholdSetSource[] = [
   "coach-selected",
 ];
 
+function validateHardwareMetadata(
+  raw: unknown
+): Record<string, string | number | boolean> | null {
+  if (!isRecord(raw) || Array.isArray(raw)) return null;
+  const metadata: Record<string, string | number | boolean> = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (
+      typeof value !== "string" &&
+      typeof value !== "boolean" &&
+      !(typeof value === "number" && Number.isFinite(value))
+    ) {
+      return null;
+    }
+    metadata[key] = value;
+  }
+  return metadata;
+}
+
+function validateAttemptProviderMetadata(
+  raw: unknown
+): AssessmentAttemptProviderMetadata | null | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw) || !VALID_PROVIDER_TYPES.includes(raw.providerId as TimingProviderType)) {
+    return null;
+  }
+  if (raw.providerVersion !== undefined && typeof raw.providerVersion !== "string") {
+    return null;
+  }
+  const hardwareMetadata = raw.hardwareMetadata === undefined
+    ? undefined
+    : validateHardwareMetadata(raw.hardwareMetadata);
+  if (hardwareMetadata === null) return null;
+  return {
+    providerId: raw.providerId as TimingProviderType,
+    providerVersion: raw.providerVersion as string | undefined,
+    hardwareMetadata,
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -109,6 +149,8 @@ function validateAttempt(raw: unknown, validShotIds: Set<string>): AssessmentAtt
 
   const status = raw.status as AssessmentAttemptStatus;
   const timingResultId = typeof raw.timingResultId === "string" ? raw.timingResultId : undefined;
+  const providerMetadata = validateAttemptProviderMetadata(raw.providerMetadata);
+  if (providerMetadata === null) return null;
 
   if (status === "valid") {
     if (typeof raw.measuredTime !== "number" || !Number.isFinite(raw.measuredTime) || raw.measuredTime <= 0) {
@@ -130,6 +172,7 @@ function validateAttempt(raw: unknown, validShotIds: Set<string>): AssessmentAtt
       executedHandle: raw.executedHandle as Handle,
       capturedAt: raw.capturedAt,
       timingResultId,
+      providerMetadata,
       protocolDeviations: protocolDeviations.length > 0 ? protocolDeviations : undefined,
     };
   }
@@ -143,6 +186,7 @@ function validateAttempt(raw: unknown, validShotIds: Set<string>): AssessmentAtt
     status: "invalid",
     capturedAt: raw.capturedAt,
     timingResultId,
+    providerMetadata,
     invalidReason: raw.invalidReason as InvalidAttemptReason,
   };
 }
@@ -391,9 +435,9 @@ export function validatePersistedAssessmentRun(raw: unknown): AssessmentOutcome<
         typeof timingProviderSnapshot.providerVersion === "string"
           ? timingProviderSnapshot.providerVersion
           : undefined,
-      hardwareMetadata: isRecord(timingProviderSnapshot.hardwareMetadata)
-        ? (timingProviderSnapshot.hardwareMetadata as Record<string, string | number | boolean>)
-        : undefined,
+      hardwareMetadata: timingProviderSnapshot.hardwareMetadata === undefined
+        ? undefined
+        : validateHardwareMetadata(timingProviderSnapshot.hardwareMetadata) ?? undefined,
     },
     thresholdSnapshot: {
       type: thresholdSnapshot.type as AccuracyThresholdPreset,

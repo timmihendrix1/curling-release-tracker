@@ -2,13 +2,13 @@
 
 ## Status
 
-**Accepted architecture/product direction. B0.2 and B0.3 implemented; B0.4 planned.**
+**Accepted architecture/product direction. B0.2, B0.3 and B0.4 implemented.**
 
 The ADR's original documentation-only commit added no runtime code, schema, migration, test or
 configuration. Subsequent B0.2a-e work implements and verifies the identity/onboarding database,
 provider mechanics, mounted global gate/onboarding composition and retired transitional auth paths.
-ADR-0026 implements Profile-scoped local sporting persistence and bounded legacy retirement. The Free
-Cloud Core (B0.4) remains unimplemented.
+ADR-0026 implements Profile-scoped local sporting persistence and bounded legacy retirement.
+ADR-0027 implements and locally verifies the Free Cloud terminal sporting-record backbone.
 
 **Product authority.** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
 is the canonical product source for the decisions this ADR implements architecturally.

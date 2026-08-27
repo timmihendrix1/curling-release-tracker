@@ -1041,10 +1041,10 @@ feature after the fact.
 
 ## Mandatory Identity and Free Cloud Foundation (Stages B0.1-B0.4)
 
-**Accepted product/architecture direction. B0.1-B0.3 are implemented; B0.4 is next after independent review of the combined B0.2+B0.3 unit.** Canonical
+**Accepted product/architecture direction. B0.1-B0.4 are implemented and locally verified.** Canonical
 product source: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 Architecture decision: `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted; implemented through B0.2). This replaces the older accountless-use and paid-cloud-backup
+(Accepted; implemented through B0.4). This replaces the older accountless-use and paid-cloud-backup
 assumptions that were spread across the cloud, persistence and commercial documents.
 
 **Stages and their gates:**
@@ -1053,8 +1053,8 @@ assumptions that were spread across the cloud, persistence and commercial docume
 |---|---|---|
 | **B0.1 — Decision Reconciliation** | Documentation and ADR only: the canonical specification, ADR-0024, and reconciliation of the active architecture/persistence/commercial/Exercise/roadmap/glossary/routing documents. | **Documentation reconciliation complete** in the state documented here. B0.1 itself implements no runtime, test, schema or configuration behaviour. This describes B0.1's own scope only — it makes no claim about unrelated corrections that may share a repository commit with it. |
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
-| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented; independent review pending.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. No pending uploads exist until B0.4. |
-| **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Not started.** **Blocked on real database verification** — see below. |
+| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
+| **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
 | **Exercise Stage B** | Exercise execution — see "Exercise Library and multi-athlete execution" below. | **Not started**, and now behind B0.2-B0.4. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
@@ -1070,7 +1070,7 @@ switching exposes.
 - B0.2 may be implemented and independently reviewed **first**.
 - **Its mandatory-gate and account-switching experience could not be enabled for real users,
   or released as the new product behaviour, until B0.3's Profile isolation and one-time
-  disposal were implemented.** Both now await their combined independent review.
+  disposal were implemented.** The combined privacy unit is now implemented and verified.
 - **The release gate remains the combined unit**, and must prove **no Profile can observe another
   Profile's local data or pending writes**.
 - **B0.2's account-switch negative cases prove authentication/onboarding state transitions
@@ -1091,8 +1091,9 @@ embedded Team sign-in forms and Team-local Profile bootstrap are removed. B0.3 n
 all ten sporting keys to an immutable canonical `Profile.id` namespace and retires the
 disposable unscoped keys before any repository mounts. The remaining gaps are:
 
-- **No cloud sporting data at all** — no cloud repository, no upload, no outbox, no restore,
-  no deployed RLS, no sync status anywhere in the UI.
+- **Cloud sporting history is implemented for the domains that currently execute:** archived
+  Training Sessions and terminal Assessment Runs. Exercise execution records do not yet
+  exist and remain for Exercise Stage B to add to this same backbone.
 - **No account deletion, export-before-deletion, or recovery-period behaviour.**
 
 The historical `bootstrap_profile` function remains in migration history only. The B0.2e

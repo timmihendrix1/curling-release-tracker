@@ -1,20 +1,23 @@
 # Database tests
 
-This directory holds two pgTAP suites over the seven migrations in
-`supabase/migrations/`. Both have been executed against a real local Supabase Postgres
-applied from scratch, and both are green.
+This directory holds three pgTAP suites over the ten migrations in
+`supabase/migrations/`. All three have been executed against a real local Supabase
+Postgres applied from scratch, and all three are green.
 
 | Suite | Covers | Recorded result |
 |---|---|---|
 | `identity_onboarding.test.sql` | Stage B0.2a — the four Identity/Onboarding tables, their RLS and grant boundary, and the four new RPCs | **187 planned, 187 run, 0 failures** |
 | `team_foundation.test.sql` | The Team Foundation beta plus B0.2e bootstrap-retirement privilege boundary | **102 planned, 102 run, 0 failures** |
+| `free_cloud_sporting_records.test.sql` | Stage B0.4 exact terminal records, authority, RLS, idempotency, conflicts, transactional raw-payload deletion, tombstones and restore | **37 planned, 37 run, 0 failures** |
 
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all seven migrations
+supabase db reset --local --no-seed --yes            # applies all ten migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
+supabase db reset --local --no-seed --yes
+supabase test db --local supabase/tests/free_cloud_sporting_records.test.sql
 ```
 
 **Reset first.** `identity_onboarding.test.sql` asserts global zero-counts, and both
@@ -192,7 +195,7 @@ surface, which this stage does not implement.
 ## What this stage does and does not establish
 
 **Established:** the SQL foundation and the mounted B0.2 application integration are
-implemented. All seven migrations apply from scratch; `complete_personal_onboarding`
+implemented. All ten migrations apply from scratch; `complete_personal_onboarding`
 is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
@@ -228,7 +231,7 @@ through canonical personal onboarding and proves that the forward retirement mig
 denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all seven migrations
+supabase db reset --local --no-seed --yes            # applies all ten migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 

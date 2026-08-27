@@ -46,17 +46,152 @@ export async function goToSettings(page: Page) {
   await page.waitForSelector("text=Data Management");
 }
 
-/** Clears sporting/test state while retaining the real authenticated identity and
- * trusted-device records established by global setup. This gives each scenario a
- * fresh training workspace without introducing a production-reachable gate bypass. */
-export async function freshLoad(page: Page) {
-  await page.goto("/");
+type E2ECloudSportingRecord = {
+  record_kind: "training_session" | "assessment_run";
+  record_id: string;
+  content_sha256: string;
+};
+
+function localSupabaseBrowserConfig(): { url: string; publishableKey: string } {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (
+    typeof url !== "string" ||
+    !url.startsWith("http://127.0.0.1:") ||
+    typeof publishableKey !== "string" ||
+    !publishableKey.startsWith("sb_publishable_")
+  ) {
+    throw new Error("The local browser-public Supabase E2E configuration is unavailable.");
+  }
+  return { url, publishableKey };
+}
+
+/** Reads the authenticated fixture Profile's real B0.4 cloud records through the
+ * same public RPC boundary as production. Credentials remain inside the browser
+ * context and are never printed or copied into a fixture. */
+export async function readCloudSportingRecords(page: Page): Promise<E2ECloudSportingRecord[]> {
+  return page.evaluate(async ({ url, publishableKey }) => {
+    let accessToken: string | null = null;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith("sb-")) continue;
+      try {
+        const value: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          "access_token" in value &&
+          typeof value.access_token === "string"
+        ) {
+          accessToken = value.access_token;
+          break;
+        }
+      } catch {
+        // Ignore unrelated or malformed browser state. The missing-token failure
+        // below remains fail-closed and does not disclose the stored value.
+      }
+    }
+    if (accessToken === null) throw new Error("The authenticated E2E session is unavailable.");
+
+    const response = await fetch(`${url}/rest/v1/rpc/get_my_sporting_records`, {
+      method: "POST",
+      headers: {
+        apikey: publishableKey,
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    if (!response.ok) throw new Error("The sporting-cloud E2E read failed.");
+    const body: unknown = await response.json();
+    if (!Array.isArray(body)) throw new Error("The sporting-cloud E2E response is malformed.");
+
+    return body.map((value) => {
+      if (
+        typeof value !== "object" ||
+        value === null ||
+        !("record_kind" in value) ||
+        (value.record_kind !== "training_session" && value.record_kind !== "assessment_run") ||
+        !("record_id" in value) ||
+        typeof value.record_id !== "string" ||
+        !("content_sha256" in value) ||
+        typeof value.content_sha256 !== "string"
+      ) {
+        throw new Error("The sporting-cloud E2E response is malformed.");
+      }
+      return {
+        record_kind: value.record_kind,
+        record_id: value.record_id,
+        content_sha256: value.content_sha256,
+      };
+    });
+  }, localSupabaseBrowserConfig());
+}
+
+async function clearCloudSportingRecords(page: Page): Promise<void> {
+  const records = await readCloudSportingRecords(page);
+  if (records.length === 0) return;
+  await page.evaluate(async ({ config, recordsToDelete }) => {
+    let accessToken: string | null = null;
+    for (const key of Object.keys(localStorage)) {
+      if (!key.startsWith("sb-")) continue;
+      try {
+        const value: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          "access_token" in value &&
+          typeof value.access_token === "string"
+        ) {
+          accessToken = value.access_token;
+          break;
+        }
+      } catch {
+        // See readCloudSportingRecords: malformed unrelated state is ignored.
+      }
+    }
+    if (accessToken === null) throw new Error("The authenticated E2E session is unavailable.");
+
+    for (const record of recordsToDelete) {
+      const response = await fetch(`${config.url}/rest/v1/rpc/delete_my_sporting_record`, {
+        method: "POST",
+        headers: {
+          apikey: config.publishableKey,
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          p_record_kind: record.record_kind,
+          p_record_id: record.record_id,
+          p_expected_content_sha256: record.content_sha256,
+        }),
+      });
+      if (!response.ok) throw new Error("The sporting-cloud E2E cleanup failed.");
+    }
+  }, { config: localSupabaseBrowserConfig(), recordsToDelete: records });
+}
+
+/** Removes only the current browser's Profile-scoped sporting workspace. It is
+ * intentionally separate from cloud cleanup so B0.4 restore can be verified as a
+ * real cross-device-style boundary in focused tests. */
+export async function clearLocalSportingState(page: Page): Promise<void> {
   await page.evaluate(() => {
     for (const key of Object.keys(localStorage)) {
       if (key.startsWith("curling.identity.") || key.startsWith("sb-")) continue;
       localStorage.removeItem(key);
     }
   });
+}
+
+/** Clears sporting/test state while retaining the real authenticated identity and
+ * trusted-device records established by global setup. Since B0.4 restores terminal
+ * records from the real local cloud, the helper first tombstones the fixture Profile's
+ * prior records through the production RPC boundary, then clears its local workspace.
+ * Playwright uses one worker so scenarios cannot race on this shared test Profile. */
+export async function freshLoad(page: Page) {
+  await page.goto("/");
+  await page.waitForSelector("text=Today's Plan");
+  await clearCloudSportingRecords(page);
+  await clearLocalSportingState(page);
   await page.reload();
   await page.waitForSelector("text=Today's Plan");
 }

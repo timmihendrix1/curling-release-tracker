@@ -40,8 +40,7 @@ functionality, read:
 - `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` — the canonical
   product source for the mandatory identity requirement, minimal onboarding,
   Profile-scoped ownership, offline behaviour after onboarding, and the Free Cloud Core
-  (accepted; **B0.2 identity/onboarding gate implemented and mounted; B0.3 Profile-scoped
-  sporting persistence remains required before release** — see the Working rules entry below)
+  (accepted; **B0.2-B0.4 implemented and locally verified** — see the Working rules entry below)
 - `docs/adr/` for the reasoning behind existing architectural decisions
 - `docs/TECHNICAL_DEBT_AND_ROADMAP.md` before deciding whether something is worth fixing now
 
@@ -192,8 +191,8 @@ technique directly" in the Coaching Principles.
   `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` (the canonical
   product source) and `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
   (**Accepted architecture/product direction — B0.2 identity/onboarding gate and B0.3
-  Profile-scoped local sporting persistence implemented; combined review pending**), plus
-  `docs/adr/0026-profile-scoped-local-sporting-persistence.md` before changing local scope.
+  Profile-scoped local sporting persistence and Free cloud backbone implemented**), plus
+  ADR-0026 before changing local scope and ADR-0027 before changing cloud authority or sync.
   The accepted target: a
   `UserAccount` **and** a completed personal `Profile` are required to reach the app (no
   Profile, no access — Free is a tier, not an exemption); `Profile.id` is an
@@ -207,14 +206,13 @@ technique directly" in the Coaching Principles.
   0018's copy-migration and activation track as the forward path (ADR-0015's adapter stays
   valid; **delete no dormant code**). ADR-0019/ADR-0020's **Local Adoption is not the
   forward path**, and ADR-0020's open Decisions E.2b/E.2c are **not gates on B0.4** — B0.4
-  designs and verifies its own schema, representability, mapping, upload and RLS. ADR-0020's
+  has designed and verified its own schema, representability, mapping, upload and RLS. ADR-0020's
   authority-scope *choice* is **closed (Profile-scoped)**; only its own unperformed
   reconciliation to that scope remains. **ADR-0021**'s draft/history split stays an accepted
   constraint, but its legacy-key migration, retained residue and ADR-0016 marker
-  registration are retired — B0.3/B0.4 establish **fresh** Profile-scoped draft/history
-  persistence for post-onboarding data. Staging is B0.1 (documentation — done) → B0.2
-  (identity/onboarding gate) → B0.3 (Profile-scoped Local Data) → B0.4 (Free cloud
-  backbone, **requiring real database execution**) → Exercise Stage B. **B0.2 and B0.3 are
+  registration are retired — ADR-0027 implements the fresh Profile-scoped split. Staging
+  B0.1 → B0.2 → B0.3 → B0.4 is implemented, including real database execution; the next
+  product stage is Exercise Stage B. **B0.2 and B0.3 are
   two implementation scopes but ONE releasable privacy unit**: B0.2 added mandatory
   authentication and account switching while, in that stage alone, the seven repositories
   still shared one identity-unscoped `localStorage` workspace. Releasing B0.2 alone would

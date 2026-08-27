@@ -158,7 +158,7 @@ export default function SettingsScreen({
         </h2>
 
         <p className="mt-1 text-sm text-slate-600">
-          Export your locally stored training history.
+          Export the completed training history available in this Profile.
         </p>
 
         <button
@@ -184,8 +184,9 @@ export default function SettingsScreen({
             Data &amp; Privacy
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Your training data is stored locally on this device. No account,
-            cloud sync or server storage is currently used.
+            Completed training sessions and Assessment results are saved on this
+            device and synced to your private cloud account when online. In-progress
+            training and Assessment drafts stay on this device.
           </p>
         </div>
       </div>
@@ -196,8 +197,9 @@ export default function SettingsScreen({
       <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
         <h2 className="text-lg font-semibold text-red-900">Clear Data</h2>
         <p className="mt-1 text-sm text-red-700">
-          Permanently delete the entire session history from this device.
-          This cannot be undone.
+          Permanently delete the entire session history from this device and your
+          cloud account. If you are offline, deletion syncs when you reconnect. This
+          cannot be undone.
         </p>
 
         <button

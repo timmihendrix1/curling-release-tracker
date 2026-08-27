@@ -15,9 +15,17 @@ import {
   retireLegacyUnscopedSportingData,
   type SportingRepositories,
 } from "../lib/persistence/profileScopedSportingPersistence";
+import { createProfileScopedSportingStorageAdapter } from "../lib/persistence/profileScopedSportingPersistence";
+import { createSportingSyncStateRepository } from "../lib/cloudSporting/syncStateRepository";
+import { SportingCloudSyncManager, type SportingSyncSnapshot } from "../lib/cloudSporting/syncManager";
+import { resolveCloudConfig } from "../lib/supabase/config";
+import { getSupabaseBrowserClient } from "../lib/supabase/supabaseClient";
+import { createSupabaseSportingCloudService } from "../lib/supabase/supabaseSportingCloudService";
 import { useIdentity } from "./identity/IdentityProvider";
 
 const SportingPersistenceContext = createContext<SportingRepositories | null>(null);
+type SportingCloudSyncContextValue = SportingSyncSnapshot & { retry(): void };
+const SportingCloudSyncContext = createContext<SportingCloudSyncContextValue | null>(null);
 let unscopedTestRepositories: SportingRepositories | null = null;
 
 export function useSportingRepositories(): SportingRepositories {
@@ -33,6 +41,10 @@ export function useSportingRepositories(): SportingRepositories {
   throw new Error("Sporting persistence requires an authenticated Profile scope.");
 }
 
+export function useSportingCloudSync(): SportingCloudSyncContextValue | null {
+  return useContext(SportingCloudSyncContext);
+}
+
 type ProfileScopeProps = {
   profileId: string;
   children: ReactNode;
@@ -42,10 +54,24 @@ function ProfileScopedSportingPersistenceInstance({
   profileId,
   children,
 }: ProfileScopeProps) {
-  const repositories = useMemo(
+  const baseRepositories = useMemo(
     () => createProfileScopedSportingRepositories(profileId),
     [profileId]
   );
+  const manager = useMemo(() => {
+    const adapter = createProfileScopedSportingStorageAdapter(profileId);
+    const config = resolveCloudConfig();
+    const service = config.status === "configured"
+      ? createSupabaseSportingCloudService(getSupabaseBrowserClient(config))
+      : null;
+    return new SportingCloudSyncManager(
+      baseRepositories,
+      createSportingSyncStateRepository(adapter),
+      service
+    );
+  }, [baseRepositories, profileId]);
+  const repositories = useMemo(() => manager.decorateRepositories(), [manager]);
+  const [syncSnapshot, setSyncSnapshot] = useState<SportingSyncSnapshot>(manager.getSnapshot());
   const [attempt, setAttempt] = useState(0);
   const [retirementState, setRetirementState] = useState<
     "retiring" | "ready" | "failed"
@@ -57,14 +83,28 @@ function ProfileScopedSportingPersistenceInstance({
   useEffect(() => {
     let active = true;
     retirementPromiseRef.current ??= retireLegacyUnscopedSportingData();
-    void retirementPromiseRef.current.then((result) => {
+    void retirementPromiseRef.current.then(async (result) => {
       if (!active) return;
-      setRetirementState(result.ok ? "ready" : "failed");
+      if (!result.ok) {
+        setRetirementState("failed");
+        return;
+      }
+      await manager.initialize();
+      if (active) setRetirementState("ready");
     });
     return () => {
       active = false;
     };
-  }, [attempt]);
+  }, [attempt, manager]);
+
+  useEffect(() => manager.subscribe(() => setSyncSnapshot(manager.getSnapshot())), [manager]);
+
+  useEffect(() => {
+    if (retirementState !== "ready") return;
+    const synchronize = () => void manager.synchronize();
+    window.addEventListener("online", synchronize);
+    return () => window.removeEventListener("online", synchronize);
+  }, [manager, retirementState]);
 
   if (retirementState === "retiring") {
     return (
@@ -98,9 +138,14 @@ function ProfileScopedSportingPersistenceInstance({
   }
 
   return (
-    <SportingPersistenceContext.Provider value={repositories}>
-      {children}
-    </SportingPersistenceContext.Provider>
+    <SportingCloudSyncContext.Provider value={{
+      ...syncSnapshot,
+      retry: () => void manager.retry(),
+    }}>
+      <SportingPersistenceContext.Provider value={repositories}>
+        {children}
+      </SportingPersistenceContext.Provider>
+    </SportingCloudSyncContext.Provider>
   );
 }
 

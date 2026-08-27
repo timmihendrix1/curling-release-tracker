@@ -3,15 +3,16 @@
 **Partially reframed (2026-08-24) by
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted).**
 
-- **Still accepted, and binding:** the authority-unit split — `assessmentDraft` is the
+- **Still accepted, binding, and implemented through ADR-0027:** `assessmentDraft` is the
   device-local/in-progress unit, `assessmentHistory` the completed-history unit and the only
-  one ever cloud-eligible (now via the **Free Cloud Core**, Stage B0.4).
-- **Retired as forward work:** the establishment/migration protocol that splits the current
+  cloud-eligible Assessment unit.
+- **Retired as forward work:** the establishment/migration protocol that splits the former
   *combined, unscoped* `ASSESSMENT_STORAGE_KEY`, the retained legacy residue (Decision 3),
   and the planned ADR-0016 marker registration (§11.1). That legacy data is disposable
   early-test data, discarded once in Stage B0.3 — **B0.3 will not implement these
-  mechanics.** B0.3/B0.4 instead establish **fresh Profile-scoped draft/history
-  persistence** for post-onboarding data, adopting nothing and reusing no retired marker.
+  mechanics.** ADR-0027 instead establishes fresh Profile-scoped draft/history persistence
+  and transitions only a post-B0.3 combined Profile-scoped value, adopting nothing and
+  reusing no retired marker.
 - **Still a real caution:** the old-build / deployment-fencing hazard (Decision 8.1) — it
   does not depend on the accountless premise.
 - **No longer the route:** ADR-0019/ADR-0020 Local Adoption. Its blockers are not B0.4
@@ -19,10 +20,9 @@
 
 The design below is retained; read §11 and §11.1 for the exact boundary.
 
-**Status:** Accepted. Design complete — every decision within this ADR's own scope is a
-deterministic, internally consistent, and (per this revision) actually executable rule.
-ADR-0021's implementation has not been performed; this ADR revision changes only its own
-documentation and status framing.
+**Status:** Accepted. The authority-unit split is implemented by ADR-0027; this ADR's
+retired unscoped establishment protocol remains unimplemented. The implementation follows
+ADR-0027's fresh Profile-scoped path rather than the retired mechanics below.
 
 **Correction note (this revision — final semantic pass).** Two prior revisions fixed most
 contradictions but left several protocol-level defects: a possible lock re-entrancy

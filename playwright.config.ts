@@ -14,6 +14,12 @@ import { E2E_AUTH_STATE_PATH } from "./tests/e2e/global-setup";
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
+  // Every E2E scenario uses the same real, authenticated local-Supabase Profile.
+  // B0.4 makes completed sporting records genuinely durable across browser
+  // contexts, so parallel workers would mutate the same cloud history and make
+  // otherwise-independent scenarios observe each other's records. Keep the suite
+  // serial until the fixture provisions one Profile per worker.
+  workers: 1,
   retries: 0,
   reporter: "list",
   globalSetup: "./tests/e2e/global-setup.ts",

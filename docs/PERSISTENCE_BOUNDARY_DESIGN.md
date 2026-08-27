@@ -316,24 +316,24 @@ name exactly which controls changed for Session and Assessment. See
 ## 1. Purpose and scope
 
 **Revision note (2026-08-24, mandatory identity and Free Cloud Foundation).**
-`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted; not
-implemented) and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
+`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` (Accepted;
+implemented through B0.4) and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
 change two of this document's premises, corrected in place in §10 and §12 below:
 
 - **The accountless / no-owner assumption is superseded.** This document was written to
   preserve accountless use, and §12 concluded that identity must not scope local
   persistence. Identity is now mandatory, and **local persistence is Profile-scoped as
-  implemented in Stage B0.3/ADR-0026.** The repository boundary, hydration model, and the fact that
-  `localStorage` is today's sole production authority are all **unchanged and still
-  accurate**.
+  implemented in Stage B0.3/ADR-0026.** The repository boundary and hydration model remain
+  accurate. B0.4/ADR-0027 now adds cloud authority for archived Training Sessions and
+  terminal Assessment Runs; current Session and Assessment draft authority remains local.
 - **The legacy copy/activation track (§10 steps 2-4) is retired as the forward migration
   path.** The unscoped local data it would carry forward is disposable early-test data
   discarded once, explicitly, by Stage B0.3. ADR-0015's unwired adapter remains valid
   infrastructure; no dormant code is deleted by that decision.
 
 This document is **not** the place to redesign repository APIs for either change. See
-implemented Stage B0.3 (Profile-scoped local persistence) and planned Stage B0.4 (cloud synchronisation) in
-the specification's Section 11.
+implemented Stage B0.3 (Profile-scoped local persistence) and B0.4 (terminal sporting-record
+cloud synchronisation) in the specification's Section 11 and ADR-0027.
 
 This document inventories every current browser-persisted domain, then designs an
 application-owned persistence boundary that can:

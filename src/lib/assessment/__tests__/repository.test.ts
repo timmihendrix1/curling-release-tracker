@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { createAssessmentRepository } from "../repository";
 import {
   ASSESSMENT_PERSISTENCE_SCHEMA_VERSION,
+  ASSESSMENT_DRAFT_STORAGE_KEY,
+  ASSESSMENT_HISTORY_STORAGE_KEY,
   ASSESSMENT_STORAGE_KEY,
   createEmptyAssessmentPersistedState,
 } from "../persistence";
@@ -96,12 +98,73 @@ describe("AssessmentRepository", () => {
     }
   });
 
-  it("saveState() performs a full overwrite", async () => {
+  it("saveState() writes independent draft and history authority units without rewriting the combined key", async () => {
     localStorage.clear();
     const repo = createAssessmentRepository(createLocalStorageAdapter());
     const state = { schemaVersion: ASSESSMENT_PERSISTENCE_SCHEMA_VERSION, history: [createTestRun()] };
     await repo.saveState(state);
-    expect(JSON.parse(localStorage.getItem(ASSESSMENT_STORAGE_KEY)!).history).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(ASSESSMENT_HISTORY_STORAGE_KEY)!).history).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(ASSESSMENT_DRAFT_STORAGE_KEY)!)).toEqual({ schemaVersion: 1 });
+    expect(localStorage.getItem(ASSESSMENT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("establishes both split units from a Profile-scoped combined value", async () => {
+    localStorage.clear();
+    const state = { schemaVersion: ASSESSMENT_PERSISTENCE_SCHEMA_VERSION, history: [createTestRun()] };
+    localStorage.setItem(ASSESSMENT_STORAGE_KEY, JSON.stringify(state));
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("value");
+    expect(JSON.parse(localStorage.getItem(ASSESSMENT_HISTORY_STORAGE_KEY)!).history).toHaveLength(1);
+    expect(JSON.parse(localStorage.getItem(ASSESSMENT_DRAFT_STORAGE_KEY)!)).toEqual({ schemaVersion: 1 });
+  });
+
+  it("fails closed when only one split unit exists without a combined recovery source", async () => {
+    localStorage.clear();
+    localStorage.setItem(ASSESSMENT_HISTORY_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, history: [] }));
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("read_failed");
+  });
+
+  it("idempotently clears an exact terminal draft already present in history", async () => {
+    localStorage.clear();
+    const run = { ...createTestRun(), status: "incomplete" as const, pausedAt: "2026-08-27T10:00:00.000Z" };
+    localStorage.setItem(ASSESSMENT_DRAFT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, currentRun: run }));
+    localStorage.setItem(ASSESSMENT_HISTORY_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, history: [run] }));
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("value");
+    if (result.status === "value") {
+      expect(result.value.state.currentRun).toBeUndefined();
+      expect(result.value.currentRunQuarantined).toBe(false);
+    }
+    expect(JSON.parse(localStorage.getItem(ASSESSMENT_DRAFT_STORAGE_KEY)!)).toEqual({ schemaVersion: 1 });
+  });
+
+  it("fails closed rather than interpreting future split authority versions as v1", async () => {
+    localStorage.clear();
+    localStorage.setItem(ASSESSMENT_DRAFT_STORAGE_KEY, JSON.stringify({ schemaVersion: 999 }));
+    localStorage.setItem(
+      ASSESSMENT_HISTORY_STORAGE_KEY,
+      JSON.stringify({ schemaVersion: 999, history: [createTestRun()] })
+    );
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("read_failed");
+  });
+
+  it("fails closed when the split history authority omits its required collection", async () => {
+    localStorage.clear();
+    localStorage.setItem(ASSESSMENT_DRAFT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
+    localStorage.setItem(ASSESSMENT_HISTORY_STORAGE_KEY, JSON.stringify({ schemaVersion: 1 }));
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("read_failed");
+  });
+
+  it("fails closed on a same-id draft/history content conflict", async () => {
+    localStorage.clear();
+    const run = { ...createTestRun(), status: "incomplete" as const, pausedAt: "2026-08-27T10:00:00.000Z" };
+    localStorage.setItem(ASSESSMENT_DRAFT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, currentRun: { ...run, notes: "different" } }));
+    localStorage.setItem(ASSESSMENT_HISTORY_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, history: [run] }));
+    const result = await createAssessmentRepository(createLocalStorageAdapter()).loadState();
+    expect(result.status).toBe("read_failed");
   });
 
   it("saveState() surfaces a write failure as a typed result", async () => {

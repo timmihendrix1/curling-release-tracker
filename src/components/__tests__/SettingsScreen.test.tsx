@@ -44,7 +44,7 @@ describe("SettingsScreen", () => {
     expect(screen.queryByText("About")).not.toBeInTheDocument();
   });
 
-  it("shows the current, honest local-storage disclosure copy", () => {
+  it("shows the current, honest local-first cloud disclosure copy", () => {
     render(
       <SettingsScreen
         {...baseProps}
@@ -56,7 +56,24 @@ describe("SettingsScreen", () => {
 
     expect(
       screen.getByText(
-        "Your training data is stored locally on this device. No account, cloud sync or server storage is currently used."
+        "Completed training sessions and Assessment results are saved on this device and synced to your private cloud account when online. In-progress training and Assessment drafts stay on this device."
+      )
+    ).toBeInTheDocument();
+  });
+
+  it("explains that clearing history also deletes its cloud records", () => {
+    render(
+      <SettingsScreen
+        {...baseProps}
+        hasHistory
+        onExportHistoryCsv={() => {}}
+        onClearHistory={() => {}}
+      />
+    );
+
+    expect(
+      screen.getByText(
+        "Permanently delete the entire session history from this device and your cloud account. If you are offline, deletion syncs when you reconnect. This cannot be undone."
       )
     ).toBeInTheDocument();
   });

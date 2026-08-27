@@ -4,7 +4,11 @@ import {
 } from "../accuracyToleranceProfiles/repository";
 import { ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY } from "../accuracyToleranceProfiles/persistence";
 import { assessmentRepository, createAssessmentRepository } from "../assessment/repository";
-import { ASSESSMENT_STORAGE_KEY } from "../assessment/persistence";
+import {
+  ASSESSMENT_DRAFT_STORAGE_KEY,
+  ASSESSMENT_HISTORY_STORAGE_KEY,
+  ASSESSMENT_STORAGE_KEY,
+} from "../assessment/persistence";
 import {
   assessmentPreferencesRepository,
   createAssessmentPreferencesRepository,
@@ -41,6 +45,7 @@ import type {
   StorageAdapter,
   StorageGetResult,
 } from "./types";
+import { CLOUD_SPORTING_SYNC_STORAGE_KEY } from "../cloudSporting/syncStateRepository";
 
 /**
  * The complete, closed set of legacy identity-unscoped sporting keys. B0.3 retires
@@ -62,7 +67,13 @@ export const SPORTING_STORAGE_KEYS = [
 
 export type SportingStorageKey = (typeof SPORTING_STORAGE_KEYS)[number];
 
-const SPORTING_STORAGE_KEY_SET: ReadonlySet<string> = new Set(SPORTING_STORAGE_KEYS);
+const PROFILE_SCOPED_SPORTING_STORAGE_KEYS = [
+  ...SPORTING_STORAGE_KEYS,
+  ASSESSMENT_DRAFT_STORAGE_KEY,
+  ASSESSMENT_HISTORY_STORAGE_KEY,
+  CLOUD_SPORTING_SYNC_STORAGE_KEY,
+] as const;
+const SPORTING_STORAGE_KEY_SET: ReadonlySet<string> = new Set(PROFILE_SCOPED_SPORTING_STORAGE_KEYS);
 const PROFILE_NAMESPACE_PREFIX = "curling.sporting.profile.v1";
 
 export const LEGACY_SPORTING_RETIREMENT_MARKER_KEY =

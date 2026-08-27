@@ -9,6 +9,8 @@ import { err, ok, type AssessmentOutcome } from "./errors";
 import type { AssessmentRun } from "./types";
 
 export const ASSESSMENT_STORAGE_KEY = "curling-release-tracker-assessment-data";
+export const ASSESSMENT_DRAFT_STORAGE_KEY = "curling-release-tracker-assessment-draft";
+export const ASSESSMENT_HISTORY_STORAGE_KEY = "curling-release-tracker-assessment-history";
 export const ASSESSMENT_PERSISTENCE_SCHEMA_VERSION = 1;
 
 /**

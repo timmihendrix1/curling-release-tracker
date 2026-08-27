@@ -246,7 +246,7 @@ The athlete's data is not.
 
 The current implementation is local-first for a **previously authenticated and onboarded
 Profile**; it is no longer accountless-capable. See "Mandatory identity and the Free Cloud
-Foundation (B0.2+B0.3 implemented; B0.4 planned)" below, and its canonical
+Foundation (B0.2-B0.4 implemented)" below, and its canonical
 sources: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` and
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.
 
@@ -2895,19 +2895,18 @@ async callback against a `disposedRef` set once on unmount.
 **UI integration.** `AccountControl.tsx` is mounted at the top of `TrackerApp.tsx`'s
 render body (above the per-view header), so it is visible across every `activeView` —
 or, cloud-disabled, renders nothing at all. It never gates the rest of the app: every
-state (including `recoverable_error`) renders inline alongside whatever screen is
-active, never as a full-page takeover, and the local, accountless application remains
-fully usable in every state. **That last property is a current, transitional fact about
-this shell, not product direction** — Stage B0.2's gate replaces it (see the section that
-follows).
+state (including `recoverable_error`) rendered inline alongside whatever screen was
+active, never as a full-page takeover, while the local, accountless application remained
+fully usable. **That property was transitional, not product direction** — Stage B0.2's
+implemented gate replaced it (see the section that follows).
 
-## Mandatory identity and the Free Cloud Foundation (B0.2+B0.3 implemented; B0.4 planned)
+## Mandatory identity and the Free Cloud Foundation (B0.2-B0.4 implemented)
 
 **Canonical product source:** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 **Architecture decisions:** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`,
 ADR-0025 (identity gate) and ADR-0026 (Profile-scoped local sporting persistence).
 
-**Current implementation.** B0.2a-e and B0.3 are implemented. `IdentityProvider` wraps
+**Current implementation.** B0.2a-e, B0.3 and B0.4 are implemented. `IdentityProvider` wraps
 the Profile-scoped sporting persistence boundary at the root and is the only component
 importing `identityRuntime`; the sporting shell and its seven repositories do not mount
 before a correlated ready verdict and successful bounded legacy retirement.
@@ -2921,9 +2920,11 @@ mapped through one immutable adapter namespace bound to canonical `Profile.id`; 
 boundary remounts application and repository state on Profile change. Production
 components cannot import the unscoped repositories directly.
 
-**Still deliberately absent:** all cloud sporting persistence/sync (B0.4), including an
-outbox, upload, restore and sync status. B0.2 was never independently release-ready;
-B0.2+B0.3 now form an implemented candidate release unit awaiting independent review.
+ADR-0027 adds the B0.4 terminal sporting-record backbone: archived Training Sessions and
+terminal Assessment Runs use exact TEXT cloud authority, server digests, idempotent RPCs,
+tombstones with transactional raw-payload deletion, own-Profile RLS, a Profile-scoped durable queue, basic restore, reconnect and
+honest sync truth. Current Sessions and Assessment drafts remain device-local; Exercise
+records wait for Exercise execution to exist. B0.2 was never independently release-ready.
 
 The sections above describe what is actually built; this one describes the accepted target
 and how it is staged.
@@ -2976,8 +2977,8 @@ identity-unscoped `localStorage` workspace** before B0.3 — a separately releas
 let a second authenticated account in the same browser read the first account's sporting
 data. B0.2 may be built and reviewed first, but **its gate and account-switching experience
 could not be enabled for real users or released as the new product behaviour until B0.3 was
-implemented; the remaining independent review of the combined unit must prove **no
-Profile can observe another Profile's local data or pending writes**. B0.2's own
+implemented. The combined unit's verification proves that **no Profile can observe another
+Profile's local data or pending writes**. B0.2's own
 account-switch review proves authentication/onboarding state transitions only. The unscoped
 data is **discarded** by B0.3, never imported or adopted, and disposal did not move earlier.
 **B0.2 is never independently release-ready.**
@@ -3088,8 +3089,8 @@ gains authority once it acknowledges a record.
 | Stage | What it introduces | What it explicitly does **not** do |
 |---|---|---|
 | **B0.2** | Identity and onboarding: the gate, the barrier protocol, the onboarding completion transaction, and trusted-device continuity for offline entry | **No Profile scoping of local sporting persistence. No disposal of legacy unscoped data. No cloud sporting persistence of any kind.** The seven repositories still share one identity-unscoped `localStorage` workspace |
-| **B0.3** | **Implemented:** Profile-scoped local sporting persistence, sign-out/account-switch isolation, and the one-time disposal of the disposable unscoped test data | No cloud sporting persistence |
-| **B0.4** | **Free structured cloud authority** — schema, ownership, RLS, idempotent upload, a durable outbox, restore, retry, sync truth and conflict behaviour | — |
+| **B0.3** | **Implemented:** Profile-scoped local sporting persistence, sign-out/account-switch isolation, and the one-time disposal of the disposable unscoped test data | No cloud sporting persistence in that stage |
+| **B0.4** | **Implemented:** Free structured cloud authority for archived Training Sessions and terminal Assessment Runs — schema, ownership, RLS, idempotent upload, durable queue, restore, retry, sync truth and conflicts | In-progress cross-device continuation and not-yet-existing Exercise execution records |
 
 **B0.2 and B0.3 remain one releasable privacy unit** (see the paragraphs above). Both are now
 implemented; independent review of the combined confidentiality and retirement gate remains required.

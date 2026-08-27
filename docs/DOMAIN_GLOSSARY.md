@@ -81,15 +81,12 @@ The **authentication identity** used to sign in. It answers *who is acting*, and
 else — it is never the sporting identity, never an ownership key, and never itself a paid
 product.
 
-**[Implemented]** A Supabase Auth account, reachable only as an `AccountIdentity` (an id
-and an email) past `src/lib/supabase/authService.ts`'s boundary. Today it is **optional**:
-the application is fully usable without one.
-
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2,
-`docs/adr/0024`]** A UserAccount plus a completed personal **Profile** becomes required to
-reach the authenticated application. Deliberately public marketing material stays public.
-Closed-test sign-in methods are six-digit email OTP and Google sign-in; magic links,
-passwords and Apple sign-in stay deferred.
+**[Implemented — Stage B0.2.]** A Supabase Auth account, reachable only as an
+`AccountIdentity` (an id and an email) past `src/lib/supabase/authService.ts`'s boundary.
+A UserAccount plus a completed personal **Profile** is required to reach the authenticated
+application. Deliberately public marketing material stays public. Closed-test sign-in
+methods are six-digit email OTP and Google sign-in; magic links, passwords and Apple
+sign-in stay deferred.
 
 Distinct from **Profile**: one UserAccount is linked 1:1 to one Profile, and the two ids
 are never the same value. Never use a UserAccount id as an ownership or scope key.
@@ -109,12 +106,12 @@ Distinct from **Athlete**: a Profile is Team Foundation's bare identity record: 
 Athlete is the separate, pre-existing training-data-owning concept above. A Profile does
 not by itself grant or imply Athlete capability.
 
-**[Implemented through Stage B0.3; cloud authority remains planned for B0.4 —
+**[Implemented through Stage B0.4 —
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2/§4,
-ADR-0024/0026.]** The Profile is the platform-wide, mandatory sporting and ownership
+ADR-0024/0026/0027.]** The Profile is the platform-wide, mandatory sporting and ownership
 identity. Athlete-owned local persistence and recorder/actor attribution are
-Profile-scoped (`Profile.id`, never the authentication-provider user id); cloud authority
-will use the same scope in B0.4. This closes `docs/adr/0020`'s former `account_scope_id`
+Profile-scoped (`Profile.id`, never the authentication-provider user id); the Free Cloud
+terminal sporting-record authority uses that same scope. This closes `docs/adr/0020`'s former `account_scope_id`
 question as **Profile scope, not account scope**, without making ADR-0020 itself the
 forward implementation path.
 
@@ -156,8 +153,8 @@ collects no payment.
 
 ## Free Cloud Core
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.1,
-`docs/adr/0024`. No cloud sporting data exists today.]** The set of structured raw sporting
+**[Implemented for current executable domains —
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.1 and ADR-0027.]** The set of structured raw sporting
 and training data that is persisted in the cloud for **every Profile holding the Free
 entitlement — that is, every Profile that has completed personal onboarding** — regardless
 of any *paid* entitlement, because it is what is needed to reconstruct the athlete's
@@ -848,8 +845,7 @@ reference, and stricter immutability once completed.
 
 ## Assessment Draft
 
-**[Target — `docs/adr/0021-assessment-draft-history-authority-unit-split.md`, Accepted,
-design complete, not yet implemented.]** The persistence domain owning **the current
+**[Implemented — ADR-0021 and ADR-0027.]** The persistence domain owning **the current
 Assessment Run** — not only an active/in-progress one. This includes a **terminal** run
 that has completed or been marked incomplete but is still retained here, pending durable
 archive: `assessmentDraft` continues to own it until its exact content has been durably
@@ -862,15 +858,12 @@ exactly the kind of frequently-mutated, in-progress (or briefly pending-archive)
 "Session" domain's own `currentSessionDraft` precedent already establishes must stay local.
 Not the same concept as a "Blind Shot Draft" (above) — that is a Training-domain, per-shot
 entry state; this is an Assessment-domain, per-run persistence-authority unit. Distinct
-from Assessment History even while both are, today, still combined in one
-running-application key — current runtime has not yet implemented this split.
+from Assessment History and persisted under its own Profile-scoped local key.
 
 ## Assessment History
 
-**[Target — `docs/adr/0021-assessment-draft-history-authority-unit-split.md`, Accepted,
-design complete, not yet implemented.]** The persistence domain owning terminal
-(`completed`/`incomplete`) Assessment Runs (today's `AssessmentPersistedState.history`,
-inside the combined `curling-release-tracker-assessment-data` key). The only Assessment
+**[Implemented — ADR-0021 and ADR-0027.]** The persistence domain owning terminal
+(`completed`/`incomplete`) Assessment Runs under its own Profile-scoped local key. The only Assessment
 persistence domain ADR-0021 permits any future ADR to consider for cloud adoption —
 Assessment Draft (above) is permanently excluded. Not the same concept as "History"
 (below), which is the Session-domain equivalent (a `Session[]` list) — the two are
@@ -1370,8 +1363,8 @@ No fixed expiry period for trusted local state is decided. Do not invent one.
 
 ## Outbox
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7,
-Stage B0.4. Not implemented — no outbox of any kind exists.]** The durable, Profile-scoped
+**[Implemented for terminal Training Sessions and Assessment Runs — Stage B0.4,
+ADR-0027.]** The durable, Profile-scoped
 local queue of records created offline and not yet acknowledged by the server. Every record
 receives a **stable client-generated ID before upload**; upload is automatic on reconnect
 and **idempotent**, so a retry converges on one cloud record per stable ID rather than
@@ -1379,14 +1372,16 @@ duplicating sporting data. Before uploading, the client revalidates server autho
 **fails closed** if authorization is no longer valid. A pending record from one Profile is
 never visible or uploaded under another Profile.
 
-The exact outbox schema, conflict protocol, retry schedule and API contract belong to Stage
-B0.4, not to any current document.
+The implemented queue stores the exact serialized payload and digest for desired-present
+records together with desired presence/deletion and `pending`/`synced`/`issue` state. A
+deletion drops its queued payload immediately and retains only the digest and identity
+needed for the server tombstone. Exercise execution will extend this
+backbone when its own terminal record exists; it must not introduce a parallel queue.
 
 ## Sync Status
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7.
-Not implemented.]** The user-visible truth about where one record actually exists. At least
-three states must be distinguishable:
+**[Implemented — Stage B0.4, ADR-0027.]** The user-visible aggregate truth about where the
+Profile's supported terminal sporting records actually exist. Three states are distinguished:
 
 - **Saved on this device** — durable locally, not yet acknowledged by the server;
 - **Synced** — the server has acknowledged it;
