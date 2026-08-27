@@ -2,13 +2,17 @@
 
 ## Status
 
-**Accepted architecture decision. Implementation in progress.**
+**Accepted architecture decision. B0.2a-e implemented and verified.**
+
+**Subsequent release-partner update:** ADR-0026 implements B0.3's Profile isolation and legacy
+retirement. B0.2+B0.3 now form an implemented candidate release unit awaiting independent review;
+B0.4 remains outside this ADR.
 
 This ADR records the durable design decisions for **Stage B0.2 — Identity and Onboarding Gate**. The
 ADR's original documentation-only commit added no runtime code, schema, migration, test or
-configuration. Subsequent B0.2a-c commits implement and verify the database/RPC foundation, provider
-mechanics and dormant identity domain/coordinator/runtime foundation. Application composition, the
-global gate/onboarding UI and retirement of the transitional auth controllers remain. The ADR existed
+configuration. Subsequent B0.2a-e work implements and verifies the database/RPC foundation, provider
+mechanics, identity domain/coordinator/runtime, application composition, global gate/onboarding UI,
+durable Team-intent replay and retirement of the transitional auth/Profile-bootstrap paths. The ADR existed
 before implementation began, as
 `docs/AI_DEVELOPMENT_WORKFLOW.md`'s "Large cross-layer features" requires.
 
@@ -25,7 +29,7 @@ independently reviewed.** **B0.2 is never independently release-ready.**
 
 ## Context
 
-### Current implementation reality
+### Implementation reality when this decision was written (historical)
 
 Facts about the code on this branch, stated separately from anything this ADR decides:
 
@@ -622,10 +626,15 @@ papered over.
 
 ### 23. The Team bootstrap path is retired in two steps
 
-The Team-specific profile bootstrap remains reachable while the legacy Team UI still depends on it, and
-is retired — in SQL and in the service boundary — **in the same stage that removes those UI call sites
-and rewrites the Team database suite onto the canonical path**. Existing migrations stay immutable; the
-function is kept but becomes unreachable by browser roles. **No dormant code is deleted.**
+The Team-specific profile bootstrap remained reachable while the legacy Team UI depended on it, and
+was to be retired — in SQL and in the service boundary — **in the same stage that removed those UI call sites
+and rewrote the Team database suite onto the canonical path**. Existing migrations stay immutable; the
+function is kept but becomes unreachable by browser roles.
+
+**Since resolved in B0.2e:** the UI/service call sites and transitional auth cluster are
+removed, `20260827120000_retire_team_profile_bootstrap.sql` revokes execution from
+`public`, `anon` and `authenticated`, and the Team pgTAP suite uses canonical personal
+onboarding and proves the revoked privilege.
 
 ### 24. Every local identity record is new, at its first schema version
 

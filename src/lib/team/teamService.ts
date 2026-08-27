@@ -78,9 +78,9 @@ export type InvitationPreview =
   | { status: "invalid_token" };
 
 export interface TeamService {
-  // Profile bootstrap (requirements 1-13)
+  // Profile is created only by completed platform onboarding. Team surfaces may
+  // inspect it, but never create or repair it.
   getMyProfile(): Promise<TeamResult<Profile | null>>;
-  bootstrapProfile(displayName: string): Promise<TeamResult<Profile>>;
   hasPilotTeamCreationCapability(): Promise<TeamResult<boolean>>;
 
   // Teams (requirements 15-34, 99-108, 162, 168)

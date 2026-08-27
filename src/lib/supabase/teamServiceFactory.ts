@@ -1,5 +1,5 @@
 // Constructs the one production TeamService, reusing the exact same cached, per-config
-// Supabase client `useSupabaseAuthController`/`createSupabaseAuthService` already use
+// Supabase client `identityRuntime`/`createSupabaseAuthService` already use
 // (docs/adr/0022 Decision 1/requirement 115: exactly one client instance per signed-in
 // session) — never a second, independently-constructed client.
 //

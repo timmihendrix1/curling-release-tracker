@@ -24,12 +24,9 @@ An athlete may belong to multiple teams over time.
 
 **Athlete is a capability attached to a Profile, not an authentication role.**
 
-**[Implemented]** Nothing creates one today — no Team Foundation RPC ever inserts an
-`athletes` row (`docs/adr/0022` Decision 10).
-
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §3.4,
-`docs/adr/0024`]** Completed *personal* onboarding will establish Athlete capability, along
-with the default Free **Entitlement**. Arbitrary Team **Profile** creation still will not.
+**[Implemented — Stage B0.2.]** Completed *personal* onboarding establishes Athlete
+capability together with the default Free **Entitlement**. No Team Foundation RPC and
+no bare **Profile** creation path creates one (`docs/adr/0022` Decision 10; ADR-0025).
 
 ---
 
@@ -112,28 +109,29 @@ Distinct from **Athlete**: a Profile is Team Foundation's bare identity record: 
 Athlete is the separate, pre-existing training-data-owning concept above. A Profile does
 not by itself grant or imply Athlete capability.
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2/§4,
-`docs/adr/0024`]** The Profile becomes the platform-wide, mandatory sporting and ownership
-identity: **athlete-owned sporting data, local persistence scope, cloud authority and
-recorder/actor attribution are all Profile-scoped** (`Profile.id`, never the
-authentication-provider user id). This is the answer to `docs/adr/0020`'s open
-`account_scope_id` question — **Profile scope, not account scope** — and it does not by
-itself make ADR-0020 implementation-ready.
+**[Implemented through Stage B0.3; cloud authority remains planned for B0.4 —
+`docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §2/§4,
+ADR-0024/0026.]** The Profile is the platform-wide, mandatory sporting and ownership
+identity. Athlete-owned local persistence and recorder/actor attribution are
+Profile-scoped (`Profile.id`, never the authentication-provider user id); cloud authority
+will use the same scope in B0.4. This closes `docs/adr/0020`'s former `account_scope_id`
+question as **Profile scope, not account scope**, without making ADR-0020 itself the
+forward implementation path.
 
 ---
 
 ## Entitlement
 
-**[Foundation implemented in B0.2a/B0.2c; application integration and paid lifecycles planned —
+**[Default Free entitlement and application integration implemented in B0.2; paid lifecycles planned —
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §6.]** The active
 commercial tier or capability set for a Profile or a Team Workspace. **An entitlement is
 not inherently paid:** it covers both the **default Free entitlement** and any
 **additional paid entitlement** (the paid personal tier, Team Workspace, later Coaching).
 Free is a genuine entitlement even though nothing is paid for it.
 
-B0.2a implements the default-Free entitlement schema and onboarding transaction, and B0.2c
-validates and consumes that fact through the dormant identity service/runtime foundation. No global
-gate currently uses it, and no paid entitlement or billing lifecycle is implemented.
+B0.2 implements the default-Free entitlement schema and onboarding transaction; the
+mounted global gate validates and consumes that fact before the sporting app opens. No
+paid entitlement or billing lifecycle is implemented.
 
 **The default Free entitlement is granted by completed personal onboarding** — never by
 authentication or Profile creation alone (see **UserAccount**, **Profile**, and
@@ -179,8 +177,9 @@ the canonical record and may be recomputed.
 **Signing in is required but not sufficient.** The Free entitlement is granted by
 **completed personal onboarding**, never by authentication or Profile creation alone (see
 **Entitlement** above and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
-§3.4). A Profile that is merely resolved or signed in — including one created by the current
-Team-specific bootstrap — holds no entitlement and no Free Cloud Core.
+§3.4). A Profile that is merely resolved or signed in holds no entitlement and no Free
+Cloud Core. The former Team-specific bootstrap route is retired; completed personal
+onboarding is the only browser-accessible completion path.
 
 Do not use this term for the paid personal tier's derived analysis, and do not describe
 basic restore as cross-device continuation (see **Sync Status**).
@@ -189,10 +188,11 @@ basic restore as cross-device continuation (see **Sync Status**).
 
 ## Identity Gate
 
-**[Planned application integration — Stage B0.2,
+**[Implemented — Stage B0.2,
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
-The B0.2c coordinator/domain foundation exists but is dormant; no application-level gate renders or
-invokes it, and the application is still fully usable with no account.]**
+The application-level provider mounts the sporting shell only after a reducer-accepted
+ready verdict. ADR-0026's implemented B0.3 boundary then mounts only that Profile's
+sporting repositories.]**
 The blocking boundary that must be passed before any authenticated application surface — including all
 training, Assessment and Analyze functionality — is reachable. Passing it requires an authenticated
 **UserAccount**, a resolved **Profile**, a completed personal onboarding, **Athlete** capability and the
@@ -205,8 +205,8 @@ resolved but has not completed onboarding does not pass the gate.
 
 ## Identity Access Barrier
 
-**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
-`docs/adr/0025`.]** A durable, local, deny-by-default record.
+**[Implemented and integrated — Stage B0.2, `docs/adr/0025`.]** A durable, local,
+deny-by-default record.
 While an **unresolved** barrier exists, the authenticated application is blocked. **The two transition
 categories write it at different points:**
 
@@ -233,8 +233,7 @@ the denial.
 
 ## Identity Barrier Resolution
 
-**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
-`docs/adr/0025`.]** The local record proving that one exact
+**[Implemented and integrated — Stage B0.2, `docs/adr/0025`.]** The local record proving that one exact
 **Identity Access Barrier** was completed by one exact **Interactive Authentication Attempt**. It is
 stored under a key derived from that barrier's own identifier, so writing one can never resolve or
 remove a different barrier.
@@ -247,8 +246,7 @@ checked. A resolution belonging to an older barrier binds nothing.
 
 ## Interactive Authentication Attempt
 
-**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
-`docs/adr/0025`.]** The local record of one deliberately
+**[Implemented and integrated — Stage B0.2, `docs/adr/0025`.]** The local record of one deliberately
 started authentication, bound to the **Identity Access Barrier** written for it and, for the redirect
 provider, to the exact provider flow it created. It is what lets a full-page return be recognised as a
 genuine continuation of *this* attempt rather than a stale or unrelated one.
@@ -260,8 +258,7 @@ that they are authenticated.
 
 ## Trusted Device Record
 
-**[Implemented domain record in dormant Stage B0.2c; application integration remains planned —
-`docs/adr/0025`.]** The local record establishing that this
+**[Implemented and integrated — Stage B0.2, `docs/adr/0025`.]** The local record establishing that this
 device previously completed authentication and onboarding for one account scope, written **only** from
 a successful server-authoritative result. It is what makes offline entry possible for a previously
 onboarded Profile, and it is keyed to the account scope — a record belonging to a different account can
@@ -290,10 +287,10 @@ account's record is durably established or replaced**. A failure to write it yie
 `trusted_state_not_established` — server success does not substitute for it, and **a completed,
 resolved correlation set alone grants no access**.
 
-**Browser storage is not a security boundary.** A person able to alter it can forge this record; doing
-so can mount the application shell and expose whatever sporting data exists in the still-unscoped local
-workspace, but it grants **no** server-side authority. See **Profile-Scoped Local Data** for why this is
-an independent reason Stage B0.2 cannot ship before Stage B0.3.
+**Browser storage is not a security boundary.** A person able to alter it can forge this record. B0.3
+now limits the sporting application to the Profile namespace named by the mounted identity, but it
+cannot protect against someone already controlling local storage on the device; forging local state
+still grants **no** server-side authority. See **Profile-Scoped Local Data** and ADR-0026.
 
 ---
 
@@ -1350,8 +1347,7 @@ invariant.
 
 ## Profile-Scoped Local Data
 
-**[Planned — `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §5,
-Stage B0.3. Not implemented.]** Local persistence isolated to one **Profile**. Once a
+**[Implemented — Stage B0.3; ADR-0026.]** Local persistence isolated to one **Profile**. Once a
 device has completed authentication and Profile onboarding, its trusted Profile-scoped
 local state is what makes fully offline training possible; **explicit sign-out or account
 switching immediately hides and locks the previous Profile's local data**, including any
@@ -1363,10 +1359,12 @@ sign-in and onboarding surfaces while online** — that is how it becomes truste
 Profile onboarding complete, and **cannot bypass that gate by going offline**. Public
 marketing material sits outside the authenticated-app gate entirely.
 
-**Current implementation (transitional):** local persistence is **unscoped** — the seven
-repositories of `docs/adr/0013` read and write one browser's `localStorage` with no concept
-of an authenticated user. The existing unscoped data is disposable early-test data (see
-**Local Adoption** below).
+**Implementation:** one immutable adapter namespace is bound to canonical application
+`Profile.id` and composes all seven existing sporting repositories without changing their
+domain APIs. The React boundary is keyed by Profile and remounts the sporting application on
+account change. The ten former unscoped early-test keys are removed content-blind behind a
+one-time completion marker before sporting repositories mount; they are never adopted or
+assigned (see **Local Adoption** below and ADR-0026).
 
 No fixed expiry period for trusted local state is decided. Do not invent one.
 

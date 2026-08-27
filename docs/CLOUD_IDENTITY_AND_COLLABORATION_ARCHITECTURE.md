@@ -149,7 +149,8 @@ as the future grant's name, is corrected in the same pass to name
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` is now the canonical
 product source for identity requirement, onboarding, Profile-scoped ownership, offline
 behaviour after onboarding, and the Free Cloud Core; `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-is the accepted architecture decision, now partially implemented through B0.2's dormant foundations.
+is the accepted architecture decision. Stage B0.2's identity/onboarding gate and Stage B0.3's
+Profile-scoped local sporting persistence are implemented; ADR-0026 records the latter.
 Both **supersede** several
 decisions previously recorded in this document, corrected **in place** below rather than
 annotated above unchanged text:
@@ -159,7 +160,7 @@ annotated above unchanged text:
 - **§5.2/§5.3.** Accountless use is withdrawn as a valid product path. §5.3 now records
   the mandatory identity gate and minimal onboarding.
 - **§5.5's initial local-history import is withdrawn.** The existing unscoped local data
-  is disposable early-test data and will be discarded once, explicitly — never adopted,
+  was disposable early-test data and is discarded once, explicitly — never adopted,
   claimed, imported or merged. Local Adoption (ADR-0019/0020) is not the forward path.
 - **§4.2's authority table** now names Profile scope and the Free Cloud Core.
 - **§6.6/§17.5.** Basic structured cloud persistence and basic restore move to **Free**.
@@ -171,9 +172,10 @@ annotated above unchanged text:
 - **§18's phases** are re-sequenced behind Stages B0.1-B0.4.
 
 Valid Team ownership, permission, notification, sharing and rights decisions elsewhere in
-this document are **unchanged**. Nothing in this revision claims any of the target
-behaviour is implemented — the runtime is still accountless-capable and `localStorage` is
-still the sole production persistence authority.
+this document are **unchanged**. B0.2 and B0.3 now implement the mandatory gate and
+Profile-scoped local sporting persistence. `localStorage` remains the production local
+authority inside each Profile scope; the Free cloud authority described here remains a
+B0.4 target.
 
 ## 1. Purpose
 
@@ -294,9 +296,9 @@ unavailable or read-only, but must not prevent an athlete from accessing or expo
 owned history, and must not withdraw the Free entitlement or the Free Cloud Core for data
 already recorded.
 
-**B0.2a implements the default-Free entitlement schema and onboarding transaction, and B0.2c
-consumes its gate-state fact through the dormant identity foundation.** The application does not yet
-enforce it, and no paid entitlement or billing lifecycle exists — see §17.5 and
+**B0.2 implements the default-Free entitlement schema and onboarding transaction, and
+the mounted global gate consumes its gate-state fact.** The application enforces it
+before the sporting shell mounts. No paid entitlement or billing lifecycle exists — see §17.5 and
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
 
 ## 4. Target system shape
@@ -319,9 +321,11 @@ flowchart TD
   infrastructure. **Stage B0.4's required durable outbox, and any local read cache, are a
   new, separately designed, Profile-scoped mechanism** — never a continuation or
   repurposing of that track, and never a reuse of ADR-0016's migration markers or
-  ADR-0017's activation evidence. Which local store backs them is a Stage B0.3/B0.4
-  decision.
-- `localStorage` remains the sole production local store today, unscoped by identity.
+  ADR-0017's activation evidence. Which local store backs the B0.4 outbox/read cache is
+  a B0.4 decision.
+- `localStorage` remains the sole production local store today. Stage B0.3 scopes every
+  sporting repository namespace by canonical `Profile.id`; identity-control records
+  remain origin-level records governed by ADR-0025.
 - Supabase Auth provides account authentication.
 - PostgreSQL stores cloud records and relationships.
 - Row Level Security enforces access at the database boundary.
@@ -330,7 +334,7 @@ flowchart TD
   Profile-scoped outbox** connecting the local store and PostgreSQL — these are required
   Free Cloud Core mechanisms, not optional or illustrative ones. Their detailed design is
   deferred to B0.4, and the local storage technology backing them remains undecided
-  (a B0.3/B0.4 decision; ADR-0015's adapter is available infrastructure but is not
+  (a B0.4 decision; ADR-0015's adapter is available infrastructure but is not
   selected by ADR-0024).
 - The product remains a modular monolith until measured scale requires separation.
 
@@ -422,11 +426,12 @@ Accountless use is withdrawn as a valid product path.** The canonical decision s
    derived automatically from the authenticated Profile on that device (no "Recorded by"
    selector).
 
-**Implementation in progress.** B0.2a's identity/onboarding database and RPC foundation, B0.2b's
-provider mechanics, and B0.2c's identity domain/coordinator/runtime foundation are implemented and
-verified. The B0.2c runtime remains deliberately dormant: the global gate, onboarding UI and
-application composition are not implemented. See §18 and
-`docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
+**Implemented as Stage B0.2, with its B0.3 release partner implemented.** The
+identity/onboarding database and RPC foundation, provider mechanics, identity
+domain/coordinator/runtime, global gate, onboarding UI and application composition are
+implemented and verified. ADR-0026 now adds Profile-scoped sporting persistence and
+bounded legacy retirement. The combined B0.2+B0.3 privacy unit awaits independent review;
+see §18 and ADR-0025/ADR-0026.
 
 ### 5.4 Initial authentication experience
 
@@ -441,11 +446,9 @@ Magic links, passwords, Apple sign-in and additional providers remain deferred u
 later platform requirement changes that decision. The authentication method must not
 require the athlete to sign in whenever the app is opened.
 
-**Current user-visible implementation (transitional):** the optional, additive
-`AccountControl` shell exposes only email OTP — see `docs/SYSTEM_ARCHITECTURE.md`'s
-"Optional Supabase Auth Shell". B0.2b implements the Google provider/callback mechanics and B0.2c
-implements their coordinator, but both remain unmounted; the access gate and Google sign-in are not
-yet available in the application UI.
+**Current user-visible implementation:** the mandatory application-level gate exposes
+email OTP and Google entry. One `IdentityProvider` owns lifecycle and renders the
+sporting shell only after the coordinator produces a correlated ready verdict.
 
 ### 5.5 Legacy local data is disposable — there is no initial import
 
@@ -453,7 +456,8 @@ yet available in the application UI.
 revision).** The existing unscoped local data was produced only during early testing and
 is **explicitly disposable**. There is **no Legacy Local Adoption, claim, import, merge or
 per-session migration flow** for it. Stage B0.3 (Profile-scoped Local Data — the scope key
-is `Profile.id`, see §5.2) will discard it once, safely and explicitly.
+is `Profile.id`, see §5.2) discards it once, safely and explicitly, before mounting the
+sporting repositories.
 
 Consequently, `docs/adr/0019-cloud-identity-and-data-authority-transition.md`'s Local
 Adoption protocol and `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`'s
@@ -581,8 +585,8 @@ persistence.** The current product direction separates four commercial layers:
    onboarding** — granted by that completion, never by authentication or Profile creation
    alone (§5.3, and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`
    §3.4). Free is still a **signed-in** tier, not an accountless one: signing in is
-   required but not sufficient. A Profile that is merely resolved or created — including one
-   created by the current Team-specific bootstrap — holds **no** entitlement, no Athlete
+   required but not sufficient. A Profile that is merely resolved or created before
+   onboarding completes holds **no** entitlement, no Athlete
    capability, and no eligibility to pass the application gate. Free includes recording,
    the athlete's own raw records, basic result and session summaries, export, **and the
    Free Cloud Core** — cloud persistence of all supported structured raw sporting and
@@ -1002,9 +1006,9 @@ elsewhere in this document:
   onboarding** (§5.3), not by authentication or Profile creation:
   - **A Profile may exist with no `Athlete` capability.** Authentication may create or
     resolve a Profile before onboarding completes, and that Profile has none — it also holds
-    no entitlement and cannot pass the application gate (§6.6 layer 0). The current
-    **Team-specific Profile bootstrap** is a live example: it creates a Profile with no
-    legal acceptance, no `Athlete` capability and no entitlement.
+    no entitlement and cannot pass the application gate (§6.6 layer 0). A bare Profile
+    produced by `ensure_my_profile()` before completion is the live example; the former
+    Team-specific bootstrap route is retired.
   - **Every Profile eligible to pass the authenticated application gate has completed
     personal onboarding, and therefore has exactly one `Athlete` capability.** The
     zero-Athlete case is confined to Profiles that have not (yet) completed onboarding.
@@ -1860,23 +1864,23 @@ staged as **B0.1 → B0.2 → B0.3 → B0.4**, each with its own independent rev
 
 **B0.2 and B0.3 are one releasable privacy unit** (specification §11.1). They stay two
 implementation scopes with two independent review gates, but B0.2 introduces mandatory
-authentication and account switching while sporting persistence remains identity-unscoped
-until B0.3 — so a separately released B0.2 would let a **second authenticated account in the
+authentication and account switching while sporting persistence remained identity-unscoped
+before B0.3 — so a separately released B0.2 would have let a **second authenticated account in the
 same browser observe the first account's sporting data.** B0.2 may therefore be implemented
 and reviewed first, but **its mandatory-gate and account-switching experience must not be
 enabled for real users or released as the new product behaviour until B0.3's Profile
-isolation and one-time disposal are implemented and independently reviewed.** The **release
+isolation and one-time disposal were implemented.** The **release
 gate is the combined B0.2 + B0.3 unit**, and it must prove that no Profile can observe
 another Profile's local data or pending writes. **B0.2's own account-switch review proves
 authentication/onboarding state transitions only** — sporting-data confidentiality across an
-account switch is not closed until B0.3. This is never a reason to import, adopt or assign
+account switch was not closed by B0.2 alone. This is never a reason to import, adopt or assign
 the unscoped data (it is discarded, §5.5), never a reason to move disposal into B0.2, and
 not a deployment-mechanism decision this document makes. **B0.2 is never independently
 release-ready.**
 
 These replace the former Phase 3/Phase 4 framing below, which assumed an optional account
 and a Local Adoption of pre-existing local history. Phases 5-9 keep their content and now
-sit behind B0.4. **None of B0.2-B0.4 is implemented.**
+sit behind B0.4. **B0.2 and B0.3 are implemented; B0.4 is not.**
 
 ### Phase 0: Stable baseline
 
@@ -1910,7 +1914,7 @@ unimplemented.
 
 **Retired as the forward production path (2026-08-24 revision).** The legacy unscoped
 local data this track exists to carry forward is disposable early-test data that Stage
-B0.3 will discard once, explicitly — so there is nothing for a copy migration or an
+B0.3 discards once, explicitly — so there is nothing for a copy migration or an
 activation programme to preserve. ADR-0015's unwired adapter remains valid
 infrastructure, ADR-0016's mechanism remains a historical implemented mechanism, and
 ADR-0017/0018 remain useful analyses; none of them is the selected path. Dormant code is
@@ -1974,7 +1978,7 @@ release-unit note at the top of §18.
 
 **Accepted design record for this phase.**
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-(**accepted; B0.2a-c foundations implemented and verified, application integration pending**) records
+(**accepted; B0.2a-e implemented, mounted and verified**) records
 the concrete architecture, written before implementation as
 `docs/AI_DEVELOPMENT_WORKFLOW.md` requires for a large cross-layer feature. The decisions that
 materially shape this phase:
@@ -2011,9 +2015,10 @@ materially shape this phase:
   legal evidence rows, Athlete capability, the default Free entitlement and the completion fact
   atomically — or none of them. **No Marketing Consent is collected in this stage, and absence never
   means consent.**
-- **Local identity records are trust hints, not a security boundary.** A forged record can mount the
-  application shell and expose the still-unscoped local workspace, which is an **independent** reason
-  this phase cannot ship before Stage B0.3.
+- **Local identity records are trust hints, not a security boundary.** Before B0.3, a forged record
+  could mount the application shell over one shared local workspace. ADR-0026 now scopes the mounted
+  workspace to the record's `Profile.id`; it closes ordinary cross-account application isolation but
+  cannot protect against someone already controlling browser storage on the device.
 
 ### Phase 4: Profile-scoped local data and the Free cloud backbone (Stages B0.3 and B0.4)
 

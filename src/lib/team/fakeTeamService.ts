@@ -125,6 +125,30 @@ export class FakeTeamBackend {
     this.accountEmails.set(accountScopeId, email);
   }
 
+  /** Test/setup-only: represents a Profile whose platform onboarding already
+   * completed before any Team surface mounted. This is intentionally not exposed
+   * through TeamService; production Profiles come from the Identity gate. */
+  seedCompletedProfile(accountScopeId: string, displayName: string): Profile {
+    const existingId = this.accountLinks.get(accountScopeId);
+    const now = this.now().toISOString();
+    if (existingId) {
+      const existing = this.profiles.get(existingId);
+      if (!existing) throw new Error("Fake Profile link is inconsistent.");
+      const updated = { ...existing, displayName, updatedAt: now };
+      this.profiles.set(existingId, updated);
+      return updated;
+    }
+    const profile: Profile = {
+      id: this.nextId("profile"),
+      displayName,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.profiles.set(profile.id, profile);
+    this.accountLinks.set(accountScopeId, profile.id);
+    return profile;
+  }
+
   profileIdForAccount(accountScopeId: string): ProfileId | null {
     return this.accountLinks.get(accountScopeId) ?? null;
   }
@@ -317,7 +341,9 @@ export class FakeTeamService implements TeamService {
     return teamOk(this.myProfile());
   }
 
-  async bootstrapProfile(displayName: string): Promise<TeamResult<Profile>> {
+  /** Test/setup-only counterpart to completed platform onboarding. It is not a
+   * TeamService operation and no production Team surface can call it. */
+  async seedCompletedProfile(displayName: string): Promise<TeamResult<Profile>> {
     const trimmed = displayName.trim();
     if (trimmed.length === 0) {
       return teamFailed("invalid_input", "Enter a display name.");
@@ -325,20 +351,7 @@ export class FakeTeamService implements TeamService {
     if (trimmed.length > 80) {
       return teamFailed("invalid_input", "Display name is too long.");
     }
-    const existingId = this.backend.profileIdForAccount(this.accountScopeId);
-    const now = this.now().toISOString();
-    if (existingId) {
-      const existing = this.backend.profiles.get(existingId);
-      if (!existing) return teamFailed("unexpected_error", "Profile record is missing.");
-      const updated: Profile = { ...existing, displayName: trimmed, updatedAt: now };
-      this.backend.profiles.set(existingId, updated);
-      return teamOk(updated);
-    }
-    const id = this.backend.nextId("profile");
-    const profile: Profile = { id, displayName: trimmed, createdAt: now, updatedAt: now };
-    this.backend.profiles.set(id, profile);
-    this.backend.accountLinks.set(this.accountScopeId, id);
-    return teamOk(profile);
+    return teamOk(this.backend.seedCompletedProfile(this.accountScopeId, trimmed));
   }
 
   async hasPilotTeamCreationCapability(): Promise<TeamResult<boolean>> {

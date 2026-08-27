@@ -182,6 +182,47 @@ describe("persistence architecture boundary — migration module is not imported
   });
 });
 
+describe("persistence architecture boundary — Profile-scoped sporting composition", () => {
+  const SPORTING_REPOSITORY_MODULES = [
+    "lib/sessionRepository",
+    "lib/historyFiltersRepository",
+    "lib/assessment/repository",
+    "lib/trainingPlans/repository",
+    "lib/accuracyToleranceProfiles/repository",
+    "lib/smartRandomProfiles/repository",
+    "lib/assessmentPreferencesRepository",
+  ];
+
+  it("no production component imports an identity-unscoped sporting repository directly", () => {
+    const componentRoot = join(SRC_ROOT, "components");
+    const offenders = collectSourceFiles(componentRoot)
+      .filter((path) => !isTestPath(path))
+      .filter((path) => {
+        const source = stripComments(readFileSync(path, "utf8"));
+        return SPORTING_REPOSITORY_MODULES.some((modulePath) => source.includes(modulePath));
+      });
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("the application composes identity before Profile scope before TrackerApp", () => {
+    const source = stripComments(readFileSync(join(SRC_ROOT, "app", "page.tsx"), "utf8"));
+    expect(source).toMatch(
+      /<IdentityProvider>[\s\S]*<AuthenticatedSportingPersistence>[\s\S]*<TrackerApp\s*\/>[\s\S]*<\/AuthenticatedSportingPersistence>[\s\S]*<\/IdentityProvider>/
+    );
+  });
+
+  it("the unscoped compatibility seam is explicitly test-only and production fails without context", () => {
+    const source = stripComments(
+      readFileSync(join(SRC_ROOT, "components", "ProfileScopedSportingPersistence.tsx"), "utf8")
+    );
+    expect(source).toContain('process.env.NODE_ENV === "test"');
+    expect(source).toContain("createUnscopedSportingRepositoriesForTests");
+    expect(source).toContain(
+      'throw new Error("Sporting persistence requires an authenticated Profile scope.")'
+    );
+  });
+});
+
 describe("persistence architecture boundary — supabase client", () => {
   // See src/lib/supabase/authService.ts's doc comment and
   // docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md: UI, domain,
@@ -464,13 +505,13 @@ describe("authorized Team-request boundary — the access token crosses exactly 
   });
 });
 
-describe("Stage B0.2c identity layer — dormant, and structurally unable to remove a barrier", () => {
+describe("Stage B0.2 identity layer — one mounted authority, structurally unable to remove a barrier", () => {
   // See docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md
   // Decisions 1, 6 and 19. Three separate properties are checked here, each of
   // which would otherwise rest on nobody having made a mistake:
   //
-  //   1. the whole `src/lib/identity` layer is DORMANT — no component imports it,
-  //      so Stage B0.2c changes no user-visible behaviour;
+  //   1. exactly one component imports the composition facade and no component
+  //      reaches a lower identity module;
   //   2. `identityRuntime` is the only production module that constructs the
   //      coordinator, so there is exactly one composition seam for Stage B0.2e's
   //      provider to mount;
@@ -506,17 +547,22 @@ describe("Stage B0.2c identity layer — dormant, and structurally unable to rem
     );
   });
 
-  it("no component imports anything from src/lib/identity — the stage is dormant", () => {
+  it("IdentityProvider is the only component importing src/lib/identity, and it imports only the runtime facade", () => {
     const components = productionFiles().filter((path) =>
       relative(SRC_ROOT, path).startsWith("components/")
     );
     // Non-vacuous: there really are components to check.
     expect(components.length).toBeGreaterThan(20);
-    const offenders = components.filter((path) => {
+    const importers = components.filter((path) => {
       const code = stripComments(readFileSync(path, "utf8"));
-      return /\bfrom\s*["'][^"']*\/identity\/[^"']*["']/.test(code);
+      return /\bfrom\s*["'][^"']*\/lib\/identity\/[^"']*["']/.test(code);
     });
-    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+    expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([
+      join("components", "identity", "IdentityProvider.tsx"),
+    ]);
+    const provider = stripComments(readFileSync(importers[0], "utf8"));
+    expect(provider).toContain("identityRuntime");
+    expect(provider.match(/\/lib\/identity\//g)).toHaveLength(1);
   });
 
   it("no page, route handler or other production module outside src/lib/identity imports it either", () => {
@@ -524,13 +570,13 @@ describe("Stage B0.2c identity layer — dormant, and structurally unable to rem
       (path) => !relative(SRC_ROOT, path).startsWith(join("lib", "identity") + "/")
     );
     const offenders = outside.filter((path) =>
-      /\bfrom\s*["'][^"']*\/identity\/[^"']*["']/.test(stripComments(readFileSync(path, "utf8")))
+      /\bfrom\s*["'][^"']*\/lib\/identity\/[^"']*["']/.test(stripComments(readFileSync(path, "utf8")))
     );
-    // src/lib/supabase/supabaseIdentityService.ts is the one legitimate outside
-    // importer: it IMPLEMENTS the identity service contract. It is not a consumer
-    // of the gate and mounts nothing.
+    // The provider mounts the runtime facade. Relative imports internal to
+    // src/lib (including the Supabase adapter's contract import) are outside this
+    // path-boundary assertion and covered by the component-specific check above.
     expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([
-      join("lib", "supabase", "supabaseIdentityService.ts"),
+      join("components", "identity", "IdentityProvider.tsx"),
     ]);
   });
 
@@ -702,10 +748,12 @@ describe("Stage B0.2c identity layer — dormant, and structurally unable to rem
     }
   });
 
-  it("no production file imports the identity runtime yet — the seam is prepared, not wired", () => {
+  it("IdentityProvider is the only production importer of the identity runtime", () => {
     const importers = productionFiles()
       .filter((path) => path !== RUNTIME_FILE)
       .filter((path) => importsFrom(readFileSync(path, "utf8"), "identityRuntime"));
-    expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+    expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([
+      join("components", "identity", "IdentityProvider.tsx"),
+    ]);
   });
 });

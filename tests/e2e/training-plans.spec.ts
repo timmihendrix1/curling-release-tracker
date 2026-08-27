@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goToAnalyze, goToTrain } from "./utils";
+import { goToAnalyze, goToTrain, seedProfileScopedSportingValue } from "./utils";
 
 const TRAINING_PLANS_STORAGE_KEY = "curling-release-tracker-training-plans";
 
@@ -50,12 +50,10 @@ async function seedTrainingPlan(page: import("@playwright/test").Page) {
     ],
   };
 
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.setItem(key, JSON.stringify(value));
-    },
-    { key: TRAINING_PLANS_STORAGE_KEY, value: { schemaVersion: 1, plans: [plan] } }
-  );
+  await seedProfileScopedSportingValue(page, TRAINING_PLANS_STORAGE_KEY, {
+    schemaVersion: 1,
+    plans: [plan],
+  });
   await page.goto("/");
 }
 

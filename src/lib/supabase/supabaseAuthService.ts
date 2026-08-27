@@ -10,9 +10,9 @@
 // or dependency handed in by the caller throws on property access. The single
 // deliberate exception is `onAuthChange`'s synchronous subscription
 // construction, which has no outcome channel and must not silently pretend to
-// have subscribed; its caller contains that (see authService.ts's note and
-// `useSupabaseAuthController`'s `failSubscription`). The unsubscribe function it
-// returns is idempotent and never throws.
+// have subscribed; the single mounted IdentityProvider contains that boundary
+// (see authService.ts's interface note). The unsubscribe function it returns is
+// idempotent and never throws.
 //
 // Nothing past this boundary ever sees a raw provider error, a raw SDK event
 // string, an access/refresh token, a PKCE verifier, an authorization code, or
@@ -22,7 +22,7 @@
 // SCOPE NOTE (Stage B0.2b; docs/adr/0025). Everything here is provider
 // mechanics. No outcome below resolves an identity barrier or authorizes
 // application entry — including `authenticated`, `signed_in` and `exchanged`.
-// The future IdentityTransitionCoordinator alone decides that, and it alone
+// The mounted IdentityTransitionCoordinator alone decides that, and it alone
 // decides whether an `expectedFlowId` is authoritative.
 import {
   isAuthApiError,

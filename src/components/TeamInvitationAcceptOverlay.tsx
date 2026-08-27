@@ -1,22 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSupabaseAuthController } from "../lib/supabase/useSupabaseAuthController";
-import type { AuthService } from "../lib/supabase/authService";
 import { resolveCloudConfig, type CloudConfig, type ConfiguredCloudConfig } from "../lib/supabase/config";
 import { createSupabaseTeamService } from "../lib/supabase/teamServiceFactory";
 import type { TeamService } from "../lib/team/teamService";
 import type { InvitationPreview } from "../lib/team/teamService";
-import type { Profile } from "../lib/team/types";
-import CloudSignInForm from "./CloudSignInForm";
+import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
 
 type TeamInvitationAcceptOverlayProps = {
   token: string;
   onDone: () => void;
   /** Test-only injection points — production usage passes none of these. */
   config?: CloudConfig;
-  createAuthService?: (config: ConfiguredCloudConfig) => AuthService;
   createTeamService?: (config: ConfiguredCloudConfig) => TeamService;
+  identitySession?: GateSession;
+  onRecoverWrongAccount?: () => void;
 };
 
 const primaryButtonClassName =
@@ -49,27 +47,24 @@ function denialText(reason: string): string {
 }
 
 /**
- * The one entry point an emailed invitation link reaches — mounted from TrackerApp
- * when the root page's `inviteToken` query parameter is present (docs/adr/0022
- * Decision 11: this app has no server-side routing, so the accept link points back
- * at the single root page rather than a dedicated Next.js page route). Never calls
- * `previewInvitation`/`acceptInvitation` while signed out (requirement 164) — instead
- * renders the SAME email/OTP sign-in form `AccountControl` uses (`CloudSignInForm`,
- * driven by this component's own `AuthController` instance) directly inside the
- * overlay, so a signed-out recipient can complete sign-in without ever needing to
- * reach the header control behind this modal (docs/adr/0022 §Deep-Link Sign-In
- * Continuity). `token` is a stable prop for this component's whole lifetime — it is
- * never lost across that sign-in, since the overlay never unmounts to let the user
- * "go sign in elsewhere and come back."
+ * The invitation replay surface mounted only after the global identity gate is
+ * ready. The root-level identity runtime captured and persisted `token` before any
+ * authentication redirect; this component rechecks it server-side, never owns an
+ * auth controller, and never creates a Profile.
  */
 export default function TeamInvitationAcceptOverlay({
   token,
   onDone,
   config,
-  createAuthService,
   createTeamService,
+  identitySession,
+  onRecoverWrongAccount,
 }: TeamInvitationAcceptOverlayProps) {
-  const controller = useSupabaseAuthController({ config, createAuthService });
+  const identity = useOptionalIdentity();
+  const session = identitySession ?? identity?.session ?? null;
+  const recoverWrongAccount = onRecoverWrongAccount ?? (() => {
+    void identity?.recoverInvitationAccount();
+  });
   const resolvedConfig = useMemo<CloudConfig>(() => config ?? resolveCloudConfig(), [config]);
   const teamService = useMemo<TeamService | null>(() => {
     if (resolvedConfig.status !== "configured") return null;
@@ -84,48 +79,21 @@ export default function TeamInvitationAcceptOverlay({
     };
   }, []);
 
-  // `preview`/`profile` are null both before their fetch resolves and if it fails —
-  // `error` is what distinguishes "still loading" (isSignedIn, nothing yet, no error)
+  // `preview` is null both before its fetch resolves and if it fails —
+  // `error` is what distinguishes "still loading" (signed in, nothing yet, no error)
   // from "failed" (error set) without a separate synchronous setState at effect start
   // (react-hooks/set-state-in-effect only allows setState from an async callback).
-  const [profile, setProfile] = useState<Profile | "not_bootstrapped" | null>(null);
-  const [displayNameInput, setDisplayNameInput] = useState("");
   const [preview, setPreview] = useState<InvitationPreview | null>(null);
   const [busy, setBusy] = useState(false);
   const [acceptedTeamId, setAcceptedTeamId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const isSignedIn = controller.state.status === "signed_in";
-  const hasProfile = profile !== null && profile !== "not_bootstrapped";
-  const needsBootstrap = isSignedIn && profile === "not_bootstrapped";
-  const isLoadingProfile = isSignedIn && profile === null && error === null;
-  const isLoadingPreview = isSignedIn && hasProfile && preview === null && error === null;
+  const isLoadingPreview = session !== null && preview === null && error === null;
 
-  // Step 1 (spec §2/§12: "completes the minimum Profile bootstrap if needed, and
-  // then accepts the invitation" — the invitation link is the vehicle carrying a
-  // first-time invitee through account entry, never a dead end that requires an
-  // unclaimed Profile workaround). Never calls previewInvitation before a Profile
-  // exists — accept_invitation/preview_invitation both require one server-side.
+  // Global onboarding guarantees that a completed Profile exists before this
+  // overlay can mount. Preview the same durable intent only after gate readiness.
   useEffect(() => {
-    if (!isSignedIn || !teamService) return;
-    let cancelled = false;
-    teamService.getMyProfile().then((result) => {
-      if (cancelled || !mountedRef.current) return;
-      if (result.ok) {
-        setProfile(result.value ?? "not_bootstrapped");
-      } else {
-        setError(result.error.message);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isSignedIn, teamService]);
-
-  // Step 2: once a Profile exists (already did, or was just bootstrapped below),
-  // preview the SAME invitation this overlay was opened for.
-  useEffect(() => {
-    if (!isSignedIn || !teamService || !hasProfile) return;
+    if (session === null || !teamService) return;
     let cancelled = false;
     teamService.previewInvitation(token).then((result) => {
       if (cancelled || !mountedRef.current) return;
@@ -138,22 +106,7 @@ export default function TeamInvitationAcceptOverlay({
     return () => {
       cancelled = true;
     };
-  }, [isSignedIn, teamService, hasProfile, token]);
-
-  function handleBootstrapProfile() {
-    if (!teamService || !displayNameInput.trim()) return;
-    setBusy(true);
-    setError(null);
-    teamService.bootstrapProfile(displayNameInput.trim()).then((result) => {
-      if (!mountedRef.current) return;
-      setBusy(false);
-      if (result.ok) {
-        setProfile(result.value);
-      } else {
-        setError(result.error.message);
-      }
-    });
-  }
+  }, [session, teamService, token]);
 
   function handleAccept() {
     if (!teamService) return;
@@ -179,18 +132,15 @@ export default function TeamInvitationAcceptOverlay({
           <p className="mt-3 text-sm text-slate-600">Cloud sign-in isn&apos;t available in this build.</p>
         )}
 
-        {resolvedConfig.status === "configured" && !isSignedIn && (
+        {resolvedConfig.status === "configured" && session === null && (
           <div className="mt-3">
             <p className="text-sm text-slate-600">
-              Sign in with the email address this invitation was sent to, to see and accept it.
+              Complete athlete sign-in to see and accept this invitation.
             </p>
-            <div className="mt-3">
-              <CloudSignInForm controller={controller} testId="team-invitation-sign-in" />
-            </div>
           </div>
         )}
 
-        {resolvedConfig.status === "configured" && isSignedIn && acceptedTeamId && (
+        {resolvedConfig.status === "configured" && session !== null && acceptedTeamId && (
           <>
             <p className="mt-3 text-sm text-emerald-700">You&apos;ve joined the team.</p>
             <button type="button" onClick={onDone} className={`${primaryButtonClassName} mt-4 w-full`}>
@@ -199,36 +149,11 @@ export default function TeamInvitationAcceptOverlay({
           </>
         )}
 
-        {resolvedConfig.status === "configured" && isSignedIn && !acceptedTeamId && needsBootstrap && (
-          <div className="mt-3">
-            <label className="text-sm font-medium text-slate-700" htmlFor="invitation-display-name">
-              Choose a display name
-            </label>
-            <p className="mt-1 text-xs text-slate-500">Shown to your teammates — never your email address.</p>
-            <input
-              id="invitation-display-name"
-              type="text"
-              value={displayNameInput}
-              onChange={(event) => setDisplayNameInput(event.target.value)}
-              className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
-            />
-            {error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}
-            <button
-              type="button"
-              onClick={handleBootstrapProfile}
-              disabled={busy || !displayNameInput.trim()}
-              className={`${primaryButtonClassName} mt-3 w-full`}
-            >
-              Continue
-            </button>
-          </div>
-        )}
-
-        {resolvedConfig.status === "configured" && isSignedIn && !acceptedTeamId && !needsBootstrap && (
+        {resolvedConfig.status === "configured" && session !== null && !acceptedTeamId && (
           <>
-            {(isLoadingProfile || isLoadingPreview) && <p className="mt-3 text-sm text-slate-500">Loading…</p>}
+            {isLoadingPreview && <p className="mt-3 text-sm text-slate-500">Loading invitation…</p>}
 
-            {profile === null && preview === null && error && (
+            {preview === null && error && (
               <p role="alert" className="mt-3 text-sm text-red-600">
                 {error}
               </p>
@@ -239,7 +164,18 @@ export default function TeamInvitationAcceptOverlay({
             )}
 
             {preview && preview.status === "denied" && (
-              <p className="mt-3 text-sm text-slate-600">{denialText(preview.reason)}</p>
+              <>
+                <p className="mt-3 text-sm text-slate-600">{denialText(preview.reason)}</p>
+                {preview.reason === "wrong_email" && (
+                  <button
+                    type="button"
+                    className={`${primaryButtonClassName} mt-4 w-full`}
+                    onClick={recoverWrongAccount}
+                  >
+                    Sign in with the invited account
+                  </button>
+                )}
+              </>
             )}
 
             {preview && preview.status === "ready_to_accept" && (
@@ -274,7 +210,7 @@ export default function TeamInvitationAcceptOverlay({
             likely real-world case: a forwarded invitation opened while signed in as
             someone else) all reach this fallback rather than leaving the overlay
             permanently blocking the app with no way out. */}
-        {!(resolvedConfig.status === "configured" && isSignedIn && preview?.status === "ready_to_accept") && !acceptedTeamId && (
+        {!(resolvedConfig.status === "configured" && session !== null && preview?.status === "ready_to_accept") && !acceptedTeamId && (
           <button type="button" onClick={onDone} className={`${secondaryButtonClassName} mt-4 w-full`}>
             Close
           </button>

@@ -26,28 +26,28 @@ function harness(): Harness {
 async function makeProfileWithPilotGrant(h: Harness, accountScopeId: string, email: string, displayName: string) {
   h.backend.setAccountEmail(accountScopeId, email);
   const service = h.serviceFor(accountScopeId);
-  const bootstrap = await service.bootstrapProfile(displayName);
-  if (!bootstrap.ok) throw new Error("bootstrap failed in test setup");
+  const bootstrap = await service.seedCompletedProfile(displayName);
+  if (!bootstrap.ok) throw new Error("test onboarding seed failed in test setup");
   h.backend.grantPilotTeamCreationCapability(bootstrap.value.id);
   return { service, profile: bootstrap.value };
 }
 
-describe("Profile bootstrap (requirements 1-13, test items 1, 27)", () => {
+describe("Test onboarding seed (requirements 1-13, test items 1, 27)", () => {
   it("Profile.id is never the account/auth id — a separate, freshly generated UUID-shaped id", async () => {
     const h = harness();
     const service = h.serviceFor("auth-account-123");
-    const result = await service.bootstrapProfile("Tim");
+    const result = await service.seedCompletedProfile("Tim");
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.value.id).not.toBe("auth-account-123");
     }
   });
 
-  it("bootstrapping twice on the same account is idempotent — updates the existing profile rather than creating a second one", async () => {
+  it("seeding twice on the same account is idempotent — updates the existing profile rather than creating a second one", async () => {
     const h = harness();
     const service = h.serviceFor("auth-1");
-    const first = await service.bootstrapProfile("Tim");
-    const second = await service.bootstrapProfile("Tim H.");
+    const first = await service.seedCompletedProfile("Tim");
+    const second = await service.seedCompletedProfile("Tim H.");
     expect(first.ok && second.ok).toBe(true);
     if (first.ok && second.ok) {
       expect(second.value.id).toBe(first.value.id);
@@ -59,15 +59,15 @@ describe("Profile bootstrap (requirements 1-13, test items 1, 27)", () => {
   it("rejects an empty display name", async () => {
     const h = harness();
     const service = h.serviceFor("auth-1");
-    const result = await service.bootstrapProfile("   ");
+    const result = await service.seedCompletedProfile("   ");
     expect(result).toEqual({ ok: false, error: { kind: "invalid_input", message: "Enter a display name." } });
   });
 
-  it("getMyProfile is null before bootstrap and set after", async () => {
+  it("getMyProfile is null before onboarding seed and set after", async () => {
     const h = harness();
     const service = h.serviceFor("auth-1");
     expect(await service.getMyProfile()).toEqual({ ok: true, value: null });
-    await service.bootstrapProfile("Tim");
+    await service.seedCompletedProfile("Tim");
     const after = await service.getMyProfile();
     expect(after.ok && after.value?.displayName).toBe("Tim");
   });
@@ -81,7 +81,7 @@ describe("Pilot-gated team creation (test items 3, 4, 5, 8)", () => {
 
   it("denies team creation without the manually-granted pilot capability", async () => {
     const service = h.serviceFor("auth-1");
-    await service.bootstrapProfile("Tim");
+    await service.seedCompletedProfile("Tim");
     const result = await service.createTeam({ name: "Rink Rats", participationAsPlayer: true, functions: [] });
     expect(result).toEqual({
       ok: false,
@@ -135,7 +135,7 @@ describe("Pilot-gated team creation (test items 3, 4, 5, 8)", () => {
     if (!invited.ok) return;
 
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const rawToken = Array.from(h.backend.invitationRawTokens.values())[0];
     const accepted = await invitee.acceptInvitation(rawToken);
     expect(accepted.ok).toBe(true); // no pilot grant on auth-invitee, and it still works
@@ -166,7 +166,7 @@ describe("Composable functions and independent participation (test items 6, 7, 2
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const member = h.serviceFor("auth-member");
-    await member.bootstrapProfile("Member");
+    await member.seedCompletedProfile("Member");
 
     const invite1 = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
@@ -219,7 +219,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
 
   it("success: acceptance activates membership, participation, and every proposed function atomically (requirement 55)", async () => {
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const created = await admin.service.createInvitation(teamId, {
       email: "invitee@example.com",
       participationAsPlayer: true,
@@ -245,7 +245,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
       proposedFunctions: [],
     });
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     h.backend.now = () => new Date("2026-01-16T00:00:00.000Z"); // 15 days later
     const token = Array.from(h.backend.invitationRawTokens.values())[0];
     const result = await invitee.acceptInvitation(token);
@@ -272,7 +272,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
     expect(revised.ok).toBe(true);
 
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const oldAttempt = await invitee.acceptInvitation(oldToken);
     expect(oldAttempt).toEqual({
       ok: false,
@@ -301,7 +301,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
       expect(resent.value.invitation.proposedFunctions).toEqual(["coach"]);
     }
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const oldAttempt = await invitee.acceptInvitation(oldToken);
     expect(oldAttempt.ok).toBe(false);
   });
@@ -319,7 +319,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
     expect(revoke2).toEqual({ ok: true, value: undefined }); // idempotent, never blocks
 
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const token = Array.from(h.backend.invitationRawTokens.values())[0];
     const attempt = await invitee.acceptInvitation(token);
     expect(attempt).toEqual({ ok: false, error: { kind: "revoked", message: "This invitation can no longer be accepted." } });
@@ -332,7 +332,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
       proposedFunctions: [],
     });
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const token = Array.from(h.backend.invitationRawTokens.values())[0];
     const first = await invitee.acceptInvitation(token);
     expect(first.ok).toBe(true);
@@ -348,7 +348,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
     });
     h.backend.setAccountEmail("auth-other", "someone-else@example.com");
     const other = h.serviceFor("auth-other");
-    await other.bootstrapProfile("Someone Else");
+    await other.seedCompletedProfile("Someone Else");
     const token = Array.from(h.backend.invitationRawTokens.values())[0];
     const result = await other.acceptInvitation(token);
     expect(result).toEqual({ ok: false, error: { kind: "wrong_email", message: "This invitation can no longer be accepted." } });
@@ -356,14 +356,14 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
 
   it("malformed/unknown token fails closed with not_found", async () => {
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const result = await invitee.acceptInvitation("not-a-real-token");
     expect(result).toEqual({ ok: false, error: { kind: "not_found", message: "This invitation link is invalid." } });
   });
 
   it("already-member: accepting a second invitation to a team you already belong to is rejected", async () => {
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     await admin.service.createInvitation(teamId, {
       email: "invitee@example.com",
       participationAsPlayer: true,
@@ -400,7 +400,7 @@ describe("Invitations end to end (requirements 47-66, test item 9)", () => {
     // The invitation itself still exists and is still acceptable — a failed send
     // does not roll back the durable domain transition (requirement 147).
     const invitee = h.serviceFor("auth-invitee");
-    await invitee.bootstrapProfile("Invitee");
+    await invitee.seedCompletedProfile("Invitee");
     const token = Array.from(h.backend.invitationRawTokens.values())[0];
     const accepted = await invitee.acceptInvitation(token);
     expect(accepted.ok).toBe(true);
@@ -422,7 +422,7 @@ describe("Admin responsibility requests (requirements 67-75, test item 10)", () 
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -585,7 +585,7 @@ describe("Last-Admin invariant and self-service leave/removal (requirements 44, 
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -618,7 +618,7 @@ describe("Last-Admin invariant and self-service leave/removal (requirements 44, 
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -663,7 +663,7 @@ describe("Last-Admin invariant and self-service leave/removal (requirements 44, 
     const teamId = created.value.team.id;
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -711,7 +711,7 @@ describe("Archive and restore (requirements 84-92, test item 13/45)", () => {
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -743,7 +743,7 @@ describe("Roster visibility and email boundary (requirements 13, 14, test items 
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,
@@ -783,7 +783,7 @@ describe("Stale/cross-team access (test items 24, 25)", () => {
 
     h.backend.setAccountEmail("auth-member", "member@example.com");
     const memberService = h.serviceFor("auth-member");
-    await memberService.bootstrapProfile("Member");
+    await memberService.seedCompletedProfile("Member");
     const invited = await admin.service.createInvitation(teamId, {
       email: "member@example.com",
       participationAsPlayer: true,

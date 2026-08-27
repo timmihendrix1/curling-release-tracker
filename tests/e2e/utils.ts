@@ -46,13 +46,47 @@ export async function goToSettings(page: Page) {
   await page.waitForSelector("text=Data Management");
 }
 
-/** Clears persisted state and loads the app as a brand-new user would see it —
- * lands on Home, since there is no scheduling data yet to require a different flow. */
+/** Clears sporting/test state while retaining the real authenticated identity and
+ * trusted-device records established by global setup. This gives each scenario a
+ * fresh training workspace without introducing a production-reachable gate bypass. */
 export async function freshLoad(page: Page) {
   await page.goto("/");
-  await page.evaluate(() => localStorage.clear());
+  await page.evaluate(() => {
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith("curling.identity.") || key.startsWith("sb-")) continue;
+      localStorage.removeItem(key);
+    }
+  });
   await page.reload();
   await page.waitForSelector("text=Today's Plan");
+}
+
+/** Seeds one logical sporting key inside the Profile namespace established by the
+ * real identity global setup. Runs before application code, so hydration observes the
+ * fixture without a race. */
+export async function seedProfileScopedSportingValue(
+  page: Page,
+  logicalKey: string,
+  value: unknown
+) {
+  await page.addInitScript(
+    ({ key, storedValue }) => {
+      const trustedRaw = localStorage.getItem("curling.identity.trustedDevice.v1");
+      if (trustedRaw === null) throw new Error("The E2E trusted Profile is missing.");
+      const trusted: unknown = JSON.parse(trustedRaw);
+      if (
+        typeof trusted !== "object" ||
+        trusted === null ||
+        !("profileId" in trusted) ||
+        typeof trusted.profileId !== "string"
+      ) {
+        throw new Error("The E2E trusted Profile is malformed.");
+      }
+      const physicalKey = `curling.sporting.profile.v1.${trusted.profileId}.${key}`;
+      localStorage.setItem(physicalKey, JSON.stringify(storedValue));
+    },
+    { key: logicalKey, storedValue: value }
+  );
 }
 
 /** Creates the first Training Block of a fresh session using the Setup form's defaults

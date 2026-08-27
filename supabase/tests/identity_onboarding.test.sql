@@ -6,8 +6,8 @@
 -- `profile_onboarding`, `profile_entitlements`), their RLS/grant boundary, and the four
 -- new RPCs (`get_current_legal_documents`, `ensure_my_profile`, `get_my_gate_state`,
 -- `complete_personal_onboarding`). This file changes nothing about Team Foundation and
--- makes no assertion about `bootstrap_profile`, which remains reachable until the later
--- stage that retires it (ADR-0025 Decision 23).
+-- The later B0.2e forward migration revokes the legacy `bootstrap_profile` route;
+-- the Team suite owns the corresponding privilege assertion.
 --
 -- Auth simulation, harness ownership, role discipline and fixture identity discipline
 -- follow exactly the conventions established by `team_foundation.test.sql` in this same

@@ -24,6 +24,8 @@ import type {
   RemovableStorageAdapter,
   StorageAdapter,
 } from "../persistence/types";
+import { isCanonicalUuid } from "../uuid";
+export { isCanonicalUuid } from "../uuid";
 import {
   recordAbsent,
   recordMalformed,
@@ -242,12 +244,6 @@ export function parseUntrustedJson(raw: string): unknown {
  * `parseSafeLegalUrl` rejects untrimmed input: the record is either canonical or
  * unusable.
  */
-const CANONICAL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-
-export function isCanonicalUuid(value: unknown): value is string {
-  return typeof value === "string" && CANONICAL_UUID.test(value);
-}
-
 /** A canonical UUID read from an untrusted record, or `null`. */
 export function readUntrustedUuid(source: unknown, key: string): string | null {
   const value = readUntrustedProperty(source, key);

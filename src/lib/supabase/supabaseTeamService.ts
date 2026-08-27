@@ -1,7 +1,7 @@
 // The one production TeamService implementation (requirement 154). Deliberately
 // does NOT import "@supabase/supabase-js" itself — it only names the client's TYPE
 // via supabaseClient.ts's re-export, and receives an already-constructed client
-// (the same one AccountControl/useSupabaseAuthController use) through its
+// (the same cached browser client the identity runtime uses) through its
 // constructor, so there is exactly one Supabase client instance per signed-in
 // session (requirement 115).
 //
@@ -178,13 +178,6 @@ export class SupabaseTeamService implements TeamService {
     if (!data) return teamOk(null);
     const row = Array.isArray(data) ? data[0] : data;
     if (!row || row.id == null) return teamOk(null);
-    return teamOk(mapProfileRow(row));
-  }
-
-  async bootstrapProfile(displayName: string): Promise<TeamResult<Profile>> {
-    const { data, error } = await this.client.rpc("bootstrap_profile", { p_display_name: displayName });
-    if (error) return fail(error);
-    const row = Array.isArray(data) ? data[0] : data;
     return teamOk(mapProfileRow(row));
   }
 

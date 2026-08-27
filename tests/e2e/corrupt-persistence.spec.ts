@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { goToTrain } from "./utils";
+import { goToTrain, seedProfileScopedSportingValue } from "./utils";
 
 const STORAGE_KEY = "curling-release-tracker-current-session";
 
@@ -10,12 +10,7 @@ const STORAGE_KEY = "curling-release-tracker-current-session";
 // that race and have the corrupt fixture clobbered by the app's own blank-session
 // write before the reload ever reads it.
 async function seedCorruptSession(page: import("@playwright/test").Page, session: unknown) {
-  await page.addInitScript(
-    ({ key, value }) => {
-      localStorage.setItem(key, JSON.stringify(value));
-    },
-    { key: STORAGE_KEY, value: session }
-  );
+  await seedProfileScopedSportingValue(page, STORAGE_KEY, session);
   await page.goto("/");
 }
 

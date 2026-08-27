@@ -180,9 +180,10 @@ export type ClaimedCallback = {
  * exception is `onAuthChange`, whose synchronous *subscription construction* may
  * throw: it has no outcome channel to report a failure through, and swallowing
  * the failure would leave a caller believing it is subscribed when it is not.
- * Its caller is therefore responsible for containing that one case — see
- * `useSupabaseAuthController`'s `failSubscription`. The unsubscribe function it
- * returns does not throw and is idempotent.
+ * Its caller is therefore responsible for containing that one case. The
+ * application-level `IdentityProvider` does so at the single mounted
+ * subscription boundary. The unsubscribe function it returns does not throw
+ * and is idempotent.
  *
  * The discipline holds against hostile provider data too, not only against
  * ordinary failures: a `Session`, `User`, `id` or `email` backed by a throwing
@@ -211,13 +212,10 @@ export interface AuthService {
 }
 
 /**
- * The complete provider-mechanics surface. `AuthService` above is the subset
- * the transitional `useSupabaseAuthController` (retired in Stage B0.2e) and
- * its four component owners depend on; the three operations added here exist
- * for the future `IdentityTransitionCoordinator` alone. This is one contract
- * extended, not a second competing contract: there is exactly one production
- * implementation (supabaseAuthService.ts) and exactly one classification path
- * behind it.
+ * The complete provider-mechanics surface used by the mounted
+ * `IdentityTransitionCoordinator`. This is one contract, not a second
+ * competing auth contract: there is exactly one production implementation
+ * (supabaseAuthService.ts) and exactly one classification path behind it.
  */
 export interface AuthProviderMechanics extends AuthService {
   /**

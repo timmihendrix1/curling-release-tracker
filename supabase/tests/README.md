@@ -1,26 +1,27 @@
 # Database tests
 
-This directory holds two pgTAP suites over the six migrations in
+This directory holds two pgTAP suites over the seven migrations in
 `supabase/migrations/`. Both have been executed against a real local Supabase Postgres
 applied from scratch, and both are green.
 
 | Suite | Covers | Recorded result |
 |---|---|---|
 | `identity_onboarding.test.sql` | Stage B0.2a — the four Identity/Onboarding tables, their RLS and grant boundary, and the four new RPCs | **187 planned, 187 run, 0 failures** |
-| `team_foundation.test.sql` | The Team Foundation beta (unchanged by Stage B0.2a) | **101 planned, 101 run, 0 failures** |
+| `team_foundation.test.sql` | The Team Foundation beta plus B0.2e bootstrap-retirement privilege boundary | **102 planned, 102 run, 0 failures** |
 
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all six migrations
+supabase db reset --local --no-seed --yes            # applies all seven migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 
-**Reset first.** `identity_onboarding.test.sql` asserts global zero-counts and
-publishes its own legal-document fixtures, so it requires a freshly reset database —
-see its own precondition note below. `team_foundation.test.sql` is tolerant of
-unrelated pre-existing rows.
+**Reset first.** `identity_onboarding.test.sql` asserts global zero-counts, and both
+suites publish their own active legal-document fixtures. They therefore require a
+freshly reset database without `supabase/seed.sql` — see the detailed precondition
+notes below. Running a suite after the E2E seed correctly fails on the one-active-
+document-per-kind constraint rather than silently reusing a different legal snapshot.
 
 Neither suite ships any test scaffolding into a product migration: each creates its
 `tests` schema, role-switching helpers and their single `grant usage` inside its own
@@ -185,54 +186,54 @@ assertions are.
 **What the procedures do not cover.** They exercise the locks against *direct
 owner-operated* Legal DML, which is the only way a legal document is ever written —
 this stage ships no Legal-rotation RPC and adds no test-only hook. They say nothing
-about a superuser altering the schema, and nothing about application code, which does
-not exist yet.
+about a superuser altering the schema, and nothing about a Legal-rotation application
+surface, which this stage does not implement.
 
 ## What this stage does and does not establish
 
-**Established:** the SQL foundation is implemented, applied from scratch against a real
-local Postgres, and callable. `complete_personal_onboarding` is the first writer of an
-`athletes` row anywhere in this repository.
+**Established:** the SQL foundation and the mounted B0.2 application integration are
+implemented. All seven migrations apply from scratch; `complete_personal_onboarding`
+is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
 
-- **No application integration exists.** No TypeScript, React, route handler or E2E path
-  calls any of these four RPCs. The gate itself is still absent; the application remains
-  fully usable with no account.
 - **The approved closed-test legal rows are still required operationally.** No migration
   seeds a legal document, and every fixture in the suite is fictional metadata under
   `example.invalid`. **No real legal document, legal copy, production URL, version
   identifier, controller detail, retention claim, subprocessor or transfer claim is
   authored anywhere in this repository.** Real testing needs those rows supplied
-  operationally first; that step is outstanding.
-- **`bootstrap_profile` is untouched.** It remains reachable, because the legacy Team UI
-  still depends on it. Retiring it is a later stage (ADR-0025 Decision 23), and this
-  suite asserts nothing about it.
+  operationally first; `supabase/seed.sql` contains explicitly local E2E-only fixtures
+  and is not a production Legal version.
+- **`bootstrap_profile` is retired from browser use.** Migration
+  `20260827120000_retire_team_profile_bootstrap.sql` revokes it from `public`, `anon`
+  and `authenticated`; the Team suite proves the authenticated denial.
 
 ## Stage status
 
-**B0.2 is never independently release-ready.** B0.2 and B0.3 are one releasable privacy
-unit: the seven sporting repositories still share one identity-unscoped `localStorage`
-workspace until B0.3, so releasing the gate on its own would let a second authenticated
-account in the same browser read the first account's sporting data. This stage
-introduces no Profile-scoped sporting persistence and no cloud sporting persistence, and
-these migrations must not be applied to a hosted production database.
+**B0.2 is never independently release-ready.** Its database suite proves identity and
+onboarding facts, not sporting-data isolation. B0.2 and B0.3 are one releasable privacy
+unit because the gate introduces account switching and therefore requires Profile-scoped
+sporting persistence before release. B0.3 now supplies that local isolation in the
+application; these migrations still introduce no cloud sporting persistence. The
+combined working tree must pass its application, database, account-switch and browser
+verification before deployment to a hosted production database.
 
 ---
 
 # Team Foundation suite
 
-**Status: executed and passing — unchanged by Stage B0.2a.** The three Team Foundation
-migrations, and this suite, are byte-identical to their committed versions. The suite
-was re-run after the three identity migrations were added and is still green:
+**Status: executed and passing — updated by Stage B0.2e.** The three original Team
+Foundation migrations remain unchanged. The suite now establishes its test Profiles
+through canonical personal onboarding and proves that the forward retirement migration
+denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all six migrations
+supabase db reset --local --no-seed --yes            # applies all seven migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 
-Recorded result: **101 assertions planned, 101 run, 0 failures** — `Files=1,
-Tests=101 ... Result: PASS`. The two-session concurrency procedures at the end of
+Recorded result: **102 assertions planned, 102 run, 0 failures** — `Files=1,
+Tests=102 ... Result: PASS`. The two-session concurrency procedures at the end of
 `team_foundation.test.sql` have also been executed for real (see "Concurrency
 procedures" below); they are the one part of the matrix pgTAP itself cannot cover.
 
@@ -333,7 +334,7 @@ Two further rules follow from RLS rather than from ordering:
 | 24 | `list_admin_requests_for_team` is genuinely admin-only, not merely RLS-gated (correction item 2); its return type is a narrow, explicit 9-field composite, not `team_admin_requests` itself/`select *` (correction item 5, third pass) | `team_foundation.test.sql` §16 |
 | 25 | Table-level privilege boundary beneath RLS: `authenticated` has SELECT and no writes on all eleven tables; `anon` has no direct privilege of any kind | `team_foundation.test.sql` §17 |
 
-`select plan(101);` at the top of `team_foundation.test.sql` is kept in sync with the
+`select plan(102);` at the top of `team_foundation.test.sql` is kept in sync with the
 actual assertion count in that file — re-run
 `grep -cE "^select (is|isnt|ok|lives_ok|throws_like|matches)\(" team_foundation.test.sql`
 after editing the file and update `plan(...)` to match before trusting it; a

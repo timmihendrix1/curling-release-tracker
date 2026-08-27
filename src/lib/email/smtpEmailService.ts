@@ -40,7 +40,7 @@ function readEnv(name: string): string {
   return (process.env[name] ?? "").trim();
 }
 
-// Same pattern as useSupabaseAuthController.ts's EMAIL_PATTERN — kept in sync
+// Same conservative application email shape used at the identity entry boundary.
 // deliberately rather than importing across the client/server boundary this file
 // otherwise avoids.
 const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

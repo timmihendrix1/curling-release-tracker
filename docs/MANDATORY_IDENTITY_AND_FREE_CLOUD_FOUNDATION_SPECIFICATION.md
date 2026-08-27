@@ -1,6 +1,6 @@
 # Mandatory Identity and Free Cloud Foundation — Approved Product Decisions
 
-**Status:** Approved product specification. **Partially implemented foundations; not yet enforced by the application.**
+**Status:** Approved product specification. **Stages B0.2 and B0.3 are implemented; their combined privacy release unit awaits independent review. Stage B0.4 remains planned.**
 
 **Decision set confirmed complete:** 2026-08-24
 
@@ -15,11 +15,13 @@ It records the decisions approved by the product owner. A later implementation a
 should not need conversation history to implement them.
 
 **Status discipline.** Everything in this document is an **accepted target product
-decision**. B0.2a-c implement the verified database, provider-mechanics and dormant identity-runtime
-foundations; application composition, the global gate and onboarding UI remain unimplemented. The
-current application is still accountless-capable and still uses `localStorage` as its sole production
-persistence authority. Section 12 states the current-versus-target split explicitly. Nothing in this
-document may be cited as evidence that current user-visible behaviour already enforces the target.
+decision**. B0.2's identity/onboarding gate and B0.3's Profile-scoped local sporting
+persistence are implemented together in the current working tree. The application is
+no longer accountless-capable: the sporting shell mounts only for an onboarded Profile,
+and each Profile receives an isolated local sporting namespace. **Sporting cloud
+persistence remains unimplemented**; `localStorage` is still the production authority
+inside each Profile scope. Section 12 states the current-versus-target split explicitly.
+An implemented target is not evidence that a later cloud stage is already present.
 
 **Authority order.** For the subject matter above, this document supersedes conflicting
 or older product claims elsewhere in the repository — in particular claims that:
@@ -322,8 +324,8 @@ Section 11.
    **explicitly disposable.**
 2. **There is no Legacy Local Adoption, claim, import, merge or per-session migration
    flow for that data.**
-3. The later Profile-scoped local persistence stage (Stage B0.3) will **discard the old
-   unscoped test data once, safely and explicitly.**
+3. The Profile-scoped local persistence stage (Stage B0.3) **discards the old unscoped
+   test data once, safely and explicitly.** This is implemented by ADR-0026.
 4. **Stage B0.1 does not implement that deletion.**
 5. `docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`'s
    `localStorage`-to-IndexedDB copy migration, and
@@ -374,10 +376,10 @@ independent review gate before the next stage starts, per
 **B0.2 and B0.3 remain two separate implementation scopes with two independent review
 gates. They are not two separate releases.**
 
-**Why.** B0.2 introduces mandatory authentication, the global Profile gate, sign-out, and
-account switching. It does **not** change sporting persistence: until B0.3, the seven
-sporting-data repositories still read and write **one identity-unscoped local workspace**.
-If B0.2's experience were enabled for real users on its own, a **second authenticated
+**Why.** B0.2 introduced mandatory authentication, the global Profile gate, sign-out, and
+account switching. In that stage alone it did **not** change sporting persistence: before
+B0.3, the seven sporting-data repositories still read and wrote **one identity-unscoped
+local workspace**. If B0.2's experience had been enabled for real users on its own, a **second authenticated
 account in the same browser would observe the first account's sporting data** — the gate
 would invite account switching while nothing isolates what switching exposes.
 
@@ -385,8 +387,8 @@ would invite account switching while nothing isolates what switching exposes.
 
 1. B0.2 may be implemented and independently reviewed **first**, on its own scope.
 2. **B0.2's mandatory-gate and account-switching experience must not be enabled for real
-   users, and must not be released as the new product behaviour, until B0.3's Profile
-   isolation and one-time disposal are implemented and independently reviewed.**
+   users, and must not be released as the new product behaviour without B0.3's Profile
+   isolation and one-time disposal and the combined release review.**
 3. **The release gate is the combined B0.2 + B0.3 unit**, and it must prove that **no
    Profile can observe another Profile's local data or pending writes.**
 4. B0.2's own account-switch negative cases prove **authentication and onboarding state
@@ -411,7 +413,7 @@ would invite account switching while nothing isolates what switching exposes.
 
 Stage B0.2's architecture is recorded in
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-(**accepted; B0.2a-c foundations implemented and verified, application integration pending**), written before implementation as
+(**accepted; B0.2a-e implemented and verified**), written before implementation as
 `docs/AI_DEVELOPMENT_WORKFLOW.md`'s "Large cross-layer features" requires.
 
 **That ADR changes no product decision in this document.** It records *how* the decisions in §2, §3
@@ -439,24 +441,25 @@ product rules, and are not:
    explicit, optional, default-off design, never bundled with the required legal steps.
 
 The ADR also records one limitation this document does not need to decide: **browser storage is not a
-security boundary**, so a forged local record can mount the application shell and expose the still
-identity-unscoped local workspace. That is an **additional, independent** reason for §11.1's rule — it
-does not replace the reason already stated there.
+security boundary**, so a forged local identity record can mount the application shell and expose the
+Profile namespace named by that forged record to someone already controlling this device. B0.3 closes
+ordinary application-level cross-Profile isolation; it does not turn browser storage into protection
+against device-level tampering.
 
 ## 12. Current implementation versus accepted target
 
 | Concern | Current implementation (fact) | Accepted target (this document) |
 |---|---|---|
-| Access | Fully usable with no account. `AccountControl.tsx` never gates the app; every auth state renders alongside the active screen. | `UserAccount` + completed `Profile` required. No Profile, no access. |
-| Sign-in | The optional, additive `AccountControl` UI exposes **email OTP only** and is inert unless `NEXT_PUBLIC_*` Supabase configuration is present. B0.2b implements email/Google provider and callback mechanics, and B0.2c implements their coordinator, but the new runtime is not mounted. | Required. Email OTP **and** Google sign-in for the closed test. |
-| Onboarding | **No application-wide mandatory onboarding or global Profile gate is user-visible.** B0.2a implements and verifies the legal-document/onboarding schema plus `ensure_my_profile()` and atomic `complete_personal_onboarding()`; B0.2c implements the dormant client coordination. The existing **Team-specific** bootstrap remains a separate current UI path and grants no Athlete capability or entitlement. | Display name, Terms acceptance, Privacy acknowledgement, Athlete capability, Free entitlement — all before first app access, application-wide. |
-| Profile | The user-visible Profile path is still Team Foundation's optional bootstrap. B0.2a reuses the same application-owned UUID model in `ensure_my_profile()` and the onboarding RPCs, and B0.2c models it in the dormant identity runtime. No Profile is yet required to use the app, and Profiles do not yet scope sporting data. | The same `Profile.id` UUID model, now mandatory and platform-wide, and the scope key for all athlete-owned data. |
-| Athlete capability | B0.2a's verified `complete_personal_onboarding()` creates it atomically with legal evidence and the Free entitlement, but no application UI invokes that flow yet. ADR-0022 Decision 10 remains true specifically for Team Foundation RPCs. | Established by completed personal onboarding. |
-| Persistence authority | `localStorage`, unscoped by identity, via the seven application-owned repositories (ADR-0013). IndexedDB adapter and copy migration exist but are unwired; no activation. | Profile-scoped local persistence (B0.3) plus a Free structured cloud backbone (B0.4). |
+| Access | B0.2's global gate is mounted; `TrackerApp` does not mount without a gate-approved completed Profile and its B0.3 Profile persistence boundary. | `UserAccount` + completed `Profile` required. No Profile, no access. **Implemented.** |
+| Sign-in | Required email OTP and Google entry are rendered by the one application-level identity authority. | Required. Email OTP **and** Google sign-in for the closed test. **Implemented.** |
+| Onboarding | Blocking platform onboarding collects display name, separate Terms acceptance and Privacy acknowledgement, then calls the atomic server completion. Team-local bootstrap is retired. | Display name, Terms acceptance, Privacy acknowledgement, Athlete capability, Free entitlement — all before first app access, application-wide. **Implemented.** |
+| Profile | The application-owned `Profile.id` UUID is mandatory at the gate and immutably scopes all seven local sporting repositories. | The same `Profile.id` UUID model, mandatory and platform-wide, and the scope key for all athlete-owned data. **Local scope implemented; cloud scope remains B0.4.** |
+| Athlete capability | Completed personal onboarding creates it atomically with legal evidence and the Free entitlement, and the mounted UI invokes that flow. | Established by completed personal onboarding. **Implemented.** |
+| Persistence authority | Profile-scoped `localStorage` via an immutable per-Profile adapter namespace above the seven application-owned repositories (ADR-0026). IndexedDB remains unwired. | Profile-scoped local persistence **implemented** plus a Free structured cloud backbone (B0.4, planned). |
 | Cloud sporting data | **None exists.** No cloud repository, no upload, no outbox, no restore. | The Free Cloud Core, with idempotent upload, durable outbox, restore and honest sync status. |
-| Offline | Core personal training works offline and requires neither authentication nor backend availability today. Optional authentication (the Supabase Auth Shell) and the Team Foundation backend do exist, but neither gates personal training nor cloud-persists it. | Works offline **for a previously authenticated and onboarded Profile** on a device with trusted Profile-scoped local state. |
-| Legacy local data | Present, unscoped, disposable early-test data. Dormant copy-migration code exists and is never invoked. | Discarded once, explicitly, in B0.3. Never adopted, claimed, imported or merged. |
-| Commercial model | B0.2a implements the default-Free entitlement schema/transaction and B0.2c consumes its gate-state fact, both outside the mounted application. No paid-entitlement or billing lifecycle exists. Team Foundation is pilot-gated by a per-profile grant. | Free (including the Free Cloud Core) plus a separately named paid personal tier, Team Workspace and a deferred Coaching module. Still no payment collection. |
+| Offline | A previously authenticated and onboarded Profile with valid trusted-device state can enter and use only its Profile-scoped sporting workspace offline; first run and invalidated/signed-out devices remain gated. | Works offline **for a previously authenticated and onboarded Profile** on a device with trusted Profile-scoped local state. **Implemented locally.** |
+| Legacy local data | The ten unscoped disposable early-test keys are removed content-blind behind a completed retirement marker before sporting repositories mount. Dormant copy-migration code remains uninvoked. | Discarded once, explicitly, in B0.3. Never adopted, claimed, imported or merged. **Implemented.** |
+| Commercial model | Completed onboarding grants the default Free entitlement and the mounted gate consumes it. No paid-entitlement or billing lifecycle exists. Team Foundation is pilot-gated by a per-profile grant. | Free (including the Free Cloud Core) plus a separately named paid personal tier, Team Workspace and a deferred Coaching module. Still no payment collection. |
 
 **Read this table as the honesty contract for the whole specification.** Any statement
 elsewhere that the left column already matches the right column is a defect.

@@ -1,29 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  useSupabaseAuthController,
-} from "../lib/supabase/useSupabaseAuthController";
-import type { AuthService } from "../lib/supabase/authService";
 import { resolveCloudConfig, type CloudConfig, type ConfiguredCloudConfig } from "../lib/supabase/config";
 import { createSupabaseTeamService } from "../lib/supabase/teamServiceFactory";
 import type {
   AccountNotification,
   DirectlyAssignableFunction,
-  Profile,
   TeamAdminRequest,
   TeamFunction,
   TeamInvitation,
 } from "../lib/team/types";
 import type { InvitationProposal, TeamService, TeamSummary, TeamWorkspace } from "../lib/team/teamService";
 import ConfirmModal from "./ConfirmModal";
+import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
 
 type TeamsScreenProps = {
   onClose: () => void;
   /** Test-only injection points — production usage passes none of these. */
   config?: CloudConfig;
-  createAuthService?: (config: ConfiguredCloudConfig) => AuthService;
   createTeamService?: (config: ConfiguredCloudConfig) => TeamService;
+  identitySession?: GateSession;
 };
 
 type StatusMessage = { kind: "error" | "success"; text: string };
@@ -433,12 +429,13 @@ function TeamWorkspaceDetail({
  * Settings > Teams — the Team Foundation beta management screen (docs/adr/0022).
  * Entirely cloud-backed (no local persistence of its own): every render reflects a
  * fresh or just-mutated read through the injected `TeamService`. Renders a
- * presentational "sign in first" message when the caller isn't authenticated, never
- * calling any TeamService method itself (requirement 164) — mirrors AccountControl's
- * own cloud-disabled/invalid-configuration/sign-in-first branches.
+ * presentational "complete athlete sign-in" message only for isolated component
+ * rendering; production composition reaches it exclusively behind the global gate.
+ * No TeamService method is called without a gate-approved session.
  */
-export default function TeamsScreen({ onClose, config, createAuthService, createTeamService }: TeamsScreenProps) {
-  const controller = useSupabaseAuthController({ config, createAuthService });
+export default function TeamsScreen({ onClose, config, createTeamService, identitySession }: TeamsScreenProps) {
+  const identity = useOptionalIdentity();
+  const session = identitySession ?? identity?.session ?? null;
   const resolvedConfig = useMemo<CloudConfig>(() => config ?? resolveCloudConfig(), [config]);
   const teamService = useMemo<TeamService | null>(() => {
     if (resolvedConfig.status !== "configured") return null;
@@ -453,8 +450,6 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
     };
   }, []);
 
-  const [profile, setProfile] = useState<Profile | null | "loading">("loading");
-  const [displayNameInput, setDisplayNameInput] = useState("");
   const [teams, setTeams] = useState<TeamSummary[] | null>(null);
   const [canCreateTeam, setCanCreateTeam] = useState(false);
   const [notifications, setNotifications] = useState<AccountNotification[]>([]);
@@ -511,7 +506,15 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
     if (teamsResult.ok) setTeams(teamsResult.value);
     if (canCreateResult.ok) setCanCreateTeam(canCreateResult.value);
     if (notificationsResult.ok) setNotifications(notificationsResult.value);
-    if (adminRequestsResult.ok) setMyAdminRequests(adminRequestsResult.value);
+    if (adminRequestsResult.ok) {
+      setMyAdminRequests(adminRequestsResult.value);
+      // A successful inbox read completes an Admin Request deep-link replay,
+      // whether the linked request is still actionable or has already reached a
+      // terminal state. On read failure the durable intent remains for retry.
+      if (identity?.pendingIntent?.kind === "admin_request") {
+        await identity.discardPendingIntent();
+      }
+    }
   }
 
   async function refreshWorkspace(teamId: string) {
@@ -535,23 +538,17 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
   }
 
   useEffect(() => {
-    if (controller.state.status !== "signed_in" || !teamService) return;
+    if (session === null || !teamService) return;
     let cancelled = false;
     (async () => {
-      const profileResult = await teamService.getMyProfile();
+      await refreshTeamsAndInbox();
       if (cancelled || !mountedRef.current) return;
-      if (profileResult.ok) {
-        setProfile(profileResult.value);
-        if (profileResult.value) await refreshTeamsAndInbox();
-      } else {
-        setStatus({ kind: "error", text: profileResult.error.message });
-      }
     })();
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- teamService/refreshTeamsAndInbox are stable for the life of one signed-in session
-  }, [controller.state.status, teamService]);
+  }, [session, teamService]);
 
   useEffect(() => {
     if (selectedTeamId) refreshWorkspace(selectedTeamId);
@@ -572,17 +569,6 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
     } finally {
       if (mountedRef.current) setBusy(false);
     }
-  }
-
-  function handleBootstrapProfile() {
-    if (!teamService || !displayNameInput.trim()) return;
-    withBusy(async () => {
-      const result = await teamService.bootstrapProfile(displayNameInput.trim());
-      report(result, async (value) => {
-        setProfile(value);
-        await refreshTeamsAndInbox();
-      });
-    });
   }
 
   function handleCreateTeam() {
@@ -846,8 +832,6 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
     });
   }
 
-  const isSignedIn = controller.state.status === "signed_in";
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 px-4 py-6">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
@@ -864,8 +848,8 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
         </div>
 
         <p className="mt-2 text-sm text-slate-600">
-          Optional beta collaboration layer — named teams, invitations, and shared
-          administration. Never shares your training data; only identity, team
+          Beta collaboration layer — named teams, invitations, and shared
+          administration. It does not share your training data; only identity, team
           functions, and (for admins) member email are visible to teammates.
         </p>
 
@@ -875,13 +859,13 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
           </p>
         )}
 
-        {resolvedConfig.status === "configured" && !isSignedIn && (
+        {resolvedConfig.status === "configured" && session === null && (
           <p className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">
-            Sign in above to use Teams.
+            Complete athlete sign-in to use Teams.
           </p>
         )}
 
-        {resolvedConfig.status === "configured" && isSignedIn && (
+        {resolvedConfig.status === "configured" && session !== null && (
           <div className="mt-4 space-y-4">
             {status && (
               <p
@@ -892,34 +876,7 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
               </p>
             )}
 
-            {profile === "loading" && <p className="text-sm text-slate-500">Loading…</p>}
-
-            {profile === null && (
-              <div className="rounded-xl bg-slate-100 p-4">
-                <label className="text-sm font-medium text-slate-700" htmlFor="team-display-name">
-                  Choose a display name
-                </label>
-                <p className="mt-1 text-xs text-slate-500">Shown to your teammates — never your email address.</p>
-                <input
-                  id="team-display-name"
-                  type="text"
-                  value={displayNameInput}
-                  onChange={(event) => setDisplayNameInput(event.target.value)}
-                  className={`${fieldClassName} mt-2`}
-                />
-                <button
-                  type="button"
-                  onClick={handleBootstrapProfile}
-                  disabled={busy || !displayNameInput.trim()}
-                  className={`${primaryButtonClassName} mt-3 w-full`}
-                >
-                  Continue
-                </button>
-              </div>
-            )}
-
-            {profile && profile !== "loading" && (
-              <>
+            <>
                 {/* Only "member_removed" notifications render here — an "admin_request"
                     notification is never a second actionable surface alongside "Pending
                     Admin Requests" below (docs/adr/0022 §Notification Convergence: one
@@ -1092,7 +1049,6 @@ export default function TeamsScreen({ onClose, config, createAuthService, create
                   />
                 )}
               </>
-            )}
           </div>
         )}
       </div>

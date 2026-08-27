@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import AccountControl from "./AccountControl";
+import IdentityAccountControl from "./identity/IdentityAccountControl";
+import IdentityPendingTeamIntent from "./identity/IdentityPendingTeamIntent";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
 import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
@@ -23,7 +24,6 @@ import type { SmartRandomProfileFormValue } from "./SmartRandomProfileForm";
 import SmartRandomProfilesScreen from "./SmartRandomProfilesScreen";
 import { surfaceClass } from "./Surface";
 import TargetTimeSettings from "./TargetTimeSettings";
-import TeamDeepLinkGate from "./TeamDeepLinkGate";
 import TeamsScreen from "./TeamsScreen";
 import TimingSimulatorPanel, {
   type SimulatorDiagnosticEntry,
@@ -40,6 +40,7 @@ import TrainLanding from "./TrainLanding";
 import TrainingPlanProgress from "./TrainingPlanProgress";
 import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
+import { useSportingRepositories } from "./ProfileScopedSportingPersistence";
 
 import type {
   AccuracyThresholds,
@@ -67,7 +68,6 @@ import {
   getAssessmentRunFromHistory,
   type AssessmentPersistedState,
 } from "../lib/assessment/persistence";
-import { assessmentRepository } from "../lib/assessment/repository";
 import { getCurrentPlannedShot } from "../lib/assessment/progress";
 import { pauseAssessmentRun } from "../lib/assessment/run";
 import {
@@ -92,7 +92,6 @@ import {
 import { DEFAULT_ACTIVE_VIEW, type ActiveView } from "../lib/navigation";
 import type { DomainHydrationState, PersistenceReadError } from "../lib/persistence/types";
 import { createNewSession } from "../lib/sessionMigration";
-import { sessionRepository } from "../lib/sessionRepository";
 import {
   createSimulatorTimingProvider,
 } from "../lib/simulatorTimingProvider";
@@ -113,7 +112,6 @@ import {
   resolveDefaultTrainingCategory,
   type HistoryAnalysisFilters,
 } from "../lib/historyAnalysis";
-import { historyFiltersRepository } from "../lib/historyFiltersRepository";
 import {
   DEFAULT_SHOT_FILTER,
   filterShots,
@@ -145,7 +143,6 @@ import {
   createEmptyAccuracyToleranceProfilesState,
   type AccuracyToleranceProfilesState,
 } from "../lib/accuracyToleranceProfiles/persistence";
-import { accuracyToleranceProfilesRepository } from "../lib/accuracyToleranceProfiles/repository";
 import {
   addAccuracyToleranceProfile,
   buildAccuracyToleranceProfile,
@@ -159,7 +156,6 @@ import {
   createEmptySmartRandomProfilesState,
   type SmartRandomProfilesState,
 } from "../lib/smartRandomProfiles/persistence";
-import { smartRandomProfilesRepository } from "../lib/smartRandomProfiles/repository";
 import {
   addSmartRandomProfile,
   buildSmartRandomProfile,
@@ -179,7 +175,6 @@ import {
   updatePlan,
   type TrainingPlansPersistedState,
 } from "../lib/trainingPlans/persistence";
-import { trainingPlansRepository } from "../lib/trainingPlans/repository";
 import {
   getActiveStepSnapshot,
   getPlanProgressSummary,
@@ -258,6 +253,14 @@ function describeCaptureBreakdown(shots: Shot[]): string | null {
 }
 
 export default function TrackerApp() {
+  const {
+    session: sessionRepository,
+    historyFilters: historyFiltersRepository,
+    assessment: assessmentRepository,
+    trainingPlans: trainingPlansRepository,
+    accuracyToleranceProfiles: accuracyToleranceProfilesRepository,
+    smartRandomProfiles: smartRandomProfilesRepository,
+  } = useSportingRepositories();
   const [activeView, setActiveView] =
     useState<ActiveView>(DEFAULT_ACTIVE_VIEW);
 
@@ -983,7 +986,14 @@ export default function TrackerApp() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [
+    accuracyToleranceProfilesRepository,
+    assessmentRepository,
+    historyFiltersRepository,
+    sessionRepository,
+    smartRandomProfilesRepository,
+    trainingPlansRepository,
+  ]);
 
   useEffect(() => {
     if (!currentSession) return;
@@ -995,13 +1005,13 @@ export default function TrackerApp() {
     if (currentSession === lastArchivedCurrentSessionRef.current) return;
 
     sessionRepository.saveCurrent(currentSession);
-  }, [currentSession, sessionHydration]);
+  }, [currentSession, sessionHydration, sessionRepository]);
 
   useEffect(() => {
     if (historyFiltersHydration !== "ready") return;
 
     historyFiltersRepository.save(historyFilters);
-  }, [historyFilters, historyFiltersHydration]);
+  }, [historyFilters, historyFiltersHydration, historyFiltersRepository]);
 
   useEffect(() => {
     if (sessionHydration !== "ready") return;
@@ -1009,32 +1019,40 @@ export default function TrackerApp() {
     if (sessionHistory === lastArchivedHistoryRef.current) return;
 
     sessionRepository.saveHistory(sessionHistory);
-  }, [sessionHistory, sessionHydration]);
+  }, [sessionHistory, sessionHydration, sessionRepository]);
 
   useEffect(() => {
     if (!assessmentState) return;
     if (assessmentHydration !== "ready") return;
 
     assessmentRepository.saveState(assessmentState);
-  }, [assessmentState, assessmentHydration]);
+  }, [assessmentState, assessmentHydration, assessmentRepository]);
 
   useEffect(() => {
     if (trainingPlansHydration !== "ready") return;
 
     trainingPlansRepository.savePlans(trainingPlans);
-  }, [trainingPlans, trainingPlansHydration]);
+  }, [trainingPlans, trainingPlansHydration, trainingPlansRepository]);
 
   useEffect(() => {
     if (accuracyProfilesHydration !== "ready") return;
 
     accuracyToleranceProfilesRepository.saveState(accuracyToleranceProfilesState);
-  }, [accuracyToleranceProfilesState, accuracyProfilesHydration]);
+  }, [
+    accuracyToleranceProfilesRepository,
+    accuracyToleranceProfilesState,
+    accuracyProfilesHydration,
+  ]);
 
   useEffect(() => {
     if (smartRandomProfilesHydration !== "ready") return;
 
     smartRandomProfilesRepository.saveState(smartRandomProfilesState);
-  }, [smartRandomProfilesState, smartRandomProfilesHydration]);
+  }, [
+    smartRandomProfilesRepository,
+    smartRandomProfilesState,
+    smartRandomProfilesHydration,
+  ]);
 
   if (!currentSession) {
     return null;
@@ -2248,8 +2266,8 @@ export default function TrackerApp() {
 
   return (
     <div className="app-content-clearance space-y-4">
-      <AccountControl onOpenTeams={() => setShowTeamsScreen(true)} />
-      <TeamDeepLinkGate onAdminRequestLink={() => setShowTeamsScreen(true)} />
+      <IdentityPendingTeamIntent onOpenAdminRequests={() => setShowTeamsScreen(true)} />
+      <IdentityAccountControl onOpenTeams={() => setShowTeamsScreen(true)} />
 
       {activeView === "home" ? (
         <AppHeader />

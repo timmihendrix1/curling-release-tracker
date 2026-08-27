@@ -39,12 +39,21 @@ additional_redirect_urls = [
   "http://localhost:3000/**",
   "http://127.0.0.1:3000",
   "http://127.0.0.1:3000/**",
+  "http://localhost:3100",
+  "http://localhost:3100/**",
 ]
 
 [auth.email]
 enable_signup = true
 double_confirm_changes = false
 enable_confirmations = false
+
+# Local/test-only OTP template. Hosted environments configure their approved
+# template independently; this fixture deliberately contains no legal or product
+# copy and exists so Playwright can exercise the real six-digit OTP path.
+[auth.email.template.magic_link]
+subject = "Your local test sign-in code"
+content_path = "./supabase/templates/magic_link.html"
 
 # Google is the required closed-test provider for Stage B0.2's Google sign-in
 # (ADR-0025 Decision 10). It is configured here but left DISABLED, and that is the

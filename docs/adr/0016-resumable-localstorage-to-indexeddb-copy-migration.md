@@ -5,7 +5,7 @@
 **RETIRED as the production migration path (2026-08-24) by
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.** This
 migration exists to carry the existing unscoped `localStorage` data forward. That data is
-**disposable early-test data**, which Stage B0.3 will discard once, safely and explicitly —
+**disposable early-test data**, which implemented Stage B0.3 now discards once, safely and explicitly —
 so there is nothing left for this mechanism to preserve, and it is no longer the forward
 path. It **remains a historical, implemented, never-invoked mechanism** and its reasoning
 below (exact-serialized-string copy rather than a second implementation of every domain's

@@ -194,8 +194,7 @@ export function createPendingIntent(input: {
 }
 
 /**
- * Applies the deep-link precedence rule to the two query parameters, exactly
- * preserving the behaviour `TeamDeepLinkGate.tsx` already has: **`adminRequestId`
+ * Applies the deep-link precedence rule to the two query parameters: **`adminRequestId`
  * wins when both are present.**
  *
  * An INVALID `adminRequestId` is discarded rather than repaired, and discarding it

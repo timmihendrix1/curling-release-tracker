@@ -244,9 +244,9 @@ The athlete's data is not.
 
 ## Local-first today
 
-The current implementation is local-first **and still accountless-capable** — a
-transitional state, not the target. See the accepted target in "Mandatory identity and
-the Free Cloud Foundation (Accepted target — partially implemented foundations)" below, and its canonical
+The current implementation is local-first for a **previously authenticated and onboarded
+Profile**; it is no longer accountless-capable. See "Mandatory identity and the Free Cloud
+Foundation (B0.2+B0.3 implemented; B0.4 planned)" below, and its canonical
 sources: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` and
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`.
 
@@ -1125,6 +1125,13 @@ through direct `localStorage` calls scattered across components — see
   `SessionRepository.loadCurrent()`'s doc comment is the concrete cautionary example —
   calling `migrateSession` on a failure's fallback would fabricate a bogus "Legacy
   Block", ADR-0005).
+- **Stage B0.3 Profile composition** (`profileScopedSportingPersistence.ts`, ADR-0026)
+  constructs those seven repositories over one immutable namespace adapter bound to a
+  canonical application `Profile.id`. Its closed allowlist contains exactly the ten
+  logical sporting keys; an unknown key fails before the underlying adapter is called.
+  Physical keys use `curling.sporting.profile.v1.<Profile.id>.<logical-key>`. Components
+  consume the repository bundle through `ProfileScopedSportingPersistence`; architecture
+  tests forbid direct production component imports of the unscoped repository modules.
 - **Hydration** in `TrackerApp.tsx` is a three-state model per domain (`"loading"` →
   `"ready"` or `"write_protected"`, see `src/lib/persistence/types.ts`). A domain's save
   effect only runs once hydration reaches `"ready"` (via either `"value"` or `"absent"`);
@@ -1133,10 +1140,10 @@ through direct `localStorage` calls scattered across components — see
   written back over whatever is actually stored. The Timing Simulator subscription is
   additionally gated on session hydration reaching `"ready"` specifically, so a session
   read failure can never let a stale or not-yet-hydrated session receive timing results.
-- This phase is strictly behavior-preserving: storage keys, serialized shapes, and the
-  lack of cross-save deduplication are all unchanged from before the boundary existed
-  (design doc §6). IndexedDB, cloud sync, and the rest of design doc §10 remain
-  unimplemented.
+- ADR-0013's original boundary phase was behavior-preserving. B0.3 deliberately changes
+  only the physical key namespace and composition; logical keys, serialized shapes,
+  domain migrations and repository APIs remain unchanged. IndexedDB activation and cloud
+  sync remain unimplemented.
 - **Session archiving is coordinated at the repository boundary, not left to two
   independent React effects (Implemented, `docs/adr/0014-session-archive-write-ordering.md`).**
   `SessionRepository.archiveAndReplace(nextHistory, nextCurrentSession)` writes session
@@ -2822,26 +2829,30 @@ a picker, since there is currently only one valid choice.
 profile" from within the selector itself, and Hog-Hog Smart Random support (an
 [Open decision] independent of this feature — see ADR-0004).
 
-## Optional Supabase Auth Shell (Implemented — narrow alpha slice; transitional, to be replaced by Stage B0.2)
+## Historical optional Supabase Auth Shell (Retired by Stage B0.2)
+
+> **Historical implementation record.** The files and runtime described in this
+> section (`AccountControl`, `CloudSignInForm`, `useSupabaseAuthController`, and its
+> reducer) were removed in Stage B0.2e. They no longer describe the current tree.
 
 An optional, additive email-OTP sign-in, with no change to persistence authority and no
 cloud data of any kind — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Cloud Auth Shell
 (Supabase)" entry for what is deliberately deferred.
 
-**This is a transitional current implementation, not the target.** The accepted target
-(`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, Accepted —
-B0.2 foundations partially implemented, target not yet enforced) requires a `UserAccount` **and** a completed personal `Profile` before
-the application is reachable at all. Stage B0.2 replaces this shell with one
+**This was a transitional implementation, not the target.** The accepted target
+(`docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, Accepted)
+requires a `UserAccount` **and** a completed personal `Profile` before the application is
+reachable at all. Stage B0.2 replaced this shell with one
 application-level auth authority (email OTP **and** Google sign-in), Profile bootstrap,
 legal acceptance, Athlete capability, a default Free entitlement, and a global access
 gate. Everything described in this section — including the explicit "never gates the rest
 of the app" property below — is an accurate statement about today's code and must not be
-read as product direction.
+read as the current implementation or as product direction.
 
 **Where the replacement is designed.** Stage B0.2's accepted design is recorded in
 `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`
-and summarised under "Stage B0.2's accepted gate design" below — **B0.2a-c foundations
-implemented and verified, application integration pending**. Two consequences for this section specifically: `useSupabaseAuthController`
+and summarised under "Stage B0.2 gate design and implementation" below — **B0.2a-e
+implemented and verified**. Two consequences for this historical section specifically: `useSupabaseAuthController`
 is **retired** rather than extended (its four current call sites collapse into one
 coordinator behind a thin provider), and the client's auth options change (PKCE, automatic
 URL detection disabled, flow-id round-trip enabled), so the callback handling described
@@ -2890,30 +2901,29 @@ fully usable in every state. **That last property is a current, transitional fac
 this shell, not product direction** — Stage B0.2's gate replaces it (see the section that
 follows).
 
-## Mandatory identity and the Free Cloud Foundation (Accepted target — partially implemented foundations)
+## Mandatory identity and the Free Cloud Foundation (B0.2+B0.3 implemented; B0.4 planned)
 
 **Canonical product source:** `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
-**Architecture decision:** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted architecture/product direction; **B0.2 implementation in progress**).
+**Architecture decisions:** `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`,
+ADR-0025 (identity gate) and ADR-0026 (Profile-scoped local sporting persistence).
 
-**None of this target is enforced platform-wide yet.** B0.2a implements and verifies the
-identity/onboarding schema, RLS and RPCs, including atomic Athlete-capability and default-Free
-entitlement creation. B0.2b implements the email/Google provider and callback mechanics. B0.2c
-implements the identity records, repositories, validation, coordinator, service and runtime
-foundation. That runtime remains deliberately dormant. Consequently there is still **no global
-access gate**, **no application-wide mandatory personal onboarding UI**, **no user-visible Google
-sign-in**, **no Profile scoping of local sporting persistence**, and **no cloud sporting data** — no
-cloud repository, outbox, restore or sporting-data RLS.
+**Current implementation.** B0.2a-e and B0.3 are implemented. `IdentityProvider` wraps
+the Profile-scoped sporting persistence boundary at the root and is the only component
+importing `identityRuntime`; the sporting shell and its seven repositories do not mount
+before a correlated ready verdict and successful bounded legacy retirement.
+The gate provides email OTP, Google entry, blocking personal onboarding, legal-snapshot
+handling, trusted offline continuity, durable sign-out/invalidation, cross-tab barrier
+observation, and durable Team deep-link replay. The four transitional auth-controller
+owners and the Team-local Profile UI/API path are removed. A forward migration retains
+the historical `bootstrap_profile` function only for reproducible migration history and
+revokes its execution from `public`, `anon`, and `authenticated`. The ten sporting keys are
+mapped through one immutable adapter namespace bound to canonical `Profile.id`; a keyed
+boundary remounts application and repository state on Profile change. Production
+components cannot import the unscoped repositories directly.
 
-**What does exist, and must not be mistaken for the target:** the optional email-OTP-only
-auth shell above, unscoped `localStorage` as the sole sporting-persistence authority, and a
-**Team-specific Profile bootstrap** — `TeamsScreen`/`TeamInvitationAcceptOverlay` call
-`TeamService.getMyProfile()`, collect a display name, and call
-`TeamService.bootstrapProfile(displayName)` against a `bootstrap_profile` RPC that now
-exists and is exercised in a real local database (see "Team Foundation" below), though no
-application flow has been run against that database end to end. That is a Teams-feature
-entry step, not the Stage B0.2 platform onboarding gate: it is reached only from Teams,
-gates nothing, and grants neither Athlete capability nor an entitlement.
+**Still deliberately absent:** all cloud sporting persistence/sync (B0.4), including an
+outbox, upload, restore and sync status. B0.2 was never independently release-ready;
+B0.2+B0.3 now form an implemented candidate release unit awaiting independent review.
 
 The sections above describe what is actually built; this one describes the accepted target
 and how it is staged.
@@ -2947,39 +2957,37 @@ and how it is staged.
   least *saved on this device* / *synced* / *sync issue*, with nothing called cloud-backed
   before the server acknowledges it; no silent overwrite of conflicting content under one
   stable identity.
-- **Legacy local data is disposable.** The existing unscoped `localStorage` data is early-
-  test data, discarded once and explicitly in Stage B0.3 — never adopted, claimed, imported
+- **Legacy local data is disposable.** The former unscoped `localStorage` data is early-
+  test data, discarded once and explicitly by Stage B0.3 — never adopted, claimed, imported
   or merged. The ADR-0016/0017/0018 copy-migration and activation track is retired as the
   forward production path; ADR-0015's unwired adapter remains valid infrastructure; no
   dormant code is deleted by that decision.
 
-**Staging.** B0.1 (documentation and ADR only — this reconciliation) → B0.2 (identity and
-onboarding gate; no sporting cloud persistence) → B0.3 (Profile-scoped local persistence and
-the one-time retirement of disposable test data) → B0.4 (Free cloud data backbone, which
+**Staging.** B0.1 (done) → B0.2 (implemented) → B0.3 (implemented: Profile-scoped local
+persistence and one-time retirement of disposable test data) → B0.4 (Free cloud data backbone, which
 **requires real database verification** before it can be called complete) → Exercise Stage
 B. Each stage has its own independent review gate; see the specification's Section 11 and
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
 
 **B0.2 and B0.3 are one releasable privacy unit** (specification §11.1). They stay two
-implementation scopes with two review gates, but they ship together, because B0.2 makes
-identity mandatory and adds account switching while the seven repositories still share **one
-identity-unscoped `localStorage` workspace** until B0.3 — a separately released B0.2 would
+implementation scopes with two review gates, but they ship together, because B0.2 made
+identity mandatory and added account switching while the seven repositories still shared **one
+identity-unscoped `localStorage` workspace** before B0.3 — a separately released B0.2 would
 let a second authenticated account in the same browser read the first account's sporting
 data. B0.2 may be built and reviewed first, but **its gate and account-switching experience
-must not be enabled for real users or released as the new product behaviour until B0.3 is
-implemented and independently reviewed**, and the combined release gate must prove **no
+could not be enabled for real users or released as the new product behaviour until B0.3 was
+implemented; the remaining independent review of the combined unit must prove **no
 Profile can observe another Profile's local data or pending writes**. B0.2's own
 account-switch review proves authentication/onboarding state transitions only. The unscoped
-data is **discarded** in B0.3, never imported or adopted, and disposal does not move earlier.
+data is **discarded** by B0.3, never imported or adopted, and disposal did not move earlier.
 **B0.2 is never independently release-ready.**
 
-### Stage B0.2's accepted gate design (B0.2c foundation implemented but dormant; app integration not implemented)
+### Stage B0.2 gate design and implementation (B0.2a-e implemented)
 
 **Decision record:** `docs/adr/0025-application-identity-gate-onboarding-completion-and-trusted-device-state.md`.
 The identity records, repositories, validators, reducer and transition coordinator in
-`src/lib/identity/` implement the dormant B0.2c foundation. They are not composed into the application
-shell, so nothing here may be read as current user-visible behaviour; the "Optional Supabase Auth
-Shell" section above remains the accurate account of what exists today.
+`src/lib/identity/` are composed through the page-scoped `identityRuntime` and mounted by
+`src/components/identity/IdentityProvider.tsx` at the application root.
 
 **One authority.** A thin `IdentityProvider` owns React lifecycle, context and rendering; a single
 non-component `identityRuntime` facade is the only composition seam; and one
@@ -2987,8 +2995,8 @@ non-component `identityRuntime` facade is the only composition seam; and one
 locked-screen recovery, **explicit sign-out** and the bounded invitation-recovery transition — **and
 every server-driven invalidation transition**, which no person initiates and which is therefore never
 described as a deliberate one. Both categories are coordinator-owned and deny-ward. OAuth-return
-admission and required trusted-state establishment are steps within those transitions. The four current
-`useSupabaseAuthController` call sites collapse into that one owner, and the hook is retired rather
+admission and required trusted-state establishment are steps within those transitions. The four former
+`useSupabaseAuthController` call sites collapsed into that one owner, and the hook was retired rather
 than kept as a second orchestrator.
 
 **Why a durable barrier exists.** The installed Supabase SDK **persists the session and emits
@@ -3064,11 +3072,10 @@ re-acceptance** — that policy is deliberately undecided. **No Marketing Consen
 and absence never means consent.**
 
 **Local records are trust hints, not a security boundary.** A person able to alter browser storage can
-forge a trusted-device record, a barrier, an attempt or a resolution; in B0.2 that can mount the
-application shell and expose whatever sporting data exists in the still-unscoped local workspace. None
-of it grants server-side authority — `auth.uid()`, grants and RLS remain the real boundary. **This is an
-independent reason B0.2 cannot ship before B0.3**, and B0.3 closes ordinary application-level
-cross-Profile isolation without turning browser storage into protection against device-level access.
+forge a trusted-device record, a barrier, an attempt or a resolution. B0.3 ensures the mounted sporting
+workspace is the namespace named by that local Profile record, rather than one shared workspace; it
+cannot protect against someone already controlling the device and its storage. None of it grants
+server-side authority — `auth.uid()`, grants and RLS remain the real boundary.
 
 **What this does not change.** The domain model, the repository boundary's shape
 (ADR-0013), the `TimingProvider`/`TimingResult` capture boundary, navigation, Assessments
@@ -3081,16 +3088,15 @@ gains authority once it acknowledges a record.
 | Stage | What it introduces | What it explicitly does **not** do |
 |---|---|---|
 | **B0.2** | Identity and onboarding: the gate, the barrier protocol, the onboarding completion transaction, and trusted-device continuity for offline entry | **No Profile scoping of local sporting persistence. No disposal of legacy unscoped data. No cloud sporting persistence of any kind.** The seven repositories still share one identity-unscoped `localStorage` workspace |
-| **B0.3** | **Profile-scoped local sporting persistence**, sign-out/account-switch isolation, and the one-time disposal of the disposable unscoped test data | No cloud sporting persistence |
+| **B0.3** | **Implemented:** Profile-scoped local sporting persistence, sign-out/account-switch isolation, and the one-time disposal of the disposable unscoped test data | No cloud sporting persistence |
 | **B0.4** | **Free structured cloud authority** — schema, ownership, RLS, idempotent upload, a durable outbox, restore, retry, sync truth and conflict behaviour | — |
 
-**B0.2 and B0.3 remain one releasable privacy unit** (see the paragraphs above): B0.2 may be built and
-reviewed first, but it is never released on its own, precisely because the isolation that makes its
-account switching safe does not arrive until B0.3.
+**B0.2 and B0.3 remain one releasable privacy unit** (see the paragraphs above). Both are now
+implemented; independent review of the combined confidentiality and retirement gate remains required.
 
 ## Team Foundation (Implemented — domain/service/UI; SQL layer executed and verified; application integration not yet exercised against a real database)
 
-The first real collaboration layer built on the Optional Supabase Auth Shell above —
+The first real collaboration layer, now integrated behind the mandatory identity gate —
 named Teams, composable member functions, email invitations, and a Team Admin
 succession flow. See `docs/adr/0022-team-foundation-domain-and-persistence.md` for the
 full decision record and `docs/DOMAIN_GLOSSARY.md` for the domain terms (**Profile**,
@@ -3101,7 +3107,7 @@ entitlement logic exists in this code.
 
 **SQL layer executed and verified.** `supabase db reset` applies all three migrations in
 `supabase/migrations/` (schema, RLS, functions) from scratch against a real local Supabase
-Postgres, and `supabase/tests/team_foundation.test.sql` passes **101/101** against it. The
+Postgres, and `supabase/tests/team_foundation.test.sql` passes **102/102** against it. The
 two-session concurrency Procedures A–E documented at the end of that file — the races the
 per-team advisory lock and the `for update` membership locks exist to close — have been
 executed with genuinely concurrent sessions in both orderings each; no observed state ever
@@ -3137,7 +3143,7 @@ commercial vendor in domain code).
 
 **Production service (`src/lib/supabase/supabaseTeamService.ts`).** The one production
 `TeamService`, constructed via `teamServiceFactory.ts` from the same cached, per-config
-Supabase client `useSupabaseAuthController` already uses. Reads go straight through
+Supabase browser client the identity runtime uses. Reads go straight through
 RLS-scoped `select` queries; ordinary mutations call a Postgres RPC directly. The five
 mutations that must also send an email (`createInvitation`, `reviseInvitation`,
 `resendInvitation`, `createAdminRequest`, `removeMember`) instead POST to this app's own
@@ -3185,38 +3191,23 @@ one additional file (beyond
 `@supabase/supabase-js` — enforced by the same architecture-boundary test as the
 Auth Shell above; the Route Handlers themselves never import the SDK directly.
 
-**UI (`src/components/TeamsScreen.tsx`, `TeamInvitationAcceptOverlay.tsx`,
-`TeamDeepLinkGate.tsx`, `CloudSignInForm.tsx`).** `CloudSignInForm` extracts the
-email/OTP request-and-verify form (plus the shared recoverable-error retry
-affordance) that `AccountControl` already implemented, driven by whichever
-`AuthController` instance the caller passes in — `AccountControl`'s own header
-instance renders it unchanged, and both `TeamInvitationAcceptOverlay` and
-`TeamDeepLinkGate` now render it too, each with their own separate controller
-instance (all backed by the same underlying auth service), so a signed-out recipient
-can sign in directly inside the overlay/prompt an emailed link opened, instead of
-needing to reach the header control behind it (see `docs/adr/0022`'s "§Deep-Link
-Sign-In Continuity"). `TeamsScreen` is a full-screen overlay reached from
-Settings' "Manage Teams" card or `AccountControl`'s "Teams" button when signed in —
+**UI (`src/components/TeamsScreen.tsx`, `TeamInvitationAcceptOverlay.tsx`, and
+`src/components/identity/IdentityPendingTeamIntent.tsx`).** Authentication and
+personal onboarding happen only at the global identity gate; no Team component owns
+an auth controller or creates a Profile. `TeamsScreen` is a full-screen overlay reached from
+Settings' "Manage Teams" card or `IdentityAccountControl`'s "Teams" button —
 the same toggled-boolean overlay pattern `AccuracyToleranceProfilesScreen`/
 `SmartRandomProfilesScreen` already use, not a new `NAVIGATION_ITEMS` entry (ADR-0009's
 in-memory navigation model is unchanged). It owns no local persisted state of its own —
 every render reflects a fresh or just-mutated read through the injected `TeamService`.
-An emailed invitation link has no dedicated Next.js page route either: it points back at
-the root page with an `inviteToken` query parameter, which `TeamDeepLinkGate` (mounted
-unconditionally in `TrackerApp.tsx`, alongside `AccountControl`) reads directly from
-`window.location` inside an effect — deliberately not `next/navigation`'s
-`useSearchParams`, which would require a Suspense boundary and an App Router context
-that plain component-render tests don't provide, for a purely client-side, one-time URL
-read with no server-rendered variant to keep in sync. An `adminRequestId` link (no
-secret token — see ADR-0022 Decision 4), once the caller is actually signed in, opens
-`TeamsScreen`, whose Notifications/Pending Admin Requests panel already has fuller
-context (team name) than a second, narrower accept UI could show. `TeamDeepLinkGate`
-holds the id in its own local state rather than consuming it immediately — while
-signed out (and cloud is genuinely configured), it renders a small sign-in prompt of
-its own instead, and only calls through to open `TeamsScreen` and clear the parameter
-once sign-in completes; the deep link's intent is not lost merely because the
-recipient wasn't already signed in when they opened it. See `docs/adr/0022`'s
-"§Deep-Link Sign-In Continuity".
+An emailed invitation link has no dedicated Next.js page route: it points at the root
+with `inviteToken`; an Admin Request uses `adminRequestId`. `identityRuntime` validates
+and durably captures the selected intent before removing only those application-owned
+query parameters. The intent survives authentication, onboarding, reload and transient
+failure. Once the gate is ready, `IdentityPendingTeamIntent` opens the invitation overlay
+or the Teams inbox. Terminal handling/dismissal deletes the intent only afterwards; a
+wrong-email invitation alone may survive exactly one coordinator-owned account-recovery
+sign-out.
 
 **Resolved (Team Foundation correction pass).** `TeamService.listAdminRequestsForTeam
 (teamId)` gives an active Team Admin a Team-scoped view of their own Team's
@@ -3313,7 +3304,10 @@ local component state.
 | `TrainingPlanStartReview.tsx` | Pre-start summary (ordered steps, stones, handle strategy, total) + Start Training |
 | `TrainingPlanProgress.tsx` | Compact "Step X of Y · Shot N of M" during execution — visually secondary to active shot capture |
 | `TrainingPlanStepTransition.tsx` | "Continue to next step" mid-plan, or a distinct "Plan complete" + Finish Training on the final step — never both at once |
-| `AccountControl.tsx` | Compact, optional account control mounted at the top of `TrackerApp`'s render body — renders nothing when cloud-disabled, a small non-blocking badge when misconfigured, otherwise the email-OTP sign-in/account affordance; never gates the rest of the app |
+| `identity/IdentityProvider.tsx` | The one application-level identity owner. Mounts `TrackerApp` only for a reducer-accepted ready session; otherwise renders the global gate |
+| `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |
+| `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |
+| `identity/IdentityPendingTeamIntent.tsx` | Replays one durable invitation/Admin-Request intent only after gate readiness |
 
 ### Domain and logic modules (`src/lib/`)
 
@@ -3408,9 +3402,9 @@ an import cycle back into that file.
 
 ### Optional Supabase Auth Shell modules (`src/lib/supabase/`)
 
-See "Optional Supabase Auth Shell" above. Exactly two of these files (`supabaseClient.ts`,
-`supabaseAuthService.ts`) import `@supabase/supabase-js`; the rest depend only on
-`authService.ts`'s contract.
+See the mandatory-identity section above. Exactly the audited Supabase integration
+files import `@supabase/supabase-js`; identity components depend on `identityRuntime`
+through the single provider boundary.
 
 | Module | Responsibility |
 |---|---|
@@ -3418,19 +3412,18 @@ See "Optional Supabase Auth Shell" above. Exactly two of these files (`supabaseC
 | `authService.ts` | The `AuthService` contract, `AccountIdentity`, and normalized `NormalizedAuthError` — no SDK import |
 | `supabaseClient.ts` | Lazy, cached Supabase browser client factory — the only other file besides `supabaseAuthService.ts` permitted to import the SDK |
 | `supabaseAuthService.ts` | `createSupabaseAuthService` — the only place `signInWithOtp`/`verifyOtp`/`getSession`/`onAuthStateChange`/`signOut` are called; reduces every provider `Session`/`User` to `AccountIdentity` before it crosses the boundary |
-| `authState.ts` | The `AuthState` discriminated union, `AuthEvent`s, and the pure `reduceAuthState` reducer |
-| `useSupabaseAuthController.ts` | The React controller hook — session-restore/auth-subscription lifecycle, guarded/idempotent user actions, `AccountControl.tsx`'s one dependency |
 
 ### Orchestration — `TrackerApp.tsx`
 
-The one client component that owns all application state: current session, history,
+The one client component that owns all sporting application state: current session, history,
 active view, filters, the edit-shot form, the new-block modal, confirm dialogs, the
 Blind-draft-leave guard, the Capture Sequence handlers (`processIncomingTimingResult`
 and Start/Pause/Resume/Cancel/Undo), the stable `SimulatorTimingProvider` instance, and
 (Phase B) `assessmentState` plus its own load/save effect pair and
 `updateAssessmentState`/`commitAssessmentState` helpers (`AssessScreen`'s one entry
-point for mutating it — see ADR-0011). It reads `localStorage` on mount, migrates, and
-persists on every change, for both Session data and Assessment data independently.
+point for mutating it — see ADR-0011). It reads and writes the Profile-scoped repository
+bundle on mount/change; it never accesses `localStorage` directly. `AssessScreen` uses the
+same bundle for its three preferences.
 
 `processIncomingTimingResult` is the one place a `TimingResult` (from the simulator
 subscription, from Training's "Add Result Manually", or from `AssessScreen`'s manual

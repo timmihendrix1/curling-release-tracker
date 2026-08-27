@@ -2,8 +2,8 @@
 
 **Read first (2026-08-24):** two premises of this document are superseded by
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md` — the
-accountless/no-owner assumption (local persistence becomes **Profile-scoped** in Stage
-B0.3) and the legacy `localStorage`→IndexedDB copy/activation track as the forward
+accountless/no-owner assumption (local persistence is now **Profile-scoped**, implemented
+in Stage B0.3/ADR-0026) and the legacy `localStorage`→IndexedDB copy/activation track as the forward
 migration path (**retired** — the data it would carry is disposable). See §1's revision
 note, §10's retirement note, and §12. The implemented repository boundary, hydration model,
 and `localStorage` as today's sole production authority are unchanged.
@@ -322,17 +322,17 @@ change two of this document's premises, corrected in place in §10 and §12 belo
 
 - **The accountless / no-owner assumption is superseded.** This document was written to
   preserve accountless use, and §12 concluded that identity must not scope local
-  persistence. Identity is now mandatory, and **local persistence becomes Profile-scoped
-  in Stage B0.3.** The implemented repository boundary, hydration model, and the fact that
+  persistence. Identity is now mandatory, and **local persistence is Profile-scoped as
+  implemented in Stage B0.3/ADR-0026.** The repository boundary, hydration model, and the fact that
   `localStorage` is today's sole production authority are all **unchanged and still
   accurate**.
 - **The legacy copy/activation track (§10 steps 2-4) is retired as the forward migration
   path.** The unscoped local data it would carry forward is disposable early-test data
-  that Stage B0.3 discards once, explicitly. ADR-0015's unwired adapter remains valid
+  discarded once, explicitly, by Stage B0.3. ADR-0015's unwired adapter remains valid
   infrastructure; no dormant code is deleted by that decision.
 
 This document is **not** the place to redesign repository APIs for either change. See
-Stage B0.3 (Profile-scoped local persistence) and Stage B0.4 (cloud synchronisation) in
+implemented Stage B0.3 (Profile-scoped local persistence) and planned Stage B0.4 (cloud synchronisation) in
 the specification's Section 11.
 
 This document inventories every current browser-persisted domain, then designs an
@@ -1854,7 +1854,7 @@ states plainly what this means for session archiving specifically; no other mult
 operation exists in the current codebase.
 
 **No `remove` operation was needed for Phase 1 — superseded for identity records by
-ADR-0025 (Stage B0.2c foundation implemented but dormant).** The Phase 1 finding stands as a
+ADR-0025 (Stage B0.2 identity gate implemented and mounted).** The Phase 1 finding stands as a
 historical fact and still describes every **sporting** repository: nothing in the Phase 1
 codebase calls `localStorage.removeItem` (Section 2), and every "delete"/"clear" action
 there is a full overwrite with a smaller/empty value. Adding an unused capability at that
@@ -1938,7 +1938,7 @@ authorized by this document.
 
 **Retired as the forward production migration path (2026-08-24 revision).** Steps 2-4
 below exist to carry the existing unscoped local data forward. That data is disposable
-early-test data which Stage B0.3 will discard once, explicitly — so there is nothing for a
+early-test data which Stage B0.3 discards once, explicitly — so there is nothing for a
 copy migration or an activation programme to preserve. Step 1's adapter
 (`docs/adr/0015-indexeddb-adapter-unwired.md`) remains valid, unwired infrastructure; step
 2's mechanism (`docs/adr/0016-resumable-localstorage-to-indexeddb-copy-migration.md`)
@@ -2255,13 +2255,14 @@ and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`:
 
 **What changes, and where it is designed:**
 
-- **Profile scope, not authentication, enters local persistence (Stage B0.3).** The scope
+- **Profile scope, not authentication, enters local persistence (Stage B0.3, implemented).** The scope
   key is `Profile.id` — an application-owned UUID, never the authentication-provider user
   id — so the repositories still never learn anything about the auth provider. Sign-out and
   account switching must immediately hide and lock the previous Profile's local data,
-  including any record pending upload. **Whether that scope is expressed as a key prefix,
-  a per-Profile store, an adapter-level namespace, or something else is a Stage B0.3
-  decision this document does not make**, and no repository API is redesigned here.
+  including any future record pending upload. ADR-0026 resolves the mechanism as an
+  immutable adapter namespace per canonical Profile UUID, composed above the unchanged
+  repository APIs. A keyed React boundary remounts the sporting application on Profile
+  change; no mutable active-scope pointer can retarget a delayed write.
 - **The outbox, conflict protocol, idempotency-key scheme, retry schedule, cursor/revision
   protocol and API contract are Stage B0.4** — see
   `docs/CLOUD_IDENTITY_AND_COLLABORATION_ARCHITECTURE.md` §12.1 (now stated as required
@@ -2269,8 +2270,8 @@ and `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`:
   `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §7. Stage B0.4
   additionally requires **real database verification**; TypeScript tests do not verify SQL,
   RLS, grants, triggers or concurrency.
-- **The existing unscoped local data is disposable** and is discarded once, explicitly, in
-  Stage B0.3 — never adopted, claimed, imported or merged. `docs/adr/0019`'s Local Adoption
+- **The existing unscoped local data is disposable** and is discarded once, explicitly, by
+  Stage B0.3's exact ten-key, content-blind retirement — never adopted, claimed, imported or merged. `docs/adr/0019`'s Local Adoption
   is not the forward path.
 
 ## 13. Required design decisions

@@ -64,7 +64,7 @@ create schema tests;
 -- widen the harness beyond what is actually exercised.
 grant usage on schema tests to authenticated, anon;
 
-select plan(101);
+select plan(102);
 
 -- Seed the auth.users rows directly (this file runs as the migration-owning role,
 -- so it can write auth.users directly — no application code does this).
@@ -73,6 +73,13 @@ insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000002', 'member@example.com'),
   ('00000000-0000-0000-0000-000000000003', 'outsider@example.com'),
   ('00000000-0000-0000-0000-000000000004', 'other-admin@example.com');
+
+-- Test-only legal metadata. Product migrations deliberately contain no real legal
+-- document rows; this suite needs a current pair so its accounts can traverse the
+-- same canonical onboarding RPCs as the application before reaching Team APIs.
+insert into public.legal_documents (kind, version_label, document_url, effective_at) values
+  ('terms_of_service', 'team-suite-terms-v1', 'https://example.invalid/team-suite-terms-v1', now()),
+  ('privacy_notice', 'team-suite-privacy-v1', 'https://example.invalid/team-suite-privacy-v1', now());
 
 create function tests.reset_to_owner() returns void as $$
 begin
@@ -94,14 +101,33 @@ begin
 end;
 $$ language plpgsql;
 
+-- SECURITY INVOKER test helper: it merely composes the product's canonical RPCs
+-- under the currently simulated authenticated account. It is rolled back with the
+-- suite and never ships in a migration.
+create function tests.complete_personal_onboarding(p_display_name text) returns void as $$
+declare
+  v_terms_id uuid;
+  v_privacy_id uuid;
+begin
+  perform public.ensure_my_profile();
+  select id into strict v_terms_id
+    from public.get_current_legal_documents()
+    where kind = 'terms_of_service';
+  select id into strict v_privacy_id
+    from public.get_current_legal_documents()
+    where kind = 'privacy_notice';
+  perform public.complete_personal_onboarding(p_display_name, v_terms_id, v_privacy_id);
+end;
+$$ language plpgsql security invoker;
+
 -- ---------------------------------------------------------------------------------
 -- §1 Profile/account-link cardinality (test item 1)
 -- ---------------------------------------------------------------------------------
 
 select tests.act_as('00000000-0000-0000-0000-000000000001');
 select lives_ok(
-  $$ select public.bootstrap_profile('Admin') $$,
-  'bootstrap_profile succeeds for a fresh account'
+  $$ select tests.complete_personal_onboarding('Admin') $$,
+  'canonical personal onboarding succeeds for a fresh account'
 );
 
 -- Read through get_my_profile(), which resolves the CALLER's own profile — never
@@ -120,13 +146,13 @@ select is(
 );
 
 select lives_ok(
-  $$ select public.bootstrap_profile('Admin H.') $$,
-  'bootstrapping twice is idempotent (updates, does not duplicate)'
+  $$ select public.ensure_my_profile() $$,
+  'resolving the completed Profile again is idempotent and does not duplicate it'
 );
 select is(
   (select count(*)::int from public.account_profile_links where account_id = '00000000-0000-0000-0000-000000000001'),
   1,
-  'still exactly one link row after a second bootstrap call'
+  'still exactly one link row after resolving the completed Profile again'
 );
 
 -- ---------------------------------------------------------------------------------
@@ -245,14 +271,14 @@ select tests.act_as('00000000-0000-0000-0000-000000000001');
 -- ---------------------------------------------------------------------------------
 
 select tests.act_as('00000000-0000-0000-0000-000000000002');
-select lives_ok($$ select public.bootstrap_profile('Member') $$, 'invitee bootstraps a profile');
+select lives_ok($$ select tests.complete_personal_onboarding('Member') $$, 'invitee completes canonical personal onboarding');
 
--- Account 0003 ("outsider") bootstraps a profile too — preview_invitation itself
+-- Account 0003 ("outsider") completes onboarding too — preview_invitation itself
 -- requires one (private.require_profile()) before it can even evaluate a denial
 -- reason, so the wrong_email check below needs this, same as every other account
 -- that calls any RPC in this suite.
 select tests.act_as('00000000-0000-0000-0000-000000000003');
-select lives_ok($$ select public.bootstrap_profile('Outsider') $$, 'the unrelated outsider account bootstraps a profile too');
+select lives_ok($$ select tests.complete_personal_onboarding('Outsider') $$, 'the unrelated outsider account completes canonical onboarding too');
 
 select tests.act_as('00000000-0000-0000-0000-000000000001');
 do $$
@@ -361,7 +387,7 @@ select throws_like(
 -- separate team created by account 0004 directly) and confirms THAT team's invitation
 -- names ITS creator, never account 0001's "Rink Rats" identity.
 select tests.act_as('00000000-0000-0000-0000-000000000004');
-select lives_ok($$ select public.bootstrap_profile('Other Admin') $$, 'a fourth account bootstraps a profile');
+select lives_ok($$ select tests.complete_personal_onboarding('Other Admin') $$, 'a fourth account completes canonical personal onboarding');
 select tests.reset_to_owner();
 do $$
 declare v_profile_id uuid;
@@ -819,6 +845,11 @@ select is(
   has_function_privilege('authenticated', 'public.operational_recover_team_admin(uuid, uuid)', 'execute'),
   false,
   'the authenticated role has no execute privilege on the recovery function — service_role only'
+);
+select is(
+  has_function_privilege('authenticated', 'public.bootstrap_profile(text)', 'execute'),
+  false,
+  'the authenticated role cannot execute the retired Team-local Profile bootstrap function'
 );
 
 -- ---------------------------------------------------------------------------------

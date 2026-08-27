@@ -1041,10 +1041,10 @@ feature after the fact.
 
 ## Mandatory Identity and Free Cloud Foundation (Stages B0.1-B0.4)
 
-**Accepted product/architecture direction. B0.1 is complete and B0.2 is in progress.** Canonical
+**Accepted product/architecture direction. B0.1-B0.3 are implemented; B0.4 is next after independent review of the combined B0.2+B0.3 unit.** Canonical
 product source: `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md`.
 Architecture decision: `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
-(Accepted; partially implemented through B0.2's dormant foundations). This replaces the older accountless-use and paid-cloud-backup
+(Accepted; implemented through B0.2). This replaces the older accountless-use and paid-cloud-backup
 assumptions that were spread across the cloud, persistence and commercial documents.
 
 **Stages and their gates:**
@@ -1052,8 +1052,8 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | Stage | Scope | State |
 |---|---|---|
 | **B0.1 — Decision Reconciliation** | Documentation and ADR only: the canonical specification, ADR-0024, and reconciliation of the active architecture/persistence/commercial/Exercise/roadmap/glossary/routing documents. | **Documentation reconciliation complete** in the state documented here. B0.1 itself implements no runtime, test, schema or configuration behaviour. This describes B0.1's own scope only — it makes no claim about unrelated corrections that may share a repository commit with it. |
-| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **In progress.** B0.2a's database/RPC foundation, B0.2b's provider mechanics and B0.2c's identity domain/coordinator/runtime foundation are implemented and verified. The B0.2c runtime is deliberately dormant: application composition, the global gate/onboarding UI and retirement of the four transitional auth controllers remain. **Not independently releasable** — see the release-unit rule below. |
-| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation including pending uploads; the **one-time** retirement of the disposable unscoped test data. | **Not started.** Completes the releasable unit B0.2 opens. |
+| **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
+| **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented; independent review pending.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. No pending uploads exist until B0.4. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Not started.** **Blocked on real database verification** — see below. |
 | **Exercise Stage B** | Exercise execution — see "Exercise Library and multi-athlete execution" below. | **Not started**, and now behind B0.2-B0.4. |
 
@@ -1061,17 +1061,17 @@ assumptions that were spread across the cloud, persistence and commercial docume
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
 implementation scopes with two independent review gates, but they ship together. **The
 concrete hazard:** B0.2 introduces mandatory authentication and account switching, while the
-seven sporting-data repositories still read and write **one identity-unscoped
-`localStorage` workspace** until B0.3. A separately released B0.2 would therefore let a
+seven sporting-data repositories still read and wrote **one identity-unscoped
+`localStorage` workspace** before B0.3. A separately released B0.2 would therefore have let a
 **second authenticated account in the same browser see the first account's sessions, shots
 and assessments** — the gate would invite account switching before anything isolates what
 switching exposes.
 
 - B0.2 may be implemented and independently reviewed **first**.
-- **Its mandatory-gate and account-switching experience must not be enabled for real users,
+- **Its mandatory-gate and account-switching experience could not be enabled for real users,
   or released as the new product behaviour, until B0.3's Profile isolation and one-time
-  disposal are implemented and independently reviewed.**
-- **The release gate is the combined unit**, and must prove **no Profile can observe another
+  disposal were implemented.** Both now await their combined independent review.
+- **The release gate remains the combined unit**, and must prove **no Profile can observe another
   Profile's local data or pending writes**.
 - **B0.2's account-switch negative cases prove authentication/onboarding state transitions
   only.** Sporting-data confidentiality across a switch is not closed by that review, and
@@ -1082,46 +1082,22 @@ switching exposes.
   stages.
 - **B0.2 is never independently release-ready.**
 
-**Current application gaps, stated plainly.** The completed B0.2a-c foundations do not yet
-change the user-visible application. The following integrations and product behaviours remain absent:
+**Current application boundary, stated plainly.** B0.2 now changes the user-visible
+application: the global gate is mandatory; email OTP and Google entry are visible;
+personal onboarding displays and pins one server-authoritative Legal snapshot; and
+completed onboarding establishes the Profile, Athlete capability and Free entitlement
+before `TrackerApp` mounts. The former four auth controllers, optional `AccountControl`,
+embedded Team sign-in forms and Team-local Profile bootstrap are removed. B0.3 now binds
+all ten sporting keys to an immutable canonical `Profile.id` namespace and retires the
+disposable unscoped keys before any repository mounts. The remaining gaps are:
 
-- **No global access gate.** `AccountControl.tsx` is mounted above the per-view header and
-  explicitly never gates the app; every auth state renders inline. The application is fully
-  usable with no account.
-- **No application-wide mandatory personal onboarding**, and therefore no user-visible legal
-  acceptance, marketing-consent control, or platform-wide display-name requirement. Signing in
-  yields only an `AccountIdentity` (an id and an email).
-- **No user-visible Google sign-in.** B0.2b implements the provider mechanics, callback
-  classification and flow correlation, but the current optional `AccountControl` UI still exposes
-  email OTP only and the new identity runtime is not mounted.
-- **No application-integrated entitlement resolution.** B0.2a implements the default-Free
-  entitlement schema and onboarding transaction, and B0.2c can consume its gate state, but the
-  dormant runtime does not yet grant application access.
-- **No application-integrated Athlete capability creation.** B0.2a's
-  `complete_personal_onboarding()` atomically creates it; that RPC is not yet reached from a global
-  onboarding UI. ADR-0022 Decision 10 remains true specifically for the Team Foundation RPCs.
-- **No Profile scoping in local persistence.** The seven repositories of `docs/adr/0013`
-  read and write one browser's `localStorage` with no concept of an authenticated user.
 - **No cloud sporting data at all** — no cloud repository, no upload, no outbox, no restore,
   no deployed RLS, no sync status anywhere in the UI.
 - **No account deletion, export-before-deletion, or recovery-period behaviour.**
 
-**What does exist, and is not the B0.2 gate.** A **Team-specific Profile bootstrap with
-display-name capture** is already implemented: once signed in, `TeamsScreen` and
-`TeamInvitationAcceptOverlay` call `TeamService.getMyProfile()`, prompt for a display name
-when none exists, and call `TeamService.bootstrapProfile(displayName)`; the fake and Supabase
-Team services both implement that boundary, over a `bootstrap_profile` RPC that now exists
-and is exercised in a real local database by the Team Foundation pgTAP suite, though no
-application flow has been run against that database end to end (see "Team Foundation
-(beta)" below).
-It is reached only from Teams, gates nothing, and grants neither Athlete capability nor an
-entitlement — so B0.2 still has to build the platform onboarding gate, and must decide how
-it subsumes or replaces this Team-local entry step rather than duplicating it.
-
-Runtime code and comments accurately describing the current optional/accountless behaviour
-(`useSupabaseAuthController`, `AccountControl`, the persistence repositories, the Team
-bootstrap flow) are **correct about today's code** and were deliberately left untouched by
-Stage B0.1. They are B0.2/B0.3 implementation gaps, not stale documentation.
+The historical `bootstrap_profile` function remains in migration history only. The B0.2e
+forward migration revokes browser execution; Team services expose no creation method and
+their UIs assume the gate-approved completed Profile.
 
 **Real database execution remains a blocking requirement.** SQL, RLS, grants, triggers and
 concurrency behaviour are not verified by TypeScript tests or careful reading. Stage B0.4
@@ -1141,7 +1117,11 @@ billing provider, pricing and market.
 
 ---
 
-## Cloud Auth Shell (Supabase)
+## Historical Cloud Auth Shell (Supabase) — retired
+
+> The optional `AccountControl`/`useSupabaseAuthController` implementation described
+> below was removed by B0.2e. This subsection is retained only as historical context;
+> the mandatory-identity section above is authoritative for the current tree.
 
 **Implemented (narrow, alpha slice) — transitional; Stage B0.2 replaces it.** See the
 "Mandatory Identity and Free Cloud Foundation" section above for the accepted target and
@@ -1173,11 +1153,9 @@ Supabase Auth API only.
   retired — B0.3/B0.4 establish fresh Profile-scoped draft/history persistence instead.
 - **No account bootstrap RPC, RLS, or schema deployment** — ADR-0020's server-side
   contract is not called or deployed here.
-- **No user-visible Google OAuth, password login, or magic-link-only flow** — the current
-  transitional UI exposes email OTP only. B0.2b implements the Google provider mechanics, but they
-  remain behind the dormant B0.2c coordinator until the application-level gate is composed.
-  **Google sign-in is part of the accepted closed-test method set**; passwords, magic links and
-  Apple sign-in remain deferred.
+- **No user-visible Google OAuth, password login, or magic-link-only flow** — this historical
+  transitional UI exposed email OTP only. B0.2 later mounted Google provider mechanics
+  through the global identity gate. Passwords, magic links and Apple sign-in remain deferred.
 - ~~**No teams, coaches, or collaboration features.**~~ — Superseded by the separate
   Team Foundation beta (see below) built on top of this Auth Shell in a later pass. This
   bullet described only what this narrow alpha slice itself left out, not a
@@ -1185,9 +1163,9 @@ Supabase Auth API only.
 - Signed-in identity is not surfaced anywhere else in the app yet (e.g. no
   account-scoped Settings section) — only the compact header control (superseded in
   part by Team Foundation's `AccountControl` "Teams" button, below).
-- **The shell never gates the app.** The database and dormant identity foundations now model
-  Profile onboarding, legal evidence, Athlete capability and the Free entitlement, but the
-  transitional shell neither invokes nor enforces them. Application composition remains the B0.2 gap.
+- **The shell never gated the app.** This was the historical reason the transitional
+  shell was retired. B0.2's application-level provider now invokes and enforces Profile
+  onboarding, legal evidence, Athlete capability and the Free entitlement.
 
 ---
 
@@ -1206,7 +1184,7 @@ in this development environment, in any pass up to that point.
 
 **Resolution:** all three migrations now apply cleanly from scratch via
 `supabase db reset` against a real local Supabase Postgres, and
-`supabase/tests/team_foundation.test.sql` passes **101/101** against it (the suite grew
+`supabase/tests/team_foundation.test.sql` passes **102/102** against it (the suite grew
 from 91 as part of this correction). The five two-session concurrency procedures
 documented at the end of that file — Admin Request accept-vs-revoke,
 accept-vs-membership-ending, concurrent creation, and `restore_team` racing a final

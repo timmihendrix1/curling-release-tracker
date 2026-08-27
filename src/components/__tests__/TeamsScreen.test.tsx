@@ -2,16 +2,10 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import TeamsScreen from "../TeamsScreen";
-import type {
-  AccountIdentity,
-  AuthService,
-  AuthServiceResult,
-  SessionRestoreOutcome,
-} from "../../lib/supabase/authService";
-import { authOk } from "../../lib/supabase/authService";
 import type { ConfiguredCloudConfig } from "../../lib/supabase/config";
+import type { GateSession } from "../../lib/identity/identityRuntime";
 import { FakeTeamBackend, FakeTeamService } from "../../lib/team/fakeTeamService";
 import { FakeEmailService } from "../../lib/email/fakeEmailService";
 
@@ -23,29 +17,13 @@ const CONFIGURED: ConfiguredCloudConfig = {
   publishableKey: "sb_publishable_" + "a".repeat(20),
 };
 
-const IDENTITY: AccountIdentity = { accountScopeId: "user-1", email: "a@example.com" };
-
-/** TRANSITIONAL (Stage B0.2b): `AuthService` now speaks ADR-0025 Decision 2's
- * five session-restore outcomes instead of a single `getSession()` result.
- * These fakes keep expressing their intent as "signed in as X" / "signed out"
- * / "restore failed" and translate here, so the component behaviour under test
- * is unchanged. */
-function toRestoreOutcome(
-  result: AuthServiceResult<AccountIdentity | null>
-): SessionRestoreOutcome {
-  if (!result.ok) return { kind: "restore_failed" };
-  return result.value ? { kind: "authenticated", identity: result.value } : { kind: "no_session" };
-}
-
-function signedInAuthService(): AuthService {
-  return {
-    restoreSession: vi.fn(async () => toRestoreOutcome(authOk(IDENTITY))),
-    onAuthChange: vi.fn(() => () => {}),
-    requestEmailOtp: vi.fn(),
-    verifyEmailOtp: vi.fn(),
-    signOut: vi.fn(),
-  };
-}
+const GATE_SESSION: GateSession = {
+  accountScopeId: "user-1",
+  email: "a@example.com",
+  profileId: "profile-1",
+  displayName: "Alex",
+  entitlement: "free",
+};
 
 describe("TeamsScreen — not usable", () => {
   it("shows a message when cloud isn't configured, without rendering Sign in prompts", () => {
@@ -53,16 +31,9 @@ describe("TeamsScreen — not usable", () => {
     expect(screen.getByText(/isn.t available in this build/i)).toBeInTheDocument();
   });
 
-  it("shows a sign-in prompt when configured but signed out", async () => {
-    const authService: AuthService = {
-      restoreSession: vi.fn(async () => toRestoreOutcome(authOk(null))),
-      onAuthChange: vi.fn(() => () => {}),
-      requestEmailOtp: vi.fn(),
-      verifyEmailOtp: vi.fn(),
-      signOut: vi.fn(),
-    };
-    render(<TeamsScreen onClose={() => {}} config={CONFIGURED} createAuthService={() => authService} />);
-    await screen.findByText(/sign in above to use teams/i);
+  it("shows a gate message when rendered without the authenticated application context", async () => {
+    render(<TeamsScreen onClose={() => {}} config={CONFIGURED} />);
+    await screen.findByText(/complete athlete sign-in to use teams/i);
   });
 });
 
@@ -72,9 +43,8 @@ async function setUpAdminWithTeam() {
   const backend = new FakeTeamBackend();
   backend.setAccountEmail("user-1", "a@example.com");
   const teamService = new FakeTeamService(backend, "user-1", new FakeEmailService());
-  const profile = await teamService.bootstrapProfile("Alex");
-  if (!profile.ok) throw new Error("setup failed");
-  backend.grantPilotTeamCreationCapability(profile.value.id);
+  const profile = backend.seedCompletedProfile("user-1", "Alex");
+  backend.grantPilotTeamCreationCapability(profile.id);
   const created = await teamService.createTeam({ name: "The Curlers", participationAsPlayer: true, functions: [] });
   if (!created.ok) throw new Error("setup failed");
   return { backend, teamService, teamId: created.value.team.id };
@@ -82,15 +52,14 @@ async function setUpAdminWithTeam() {
 
 async function openWorkspace(user: ReturnType<typeof userEvent.setup>, teamService: FakeTeamService) {
   render(
-    <TeamsScreen onClose={() => {}} config={CONFIGURED} createAuthService={signedInAuthService} createTeamService={() => teamService} />
+    <TeamsScreen onClose={() => {}} config={CONFIGURED} identitySession={GATE_SESSION} createTeamService={() => teamService} />
   );
   await user.click(await screen.findByText("The Curlers"));
   await screen.findByText("Roster");
 }
 
 describe("TeamsScreen — signed in", () => {
-  it("prompts for a display name when no Profile exists yet, then shows My Teams after bootstrapping", async () => {
-    const user = userEvent.setup();
+  it("never offers a Team-local Profile bootstrap", async () => {
     const backend = new FakeTeamBackend();
     backend.setAccountEmail("user-1", "a@example.com");
     const teamService = new FakeTeamService(backend, "user-1", new FakeEmailService());
@@ -99,26 +68,20 @@ describe("TeamsScreen — signed in", () => {
       <TeamsScreen
         onClose={() => {}}
         config={CONFIGURED}
-        createAuthService={signedInAuthService}
+        identitySession={GATE_SESSION}
         createTeamService={() => teamService}
       />
     );
-
-    const nameInput = await screen.findByLabelText(/choose a display name/i);
-    await user.type(nameInput, "Alex");
-    await user.click(screen.getByRole("button", { name: "Continue" }));
-
     await screen.findByText("My Teams");
-    expect(screen.getByText(/not on a team yet/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/choose a display name/i)).not.toBeInTheDocument();
   });
 
   it("lists an existing team and shows the create-team form only when pilot-gated capability is granted", async () => {
     const backend = new FakeTeamBackend();
     backend.setAccountEmail("user-1", "a@example.com");
     const teamService = new FakeTeamService(backend, "user-1", new FakeEmailService());
-    const profile = await teamService.bootstrapProfile("Alex");
-    if (!profile.ok) throw new Error("setup failed");
-    backend.grantPilotTeamCreationCapability(profile.value.id);
+    const profile = backend.seedCompletedProfile("user-1", "Alex");
+    backend.grantPilotTeamCreationCapability(profile.id);
     const created = await teamService.createTeam({ name: "The Curlers", participationAsPlayer: true, functions: [] });
     if (!created.ok) throw new Error("setup failed");
 
@@ -126,7 +89,7 @@ describe("TeamsScreen — signed in", () => {
       <TeamsScreen
         onClose={() => {}}
         config={CONFIGURED}
-        createAuthService={signedInAuthService}
+        identitySession={GATE_SESSION}
         createTeamService={() => teamService}
       />
     );
@@ -140,9 +103,8 @@ describe("TeamsScreen — signed in", () => {
     const backend = new FakeTeamBackend();
     backend.setAccountEmail("user-1", "a@example.com");
     const teamService = new FakeTeamService(backend, "user-1", new FakeEmailService());
-    const profile = await teamService.bootstrapProfile("Alex");
-    if (!profile.ok) throw new Error("setup failed");
-    backend.grantPilotTeamCreationCapability(profile.value.id);
+    const profile = backend.seedCompletedProfile("user-1", "Alex");
+    backend.grantPilotTeamCreationCapability(profile.id);
     const created = await teamService.createTeam({ name: "The Curlers", participationAsPlayer: true, functions: [] });
     if (!created.ok) throw new Error("setup failed");
 
@@ -150,7 +112,7 @@ describe("TeamsScreen — signed in", () => {
       <TeamsScreen
         onClose={() => {}}
         config={CONFIGURED}
-        createAuthService={signedInAuthService}
+        identitySession={GATE_SESSION}
         createTeamService={() => teamService}
       />
     );
@@ -185,7 +147,7 @@ describe("TeamsScreen — signed in", () => {
 
     backend.setAccountEmail("user-2", "friend@example.com");
     const friendService = new FakeTeamService(backend, "user-2", new FakeEmailService());
-    await friendService.bootstrapProfile("Friend");
+    backend.seedCompletedProfile("user-2", "Friend");
     const invited = await teamService.createInvitation(teamId, {
       email: "friend@example.com",
       participationAsPlayer: true,
@@ -239,7 +201,7 @@ describe("TeamsScreen — signed in", () => {
 
     backend.setAccountEmail("user-2", "friend@example.com");
     const friendService = new FakeTeamService(backend, "user-2", new FakeEmailService());
-    await friendService.bootstrapProfile("Friend");
+    backend.seedCompletedProfile("user-2", "Friend");
     const invited = await teamService.createInvitation(teamId, {
       email: "friend@example.com",
       participationAsPlayer: true,
@@ -284,7 +246,7 @@ describe("TeamsScreen — signed in", () => {
 
     backend.setAccountEmail("user-2", "friend@example.com");
     const friendService = new FakeTeamService(backend, "user-2", new FakeEmailService());
-    await friendService.bootstrapProfile("Friend");
+    backend.seedCompletedProfile("user-2", "Friend");
     const invited = await teamService.createInvitation(teamId, {
       email: "friend@example.com",
       participationAsPlayer: true,
@@ -319,7 +281,7 @@ describe("TeamsScreen — signed in", () => {
     // Add a second admin first so leaving doesn't trip the last-admin invariant.
     backend.setAccountEmail("user-2", "friend@example.com");
     const friendService = new FakeTeamService(backend, "user-2", new FakeEmailService());
-    await friendService.bootstrapProfile("Friend");
+    backend.seedCompletedProfile("user-2", "Friend");
     const invited = await teamService.createInvitation(teamId, {
       email: "friend@example.com",
       participationAsPlayer: true,

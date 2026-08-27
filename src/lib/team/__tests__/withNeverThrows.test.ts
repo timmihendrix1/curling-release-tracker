@@ -6,7 +6,6 @@ import type { TeamService } from "../teamService";
 function fakeService(overrides: Partial<TeamService> = {}): TeamService {
   return {
     getMyProfile: async () => teamOk(null),
-    bootstrapProfile: async () => teamOk({ id: "p1", displayName: "Alex", createdAt: "x", updatedAt: "x" }),
     hasPilotTeamCreationCapability: async () => teamOk(false),
     listMyTeams: async () => teamOk([]),
     createTeam: async () => teamFailed("forbidden", "no"),

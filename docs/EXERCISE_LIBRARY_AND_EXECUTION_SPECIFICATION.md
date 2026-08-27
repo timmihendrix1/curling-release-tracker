@@ -1345,18 +1345,18 @@ cloud boundaries. It must not be implemented as one undifferentiated pass.
 
 ## Identity and persistence prerequisites (added 2026-08-24)
 
-Stages B and later depend on foundations that do not exist yet. Per
+Stage B still depends on foundations that are not all complete. Per
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11 and
 `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`, these must be
 implemented and independently reviewed **before Stage B begins**:
 
-- **Stage B0.2 — Identity and Onboarding Gate.** Required by §9.1 (the recorder is derived
+- **Stage B0.2 — Identity and Onboarding Gate (implemented).** Required by §9.1 (the recorder is derived
   from the authenticated Profile, with no Recorder selector), §8.1 (every Team participant
   resolves to an authenticated Profile), and §12/§13 (each athlete edits only their own
   private note through their own authenticated account). Every participating athlete,
   recorder and coach needs their own account and Profile; they do not all sign into the
   recorder's device.
-- **Stage B0.3 — Profile-scoped Local Data.** Required by §9.2's rule that pending Session
+- **Stage B0.3 — Profile-scoped Local Data (implemented; combined review pending).** Required by §9.2's rule that pending Session
   data must not be exposed after an account switch, and by the requirement that a private
   Athlete Note stay invisible to the recorder.
 - **Stage B0.4 — Free Cloud Data Backbone.** Provides the stable-ID, idempotent-upload,

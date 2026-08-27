@@ -1437,7 +1437,7 @@ describe("createSupabaseAuthService — the synchronous boundaries never throw (
   it("deliberately does NOT swallow a subscription-construction failure", () => {
     // There is no outcome channel on a synchronous subscribe, and pretending to
     // have subscribed would be worse than throwing: the caller
-    // (useSupabaseAuthController) contains this and reports it honestly.
+    // (IdentityProvider) contains this and reports it honestly.
     fakeClient.auth.onAuthStateChange.mockImplementation(() => {
       throw new Error("subscription refused");
     });

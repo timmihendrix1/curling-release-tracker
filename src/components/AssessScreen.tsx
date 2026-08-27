@@ -33,7 +33,6 @@ import {
 import { signedError } from "../lib/assessment/metrics";
 import type { AssessmentRun, InvalidAttemptReason } from "../lib/assessment/types";
 import { categorizeTargetError } from "../lib/accuracyThresholds";
-import { assessmentPreferencesRepository } from "../lib/assessmentPreferencesRepository";
 import type { DomainHydrationState } from "../lib/persistence/types";
 import { parseReleaseTime } from "../lib/timeInput";
 import AssessmentCompletionSummary from "./AssessmentCompletionSummary";
@@ -46,6 +45,7 @@ import AssessmentPausedView from "./AssessmentPausedView";
 import AssessmentProtocolSheet from "./AssessmentProtocolSheet";
 import type { AssessmentTimingMethod } from "./AssessmentSetupConfirmation";
 import ConfirmModal from "./ConfirmModal";
+import { useSportingRepositories } from "./ProfileScopedSportingPersistence";
 
 type PreRunView = "landing" | "guidedIntroduction" | "overview";
 
@@ -116,6 +116,8 @@ export default function AssessScreen({
   onDismissQuarantineNotice,
   onViewFullResults,
 }: AssessScreenProps) {
+  const { assessmentPreferences: assessmentPreferencesRepository } =
+    useSportingRepositories();
   const [view, setView] = useState<PreRunView>("landing");
   const [introductionReturnView, setIntroductionReturnView] = useState<PreRunView>("landing");
 
@@ -192,7 +194,7 @@ export default function AssessScreen({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [assessmentPreferencesRepository]);
 
   const [timingMethod, setTimingMethod] = useState<AssessmentTimingMethod>("manual");
   const [setupConfirmed, setSetupConfirmed] = useState(false);
