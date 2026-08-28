@@ -1,8 +1,9 @@
 # ADR-0035 — Active Team Exercise draft persistence
 
 **Status:** Accepted and implemented as Exercise Stage C3a (2026-08-28). ADR-0036 now
-uses this boundary for Team setup and one-device capture; result/private-note reads,
-revisions, voiding and notifications remain later Stage C work.
+uses this boundary for Team setup and one-device capture; ADR-0037 now implements
+result/private-note reads. Revisions, voiding and notifications remain later Stage C
+work.
 
 ## Context
 

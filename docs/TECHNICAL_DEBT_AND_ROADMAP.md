@@ -1055,7 +1055,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
-| **Exercise Stages A-C3b** | Curated Library, Solo execution, Team domain/cloud/outbox/eligibility/draft foundations and one-device Team capture — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3 and Team C1-C3b implemented.** Remaining Team read/private-note, revision/void/notification work, Plans and content hardening remain planned. |
+| **Exercise Stages A-C3c** | Curated Library, Solo execution, Team domain/cloud/outbox/eligibility/draft foundations, one-device Team capture and athlete-owned result restore — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3 and Team C1-C3c implemented.** Remaining revision/void/notification work, Plans and content hardening remain planned. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
@@ -1267,8 +1267,8 @@ global state infrastructure beyond this feature's reviewed scope.
 
 ## Exercise Library and multi-athlete execution
 
-**Stage A, Solo Stage B (B1-B3) and Team Stages C1-C3b are implemented. The remaining Stage C read/private-note and
-revision/notification work and
+**Stage A, Solo Stage B (B1-B3) and Team Stages C1-C3c are implemented. The remaining Stage C
+revision/void/notification work and
 Stages D-E remain planned.** The canonical product and domain boundary
 is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
 The full closed-beta catalogue contains three Swiss Curling
@@ -1314,7 +1314,8 @@ implements Stage C1's Team domain foundation, ADR-0032 implements Stage C2a's re
 server authority, ADR-0033 implements C2b's client persistence/upload bridge, and
 ADR-0034 implements C2c's eligibility cache and athlete permission UI; ADR-0035
 implements C3a's reload-safe active Team draft and atomic completion handoff; ADR-0036
-implements C3b's setup and one-device capture UI; the
+implements C3b's setup and one-device capture UI; ADR-0037 implements C3c's
+athlete-owned result restore, verified offline cache, raw export and private-note UI; the
 rest of Stages C-E remains planned.** B2 embeds
 Technique and Shotmaking executions in the existing Profile-owned Session, local
 repository/archive transition and Free-cloud `training_session` record, with strict
@@ -1337,8 +1338,10 @@ in-progress Team aggregate; reload/account isolation, failed-write rollback, exp
 discard and atomic exact-completion-to-outbox replacement are tested. C3b now consumes
 those boundaries for cached setup, durable capture, actual role rotation, per-athlete
 Shotmaking results, manual half-step Rotation Count, completion and an honest sync
-receipt. Athlete-result restore/read and private-note UI remain absent. Private Athlete
-Notes remain excluded from the shared recorder
+receipt. C3c now restores only the authenticated athlete's hash/manifest-verified
+projection, preserves the last verified Profile-scoped cache offline and saves/clears
+only that athlete's note after cloud acknowledgement. Private Athlete Notes remain
+excluded from the shared recorder
 aggregate, and Team Release Time still uses the existing timing runner rather than a
 parallel Team Measured execution. Existing Release Timing Training Plans and history must remain
 compatible throughout. Exercise authoring, public/community libraries, standardised
@@ -1358,9 +1361,9 @@ capability. See `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §20.
 
 The client persistence boundary now proves reload, storage failure, account switching,
 lost acknowledgement and per-athlete partial-sync receipts. Permission control and its
-offline eligibility cache and one-device Team capture are usable. Remaining Stage C work
-must make the result/private-note paths usable in Team UI, then add audited active and
-post-completion correction/void workflows and participant notifications. Any further
+offline eligibility cache, one-device Team capture and athlete-owned result/private-note
+UI are usable. Remaining Stage C work must add audited active and post-completion
+correction/void workflows and participant notifications. Any further
 database/RLS/transaction change still requires real database evidence; TypeScript tests
 alone are not sufficient.
 

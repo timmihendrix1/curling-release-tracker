@@ -10,7 +10,11 @@ import { EXERCISE_CATALOG } from "../exercises/catalog";
 import { validateExerciseExecution } from "../exercises/executionValidation";
 import type { TeamWorkspace } from "../team/teamService";
 import { isCanonicalUuid } from "../uuid";
-import { serializeCompletedTeamExercise } from "./teamExerciseRecords";
+import {
+  deserializeOwnedTeamExerciseResult,
+  serializeCompletedTeamExercise,
+  type OwnedTeamExerciseResultRecord,
+} from "./teamExerciseRecords";
 import type { TeamExerciseCloudService, TeamExerciseUploadPackage } from "./teamExerciseTypes";
 import {
   deserializeAssessmentRun,
@@ -44,9 +48,16 @@ export type SportingSyncSnapshot = {
   teamSessions: Array<{ sessionId: string; status: TeamExerciseSyncStatus }>;
   teamEligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
   activeTeamExerciseDraft: ExerciseExecution | null;
+  teamExerciseResults: OwnedTeamExerciseResultRecord[];
+  teamExerciseResultReadStatus: "loading" | "refreshed" | "cached" | "unavailable" | "issue";
 };
 
 export type TeamExercisePermissionUpdateOutcome =
+  | "updated"
+  | "updated_cache_issue"
+  | "failed";
+
+export type TeamExercisePrivateNoteUpdateOutcome =
   | "updated"
   | "updated_cache_issue"
   | "failed";
@@ -90,12 +101,15 @@ export class SportingCloudSyncManager {
     teamSessions: [],
     teamEligibilitySnapshots: [],
     activeTeamExerciseDraft: null,
+    teamExerciseResults: [],
+    teamExerciseResultReadStatus: "loading",
   };
   private listeners = new Set<Listener>();
   private lane: Promise<void> = Promise.resolve();
   private storageWritable = true;
   private globalIssue = false;
   private cloudVerified = false;
+  private teamExerciseResultReadStatus: SportingSyncSnapshot["teamExerciseResultReadStatus"] = "loading";
 
   constructor(
     private readonly repositories: SportingRepositories,
@@ -153,6 +167,8 @@ export class SportingCloudSyncManager {
       activeTeamExerciseDraft: this.state.activeTeamExerciseDraft === null
         ? null
         : JSON.parse(JSON.stringify(this.state.activeTeamExerciseDraft)) as ExerciseExecution,
+      teamExerciseResults: JSON.parse(JSON.stringify(this.state.teamExerciseResults)) as OwnedTeamExerciseResultRecord[],
+      teamExerciseResultReadStatus: this.teamExerciseResultReadStatus,
     };
     for (const listener of this.listeners) listener();
   }
@@ -170,17 +186,28 @@ export class SportingCloudSyncManager {
       const loaded = await this.stateRepository.load();
       if (loaded.status === "value") {
         const recorder = loaded.value.activeTeamExerciseDraft?.teamContext?.recorderProfileId;
-        if (recorder !== undefined && recorder !== this.mountedProfileId) {
+        if (
+          (recorder !== undefined && recorder !== this.mountedProfileId) ||
+          loaded.value.teamExerciseResults.some(
+            (result) => result.athleteProfileId !== this.mountedProfileId
+          )
+        ) {
           this.storageWritable = false;
           this.globalIssue = true;
+          this.teamExerciseResultReadStatus = "issue";
         } else {
           this.state = loaded.value;
+          this.teamExerciseResultReadStatus = loaded.value.teamExerciseResults.length > 0
+            ? "cached"
+            : "unavailable";
         }
       }
       if (loaded.status === "read_failed") {
         this.storageWritable = false;
         this.globalIssue = true;
+        this.teamExerciseResultReadStatus = "issue";
       }
+      if (loaded.status === "absent") this.teamExerciseResultReadStatus = "unavailable";
 
       const safeToReconcile = this.service && this.isOnline()
         ? await this.restoreIntoLocalRepositories()
@@ -188,6 +215,7 @@ export class SportingCloudSyncManager {
       if (safeToReconcile) {
         await this.reconcileFromRepositories();
         if ((this.service || this.teamService) && this.isOnline()) await this.drain();
+        if (this.teamService && this.isOnline()) await this.refreshOwnedTeamExerciseResults();
       }
       this.snapshot = { ...this.snapshot, ready: true };
       this.publish();
@@ -201,6 +229,7 @@ export class SportingCloudSyncManager {
       if (safeToReconcile) {
         await this.reconcileFromRepositories();
         await this.drain();
+        if (this.teamService) await this.refreshOwnedTeamExerciseResults();
       }
       this.publish();
     });
@@ -225,6 +254,7 @@ export class SportingCloudSyncManager {
         if (safeToReconcile) {
           await this.reconcileFromRepositories();
           await this.drain();
+          if (this.teamService) await this.refreshOwnedTeamExerciseResults();
         }
       }
       this.publish();
@@ -257,7 +287,10 @@ export class SportingCloudSyncManager {
       this.state = merged.state;
       const persisted = await this.persist();
       accepted = merged.accepted && persisted;
-      if (accepted && this.teamService && this.isOnline()) await this.drainTeamEntries();
+      if (accepted && this.teamService && this.isOnline()) {
+        await this.drainTeamEntries();
+        await this.refreshOwnedTeamExerciseResults();
+      }
       this.publish();
     });
     return accepted;
@@ -349,7 +382,10 @@ export class SportingCloudSyncManager {
         return;
       }
       finalized = true;
-      if (this.teamService && this.isOnline()) await this.drainTeamEntries();
+      if (this.teamService && this.isOnline()) {
+        await this.drainTeamEntries();
+        await this.refreshOwnedTeamExerciseResults();
+      }
       this.publish();
     });
     return finalized;
@@ -504,6 +540,58 @@ export class SportingCloudSyncManager {
     return outcome;
   }
 
+  async refreshMyTeamExerciseResults(): Promise<boolean> {
+    let refreshed = false;
+    await this.schedule(async () => {
+      refreshed = await this.refreshOwnedTeamExerciseResults();
+    });
+    return refreshed;
+  }
+
+  async setMyTeamExercisePrivateNote(
+    resultId: string,
+    authenticatedProfileId: string,
+    note: string | null
+  ): Promise<TeamExercisePrivateNoteUpdateOutcome> {
+    let outcome: TeamExercisePrivateNoteUpdateOutcome = "failed";
+    await this.schedule(async () => {
+      const normalized = note === null || note.trim().length === 0 ? null : note;
+      const owned = this.state.teamExerciseResults.find(
+        (record) => record.result.id === resultId &&
+          record.athleteProfileId === authenticatedProfileId
+      );
+      if (
+        !this.snapshot.ready || !this.storageWritable || !this.teamService ||
+        !this.isOnline() || !owned || authenticatedProfileId !== this.mountedProfileId ||
+        (normalized !== null && new TextEncoder().encode(normalized).byteLength > 65_536)
+      ) return;
+      const result = await this.teamService.setPrivateNote(resultId, normalized);
+      if (!result.ok || (normalized === null
+        ? result.value.outcome !== "cleared" && result.value.outcome !== "already_clear"
+        : result.value.outcome !== "created" && result.value.outcome !== "updated")) return;
+      this.state = {
+        ...this.state,
+        teamExerciseResults: this.state.teamExerciseResults.map((record) =>
+          record.result.id === resultId
+            ? {
+                ...record,
+                privateNote: normalized === null
+                  ? null
+                  : { note: normalized, updatedAt: result.value.updatedAt },
+              }
+            : record
+        ),
+      };
+      if (!await this.persist()) {
+        outcome = "updated_cache_issue";
+        return;
+      }
+      outcome = "updated";
+      this.publish();
+    });
+    return outcome;
+  }
+
   reconcileTrainingHistory(history: Session[]): void {
     void this.schedule(async () => {
       await this.reconcile(history.map(serializeTrainingSession), "training_session");
@@ -556,6 +644,63 @@ export class SportingCloudSyncManager {
     }
     this.publish();
     return saved.ok;
+  }
+
+  private async refreshOwnedTeamExerciseResults(): Promise<boolean> {
+    if (!this.teamService || !this.isOnline() || !this.storageWritable ||
+        !this.mountedProfileId || !isCanonicalUuid(this.mountedProfileId)) {
+      this.teamExerciseResultReadStatus = this.state.teamExerciseResults.length > 0
+        ? "cached"
+        : "unavailable";
+      this.publish();
+      return false;
+    }
+    this.teamExerciseResultReadStatus = "loading";
+    this.publish();
+    const response = await this.teamService.listMyResults();
+    if (!response.ok) {
+      this.teamExerciseResultReadStatus = response.error === "unavailable"
+        ? (this.state.teamExerciseResults.length > 0 ? "cached" : "unavailable")
+        : "issue";
+      if (response.error !== "unavailable") this.globalIssue = true;
+      this.publish();
+      return false;
+    }
+    const parsed = await Promise.all(
+      response.value.map((record) =>
+        deserializeOwnedTeamExerciseResult(record, this.mountedProfileId!)
+      )
+    );
+    const values = parsed.filter(
+      (record): record is OwnedTeamExerciseResultRecord => record !== null
+    );
+    if (
+      values.length !== response.value.length ||
+      new Set(values.map((record) => record.result.id)).size !== values.length ||
+      new Set(values.map((record) => record.sessionId)).size !== values.length
+    ) {
+      this.teamExerciseResultReadStatus = "issue";
+      this.globalIssue = true;
+      this.publish();
+      return false;
+    }
+    const previous = this.state;
+    this.state = {
+      ...this.state,
+      teamExerciseResults: values.sort(
+        (left, right) => Date.parse(right.sharedExecution.completedAt ?? right.cloudCreatedAt) -
+          Date.parse(left.sharedExecution.completedAt ?? left.cloudCreatedAt)
+      ),
+    };
+    if (!await this.persist()) {
+      this.state = previous;
+      this.teamExerciseResultReadStatus = "issue";
+      this.publish();
+      return false;
+    }
+    this.teamExerciseResultReadStatus = "refreshed";
+    this.publish();
+    return true;
   }
 
   private async reconcileFromRepositories(): Promise<void> {

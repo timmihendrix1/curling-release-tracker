@@ -39,7 +39,7 @@ describe("TrackerApp — top-level navigation", () => {
     expect(screen.getByText("Set Up Training Block")).toBeInTheDocument();
   });
 
-  it("Analyze is reachable, shows the compact page header and its Training/Assessments tabs", async () => {
+  it("Analyze is reachable with keyboard-operable Training, Assessments and Exercises tabs", async () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
 
@@ -51,6 +51,15 @@ describe("TrackerApp — top-level navigation", () => {
     expect(screen.getByRole("heading", { name: "Analyze" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Training" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Assessments" })).toBeInTheDocument();
+    const training = screen.getByRole("tab", { name: "Training" });
+    const exercises = screen.getByRole("tab", { name: "Exercises" });
+    expect(exercises).toBeInTheDocument();
+    expect(training).toHaveAttribute("tabindex", "0");
+    training.focus();
+    fireEvent.keyDown(training, { key: "End" });
+    expect(exercises).toHaveAttribute("aria-selected", "true");
+    expect(exercises).toHaveFocus();
+    expect(screen.getByRole("tabpanel")).toHaveAttribute("aria-labelledby", exercises.id);
   });
 
   it("Settings is reachable", async () => {

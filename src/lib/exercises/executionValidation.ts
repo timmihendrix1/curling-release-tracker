@@ -16,6 +16,11 @@ export type ExerciseExecutionValidationResult =
   | { valid: true; value: ExerciseExecution; issues: [] }
   | { valid: false; issues: ExerciseExecutionValidationIssue[] };
 
+export type ExerciseExecutionValidationOptions = {
+  /** Validates one athlete's completed Team-result read projection. */
+  ownedTeamResultProfileId?: string;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -83,7 +88,8 @@ function expectedEvaluationBasis(version: ExerciseVersion): ExerciseExecution["e
 
 export function validateExerciseExecution(
   value: unknown,
-  catalog: ExerciseCatalogPackage
+  catalog: ExerciseCatalogPackage,
+  options: ExerciseExecutionValidationOptions = {}
 ): ExerciseExecutionValidationResult {
   const issues: ExerciseExecutionValidationIssue[] = [];
   const add = (path: string, message: string) => issues.push({ path, message });
@@ -389,6 +395,14 @@ export function validateExerciseExecution(
     }
   }
 
+  const ownedTeamResultProfileId = options.ownedTeamResultProfileId;
+  if (ownedTeamResultProfileId !== undefined && !isCanonicalUuid(ownedTeamResultProfileId)) {
+    add("validation.ownedTeamResultProfileId", "Owned Team result projection needs a canonical athlete Profile UUID.");
+  }
+  if (ownedTeamResultProfileId !== undefined && !isTeam) {
+    add("validation.ownedTeamResultProfileId", "Owned Team result projection can validate only a Team execution.");
+  }
+
   let allAttempts: ExerciseAttempt[] = [];
   if (!Array.isArray(value.athleteResults) || value.athleteResults.length === 0) {
     add("athleteResults", "Exercise execution needs at least one Athlete Exercise Result.");
@@ -492,12 +506,22 @@ export function validateExerciseExecution(
         validateMeasurements(attempt.measurements, attemptPath, enabledProtocols, entityIds, participantIds, isTeam, add);
       });
     });
-    if (isTeam && (resultAthletes.size !== athleteIds.length || athleteIds.some((id) => !resultAthletes.has(id)))) {
+    if (isTeam && ownedTeamResultProfileId !== undefined) {
+      if (
+        value.status !== "completed" ||
+        !athleteIds.includes(ownedTeamResultProfileId) ||
+        resultAthletes.size !== 1 ||
+        !resultAthletes.has(ownedTeamResultProfileId)
+      ) {
+        add("athleteResults", "Owned Team result projection needs exactly the authenticated training athlete's completed result.");
+      }
+    } else if (isTeam && (resultAthletes.size !== athleteIds.length || athleteIds.some((id) => !resultAthletes.has(id)))) {
       add("athleteResults", "Team execution needs exactly one Athlete Result for every selected training athlete.");
     }
   }
 
-  if (value.status === "completed" && version?.primaryFocus === "shotmaking" && allAttempts.length === 0) {
+  if (value.status === "completed" && version?.primaryFocus === "shotmaking" &&
+      allAttempts.length === 0 && ownedTeamResultProfileId === undefined) {
     add("status", "Completed Shotmaking execution needs at least one attempt.");
   }
   if (value.status === "completed" && version?.primaryFocus === "measured" &&
@@ -524,6 +548,8 @@ export function validateExerciseExecution(
       const previous = value.roleAssignmentSegments[index - 1];
       const current = value.roleAssignmentSegments[index];
       if (!isRecord(previous) || !isRecord(current) || typeof previous.id !== "string") continue;
+      if (ownedTeamResultProfileId !== undefined &&
+          previous.deliveringAthleteProfileId !== ownedTeamResultProfileId) continue;
       const reason = current.transitionReason;
       if (reason === "manual") continue;
       const currentIndex = rotationOrder.indexOf(String(previous.deliveringAthleteProfileId));

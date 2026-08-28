@@ -86,6 +86,10 @@ test.describe("Navigation", () => {
     await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Training" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Assessments" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: "Exercises" })).toBeVisible();
+    await page.getByRole("tab", { name: "Exercises" }).click();
+    await expect(page.getByRole("heading", { name: "Exercise Results", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "No Team Exercise Results yet" })).toBeVisible();
     await expect(
       primaryNav(page).getByRole("button", { name: "Analyze" })
     ).toHaveAttribute("aria-current", "page");
@@ -187,6 +191,24 @@ test.describe("Active Capture", () => {
 
 test.describe("Mobile", () => {
   test.use({ viewport: { width: 390, height: 844 } });
+
+  test("Analyze Exercise Results fit at 390x844 with reachable 44px tabs", async ({ page }) => {
+    await freshLoad(page);
+    await goToAnalyze(page);
+    const tabs = page.getByRole("tablist", { name: "Analyze section" }).getByRole("tab");
+    await expect(tabs).toHaveCount(3);
+    for (let index = 0; index < 3; index += 1) {
+      const box = await tabs.nth(index).boundingBox();
+      expect(box).not.toBeNull();
+      if (box) expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    await page.getByRole("tab", { name: "Exercises" }).click();
+    await expect(page.getByRole("heading", { name: "Exercise Results", exact: true })).toBeVisible();
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+  });
 
   test("Home is fully usable at 390x844: nav visible, no horizontal overflow, Today's Plan prominent", async ({
     page,

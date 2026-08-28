@@ -1665,8 +1665,9 @@ Profile-scoped durable serializer/outbox/upload bridge as Stage C2b; ADR-0034 ad
 Profile-scoped offline eligibility snapshot and athlete-owned permission UI as Stage C2c;
 ADR-0035 adds one reload-safe Profile-bound active Team draft and atomic completion
 handoff as Stage C3a. ADR-0036 adds cache-bounded Team setup and durable one-device
-Technique/Shotmaking capture as Stage C3b. Team result/private-note read UI is still
-Planned. Measured Release Time intentionally uses the existing Block/Shot runner
+Technique/Shotmaking capture as Stage C3b. ADR-0037 adds athlete-owned result restore,
+verified offline caching, factual Analyze detail/raw export and own private-note UI as
+Stage C3c. Measured Release Time intentionally uses the existing Block/Shot runner
 with immutable Library provenance rather than a parallel `ExerciseExecution`.]**
 
 ## Exercise Role Assignment Segment
@@ -1699,7 +1700,8 @@ aggregate. ADR-0032 stores Team private notes only through an athlete-authentica
 boundary and cloud-persists immutable athlete-owned bundles; ADR-0033 supplies their
 recorder-side upload queue, ADR-0035 persists the in-progress non-private results, and
 ADR-0036 captures and displays live factual results per athlete. Athlete-owned cloud
-restore/read and private-note UI remain a later Stage C gate.]**
+restore/read, owned raw export and private-note UI are implemented by ADR-0037; sibling
+results and notes remain outside the projection.]**
 
 ## Team Exercise Recording Permission
 
@@ -1731,7 +1733,18 @@ Its private notes are stored separately and writable only by the authenticated a
 **[Implemented server-side in Stage C2a, including result/execution stable references,
 partial rejection, concrete-Session approval and private-note RLS. The TypeScript upload
 service and durable local queue integration are implemented by ADR-0033, including
-independently retained pending, synced, blocked and issue outcomes.]**
+independently retained pending, synced, blocked and issue outcomes. ADR-0037 adds the
+athlete-authenticated read projection and own private-note surface.]**
+
+## Owned Team Exercise Result Projection
+
+The mounted athlete's verified read model for one accepted Team Exercise bundle. It
+combines immutable shared Session/execution context with exactly that athlete's result
+and optional private note; it never contains a sibling Athlete Result collection. The
+projection is rebuilt from owner-result-gated relational manifests plus hash-verified
+opaque payloads, cached only in the same immutable Profile namespace and exported from
+that same bounded shape. **[Implemented by ADR-0037 in
+`teamExerciseRecords.ts`, schema 5 of the sporting sync record and Analyze → Exercises.]**
 
 ## Shotmaking Evaluation Basis
 

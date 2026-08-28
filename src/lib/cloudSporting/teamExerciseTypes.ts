@@ -28,6 +28,24 @@ export type TeamExerciseUploadPackage = {
   bundles: TeamExerciseAthleteBundleUpload[];
 };
 
+export type TeamExerciseCloudReadRecord = {
+  session: TeamExerciseSessionUpload & {
+    recordedByProfileId: string;
+    contentSha256: string;
+    createdAt: string;
+  };
+  bundle: TeamExerciseAthleteBundleUpload & {
+    recordedByProfileId: string;
+    contentSha256: string;
+    createdAt: string;
+  };
+  privateNote: {
+    resultId: string;
+    note: string;
+    updatedAt: string;
+  } | null;
+};
+
 export type TeamExerciseBlockReason =
   | "athlete_not_session_participant"
   | "execution_not_in_session"
@@ -55,6 +73,8 @@ export type TeamExerciseRecordingPermission = {
 };
 
 export interface TeamExerciseCloudService {
+  /** Returns only athlete-owned records visible through server RLS. */
+  listMyResults(): Promise<TeamExerciseCloudResult<TeamExerciseCloudReadRecord[]>>;
   /**
    * Returns only currently active permissions visible through the Team-member
    * RLS policy. The result is suitable for an offline eligibility snapshot;

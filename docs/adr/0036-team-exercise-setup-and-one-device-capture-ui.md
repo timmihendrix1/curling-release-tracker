@@ -1,8 +1,8 @@
 # ADR-0036 — Team Exercise setup and one-device capture UI
 
-**Status:** Accepted and implemented as Exercise Stage C3b (2026-08-28). Team-result
-restore/read, private-note UI, audited correction/voiding and participant notifications
-remain later Stage C work.
+**Status:** Accepted and implemented as Exercise Stage C3b (2026-08-28). Since then,
+ADR-0037 implements Team-result restore/read and private-note UI; audited
+correction/voiding and participant notifications remain later Stage C work.
 
 ## Context
 
@@ -88,8 +88,9 @@ that completion implies cloud acceptance.
   not smuggled into this stage.
 - This stage adds no database migration, RPC, storage key, Exercise-specific renderer,
   Team Measured execution or second timing path.
-- Result restore/read, active correction audit, post-completion revision/voiding,
-  notifications and multi-device recorder transfer remain later decisions/work.
+- Since implemented by ADR-0037: result restore/read and own private-note UI. Active
+  correction audit, post-completion revision/voiding, notifications and multi-device
+  recorder transfer remain later decisions/work.
 
 ## Verification
 

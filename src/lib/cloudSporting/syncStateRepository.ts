@@ -11,9 +11,13 @@ import { TEAM_FUNCTIONS, type TeamFunction } from "../team/types";
 import { EXERCISE_CATALOG } from "../exercises/catalog";
 import type { ExerciseExecution } from "../exercises/executionTypes";
 import { validateExerciseExecution } from "../exercises/executionValidation";
+import {
+  validateOwnedTeamExerciseResultRecord,
+  type OwnedTeamExerciseResultRecord,
+} from "./teamExerciseRecords";
 
 export const CLOUD_SPORTING_SYNC_STORAGE_KEY = "curling-release-tracker-cloud-sporting-sync";
-export const CLOUD_SPORTING_SYNC_SCHEMA_VERSION = 4;
+export const CLOUD_SPORTING_SYNC_SCHEMA_VERSION = 5;
 
 export type SportingSyncEntry = CloudSportingRecord & {
   desired: "present" | "deleted";
@@ -56,12 +60,14 @@ export type TeamExerciseEligibilitySnapshot = {
 };
 
 export type SportingSyncState = {
-  schemaVersion: 4;
+  schemaVersion: 5;
   entries: SportingSyncEntry[];
   teamEntries: TeamExerciseSyncEntry[];
   teamEligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
   /** Exactly one recorder-owned, reload-safe Team draft in V1. */
   activeTeamExerciseDraft: ExerciseExecution | null;
+  /** Athlete-owned Team results restored from cloud; never recorder outbox data. */
+  teamExerciseResults: OwnedTeamExerciseResultRecord[];
 };
 
 export interface SportingSyncStateRepository {
@@ -76,6 +82,7 @@ export function emptySportingSyncState(): SportingSyncState {
     teamEntries: [],
     teamEligibilitySnapshots: [],
     activeTeamExerciseDraft: null,
+    teamExerciseResults: [],
   };
 }
 
@@ -292,62 +299,82 @@ function parseState(raw: unknown): SportingSyncState | null {
   if (!entries) return null;
   if (root.schemaVersion === 1) {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       entries,
       teamEntries: [],
       teamEligibilitySnapshots: [],
       activeTeamExerciseDraft: null,
+      teamExerciseResults: [],
     };
   }
   const teamEntries = parseTeamEntries(root.teamEntries);
   if (!teamEntries) return null;
   if (root.schemaVersion === 2) {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       entries,
       teamEntries,
       teamEligibilitySnapshots: [],
       activeTeamExerciseDraft: null,
+      teamExerciseResults: [],
     };
   }
-  if (root.schemaVersion !== 3 && root.schemaVersion !== 4) return null;
+  if (root.schemaVersion !== 3 && root.schemaVersion !== 4 && root.schemaVersion !== 5) return null;
   const teamEligibilitySnapshots = parseEligibilitySnapshots(root.teamEligibilitySnapshots);
   if (!teamEligibilitySnapshots) return null;
   if (root.schemaVersion === 3) {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       entries,
       teamEntries,
       teamEligibilitySnapshots,
       activeTeamExerciseDraft: null,
+      teamExerciseResults: [],
     };
   }
-  if (root.activeTeamExerciseDraft === null) {
+  let activeTeamExerciseDraft: ExerciseExecution | null = null;
+  if (root.activeTeamExerciseDraft !== null) {
+    const draftValidation = validateExerciseExecution(
+      root.activeTeamExerciseDraft,
+      EXERCISE_CATALOG
+    );
+    if (
+      !draftValidation.valid ||
+      typeof root.activeTeamExerciseDraft !== "object" ||
+      root.activeTeamExerciseDraft === null ||
+      (root.activeTeamExerciseDraft as ExerciseExecution).status !== "in-progress" ||
+      !(root.activeTeamExerciseDraft as ExerciseExecution).teamContext
+    ) return null;
+    activeTeamExerciseDraft = root.activeTeamExerciseDraft as ExerciseExecution;
+  }
+  if (root.schemaVersion === 4) {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       entries,
       teamEntries,
       teamEligibilitySnapshots,
-      activeTeamExerciseDraft: null,
+      activeTeamExerciseDraft,
+      teamExerciseResults: [],
     };
   }
-  const draftValidation = validateExerciseExecution(
-    root.activeTeamExerciseDraft,
-    EXERCISE_CATALOG
-  );
-  if (
-    !draftValidation.valid ||
-    typeof root.activeTeamExerciseDraft !== "object" ||
-    root.activeTeamExerciseDraft === null ||
-    (root.activeTeamExerciseDraft as ExerciseExecution).status !== "in-progress" ||
-    !(root.activeTeamExerciseDraft as ExerciseExecution).teamContext
-  ) return null;
+  if (!Array.isArray(root.teamExerciseResults)) return null;
+  const teamExerciseResults: OwnedTeamExerciseResultRecord[] = [];
+  const resultIds = new Set<string>();
+  const sessionIds = new Set<string>();
+  for (const candidate of root.teamExerciseResults) {
+    const parsed = validateOwnedTeamExerciseResultRecord(candidate);
+    if (!parsed || resultIds.has(parsed.result.id) || sessionIds.has(parsed.sessionId)) return null;
+    resultIds.add(parsed.result.id);
+    sessionIds.add(parsed.sessionId);
+    teamExerciseResults.push(parsed);
+  }
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     entries,
     teamEntries,
     teamEligibilitySnapshots,
-    activeTeamExerciseDraft: root.activeTeamExerciseDraft as ExerciseExecution,
+    activeTeamExerciseDraft,
+    teamExerciseResults,
   };
 }
 

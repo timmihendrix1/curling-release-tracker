@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import IdentityAccountControl from "./identity/IdentityAccountControl";
 import IdentityPendingTeamIntent from "./identity/IdentityPendingTeamIntent";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
@@ -39,6 +39,7 @@ import TargetErrorChart from "./TargetErrorChart";
 import ExerciseSoloExecutionScreen from "./ExerciseSoloExecutionScreen";
 import ExerciseTeamExecutionScreen from "./ExerciseTeamExecutionScreen";
 import ExerciseTeamSetupScreen from "./ExerciseTeamSetupScreen";
+import ExerciseTeamResultsScreen from "./ExerciseTeamResultsScreen";
 import TrainLanding, { type TrainEntryPath } from "./TrainLanding";
 import TrainingPlanProgress from "./TrainingPlanProgress";
 import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
@@ -222,7 +223,7 @@ const FUNCTIONAL_PAGE_HEADERS: Record<
   },
   analyze: {
     title: "Analyze",
-    description: "Review training and assessment history.",
+    description: "Review training, assessment, and Exercise history.",
   },
   settings: {
     title: "Settings",
@@ -452,7 +453,25 @@ export default function TrackerApp() {
   // additive/read-only relative to capture ownership and navigation guards.
   const [viewingAssessmentResultRunId, setViewingAssessmentResultRunId] =
     useState<string | null>(null);
-  const [analyzeTab, setAnalyzeTab] = useState<"training" | "assessments">("training");
+  const [analyzeTab, setAnalyzeTab] = useState<"training" | "assessments" | "exercises">("training");
+  const analyzeTabsId = useId();
+  const analyzePanelId = `${analyzeTabsId}-panel`;
+  const analyzeTabId = (tab: typeof analyzeTab) => `${analyzeTabsId}-${tab}`;
+
+  function handleAnalyzeTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const tabs = ["training", "assessments", "exercises"] as const;
+    const current = tabs.indexOf(analyzeTab);
+    let next = current;
+    if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    setAnalyzeTab(tabs[next]);
+    const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role='tab']");
+    buttons?.[next]?.focus();
+  }
 
   // Bumped whenever the user confirms discarding an in-progress Blind
   // Weight draft (see guardLeavingBlindDraft) — forces BlindShotEntry to
@@ -3356,8 +3375,8 @@ export default function TrackerApp() {
 
       {activeView === "analyze" && (
         <>
-          {/* Training / Assessments are distinct domain concepts (Training
-              Sessions vs. Assessment Runs) that happen to share this one
+          {/* Training / Assessments / Exercise Results are distinct domain
+              concepts that happen to share this one
               Analyze destination — see
               docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md's Analyze
               Integration section. Switching tabs never resets the other
@@ -3369,14 +3388,18 @@ export default function TrackerApp() {
           <div
             role="tablist"
             aria-label="Analyze section"
-            className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+            className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
           >
             <button
               type="button"
               role="tab"
+              id={analyzeTabId("training")}
+              aria-controls={analyzePanelId}
               aria-selected={analyzeTab === "training"}
+              tabIndex={analyzeTab === "training" ? 0 : -1}
               onClick={() => setAnalyzeTab("training")}
-              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              onKeyDown={handleAnalyzeTabKeyDown}
+              className={`min-h-11 rounded-lg px-2 py-2 text-xs font-medium transition sm:px-3 sm:text-sm ${
                 analyzeTab === "training"
                   ? "bg-slate-900 text-white"
                   : "text-slate-700 hover:bg-slate-200"
@@ -3387,9 +3410,13 @@ export default function TrackerApp() {
             <button
               type="button"
               role="tab"
+              id={analyzeTabId("assessments")}
+              aria-controls={analyzePanelId}
               aria-selected={analyzeTab === "assessments"}
+              tabIndex={analyzeTab === "assessments" ? 0 : -1}
               onClick={() => setAnalyzeTab("assessments")}
-              className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              onKeyDown={handleAnalyzeTabKeyDown}
+              className={`min-h-11 rounded-lg px-2 py-2 text-xs font-medium transition sm:px-3 sm:text-sm ${
                 analyzeTab === "assessments"
                   ? "bg-slate-900 text-white"
                   : "text-slate-700 hover:bg-slate-200"
@@ -3397,7 +3424,40 @@ export default function TrackerApp() {
             >
               Assessments
             </button>
+            <button
+              type="button"
+              role="tab"
+              id={analyzeTabId("exercises")}
+              aria-controls={analyzePanelId}
+              aria-selected={analyzeTab === "exercises"}
+              tabIndex={analyzeTab === "exercises" ? 0 : -1}
+              onClick={() => setAnalyzeTab("exercises")}
+              onKeyDown={handleAnalyzeTabKeyDown}
+              className={`min-h-11 rounded-lg px-2 py-2 text-xs font-medium transition sm:px-3 sm:text-sm ${
+                analyzeTab === "exercises"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-700 hover:bg-slate-200"
+              }`}
+            >
+              Exercises
+            </button>
           </div>
+
+          <div
+            role="tabpanel"
+            id={analyzePanelId}
+            aria-labelledby={analyzeTabId(analyzeTab)}
+            className="space-y-4"
+          >
+
+            {analyzeTab === "exercises" && sportingCloudSync && (
+              <ExerciseTeamResultsScreen
+                results={sportingCloudSync.teamExerciseResults}
+                readStatus={sportingCloudSync.teamExerciseResultReadStatus}
+                onRefresh={sportingCloudSync.refreshMyTeamExerciseResults}
+                onSetPrivateNote={sportingCloudSync.setMyTeamExercisePrivateNote}
+              />
+            )}
 
           {analyzeTab === "assessments" && assessmentState && (
             <AssessmentAnalyze
@@ -3705,6 +3765,7 @@ export default function TrackerApp() {
           </div>
           </>
           )}
+          </div>
         </>
       )}
 

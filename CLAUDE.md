@@ -196,8 +196,12 @@ technique directly" in the Coaching Principles.
   UI, including cached eligibility, authenticated-recorder attribution, actual role
   rotation, per-athlete Shotmaking outcomes and optional half-step Rotation Count. Team
   Release Time continues to use the existing timing runner; no duplicate timing path
-  exists. Still **Planned**, per that specification's section 21: Team result/private-note
-  reads, revision/void/notification work, Training Plan
+  exists. ADR-0037 adds C3c's athlete-owned Team-result restore: existing RLS rows are
+  correlated and hash/manifest-validated into exactly one mounted-Profile projection,
+  schema 5 of the same Profile-scoped sync record supplies verified offline reads, and
+  Analyze exposes factual detail, owned raw export and acknowledgement-first online
+  private-note save/clear. No sibling result or note becomes readable. Still **Planned**,
+  per that specification's section 21: revision/void/notification work, Training Plan
   integration, and the remaining six approved catalogue Exercises. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never

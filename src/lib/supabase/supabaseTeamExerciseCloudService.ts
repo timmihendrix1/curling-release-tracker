@@ -1,6 +1,7 @@
 import type {
   TeamExerciseBlockReason,
   TeamExerciseCloudResult,
+  TeamExerciseCloudReadRecord,
   TeamExerciseCloudService,
   TeamExercisePutOutcome,
   TeamExerciseRecordingPermission,
@@ -43,12 +44,172 @@ function oneRow(data: unknown): Record<string, unknown> | null {
   }
 }
 
+function rows(data: unknown): Record<string, unknown>[] | null {
+  if (!Array.isArray(data)) return null;
+  const parsed: Record<string, unknown>[] = [];
+  for (const candidate of data) {
+    const row = oneRow(candidate);
+    if (!row) return null;
+    parsed.push(row);
+  }
+  return parsed;
+}
+
 function timestamp(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
 export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): TeamExerciseCloudService {
   return {
+    async listMyResults() {
+      try {
+        const [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery] =
+          await Promise.all([
+            client.from("team_exercise_result_bundles").select(
+              "id, session_id, athlete_profile_id, recorded_by_profile_id, schema_version, result_payload, content_sha256, recorded_at, created_at"
+            ).order("recorded_at", { ascending: false }),
+            client.from("team_exercise_sessions").select(
+              "id, team_id, recorded_by_profile_id, schema_version, coordination_payload, content_sha256, started_at, completed_at, created_at"
+            ),
+            client.from("team_exercise_session_participants").select(
+              "session_id, profile_id, participation"
+            ),
+            client.from("team_exercise_execution_refs").select("session_id, execution_id"),
+            client.from("team_exercise_result_refs").select(
+              "bundle_id, result_id, athlete_profile_id, execution_id"
+            ),
+            client.from("team_exercise_private_notes").select(
+              "result_id, athlete_profile_id, note, updated_at"
+            ),
+          ]);
+        for (const query of [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery]) {
+          if (query.error) return fail(query.error);
+        }
+        const bundles = rows(bundleQuery.data);
+        const sessions = rows(sessionQuery.data);
+        const participants = rows(participantQuery.data);
+        const executions = rows(executionQuery.data);
+        const results = rows(resultQuery.data);
+        const notes = rows(noteQuery.data);
+        if (!bundles || !sessions || !participants || !executions || !results || !notes) {
+          return { ok: false, error: "invalid_response" };
+        }
+
+        const sessionById = new Map<string, Record<string, unknown>>();
+        for (const session of sessions) {
+          if (!isCanonicalUuid(session.id) || sessionById.has(session.id)) {
+            return { ok: false, error: "invalid_response" };
+          }
+          sessionById.set(session.id, session);
+        }
+        const noteByResultId = new Map<string, Record<string, unknown>>();
+        for (const note of notes) {
+          if (!isCanonicalUuid(note.result_id) || noteByResultId.has(note.result_id)) {
+            return { ok: false, error: "invalid_response" };
+          }
+          noteByResultId.set(note.result_id, note);
+        }
+
+        const records: TeamExerciseCloudReadRecord[] = [];
+        const bundleIds = new Set<string>();
+        for (const bundle of bundles) {
+          if (!isCanonicalUuid(bundle.id) || bundleIds.has(bundle.id) ||
+              !isCanonicalUuid(bundle.session_id) || !isCanonicalUuid(bundle.athlete_profile_id) ||
+              !isCanonicalUuid(bundle.recorded_by_profile_id) || !Number.isInteger(bundle.schema_version) ||
+              (bundle.schema_version as number) < 1 || typeof bundle.result_payload !== "string" ||
+              bundle.result_payload.length === 0 || typeof bundle.content_sha256 !== "string" ||
+              !HASH.test(bundle.content_sha256) || !timestamp(bundle.recorded_at) ||
+              !timestamp(bundle.created_at)) return { ok: false, error: "invalid_response" };
+          bundleIds.add(bundle.id);
+          const session = sessionById.get(bundle.session_id);
+          if (!session || !isCanonicalUuid(session.team_id) ||
+              !isCanonicalUuid(session.recorded_by_profile_id) ||
+              session.recorded_by_profile_id !== bundle.recorded_by_profile_id ||
+              !Number.isInteger(session.schema_version) || (session.schema_version as number) < 1 ||
+              typeof session.coordination_payload !== "string" || session.coordination_payload.length === 0 ||
+              typeof session.content_sha256 !== "string" || !HASH.test(session.content_sha256) ||
+              !timestamp(session.started_at) || !timestamp(session.completed_at) ||
+              Date.parse(session.completed_at) < Date.parse(session.started_at) ||
+              !timestamp(session.created_at)) return { ok: false, error: "invalid_response" };
+
+          const sessionParticipants = participants.filter((row) => row.session_id === bundle.session_id);
+          const participantIds: string[] = [];
+          const trainingAthleteIds: string[] = [];
+          for (const participant of sessionParticipants) {
+            if (!isCanonicalUuid(participant.profile_id) ||
+                (participant.participation !== "training-athlete" && participant.participation !== "supporting") ||
+                participantIds.includes(participant.profile_id)) return { ok: false, error: "invalid_response" };
+            participantIds.push(participant.profile_id);
+            if (participant.participation === "training-athlete") trainingAthleteIds.push(participant.profile_id);
+          }
+          const executionIds = executions
+            .filter((row) => row.session_id === bundle.session_id)
+            .map((row) => row.execution_id);
+          const bundleResultRows = results.filter((row) => row.bundle_id === bundle.id);
+          if (participantIds.length === 0 || executionIds.length === 0 || bundleResultRows.length !== 1 ||
+              executionIds.some((id) => !isCanonicalUuid(id)) || new Set(executionIds).size !== executionIds.length) {
+            return { ok: false, error: "invalid_response" };
+          }
+          const result = bundleResultRows[0];
+          if (!isCanonicalUuid(result.result_id) || result.athlete_profile_id !== bundle.athlete_profile_id ||
+              !isCanonicalUuid(result.execution_id) || !executionIds.includes(result.execution_id)) {
+            return { ok: false, error: "invalid_response" };
+          }
+          const note = noteByResultId.get(result.result_id);
+          if (note && (note.athlete_profile_id !== bundle.athlete_profile_id ||
+              typeof note.note !== "string" || note.note.trim().length === 0 ||
+              !timestamp(note.updated_at))) return { ok: false, error: "invalid_response" };
+
+          records.push({
+            session: {
+              sessionId: bundle.session_id,
+              teamId: session.team_id,
+              schemaVersion: session.schema_version as number,
+              coordinationPayload: session.coordination_payload,
+              startedAt: session.started_at,
+              completedAt: session.completed_at,
+              participantProfileIds: participantIds,
+              trainingAthleteProfileIds: trainingAthleteIds,
+              executionIds: executionIds as string[],
+              recordedByProfileId: session.recorded_by_profile_id,
+              contentSha256: session.content_sha256,
+              createdAt: session.created_at,
+            },
+            bundle: {
+              bundleId: bundle.id,
+              sessionId: bundle.session_id,
+              athleteProfileId: bundle.athlete_profile_id,
+              schemaVersion: bundle.schema_version as number,
+              resultPayload: bundle.result_payload,
+              recordedAt: bundle.recorded_at,
+              resultIds: [result.result_id],
+              executionIds: [result.execution_id],
+              recordedByProfileId: bundle.recorded_by_profile_id,
+              contentSha256: bundle.content_sha256,
+              createdAt: bundle.created_at,
+            },
+            privateNote: note ? {
+              resultId: result.result_id,
+              note: note.note as string,
+              updatedAt: note.updated_at as string,
+            } : null,
+          });
+        }
+
+        const visibleSessionIds = new Set(bundles.map((bundle) => bundle.session_id));
+        if (sessions.some((session) => !visibleSessionIds.has(session.id)) ||
+            participants.some((row) => !visibleSessionIds.has(row.session_id)) ||
+            executions.some((row) => !visibleSessionIds.has(row.session_id)) ||
+            results.some((row) => typeof row.bundle_id !== "string" || !bundleIds.has(row.bundle_id)) ||
+            notes.some((note) => !results.some((result) => result.result_id === note.result_id))) {
+          return { ok: false, error: "invalid_response" };
+        }
+        return { ok: true, value: records };
+      } catch {
+        return { ok: false, error: "unavailable" };
+      }
+    },
+
     async listActiveRecordingPermissions(teamId) {
       if (!isCanonicalUuid(teamId)) return { ok: false, error: "invalid_input" };
       try {

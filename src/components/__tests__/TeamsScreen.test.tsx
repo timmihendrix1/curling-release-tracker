@@ -72,6 +72,8 @@ describe("TeamsScreen — signed in", () => {
       teamBlockedCount: 0,
       teamSessions: [],
       activeTeamExerciseDraft: null,
+      teamExerciseResults: [],
+      teamExerciseResultReadStatus: "refreshed",
       teamEligibilitySnapshots: [{
         teamId,
         teamName: "The Curlers",
@@ -91,6 +93,8 @@ describe("TeamsScreen — signed in", () => {
       discardActiveTeamExerciseDraft: vi.fn(async () => true),
       refreshTeamExerciseEligibility,
       setMyTeamExerciseRecordingPermission,
+      refreshMyTeamExerciseResults: vi.fn(async () => true),
+      setMyTeamExercisePrivateNote: vi.fn(async () => "updated" as const),
     };
     render(
       <TeamsScreen

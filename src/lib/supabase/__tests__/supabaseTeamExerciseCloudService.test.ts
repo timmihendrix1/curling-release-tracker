@@ -9,11 +9,97 @@ const EXECUTION = "60000000-0000-4000-8000-000000000006";
 const RESULT = "70000000-0000-4000-8000-000000000007";
 const HASH = "a".repeat(64);
 
+function readClient(overrides: Record<string, unknown[]> = {}) {
+  const data: Record<string, unknown[]> = {
+    team_exercise_result_bundles: [{
+      id: RESULT, session_id: SESSION, athlete_profile_id: ATHLETE,
+      recorded_by_profile_id: RECORDER, schema_version: 1, result_payload: "{}",
+      content_sha256: HASH, recorded_at: "2026-08-28T10:30:00Z",
+      created_at: "2026-08-28T11:00:00Z",
+    }],
+    team_exercise_sessions: [{
+      id: SESSION, team_id: TEAM, recorded_by_profile_id: RECORDER,
+      schema_version: 1, coordination_payload: "{}", content_sha256: HASH,
+      started_at: "2026-08-28T10:00:00Z", completed_at: "2026-08-28T11:00:00Z",
+      created_at: "2026-08-28T11:00:00Z",
+    }],
+    team_exercise_session_participants: [
+      { session_id: SESSION, profile_id: ATHLETE, participation: "training-athlete" },
+      { session_id: SESSION, profile_id: RECORDER, participation: "supporting" },
+    ],
+    team_exercise_execution_refs: [{ session_id: SESSION, execution_id: EXECUTION }],
+    team_exercise_result_refs: [{
+      bundle_id: RESULT, result_id: RESULT, athlete_profile_id: ATHLETE,
+      execution_id: EXECUTION,
+    }],
+    team_exercise_private_notes: [{
+      result_id: RESULT, athlete_profile_id: ATHLETE, note: "Private",
+      updated_at: "2026-08-28T12:00:00Z",
+    }],
+    ...overrides,
+  };
+  const from = vi.fn((table: string) => ({
+    select: vi.fn(() => table === "team_exercise_result_bundles"
+      ? { order: vi.fn(async () => ({ data: data[table], error: null })) }
+      : Promise.resolve({ data: data[table], error: null })),
+  }));
+  return { from } as never;
+}
+
 function client(response: unknown) {
   return { rpc: vi.fn(async () => response) } as never;
 }
 
 describe("Supabase Team Exercise cloud boundary", () => {
+  it("reads and correlates only the RLS-visible athlete bundle, manifest, context and note", async () => {
+    const result = await createSupabaseTeamExerciseCloudService(readClient()).listMyResults();
+    expect(result).toEqual({ ok: true, value: [{
+      session: expect.objectContaining({
+        sessionId: SESSION,
+        participantProfileIds: [ATHLETE, RECORDER],
+        trainingAthleteProfileIds: [ATHLETE],
+        executionIds: [EXECUTION],
+      }),
+      bundle: expect.objectContaining({
+        bundleId: RESULT,
+        athleteProfileId: ATHLETE,
+        resultIds: [RESULT],
+        executionIds: [EXECUTION],
+      }),
+      privateNote: {
+        resultId: RESULT,
+        note: "Private",
+        updatedAt: "2026-08-28T12:00:00Z",
+      },
+    }] });
+  });
+
+  it("fails the whole read closed on orphan rows, duplicate notes or malformed manifests", async () => {
+    const orphan = await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_private_notes: [{
+        result_id: SESSION, athlete_profile_id: ATHLETE, note: "orphan",
+        updated_at: "2026-08-28T12:00:00Z",
+      }],
+    })).listMyResults();
+    expect(orphan).toEqual({ ok: false, error: "invalid_response" });
+
+    const duplicate = await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_private_notes: [
+        { result_id: RESULT, athlete_profile_id: ATHLETE, note: "one", updated_at: "2026-08-28T12:00:00Z" },
+        { result_id: RESULT, athlete_profile_id: ATHLETE, note: "two", updated_at: "2026-08-28T12:01:00Z" },
+      ],
+    })).listMyResults();
+    expect(duplicate).toEqual({ ok: false, error: "invalid_response" });
+
+    const badOwner = await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_result_refs: [{
+        bundle_id: RESULT, result_id: RESULT, athlete_profile_id: RECORDER,
+        execution_id: EXECUTION,
+      }],
+    })).listMyResults();
+    expect(badOwner).toEqual({ ok: false, error: "invalid_response" });
+  });
+
   it("reads the active Team-visible permission facts through the RLS table boundary", async () => {
     const is = vi.fn(async () => ({
       data: [{ athlete_profile_id: ATHLETE, granted_at: "2026-08-28T09:00:00Z" }],

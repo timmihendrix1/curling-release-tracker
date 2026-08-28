@@ -2,7 +2,8 @@
 
 **Status:** Accepted and implemented as Exercise Stage C2b (2026-08-28). ADR-0034-0036
 now add permission cache/UI, active-draft persistence and one-device capture. Athlete
-restore/read models, revisions, voiding and notifications remain later Stage C work.
+ADR-0037 now implements restore/read models; revisions, voiding and notifications remain
+later Stage C work.
 
 ## Context
 
@@ -75,7 +76,8 @@ this adapter into the existing Profile-scoped sync manager.
 - Completed Team capture now has a durable, reload-safe, account-isolated upload path,
   but no rink UI invokes capture yet.
 - The local outbox is a one-way recorder queue, not a generic bidirectional Team store.
-- Athlete-owned cloud restore/read models and private-note UI are not implemented here.
+- Athlete-owned cloud restore/read models and private-note UI are not implemented by
+  this upload stage; ADR-0037 now supplies them as a separate owned projection.
 - The existing Solo Session/Assessment restore, tombstone and sync semantics are
   unchanged.
 - Stage C revision history, voiding and notifications remain separate product and

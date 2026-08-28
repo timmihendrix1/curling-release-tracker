@@ -20,6 +20,7 @@ import { createSportingSyncStateRepository } from "../lib/cloudSporting/syncStat
 import {
   SportingCloudSyncManager,
   type SportingSyncSnapshot,
+  type TeamExercisePrivateNoteUpdateOutcome,
   type TeamExercisePermissionUpdateOutcome,
 } from "../lib/cloudSporting/syncManager";
 import { resolveCloudConfig } from "../lib/supabase/config";
@@ -43,6 +44,11 @@ export type SportingCloudSyncContextValue = SportingSyncSnapshot & {
     teamId: string,
     granted: boolean
   ): Promise<TeamExercisePermissionUpdateOutcome>;
+  refreshMyTeamExerciseResults(): Promise<boolean>;
+  setMyTeamExercisePrivateNote(
+    resultId: string,
+    note: string | null
+  ): Promise<TeamExercisePrivateNoteUpdateOutcome>;
 };
 const SportingCloudSyncContext = createContext<SportingCloudSyncContextValue | null>(null);
 let unscopedTestRepositories: SportingRepositories | null = null;
@@ -185,6 +191,9 @@ function ProfileScopedSportingPersistenceInstance({
           manager.refreshTeamExerciseEligibility(workspace, profileId),
         setMyTeamExerciseRecordingPermission: (teamId, granted) =>
           manager.setMyTeamExerciseRecordingPermission(teamId, profileId, granted),
+        refreshMyTeamExerciseResults: () => manager.refreshMyTeamExerciseResults(),
+        setMyTeamExercisePrivateNote: (resultId, note) =>
+          manager.setMyTeamExercisePrivateNote(resultId, profileId, note),
       }}>
         <SportingPersistenceContext.Provider value={repositories}>
           {children}

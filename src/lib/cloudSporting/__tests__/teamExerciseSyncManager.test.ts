@@ -16,12 +16,15 @@ import {
 } from "../../exercises/teamExecution";
 import { SportingCloudSyncManager } from "../syncManager";
 import {
+  CLOUD_SPORTING_SYNC_STORAGE_KEY,
   createSportingSyncStateRepository,
   emptySportingSyncState,
 } from "../syncStateRepository";
 import type { CloudSportingService } from "../types";
 import type { TeamExerciseCloudService } from "../teamExerciseTypes";
 import { sha256Hex } from "../records";
+import { serializeCompletedTeamExercise } from "../teamExerciseRecords";
+import type { TeamExerciseCloudReadRecord } from "../teamExerciseTypes";
 import type { TeamWorkspace } from "../../team/teamService";
 
 const PROFILE_A = "10000000-0000-4000-8000-000000000001";
@@ -83,6 +86,34 @@ function completedTeamExecution() {
   return completed.value;
 }
 
+async function ownedReadRecord(
+  athleteProfileId = ATHLETE_A,
+  note: string | null = "My private note"
+): Promise<TeamExerciseCloudReadRecord> {
+  const execution = completedTeamExecution();
+  const upload = serializeCompletedTeamExercise(execution)!;
+  const bundle = upload.bundles.find((candidate) => candidate.athleteProfileId === athleteProfileId)!;
+  return {
+    session: {
+      ...upload.session,
+      recordedByProfileId: PROFILE_A,
+      contentSha256: (await sha256Hex(upload.session.coordinationPayload))!,
+      createdAt: "2026-08-28T11:01:00Z",
+    },
+    bundle: {
+      ...bundle,
+      recordedByProfileId: PROFILE_A,
+      contentSha256: (await sha256Hex(bundle.resultPayload))!,
+      createdAt: "2026-08-28T11:01:01Z",
+    },
+    privateNote: note === null ? null : {
+      resultId: bundle.resultIds[0],
+      note,
+      updatedAt: "2026-08-28T12:00:00Z",
+    },
+  };
+}
+
 function personalService(): CloudSportingService {
   return {
     restore: vi.fn(async () => ({ ok: true as const, value: [] })),
@@ -93,6 +124,7 @@ function personalService(): CloudSportingService {
 
 function teamService(overrides: Partial<TeamExerciseCloudService> = {}): TeamExerciseCloudService {
   return {
+    listMyResults: vi.fn(async () => ({ ok: true, value: [] })),
     listActiveRecordingPermissions: vi.fn(async () => ({ ok: true, value: [] })),
     putSession: vi.fn(async (record) => ({ ok: true, value: {
       outcome: "inserted", contentSha256: (await sha256Hex(record.coordinationPayload))!, recordedByProfileId: PROFILE_A,
@@ -163,6 +195,156 @@ function workspace(): TeamWorkspace {
 beforeEach(() => localStorage.clear());
 
 describe("Team Exercise entries in the Profile-scoped sporting outbox", () => {
+  it("restores athlete-owned Team results into the Profile cache and keeps them offline", async () => {
+    const adapter = createLocalStorageAdapter();
+    const record = await ownedReadRecord();
+    const first = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+    }), adapter);
+    await first.manager.initialize();
+    expect(first.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "refreshed",
+      teamExerciseResults: [{ athleteProfileId: ATHLETE_A, privateNote: { note: "My private note" } }],
+    });
+
+    const reloaded = harness(ATHLETE_A, () => false, teamService(), adapter);
+    await reloaded.manager.initialize();
+    expect(reloaded.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "cached",
+      teamExerciseResults: [{ athleteProfileId: ATHLETE_A }],
+    });
+  });
+
+  it("retains a verified cache on an unavailable refresh and rejects corrupt cloud replacement", async () => {
+    const adapter = createLocalStorageAdapter();
+    const record = await ownedReadRecord();
+    const first = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+    }), adapter);
+    await first.manager.initialize();
+
+    const unavailable = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: false as const, error: "unavailable" as const })),
+    }), adapter);
+    await unavailable.manager.initialize();
+    expect(unavailable.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "cached",
+      teamExerciseResults: [{ athleteProfileId: ATHLETE_A }],
+    });
+
+    const corrupt = { ...record, bundle: { ...record.bundle, contentSha256: "f".repeat(64) } };
+    const invalid = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [corrupt] })),
+    }), adapter);
+    await invalid.manager.initialize();
+    expect(invalid.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "issue",
+      teamExerciseResults: [{ athleteProfileId: ATHLETE_A }],
+    });
+  });
+
+  it("fails closed if cached athlete-owned results cross into another mounted Profile", async () => {
+    const base = createLocalStorageAdapter();
+    const record = await ownedReadRecord();
+    const first = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+    }), base);
+    await first.manager.initialize();
+    const profileAState = await createProfileScopedSportingStorageAdapter(ATHLETE_A, base)
+      .get(CLOUD_SPORTING_SYNC_STORAGE_KEY);
+    const crossedAdapter: StorageAdapter = {
+      get: (key) => key.endsWith(CLOUD_SPORTING_SYNC_STORAGE_KEY)
+        ? Promise.resolve(profileAState)
+        : base.get(key),
+      set: base.set,
+    };
+    const second = harness(ATHLETE_B, () => false, teamService(), crossedAdapter);
+    await second.manager.initialize();
+    expect(second.manager.getSnapshot()).toMatchObject({
+      truth: "sync_issue",
+      teamExerciseResultReadStatus: "issue",
+      teamExerciseResults: [],
+    });
+  });
+
+  it("updates and clears only the authenticated athlete's private note after cloud acknowledgement", async () => {
+    const record = await ownedReadRecord(ATHLETE_A, null);
+    const setPrivateNote = vi.fn(async (_resultId: string, note: string | null) => ({
+      ok: true as const,
+      value: {
+        outcome: note === null ? "cleared" as const : "created" as const,
+        updatedAt: "2026-08-28T13:00:00Z",
+      },
+    }));
+    const h = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+      setPrivateNote,
+    }));
+    await h.manager.initialize();
+    const resultId = h.manager.getSnapshot().teamExerciseResults[0].result.id;
+    expect(await h.manager.setMyTeamExercisePrivateNote(resultId, ATHLETE_A, "Observed balance"))
+      .toBe("updated");
+    expect(h.manager.getSnapshot().teamExerciseResults[0].privateNote?.note).toBe("Observed balance");
+    expect(await h.manager.setMyTeamExercisePrivateNote(resultId, ATHLETE_A, "   "))
+      .toBe("updated");
+    expect(h.manager.getSnapshot().teamExerciseResults[0].privateNote).toBeNull();
+    expect(setPrivateNote).toHaveBeenNthCalledWith(1, resultId, "Observed balance");
+    expect(setPrivateNote).toHaveBeenNthCalledWith(2, resultId, null);
+    expect(await h.manager.setMyTeamExercisePrivateNote(resultId, PROFILE_B, "intrusion"))
+      .toBe("failed");
+    expect(setPrivateNote).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports cloud note success separately when the Profile cache cannot be updated", async () => {
+    const base = createLocalStorageAdapter();
+    let refuseWrites = false;
+    const adapter: StorageAdapter = {
+      get: base.get,
+      set: (key, value) => refuseWrites
+        ? Promise.resolve({ ok: false, error: { kind: "unknown" as const, message: "refused" } })
+        : base.set(key, value),
+    };
+    const record = await ownedReadRecord(ATHLETE_A, null);
+    const remote = teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+      setPrivateNote: vi.fn(async () => ({ ok: true as const, value: {
+        outcome: "created" as const,
+        updatedAt: "2026-08-28T13:00:00Z",
+      } })),
+    });
+    const h = harness(ATHLETE_A, () => true, remote, adapter);
+    await h.manager.initialize();
+    refuseWrites = true;
+    expect(await h.manager.setMyTeamExercisePrivateNote(
+      h.manager.getSnapshot().teamExerciseResults[0].result.id,
+      ATHLETE_A,
+      "Cloud accepted this"
+    )).toBe("updated_cache_issue");
+    expect(h.manager.getSnapshot()).toMatchObject({
+      truth: "sync_issue",
+      teamExerciseResults: [{ privateNote: { note: "Cloud accepted this" } }],
+    });
+  });
+
+  it("rejects a private-note acknowledgement whose outcome contradicts the request", async () => {
+    const record = await ownedReadRecord(ATHLETE_A, null);
+    const setPrivateNote = vi.fn(async () => ({ ok: true as const, value: {
+      outcome: "cleared" as const,
+      updatedAt: "2026-08-28T13:00:00Z",
+    } }));
+    const h = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+      setPrivateNote,
+    }));
+    await h.manager.initialize();
+    expect(await h.manager.setMyTeamExercisePrivateNote(
+      h.manager.getSnapshot().teamExerciseResults[0].result.id,
+      ATHLETE_A,
+      "Not actually saved"
+    )).toBe("failed");
+    expect(h.manager.getSnapshot().teamExerciseResults[0].privateNote).toBeNull();
+  });
+
   it("persists and restores exactly one active Team draft inside the recorder Profile", async () => {
     const first = harness(PROFILE_A, () => false, teamService());
     await first.manager.initialize();

@@ -1426,7 +1426,7 @@ retained with the result.
 
 ## Stage C — Team execution on one device
 
-**Implementation status (2026-08-28): Stages C1-C3b are implemented; Stage C is not
+**Implementation status (2026-08-28): Stages C1-C3c are implemented; Stage C is not
 complete.** ADR-0031 adds the standalone Team aggregate: confirmed Profile
 participants, several athlete-owned result slots, the authenticated active-recorder
 snapshot, all five approved simple rotation configurations, actual role-assignment
@@ -1450,8 +1450,11 @@ to schema 4 with one Profile-bound active Team draft and atomically replaces its
 completion with the immutable Session/bundle outbox. ADR-0036 adds cache-bounded Team
 setup and durable one-device Technique/Shotmaking capture with actual role changes,
 per-athlete results, optional manual half-step Rotation Count and honest completion sync
-truth. Team result/private-note read UI, revisions, voiding and notifications remain
-unimplemented.
+truth. ADR-0037 restores the authenticated athlete's accepted bundle and shared context
+through the existing RLS boundary, verifies payload hashes/manifests, caches only the
+strict Profile-owned projection for offline read, and exposes factual result detail, raw
+export and own private-note save/clear in Analyze. Revisions, voiding and participant
+notifications remain unimplemented.
 
 - select several training athletes and supporting participants;
 - enforce the athlete's explicit Team recording permission;
@@ -1474,10 +1477,10 @@ unimplemented.
 - prove that Team coordination does not transfer data ownership.
 
 The server authority and client persistence/upload portions have real database and
-application-service verification. Permission control, bounded offline Team capture and
-honest completion sync receipts are exposed in UI by C2c/C3b. The remaining stage must
-expose athlete-owned result/private-note reads and then add the active/post-completion
-revision, voiding and notification workflow.
+application-service verification. Permission control, bounded offline Team capture,
+honest completion sync receipts and athlete-owned restore/private notes are exposed in
+UI by C2c/C3b/C3c. The remaining stage must add the active/post-completion revision,
+voiding and notification workflow.
 TypeScript mocks alone remain insufficient evidence for any new cloud-authority change.
 
 Independent review must additionally verify that completion prevents silent overwrite,

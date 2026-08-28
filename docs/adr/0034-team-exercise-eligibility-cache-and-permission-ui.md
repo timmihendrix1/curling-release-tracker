@@ -2,8 +2,8 @@
 
 **Status:** Accepted and implemented as Exercise Stage C2c (2026-08-28). ADR-0035 adds
 the Profile-scoped active Team draft and ADR-0036 uses this cache for setup/capture;
-athlete result/private-note reads, revisions, voiding and notifications remain later
-Stage C work.
+ADR-0037 now implements athlete result/private-note reads. Revisions, voiding and
+notifications remain later Stage C work.
 
 ## Context
 

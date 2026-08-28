@@ -137,7 +137,8 @@ multi-session observations, not assertions executed by pgTAP.
 - This stage deliberately does not add a second browser queue. **Since implemented:**
   ADR-0033 extends ADR-0027's existing Profile-scoped durable outbox with envelope and
   bundle entries, reload/account-switch isolation and retry receipts.
-- No Team Exercise start/read UI or athlete restore model,
-  Measured Team runner integration, revision/void workflow or participant notification
-  exists yet. C2a plus C2b are not athlete-usable or release-ready.
+- This stage itself added no Team Exercise start/read UI or athlete restore model.
+  Since implemented, ADR-0036 adds setup/capture and ADR-0037 adds athlete-owned
+  restore/read. Measured Team runner integration, revision/void workflow and participant
+  notifications remain outside C2a.
 - The accepted source-diagram rights gate is unaffected.
