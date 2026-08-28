@@ -188,6 +188,14 @@ export default function SettingsScreen({
             device and synced to your private cloud account when online. In-progress
             training and Assessment drafts stay on this device.
           </p>
+          <a
+            href="/privacy"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-2 inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+          >
+            Read the Privacy Notice
+          </a>
         </div>
       </div>
 

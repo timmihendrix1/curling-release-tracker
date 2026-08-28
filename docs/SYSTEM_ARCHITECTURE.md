@@ -2611,7 +2611,8 @@ block returns a named bundle outcome without rolling back accepted bundles. Part
 alone grants no historical read, and the recorder cannot use the upload boundary to read
 or write an athlete's private note. `supabase/tests/team_exercise_cloud.test.sql` has been
 executed against real local Postgres and passes 68/68. C4a's separate post-completion
-suite passes 48/48 after all sixteen migrations are applied from scratch.
+suite passes 48/48 after all seventeen migrations are applied from scratch. The seventeenth
+is ADR-0041's documentation-only table-comment update; it publishes no Legal row.
 
 ADR-0033 connects this boundary without inventing a second sync engine:
 
@@ -3264,6 +3265,16 @@ a whole; and **a later document change never automatically revokes a completed P
 re-acceptance** — that policy is deliberately undecided. **No Marketing Consent is collected in B0.2,
 and absence never means consent.**
 
+**First Privacy Notice.** ADR-0041 adds the first real closed-beta Privacy Notice without
+weakening the evidence boundary above. The immutable page is
+`src/app/legal/privacy/2026-08-28/page.tsx`; `/privacy` is only the human-friendly pointer to
+the current in-repository version. Legal metadata must point to the absolute HTTPS URL of
+the immutable dated page, never the moving alias. Publication is not a schema migration:
+after deploying and reviewing the page, an owner explicitly runs the fail-if-already-active
+snippet in `supabase/snippets/publish_privacy_notice_2026_08_28.sql`. Local E2E and database
+tests retain their isolated `example.invalid` fixtures. Privacy acknowledgement remains
+informational acknowledgement, not Marketing Consent or another inferred consent.
+
 **Local records are trust hints, not a security boundary.** A person able to alter browser storage can
 forge a trusted-device record, a barrier, an attempt or a resolution. B0.3 ensures the mounted sporting
 workspace is the namespace named by that local Profile record, rather than one shared workspace; it
@@ -3451,7 +3462,7 @@ local component state.
 | `FutureCapabilitiesSection.tsx` | Groups Schedule/Coach/Team into one shared, dashed-border "Coming next" container (rows stack on mobile, columns at `sm`+) instead of three separate full-width cards |
 | `FutureCapabilityItem.tsx` | One reusable, visually secondary "Coming soon" row/column (used for Schedule, Coach, Team) — never interactive, renders no border/background of its own |
 | `DeviceStatusCard.tsx` | Honest current device state ("Manual Timing") |
-| `SettingsScreen.tsx` | App-wide Data Management (Export History CSV / Clear History, moved here from the old History view) and Data & Privacy — session-specific settings stay in Train |
+| `SettingsScreen.tsx` | App-wide Data Management (Export History CSV / Clear History, moved here from the old History view) and Data & Privacy, including the public current-Privacy-Notice link — session-specific settings stay in Train |
 | `AssessScreen.tsx` | Phase B's Assess-domain orchestrator — the Assess-domain counterpart to `TrackerApp`'s Train branch; owns pre-run UI state (threshold draft, setup confirmation, guided-introduction step) and calls `src/lib/assessment/*` directly, never duplicating its logic |
 | `AssessmentLanding.tsx` | Assess entry point — Release Time Core Assessment v1 metadata card, and a prominent "Resume Assessment" state when an active run exists (never silently offering a fresh start alongside it) |
 | `AssessmentOverview.tsx` | Compact protocol overview with progressive disclosure — purpose, what is/isn't measured, why this structure, threshold selection, setup confirmation |
@@ -3506,6 +3517,7 @@ local component state.
 | `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |
 | `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |
 | `identity/IdentityPendingTeamIntent.tsx` | Replays one durable invitation/Admin-Request intent only after gate readiness |
+| `legal/PrivacyNotice.tsx` | The immutable first closed-beta Privacy Notice content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/privacy` entry point (ADR-0041) |
 
 ### Domain and logic modules (`src/lib/`)
 

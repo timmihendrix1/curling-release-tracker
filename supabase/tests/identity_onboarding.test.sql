@@ -41,10 +41,9 @@
 -- a dirty database can never produce a vacuous pass here.
 --
 -- Legal fixtures are harmless, fictional metadata under `example.invalid` (a reserved
--- non-resolving TLD). **No real legal document, no real legal copy and no production
--- URL is authored here or in any migration** — ADR-0025 Decision 17. A product
--- migration seeds no legal row at all; supplying the approved closed-test rows is an
--- operational step, and it is still outstanding (see README.md).
+-- non-resolving TLD). No real Legal row is authored here or in any migration. ADR-0041
+-- later adds the real Privacy Notice page and an owner-operated publication snippet;
+-- neither is part of this isolated database suite.
 --
 -- What this file CANNOT prove: pgTAP runs single-threaded inside one transaction and
 -- cannot make one backend block on a lock another backend holds. The three locking
@@ -1701,7 +1700,7 @@ select is(
     where document_url !~ '^https://example\.invalid/'
   ),
   0,
-  'every legal fixture in this suite is a fictional example.invalid URL — no real legal URL is authored anywhere'
+  'every legal row in this isolated suite is a fictional example.invalid fixture'
 );
 
 select * from finish();
@@ -1733,7 +1732,7 @@ rollback;
 --   set role authenticated;
 -- and each owner-operated session runs as the migration-owning role with no claims set.
 -- Legal fixtures here are the same fictional `example.invalid` metadata the suite above
--- uses; no real legal document, copy or production URL is involved.
+-- uses; ADR-0041's real page and operational publication are not involved.
 --
 -- Procedure A — concurrent ensure_my_profile for one account:
 --   Fixture: `auth.users` row a0000000-0000-0000-0000-00000000000a, no Profile.

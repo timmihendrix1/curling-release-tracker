@@ -477,8 +477,10 @@ legitimate device.
   the correct document kind and the correct action.
 - **A later document change never automatically revokes a completed Profile or forces re-acceptance.**
   That policy is explicitly undecided and is not settled here.
-- **No legal text, URL, version identifier, controller detail, retention claim, subprocessor or
-  transfer claim is authored in this repository.**
+- **Original B0.2 boundary, superseded in part by ADR-0041:** B0.2 authored no legal text,
+  real URL, version identifier, controller detail, retention claim, subprocessor or
+  transfer claim. ADR-0041 later adds the first repository-versioned Privacy Notice and
+  its owner-operated publication snippet without changing the evidence rules above.
 
 **Genuine absence and an invalid response are two different things, and are never conflated.** Exactly
 one of these applies to any read of the current legal documents:

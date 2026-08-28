@@ -10,9 +10,9 @@
 // document failing it invalidates the WHOLE response (ADR-0025 §17) rather than
 // becoming "absent".
 //
-// No legal text, real document URL, controller detail or version identifier is
-// authored anywhere in this repository; fixtures use harmless
-// `https://example.invalid/...` values.
+// This parser remains content-agnostic. ADR-0041's real Privacy Notice URL is
+// supplied through the same server-authoritative row as any later Legal version;
+// unit-test fixtures continue to use harmless `https://example.invalid/...` values.
 
 /**
  * A URL that has passed every check in `parseSafeLegalUrl`. The brand is

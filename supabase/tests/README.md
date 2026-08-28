@@ -1,6 +1,6 @@
 # Database tests
 
-This directory holds five pgTAP suites over the sixteen migrations in
+This directory holds five pgTAP suites over the seventeen migrations in
 `supabase/migrations/`. All five have been executed against a real local Supabase
 Postgres applied from scratch, and all five are green.
 
@@ -15,7 +15,7 @@ Postgres applied from scratch, and all five are green.
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all sixteen migrations
+supabase db reset --local --no-seed --yes            # applies all seventeen migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
 supabase db reset --local --no-seed --yes
@@ -58,7 +58,7 @@ conflicts, terminal whole-result void, original/current recipient intersection,
 actor/former/non-participant exclusion, entitlement re-evaluation, metadata-only
 payloads, notification/audit cardinality, RLS, direct-write and anonymous denial,
 append-only trigger defence, grants and pinned function search paths. The existing
-68-assertion Team Exercise cloud suite remains green after all sixteen migrations.
+68-assertion Team Exercise cloud suite remains green after all seventeen migrations.
 
 ---
 
@@ -250,18 +250,18 @@ surface, which this stage does not implement.
 ## What this stage does and does not establish
 
 **Established:** the SQL foundation and the mounted B0.2 application integration are
-implemented. All sixteen migrations apply from scratch; `complete_personal_onboarding`
+implemented. All seventeen migrations apply from scratch; `complete_personal_onboarding`
 is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
 
-- **The approved closed-test legal rows are still required operationally.** No migration
-  seeds a legal document, and every fixture in the suite is fictional metadata under
-  `example.invalid`. **No real legal document, legal copy, production URL, version
-  identifier, controller detail, retention claim, subprocessor or transfer claim is
-  authored anywhere in this repository.** Real testing needs those rows supplied
-  operationally first; `supabase/seed.sql` contains explicitly local E2E-only fixtures
-  and is not a production Legal version.
+- **Approved Legal rows are still required operationally.** No migration seeds a legal
+  document, and every fixture in the suite is fictional metadata under
+  `example.invalid`. ADR-0041 now authors the first real Privacy Notice page and a
+  fail-if-active owner-operated publication snippet. The snippet must be run only after
+  the deployed page is reviewed; it does not provide the separately required Terms of
+  Service. `supabase/seed.sql` remains local E2E-only and is not a production Legal
+  version.
 - **`bootstrap_profile` is retired from browser use.** Migration
   `20260827120000_retire_team_profile_bootstrap.sql` revokes it from `public`, `anon`
   and `authenticated`; the Team suite proves the authenticated denial.
@@ -286,7 +286,7 @@ through canonical personal onboarding and proves that the forward retirement mig
 denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all sixteen migrations
+supabase db reset --local --no-seed --yes            # applies all seventeen migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 

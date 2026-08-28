@@ -59,6 +59,10 @@ describe("SettingsScreen", () => {
         "Completed training sessions and Assessment results are saved on this device and synced to your private cloud account when online. In-progress training and Assessment drafts stay on this device."
       )
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Read the Privacy Notice" })).toHaveAttribute(
+      "href",
+      "/privacy"
+    );
   });
 
   it("explains that clearing history also deletes its cloud records", () => {

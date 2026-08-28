@@ -21,7 +21,9 @@
 // applies the approved per-kind fail-closed rule (`legal_unavailable` for a
 // missing Privacy Notice, `onboarding_blocked_legal` for missing Terms).
 //
-// No legal text, real URL or version identifier is authored in this repository.
+// This parser remains content-agnostic. ADR-0041 authors a public Privacy Notice
+// page and an operational metadata snippet elsewhere; no Legal content or canonical
+// URL is hard-coded into this untrusted-response boundary.
 
 import { parseSafeLegalUrl, type SafeHttpsUrl } from "./safeLegalUrl";
 import {
