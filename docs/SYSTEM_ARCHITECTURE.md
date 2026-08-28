@@ -2447,14 +2447,16 @@ a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface be
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
 
-## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C3d implemented)
+## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C4c implemented)
 
 `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
 domain source; this section is an architecture snapshot of Stage A, Solo Stages B1-B3,
 Team domain Stage C1, server-authority Stage C2a, client persistence/upload Stage C2b,
 offline eligibility/permission UI Stage C2c, active-draft persistence Stage C3a and
-one-device setup/capture UI Stage C3b, athlete-owned restore/private-note UI Stage C3c
-and active-attempt correction Stage C3d. Generalised Training Plans and content
+one-device setup/capture UI Stage C3b, athlete-owned restore/private-note UI Stage C3c,
+active-attempt correction Stage C3d, post-completion server authority Stage C4a,
+strict client projection/cache Stage C4b and athlete mutation/inbox UI Stage C4c.
+Generalised Training Plans and content
 expansion are **not implemented** — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library and multi-athlete execution".
 
@@ -2481,10 +2483,15 @@ expansion are **not implemented** — see
   results, manual half-step Rotation Count and honest completion sync truth. ADR-0037
   adds athlete-owned Team result restore, strict verified offline caching, factual
   Analyze detail/raw export and own private-note save/clear. ADR-0038 adds durable,
-  append-only active-attempt corrections and recorded-by-mistake annulment.
-- **Not implemented (Planned):** post-completion revisions, ordinary voiding and
-  participant notifications;
-  Exercise Training Plan steps,
+  append-only active-attempt corrections and recorded-by-mistake annulment. ADR-0039
+  adds executed Postgres/RLS/RPC authority for athlete-only post-completion correction,
+  terminal whole-result void and idempotent metadata notifications. C4b extends the
+  provider-neutral service, validates complete owner-only revision chains and advances
+  the existing Profile cache to schema 6 with original/current result and void state.
+  C4c adds online, acknowledgement-first athlete correction and terminal void controls,
+  visible append-only revision history and metadata-only result-change cards in the
+  existing unread Team inbox.
+- **Not implemented (Planned):** Exercise Training Plan steps,
   Exercise authoring and Exercise analytics.
 - There is no Exercise `localStorage` key, repository or cloud record kind. Optional
   `Session.exerciseExecutions`, `activeExerciseExecutionId` and the measured-entry
@@ -2563,7 +2570,7 @@ of that aggregate; no runtime dependency cycle is introduced.
   executions. Measured Release Time stays on the existing Block/Shot path; only its exact
   catalog Version snapshot is accepted as optional Session provenance.
 
-### Team cloud authority, upload, offline state, rink UI and owned restore (`supabase/`, `src/lib/cloudSporting/`, Stages C2a-C3d)
+### Team cloud authority, upload, offline state, rink UI and owned restore (`supabase/`, `src/lib/cloudSporting/`, Stages C2a-C4c)
 
 ADR-0032 adds three forward-only migrations, deliberately separate from the
 Profile-owned `sporting_records` table:
@@ -2578,12 +2585,24 @@ Profile-owned `sporting_records` table:
   mutations, server-derived-recorder envelope upload, independent per-athlete bundle
   upload, exact retry/conflict outcomes and concrete-Session approval.
 
+ADR-0039 adds three forward-only C4a migrations:
+
+- `20260828120300_team_exercise_result_revisions_schema.sql` — append-only athlete-owned
+  revisions plus a stable source-event key and result-change kind on the existing
+  notification inbox;
+- `20260828120400_team_exercise_result_revisions_rls.sql` — owner-only revision SELECT
+  and no browser table mutation; and
+- `20260828120500_team_exercise_result_revisions_functions.sql` — server-derived actor,
+  stable-id/base-revision conflict control, terminal voiding and atomic recipient-filtered
+  notification/audit emission.
+
 The shared coordination payload and athlete payloads are lossless TEXT with server-owned
 SHA-256 digests; UUID-only authority manifests are relational. One athlete-specific
 block returns a named bundle outcome without rolling back accepted bundles. Participation
 alone grants no historical read, and the recorder cannot use the upload boundary to read
 or write an athlete's private note. `supabase/tests/team_exercise_cloud.test.sql` has been
-executed against real local Postgres and passes 68/68.
+executed against real local Postgres and passes 68/68. C4a's separate post-completion
+suite passes 48/48 after all sixteen migrations are applied from scratch.
 
 ADR-0033 connects this boundary without inventing a second sync engine:
 
@@ -2593,11 +2612,13 @@ ADR-0033 connects this boundary without inventing a second sync engine:
   them into only the before/after athlete bundles; schema 1 remains readable;
 - `teamExerciseTypes.ts` is the provider-neutral RPC/upload contract and
   `supabaseTeamExerciseCloudService.ts` maps only named, non-leaking outcomes;
-- `syncStateRepository.ts` schema 5 keeps legacy personal `entries`, C2b `teamEntries`
+- `syncStateRepository.ts` schema 6 keeps legacy personal `entries`, C2b `teamEntries`
   and C2c `teamEligibilitySnapshots` under the same immutable Profile namespace, then
   adds at most one strictly validated in-progress `activeTeamExerciseDraft` and C3c's
-  strictly validated `teamExerciseResults`; schemas 1-3 migrate without a draft and
-  schemas 1-4 migrate with an empty result cache; and
+  strictly validated `teamExerciseResults`. C4b retains immutable original plus current
+  result, contiguous post-completion history and terminal void state; schema 5 migrates
+  without inventing a revision, schemas 1-3 migrate without a draft and schemas 1-4
+  migrate with an empty result cache; and
 - `SportingCloudSyncManager` durably writes the full package before upload, sends the
   envelope before bundles, verifies exact hashes, retains unavailable/blocked entries,
   clears acknowledged opaque payloads while retaining receipts, and exposes per-Session
@@ -2623,8 +2644,13 @@ cache. `ExerciseTeamResultsScreen` under Analyze shows factual owned results wit
 rendering Profile identifiers or current Team names, exports only the owned projection,
 and saves/clears the own private note online only after RPC acknowledgement. C3d adds a
 durable correction editor for any active stone, audited recorded-by-mistake annulment,
-and affected-athlete-only correction history in Analyze. Post-completion revisions,
-ordinary voiding and participant notifications remain later Stage C work.
+and affected-athlete-only correction history in Analyze. C4a supplies the server
+authority for post-completion revisions, terminal whole-result void and participant
+notification emission. C4b adds named mutation RPC mappings and fail-closed revision
+reads into the existing offline cache. C4c exposes only refreshed owner results for
+online correction/void, retains stable request identity across an uncertain exact retry,
+shows current-versus-original audit history without raw Profile identifiers or Team
+names and renders strictly validated metadata-only cards in the existing Team inbox.
 - `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic Solo rink screen. It branches on
   focus/guidance semantics, never catalog identity: observation-only Technique, actual
   handle plus 0-4/exclusion Shotmaking capture, private note, lifecycle actions and
@@ -3432,7 +3458,8 @@ local component state.
 | `ExerciseSoloExecutionScreen.tsx` | Generic Solo Technique/Shotmaking rink screen: snapshotted instructions and actual context, private Athlete Note, 0-4/exclusion Shotmaking attempt capture, factual live/final result and lifecycle/session actions; no catalog-id conditional |
 | `ExerciseTeamSetupScreen.tsx` | Cache-bounded Team setup: authenticated recorder, present participants, eligible training athletes, actual initial roles/sweeping, variation and five rotation choices; no planned volume or guessed roster |
 | `ExerciseTeamExecutionScreen.tsx` | Durable one-device Team Technique/Shotmaking capture: actual lineup and role transitions, per-athlete 0-4/exclusion attempts, optional manual half-step Rotation Count, live factual results, exact completion/sync truth and confirmed local-draft discard |
-| `ExerciseTeamResultsScreen.tsx` | Analyze → Exercises athlete-owned Team history: factual result/context detail, verified cached/unavailable states, own raw JSON export and acknowledgement-first online private-note save/clear; no sibling result, note, name or identifier rendering |
+| `ExerciseTeamResultsScreen.tsx` | Analyze → Exercises athlete-owned Team history: factual current/preserved result, post-completion audit, verified cached/unavailable states, own raw JSON export, acknowledgement-first private notes and refreshed-online-only correction/terminal void; no sibling result, note, Team name or raw identifier rendering |
+| `ExercisePostCompletionCorrectionEditor.tsx` | Stone-specific own-result correction for actual handle, evaluation/exclusion, supported manual Measurements and effective role/Sweeper context; immutable athlete attribution, bounded reason and stable exact retry after uncertain acknowledgement |
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
 | `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
 | `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |
@@ -3501,11 +3528,11 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 
 ### Exercise Library domain modules (`src/lib/exercises/`)
 
-Stage A content, Solo Stage B execution and Team Stages C1-C3d. Solo Technique and
+Stage A content, Solo Stage B execution and Team Stages C1-C4c. Solo Technique and
 Shotmaking executions are embedded in `Session`, so `src/types/index.ts` has one
 type-only reference back to this folder without a runtime cycle. The standalone C1 Team
 aggregate is deliberately rejected by that Solo persistence boundary. See "Exercise
-Library" above and ADR-0023/0028-0038.
+Library" above and ADR-0023/0028-0039.
 
 | Module | Responsibility |
 |---|---|

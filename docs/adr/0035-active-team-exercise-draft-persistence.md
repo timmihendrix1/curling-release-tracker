@@ -3,7 +3,8 @@
 **Status:** Accepted and implemented as Exercise Stage C3a (2026-08-28). ADR-0036 now
 uses this boundary for Team setup and one-device capture; ADR-0037 now implements
 result/private-note reads; ADR-0038 now persists active corrections through the same
-draft. Post-completion revisions, voiding and notifications remain later Stage C work.
+draft. ADR-0039 adds separate C4a post-completion server authority and C4b's strict
+client projection/cache; C4c now completes the athlete mutation/inbox UI.
 
 ## Context
 

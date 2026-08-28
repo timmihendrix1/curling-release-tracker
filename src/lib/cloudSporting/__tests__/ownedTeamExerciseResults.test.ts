@@ -12,6 +12,8 @@ import {
 } from "../../exercises/teamExecution";
 import { sha256Hex } from "../records";
 import {
+  createTeamExerciseResultCorrectionMutation,
+  createTeamExerciseResultVoidMutation,
   deserializeOwnedTeamExerciseResult,
   serializeCompletedTeamExercise,
   validateOwnedTeamExerciseResultRecord,
@@ -24,6 +26,8 @@ const TEAM = "20000000-0000-4000-8000-000000000002";
 const ATHLETE_A = "30000000-0000-4000-8000-000000000003";
 const ATHLETE_B = "40000000-0000-4000-8000-000000000004";
 const RECORDER = "50000000-0000-4000-8000-000000000005";
+const REVISION_1 = "80000000-0000-4000-8000-000000000001";
+const REVISION_2 = "80000000-0000-4000-8000-000000000002";
 
 function completedExecution(correction?: "move" | "annul") {
   let id = 10;
@@ -119,6 +123,7 @@ async function cloudRecord(athleteProfileId = ATHLETE_A): Promise<TeamExerciseCl
       note: "My own observation",
       updatedAt: "2026-08-28T12:00:00.000Z",
     },
+    revisions: [],
   };
 }
 
@@ -168,6 +173,155 @@ describe("athlete-owned Team Exercise read model", () => {
     const parsed = await deserializeOwnedTeamExerciseResult(legacy, ATHLETE_A);
     expect(parsed?.result.attempts).toHaveLength(1);
     expect(parsed?.activeAttemptCorrections).toEqual([]);
+  });
+
+  it("validates and applies an exact post-completion correction chain and terminal void", async () => {
+    const record = await cloudRecord();
+    const originalPayload = JSON.parse(record.bundle.resultPayload);
+    const correctedResult = structuredClone(originalPayload.result);
+    correctedResult.attempts[0].actualHandle = "out";
+    delete correctedResult.updatedAt;
+    const correctionPayload = JSON.stringify({ schemaVersion: 1, result: correctedResult });
+    record.revisions = [{
+      revisionId: REVISION_1,
+      resultId: record.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 1,
+      kind: "corrected",
+      schemaVersion: 1,
+      resultPayload: correctionPayload,
+      contentSha256: (await sha256Hex(correctionPayload))!,
+      changedFields: ["actualHandle"],
+      reason: "Corrected the handle observed on the stone",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:00:00.000Z",
+    }, {
+      revisionId: REVISION_2,
+      resultId: record.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 2,
+      kind: "voided",
+      schemaVersion: 1,
+      resultPayload: null,
+      contentSha256: null,
+      changedFields: ["result"],
+      reason: "This complete result must not count in analysis",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:30:00.000Z",
+    }];
+    const parsed = await deserializeOwnedTeamExerciseResult(record, ATHLETE_A);
+    expect(parsed).toMatchObject({
+      isVoided: true,
+      originalResult: { attempts: [{ actualHandle: "in" }] },
+      result: { attempts: [{ actualHandle: "out" }] },
+      postCompletionRevisions: [
+        { revisionNumber: 1, kind: "corrected", changedFields: ["actualHandle"] },
+        { revisionNumber: 2, kind: "voided", changedFields: ["result"] },
+      ],
+    });
+    expect(parsed?.result.updatedAt).toBe("2026-08-28T13:00:00.000Z");
+    expect(validateOwnedTeamExerciseResultRecord(parsed)).toEqual(parsed);
+  });
+
+  it("rejects revision gaps, foreign actors, hash drift and undeclared or immutable changes", async () => {
+    const base = await cloudRecord();
+    const originalPayload = JSON.parse(base.bundle.resultPayload);
+    const correctedResult = structuredClone(originalPayload.result);
+    correctedResult.attempts[0].actualHandle = "out";
+    delete correctedResult.updatedAt;
+    const payload = JSON.stringify({ schemaVersion: 1, result: correctedResult });
+    const revision: TeamExerciseCloudReadRecord["revisions"][number] = {
+      revisionId: REVISION_1,
+      resultId: base.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 1,
+      kind: "corrected" as const,
+      schemaVersion: 1,
+      resultPayload: payload,
+      contentSha256: (await sha256Hex(payload))!,
+      changedFields: ["actualHandle"],
+      reason: "Corrected the handle observed on the stone",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:00:00.000Z",
+    };
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base, revisions: [{ ...revision, revisionNumber: 2 }],
+    }, ATHLETE_A)).toBeNull();
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base, revisions: [{ ...revision, actorProfileId: ATHLETE_B }],
+    }, ATHLETE_A)).toBeNull();
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base, revisions: [{ ...revision, contentSha256: "f".repeat(64) }],
+    }, ATHLETE_A)).toBeNull();
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base, revisions: [{ ...revision, changedFields: ["evaluation"] }],
+    }, ATHLETE_A)).toBeNull();
+
+    const clientTimed = structuredClone(correctedResult);
+    clientTimed.updatedAt = "2099-01-01T00:00:00.000Z";
+    const clientTimedPayload = JSON.stringify({ schemaVersion: 1, result: clientTimed });
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base,
+      revisions: [{
+        ...revision,
+        resultPayload: clientTimedPayload,
+        contentSha256: (await sha256Hex(clientTimedPayload))!,
+      }],
+    }, ATHLETE_A)).toBeNull();
+
+    const reassigned = structuredClone(correctedResult);
+    reassigned.athleteProfileId = ATHLETE_B;
+    const reassignedPayload = JSON.stringify({ schemaVersion: 1, result: reassigned });
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...base,
+      revisions: [{
+        ...revision,
+        resultPayload: reassignedPayload,
+        contentSha256: (await sha256Hex(reassignedPayload))!,
+      }],
+    }, ATHLETE_A)).toBeNull();
+  });
+
+  it("builds only the bounded provider-neutral correction and void mutation shapes", async () => {
+    const parsed = (await deserializeOwnedTeamExerciseResult(await cloudRecord(), ATHLETE_A))!;
+    const replacement = structuredClone(parsed.result);
+    const attempt = replacement.attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing shotmaking fixture");
+    attempt.evaluation = { status: "scored", score: 1 };
+    const mutation = createTeamExerciseResultCorrectionMutation(
+      parsed,
+      replacement,
+      REVISION_1,
+      "  Corrected the observed scoring outcome  "
+    );
+    expect(mutation).toMatchObject({
+      revisionId: REVISION_1,
+      resultId: parsed.result.id,
+      baseRevisionNumber: 0,
+      schemaVersion: 1,
+      reason: "Corrected the observed scoring outcome",
+      changedFields: ["evaluation"],
+    });
+    const payload = JSON.parse(mutation!.resultPayload);
+    expect(payload).toEqual(expect.objectContaining({ schemaVersion: 1 }));
+    expect(payload.result.updatedAt).toBeUndefined();
+    expect(payload.result.privateNote).toBeUndefined();
+    expect(payload.result.attempts[0].recordedByProfileId).toBeUndefined();
+
+    const reassigned = structuredClone(replacement);
+    reassigned.athleteProfileId = ATHLETE_B;
+    expect(createTeamExerciseResultCorrectionMutation(
+      parsed, reassigned, REVISION_1, "Athlete attribution must never be rewritten"
+    )).toBeNull();
+    expect(createTeamExerciseResultVoidMutation(
+      parsed, REVISION_2, "  This complete result should not count  "
+    )).toEqual({
+      revisionId: REVISION_2,
+      resultId: parsed.result.id,
+      baseRevisionNumber: 0,
+      reason: "This complete result should not count",
+    });
+    expect(createTeamExerciseResultVoidMutation(parsed, REVISION_2, "too short")).toBeNull();
   });
 
   it("rejects a foreign owner, mismatched manifests, hash changes and payload note leakage", async () => {
@@ -240,7 +394,11 @@ describe("athlete-owned Team Exercise read model", () => {
   it("exports the athlete's raw result and own note without a sibling result collection", async () => {
     const parsed = (await deserializeOwnedTeamExerciseResult(await cloudRecord(), ATHLETE_A))!;
     const exported = JSON.parse(serializeOwnedTeamExerciseResultExport(parsed));
+    expect(exported.schemaVersion).toBe(3);
     expect(exported.athleteResult.athleteProfileId).toBe(ATHLETE_A);
+    expect(exported.originalAthleteResult).toEqual(exported.athleteResult);
+    expect(exported.postCompletionRevisions).toEqual([]);
+    expect(exported.isVoided).toBe(false);
     expect(exported.privateAthleteNote.note).toBe("My own observation");
     expect(exported.session.execution.athleteResults).toBeUndefined();
   });
@@ -274,6 +432,7 @@ describe("athlete-owned Team Exercise read model", () => {
         createdAt: record.bundle.createdAt,
       },
       privateNote: null,
+      revisions: [],
     };
     const parsed = await deserializeOwnedTeamExerciseResult(correctedRecord, ATHLETE_B);
     expect(parsed?.activeAttemptCorrections).toHaveLength(1);
@@ -312,6 +471,7 @@ describe("athlete-owned Team Exercise read model", () => {
         createdAt: "2026-08-28T11:01:01.000Z",
       },
       privateNote: null,
+      revisions: [],
     };
     const parsed = await deserializeOwnedTeamExerciseResult(record, ATHLETE_A);
     expect(parsed?.result.attempts).toHaveLength(1);

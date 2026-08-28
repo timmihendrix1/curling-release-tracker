@@ -11,6 +11,7 @@ import type {
   TeamInvitation,
 } from "../lib/team/types";
 import type { InvitationProposal, TeamService, TeamSummary, TeamWorkspace } from "../lib/team/teamService";
+import { isCanonicalUuid } from "../lib/uuid";
 import ConfirmModal from "./ConfirmModal";
 import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
 import {
@@ -30,11 +31,57 @@ type TeamsScreenProps = {
 type StatusMessage = { kind: "error" | "success"; text: string };
 
 const ASSIGNABLE_FUNCTIONS: DirectlyAssignableFunction[] = ["coach", "training_lead"];
+// The Identity boundary accepts at most 80 display-name characters. Keep the inbox
+// parser fail-closed without importing through that deliberately isolated module.
+const MAX_NOTIFICATION_ACTOR_DISPLAY_NAME_LENGTH = 80;
 
 function functionLabel(fn: TeamFunction): string {
   if (fn === "team_admin") return "Team Admin";
   if (fn === "coach") return "Coach";
   return "Training Lead";
+}
+
+type TeamExerciseResultChangeNotification = {
+  sessionId: string;
+  actorDisplayName: string;
+  changeKind: "corrected" | "voided";
+  changedFieldCount: number;
+  reason: string;
+};
+
+function teamExerciseResultChangeNotification(
+  notification: AccountNotification
+): TeamExerciseResultChangeNotification | null {
+  if (notification.kind !== "team_exercise_result_changed") return null;
+  const payload = notification.payload;
+  const actorDisplayName = payload.actorDisplayName;
+  const reason = payload.reason;
+  if (!isCanonicalUuid(payload.sessionId) || !isCanonicalUuid(payload.actorProfileId) ||
+      typeof actorDisplayName !== "string" || actorDisplayName.trim().length === 0 ||
+      actorDisplayName.length > MAX_NOTIFICATION_ACTOR_DISPLAY_NAME_LENGTH ||
+      (payload.changeKind !== "corrected" && payload.changeKind !== "voided") ||
+      !Number.isInteger(payload.changedFieldCount) || (payload.changedFieldCount as number) < 1 ||
+      (payload.changedFieldCount as number) > 4 || typeof reason !== "string" ||
+      reason !== reason.trim() || reason.length < 10 || reason.length > 500 ||
+      new TextEncoder().encode(reason).byteLength > 2_000 ||
+      !Number.isFinite(Date.parse(notification.createdAt))) return null;
+  return {
+    sessionId: payload.sessionId,
+    actorDisplayName: actorDisplayName.trim(),
+    changeKind: payload.changeKind,
+    changedFieldCount: payload.changedFieldCount as number,
+    reason,
+  };
+}
+
+function notificationTime(value: string): string {
+  return new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 const primaryButtonClassName =
@@ -918,6 +965,11 @@ export default function TeamsScreen({
     });
   }
 
+  const visibleNotifications = notifications.filter((notification) =>
+    notification.kind === "member_removed" ||
+      teamExerciseResultChangeNotification(notification) !== null
+  );
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/60 px-4 py-6">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
@@ -963,20 +1015,29 @@ export default function TeamsScreen({
             )}
 
             <>
-                {/* Only "member_removed" notifications render here — an "admin_request"
+                {/* Member-removal and metadata-only Team Exercise result-change
+                    notifications render here. An "admin_request"
                     notification is never a second actionable surface alongside "Pending
                     Admin Requests" below (docs/adr/0022 §Notification Convergence: one
                     actionable UI representation, not duplicated). Accepting/revoking a
                     request already resolves its notification server-side, so this list
                     never needs to special-case that kind at all. */}
-                {notifications.filter((n) => n.kind === "member_removed").length > 0 && (
+                {visibleNotifications.length > 0 && (
                   <div className="space-y-2">
                     <h3 className="text-sm font-semibold text-slate-700">Notifications</h3>
-                    {notifications
-                      .filter((n) => n.kind === "member_removed")
-                      .map((notification) => (
-                        <div key={notification.id} className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
-                          <p>You were removed from &quot;{String(notification.payload.teamName ?? "a team")}&quot;.</p>
+                    {visibleNotifications.map((notification) => {
+                      const exerciseChange = teamExerciseResultChangeNotification(notification);
+                      return (
+                        <div key={notification.id} className={`rounded-lg p-3 text-sm ${exerciseChange?.changeKind === "voided" ? "bg-red-50 text-red-900" : "bg-amber-50 text-amber-900"}`}>
+                          {notification.kind === "member_removed" ? (
+                            <p>You were removed from &quot;{String(notification.payload.teamName ?? "a team")}&quot;.</p>
+                          ) : exerciseChange ? (
+                            <>
+                              <p className="font-medium">{exerciseChange.actorDisplayName} {exerciseChange.changeKind === "voided" ? "voided" : "corrected"} their result from a shared Team Exercise session.</p>
+                              <p className="mt-1 text-xs">{notificationTime(notification.createdAt)} · Session {exerciseChange.sessionId.slice(0, 8)} · {exerciseChange.changedFieldCount} changed {exerciseChange.changedFieldCount === 1 ? "field" : "fields"}</p>
+                              <p className="mt-2"><span className="font-medium">Reason:</span> {exerciseChange.reason}</p>
+                            </>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => handleAcknowledgeNotification(notification.id)}
@@ -986,7 +1047,8 @@ export default function TeamsScreen({
                             Dismiss
                           </button>
                         </div>
-                      ))}
+                      );
+                    })}
                   </div>
                 )}
 

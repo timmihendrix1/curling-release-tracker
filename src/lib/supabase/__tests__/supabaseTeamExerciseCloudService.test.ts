@@ -7,6 +7,7 @@ const ATHLETE = "30000000-0000-4000-8000-000000000003";
 const RECORDER = "50000000-0000-4000-8000-000000000005";
 const EXECUTION = "60000000-0000-4000-8000-000000000006";
 const RESULT = "70000000-0000-4000-8000-000000000007";
+const REVISION = "80000000-0000-4000-8000-000000000008";
 const HASH = "a".repeat(64);
 
 function readClient(overrides: Record<string, unknown[]> = {}) {
@@ -36,10 +37,12 @@ function readClient(overrides: Record<string, unknown[]> = {}) {
       result_id: RESULT, athlete_profile_id: ATHLETE, note: "Private",
       updated_at: "2026-08-28T12:00:00Z",
     }],
+    team_exercise_result_revisions: [],
     ...overrides,
   };
   const from = vi.fn((table: string) => ({
-    select: vi.fn(() => table === "team_exercise_result_bundles"
+    select: vi.fn(() => table === "team_exercise_result_bundles" ||
+        table === "team_exercise_result_revisions"
       ? { order: vi.fn(async () => ({ data: data[table], error: null })) }
       : Promise.resolve({ data: data[table], error: null })),
   }));
@@ -71,6 +74,7 @@ describe("Supabase Team Exercise cloud boundary", () => {
         note: "Private",
         updatedAt: "2026-08-28T12:00:00Z",
       },
+      revisions: [],
     }] });
   });
 
@@ -98,6 +102,30 @@ describe("Supabase Team Exercise cloud boundary", () => {
       }],
     })).listMyResults();
     expect(badOwner).toEqual({ ok: false, error: "invalid_response" });
+  });
+
+  it("correlates strict owner revisions and rejects orphan or malformed revision rows", async () => {
+    const row = {
+      id: REVISION, result_id: RESULT, athlete_profile_id: ATHLETE,
+      revision_number: 1, kind: "corrected", schema_version: 1,
+      result_payload: "{}", content_sha256: HASH, changed_fields: ["evaluation"],
+      reason: "Corrected the observed outcome", actor_profile_id: ATHLETE,
+      created_at: "2026-08-28T13:00:00Z",
+    };
+    const result = await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_result_revisions: [row],
+    })).listMyResults();
+    expect(result).toMatchObject({ ok: true, value: [{ revisions: [{
+      revisionId: REVISION,
+      resultId: RESULT,
+      changedFields: ["evaluation"],
+    }] }] });
+    expect(await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_result_revisions: [{ ...row, result_id: SESSION }],
+    })).listMyResults()).toEqual({ ok: false, error: "invalid_response" });
+    expect(await createSupabaseTeamExerciseCloudService(readClient({
+      team_exercise_result_revisions: [{ ...row, changed_fields: ["evaluation", "evaluation"] }],
+    })).listMyResults()).toEqual({ ok: false, error: "invalid_response" });
   });
 
   it("reads the active Team-visible permission facts through the RLS table boundary", async () => {
@@ -204,6 +232,62 @@ describe("Supabase Team Exercise cloud boundary", () => {
       data: [{ outcome: "created", updated_at: "2026-08-28T12:00:00Z" }], error: null,
     })).setPrivateNote(RESULT, "private");
     expect(note).toMatchObject({ ok: true, value: { outcome: "created" } });
+  });
+
+  it("maps correction and terminal-void RPCs without exposing provider details", async () => {
+    const rpc = vi.fn(async (name: string) => ({
+      data: [{
+        outcome: name === "revise_my_team_exercise_result" ? "inserted" : "result_voided",
+        revision_id: name === "revise_my_team_exercise_result" ? REVISION : null,
+        revision_number: 1,
+        changed_at: "2026-08-28T13:00:00Z",
+      }],
+      error: null,
+    }));
+    const service = createSupabaseTeamExerciseCloudService({ rpc } as never);
+    expect(await service.reviseMyResult({
+      revisionId: REVISION,
+      resultId: RESULT,
+      baseRevisionNumber: 0,
+      schemaVersion: 1,
+      resultPayload: "{}",
+      reason: "Corrected the observed outcome",
+      changedFields: ["evaluation"],
+    })).toMatchObject({ ok: true, value: { outcome: "inserted", revisionId: REVISION } });
+    expect(await service.voidMyResult({
+      revisionId: REVISION,
+      resultId: RESULT,
+      baseRevisionNumber: 0,
+      reason: "Recorded result should not count",
+    })).toMatchObject({ ok: true, value: { outcome: "result_voided" } });
+    expect(rpc).toHaveBeenNthCalledWith(1, "revise_my_team_exercise_result", expect.objectContaining({
+      p_result_id: RESULT,
+      p_changed_fields: ["evaluation"],
+    }));
+    expect(rpc).toHaveBeenNthCalledWith(2, "void_my_team_exercise_result", expect.objectContaining({
+      p_result_id: RESULT,
+      p_reason: "Recorded result should not count",
+    }));
+  });
+
+  it("fails closed on contradictory revision mutation response shapes", async () => {
+    const insertedWithoutIdentity = createSupabaseTeamExerciseCloudService(client({
+      data: [{ outcome: "inserted", revision_id: null, revision_number: 1, changed_at: "2026-08-28T13:00:00Z" }],
+      error: null,
+    }));
+    expect(await insertedWithoutIdentity.voidMyResult({
+      revisionId: REVISION, resultId: RESULT, baseRevisionNumber: 0,
+      reason: "This result should not count anymore",
+    })).toEqual({ ok: false, error: "invalid_response" });
+
+    const zeroBaseConflict = createSupabaseTeamExerciseCloudService(client({
+      data: [{ outcome: "conflict", revision_id: null, revision_number: 0, changed_at: null }],
+      error: null,
+    }));
+    expect(await zeroBaseConflict.voidMyResult({
+      revisionId: REVISION, resultId: RESULT, baseRevisionNumber: 4,
+      reason: "This result should not count anymore",
+    })).toMatchObject({ ok: true, value: { outcome: "conflict", revisionNumber: 0 } });
   });
 
   it("fails closed without exposing raw provider details", async () => {

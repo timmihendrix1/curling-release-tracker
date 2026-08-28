@@ -139,7 +139,10 @@ export type TeamAdminRequest = {
   replacedByRequestId: AdminRequestId | null;
 };
 
-export type NotificationKind = "admin_request" | "member_removed";
+export type NotificationKind =
+  | "admin_request"
+  | "member_removed"
+  | "team_exercise_result_changed";
 
 export type AccountNotification = {
   id: NotificationId;

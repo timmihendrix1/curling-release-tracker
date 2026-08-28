@@ -5,6 +5,9 @@ import type {
   TeamExerciseCloudService,
   TeamExercisePutOutcome,
   TeamExerciseRecordingPermission,
+  TeamExerciseResultChangedField,
+  TeamExerciseResultRevisionCloudRecord,
+  TeamExerciseResultRevisionMutationOutcome,
 } from "../cloudSporting/teamExerciseTypes";
 import { isCanonicalUuid } from "../uuid";
 import type { SupabaseClient } from "./supabaseClient";
@@ -18,6 +21,12 @@ const BLOCK_REASONS = new Set<TeamExerciseBlockReason>([
   "recording_permission_missing",
 ]);
 const HASH = /^[0-9a-f]{64}$/;
+const REVISION_OUTCOMES = new Set<TeamExerciseResultRevisionMutationOutcome>([
+  "inserted", "already_present", "conflict", "result_voided",
+]);
+const REVISION_CHANGED_FIELDS = new Set<TeamExerciseResultChangedField>([
+  "actualHandle", "evaluation", "measurements", "teamRoleContextOverride",
+]);
 
 function fail<T>(error: unknown): TeamExerciseCloudResult<T> {
   try {
@@ -59,11 +68,50 @@ function timestamp(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
+function revisionMutationResponse(data: unknown): TeamExerciseCloudResult<{
+  outcome: TeamExerciseResultRevisionMutationOutcome;
+  revisionId: string | null;
+  revisionNumber: number | null;
+  changedAt: string | null;
+}> {
+  const row = oneRow(data);
+  if (!row) return { ok: false, error: "invalid_response" };
+  const revisionId = row.revision_id;
+  const revisionNumber = row.revision_number;
+  const changedAt = row.changed_at;
+  if (!REVISION_OUTCOMES.has(row.outcome as TeamExerciseResultRevisionMutationOutcome) ||
+      (revisionId !== null && !isCanonicalUuid(revisionId)) ||
+      (revisionNumber !== null && (!Number.isInteger(revisionNumber) || (revisionNumber as number) < 0)) ||
+      (changedAt !== null && !timestamp(changedAt))) {
+    return { ok: false, error: "invalid_response" };
+  }
+  const outcome = row.outcome as TeamExerciseResultRevisionMutationOutcome;
+  if ((outcome === "inserted" || outcome === "already_present") &&
+      (revisionId === null || revisionNumber === null || (revisionNumber as number) < 1 ||
+        changedAt === null)) {
+    return { ok: false, error: "invalid_response" };
+  }
+  if (outcome === "result_voided" && (revisionId !== null || revisionNumber === null ||
+      (revisionNumber as number) < 1 || changedAt === null)) return { ok: false, error: "invalid_response" };
+  if (outcome === "conflict" && !(
+    (revisionId !== null && revisionNumber === null && changedAt === null) ||
+    (revisionId === null && revisionNumber !== null &&
+      (revisionNumber === 0 ? changedAt === null : changedAt !== null))
+  )) return { ok: false, error: "invalid_response" };
+  return { ok: true, value: {
+    outcome,
+    revisionId: revisionId as string | null,
+    revisionNumber: revisionNumber as number | null,
+    changedAt: changedAt as string | null,
+  } };
+}
+
 export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): TeamExerciseCloudService {
   return {
     async listMyResults() {
       try {
-        const [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery] =
+        const [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery,
+          revisionQuery] =
           await Promise.all([
             client.from("team_exercise_result_bundles").select(
               "id, session_id, athlete_profile_id, recorded_by_profile_id, schema_version, result_payload, content_sha256, recorded_at, created_at"
@@ -81,8 +129,11 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
             client.from("team_exercise_private_notes").select(
               "result_id, athlete_profile_id, note, updated_at"
             ),
+            client.from("team_exercise_result_revisions").select(
+              "id, result_id, athlete_profile_id, revision_number, kind, schema_version, result_payload, content_sha256, changed_fields, reason, actor_profile_id, created_at"
+            ).order("revision_number", { ascending: true }),
           ]);
-        for (const query of [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery]) {
+        for (const query of [bundleQuery, sessionQuery, participantQuery, executionQuery, resultQuery, noteQuery, revisionQuery]) {
           if (query.error) return fail(query.error);
         }
         const bundles = rows(bundleQuery.data);
@@ -91,7 +142,8 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
         const executions = rows(executionQuery.data);
         const results = rows(resultQuery.data);
         const notes = rows(noteQuery.data);
-        if (!bundles || !sessions || !participants || !executions || !results || !notes) {
+        const revisions = rows(revisionQuery.data);
+        if (!bundles || !sessions || !participants || !executions || !results || !notes || !revisions) {
           return { ok: false, error: "invalid_response" };
         }
 
@@ -108,6 +160,50 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
             return { ok: false, error: "invalid_response" };
           }
           noteByResultId.set(note.result_id, note);
+        }
+        const revisionsByResultId = new Map<string, TeamExerciseResultRevisionCloudRecord[]>();
+        const revisionIds = new Set<string>();
+        for (const revision of revisions) {
+          const changedFields = revision.changed_fields;
+          const correctedFieldsValid = Array.isArray(changedFields) && changedFields.length > 0 &&
+            new Set(changedFields).size === changedFields.length &&
+            changedFields.every((field) => REVISION_CHANGED_FIELDS.has(field as TeamExerciseResultChangedField));
+          const voidFieldsValid = Array.isArray(changedFields) && changedFields.length === 1 &&
+            changedFields[0] === "result";
+          if (!isCanonicalUuid(revision.id) || revisionIds.has(revision.id) ||
+              !isCanonicalUuid(revision.result_id) || !isCanonicalUuid(revision.athlete_profile_id) ||
+              !Number.isInteger(revision.revision_number) || (revision.revision_number as number) < 1 ||
+              (revision.kind !== "corrected" && revision.kind !== "voided") ||
+              !Number.isInteger(revision.schema_version) || (revision.schema_version as number) < 1 ||
+              !isCanonicalUuid(revision.actor_profile_id) || !timestamp(revision.created_at) ||
+              typeof revision.reason !== "string" || revision.reason !== revision.reason.trim() ||
+              revision.reason.length < 10 || revision.reason.length > 500 ||
+              (revision.kind === "corrected"
+                ? typeof revision.result_payload !== "string" || revision.result_payload.length === 0 ||
+                  typeof revision.content_sha256 !== "string" || !HASH.test(revision.content_sha256) ||
+                  !correctedFieldsValid
+                : revision.result_payload !== null || revision.content_sha256 !== null || !voidFieldsValid)) {
+            return { ok: false, error: "invalid_response" };
+          }
+          revisionIds.add(revision.id);
+          const parsed: TeamExerciseResultRevisionCloudRecord = {
+            revisionId: revision.id,
+            resultId: revision.result_id,
+            athleteProfileId: revision.athlete_profile_id,
+            revisionNumber: revision.revision_number as number,
+            kind: revision.kind,
+            schemaVersion: revision.schema_version as number,
+            resultPayload: revision.result_payload as string | null,
+            contentSha256: revision.content_sha256 as string | null,
+            changedFields: changedFields as TeamExerciseResultRevisionCloudRecord["changedFields"],
+            reason: revision.reason,
+            actorProfileId: revision.actor_profile_id,
+            createdAt: revision.created_at,
+          };
+          revisionsByResultId.set(parsed.resultId, [
+            ...(revisionsByResultId.get(parsed.resultId) ?? []),
+            parsed,
+          ]);
         }
 
         const records: TeamExerciseCloudReadRecord[] = [];
@@ -193,6 +289,7 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
               note: note.note as string,
               updatedAt: note.updated_at as string,
             } : null,
+            revisions: revisionsByResultId.get(result.result_id) ?? [],
           });
         }
 
@@ -201,7 +298,8 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
             participants.some((row) => !visibleSessionIds.has(row.session_id)) ||
             executions.some((row) => !visibleSessionIds.has(row.session_id)) ||
             results.some((row) => typeof row.bundle_id !== "string" || !bundleIds.has(row.bundle_id)) ||
-            notes.some((note) => !results.some((result) => result.result_id === note.result_id))) {
+            notes.some((note) => !results.some((result) => result.result_id === note.result_id)) ||
+            revisions.some((revision) => !results.some((result) => result.result_id === revision.result_id))) {
           return { ok: false, error: "invalid_response" };
         }
         return { ok: true, value: records };
@@ -358,6 +456,39 @@ export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): 
           outcome: row.outcome as "created" | "updated" | "cleared" | "already_clear",
           updatedAt: row.updated_at,
         } };
+      } catch {
+        return { ok: false, error: "unavailable" };
+      }
+    },
+
+    async reviseMyResult(record) {
+      try {
+        const { data, error } = await client.rpc("revise_my_team_exercise_result", {
+          p_revision_id: record.revisionId,
+          p_result_id: record.resultId,
+          p_base_revision_number: record.baseRevisionNumber,
+          p_schema_version: record.schemaVersion,
+          p_result_payload: record.resultPayload,
+          p_reason: record.reason,
+          p_changed_fields: record.changedFields,
+        });
+        if (error) return fail(error);
+        return revisionMutationResponse(data);
+      } catch {
+        return { ok: false, error: "unavailable" };
+      }
+    },
+
+    async voidMyResult(record) {
+      try {
+        const { data, error } = await client.rpc("void_my_team_exercise_result", {
+          p_revision_id: record.revisionId,
+          p_result_id: record.resultId,
+          p_base_revision_number: record.baseRevisionNumber,
+          p_reason: record.reason,
+        });
+        if (error) return fail(error);
+        return revisionMutationResponse(data);
       } catch {
         return { ok: false, error: "unavailable" };
       }

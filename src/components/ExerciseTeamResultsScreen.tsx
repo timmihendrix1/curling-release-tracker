@@ -1,17 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import type { OwnedTeamExerciseResultRecord } from "../lib/cloudSporting/teamExerciseRecords";
-import type { TeamExercisePrivateNoteUpdateOutcome } from "../lib/cloudSporting/syncManager";
+import type {
+  OwnedTeamExerciseResultRecord,
+  OwnedTeamExerciseResultRevision,
+} from "../lib/cloudSporting/teamExerciseRecords";
+import type {
+  TeamExercisePrivateNoteUpdateOutcome,
+  TeamExerciseResultMutationOutcome,
+} from "../lib/cloudSporting/syncManager";
 import { computeShotmakingResult } from "../lib/exercises/executionResult";
 import { getTeamAttemptRoleContext } from "../lib/exercises/teamExecution";
 import type {
+  AthleteExerciseResult,
   ExerciseActiveAttemptCorrection,
+  ExerciseExecution,
   ShotmakingExclusionReason,
   ShotmakingExerciseAttempt,
 } from "../lib/exercises/executionTypes";
 import { measurementUnitLabel } from "../lib/exercises/presentation";
 import { serializeOwnedTeamExerciseResultExport } from "../lib/exercises/teamResultExport";
+import ExercisePostCompletionCorrectionEditor from "./ExercisePostCompletionCorrectionEditor";
 import { surfaceClass } from "./Surface";
 
 type ReadStatus = "loading" | "refreshed" | "cached" | "unavailable" | "issue";
@@ -24,6 +33,17 @@ type Props = {
     resultId: string,
     note: string | null
   ): Promise<TeamExercisePrivateNoteUpdateOutcome>;
+  onReviseResult(
+    resultId: string,
+    replacement: AthleteExerciseResult,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome>;
+  onVoidResult(
+    resultId: string,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome>;
 };
 
 const EXCLUSION_LABELS: Record<ShotmakingExclusionReason, string> = {
@@ -87,18 +107,174 @@ function correctionDescription(correction: ExerciseActiveAttemptCorrection): str
   return changes.join(" · ") || "Captured facts corrected";
 }
 
+function roleSummary(
+  execution: Omit<ExerciseExecution, "athleteResults" | "activeAttemptCorrections">,
+  result: AthleteExerciseResult,
+  attempt: ShotmakingExerciseAttempt
+): string {
+  const role = getTeamAttemptRoleContext({ ...execution, athleteResults: [result] }, attempt);
+  if (!role) return "Role context unavailable";
+  return `${role.sweeperProfileIds.length} Sweeper${role.sweeperProfileIds.length === 1 ? "" : "s"}, ${
+    role.sweepingUsed ? "sweeping used" : "no sweeping"
+  }, ${role.skipProfileId ? "Skip assigned" : "no Skip"}, ${
+    role.observerProfileId ? "observer assigned" : "no observer"
+  }, ${role.coachProfileIds?.length ?? 0} Coach${role.coachProfileIds?.length === 1 ? "" : "es"}`;
+}
+
+function measurementSummary(
+  execution: Omit<ExerciseExecution, "athleteResults" | "activeAttemptCorrections">,
+  attempt: ShotmakingExerciseAttempt
+): string {
+  if (attempt.measurements.length === 0) return "None";
+  return attempt.measurements.map((measurement) => {
+    const protocol = execution.configuration.enabledMeasurementProtocols.find(
+      (candidate) => candidate.id === measurement.protocolId &&
+        candidate.version === measurement.protocolVersion
+    );
+    return `${protocol?.name ?? "Measurement"}: ${measurement.value} ${
+      protocol ? measurementUnitLabel(protocol.unit) : ""
+    }`.trim();
+  }).join(" · ");
+}
+
+function revisionAuditEntries(record: OwnedTeamExerciseResultRecord): Array<{
+  revision: OwnedTeamExerciseResultRevision;
+  details: string[];
+}> {
+  const entries: Array<{ revision: OwnedTeamExerciseResultRevision; details: string[] }> = [];
+  let previous = record.originalResult;
+  for (const revision of record.postCompletionRevisions) {
+    if (revision.kind === "voided" || revision.resultingResult === null) {
+      entries.push({ revision, details: ["The complete result was excluded from current calculations."] });
+      continue;
+    }
+    const next = revision.resultingResult;
+    const changedIndex = previous.attempts.findIndex((attempt, index) =>
+      JSON.stringify(attempt) !== JSON.stringify(next.attempts[index])
+    );
+    const before = previous.attempts[changedIndex];
+    const after = next.attempts[changedIndex];
+    const details: string[] = [];
+    const changedFields = revision.changedFields as readonly string[];
+    if (before?.kind === "shotmaking" && after?.kind === "shotmaking") {
+      const stone = `Stone ${changedIndex + 1}`;
+      if (changedFields.includes("actualHandle")) {
+        details.push(`${stone} handle: ${before.actualHandle === "in" ? "Inhandle" : "Outhandle"} → ${after.actualHandle === "in" ? "Inhandle" : "Outhandle"}`);
+      }
+      if (changedFields.includes("evaluation")) {
+        details.push(`${stone} outcome: ${attemptSummary(before)} → ${attemptSummary(after)}`);
+      }
+      if (changedFields.includes("measurements")) {
+        details.push(`${stone} measurements: ${measurementSummary(record.sharedExecution, before)} → ${measurementSummary(record.sharedExecution, after)}`);
+      }
+      if (changedFields.includes("teamRoleContextOverride")) {
+        details.push(`${stone} context: ${roleSummary(record.sharedExecution, previous, before)} → ${roleSummary(record.sharedExecution, next, after)}`);
+      }
+    }
+    entries.push({
+      revision,
+      details: details.length > 0 ? details : ["The declared result facts were corrected."],
+    });
+    previous = next;
+  }
+  return entries;
+}
+
+function participantLabels(record: OwnedTeamExerciseResultRecord): ReadonlyMap<string, string> {
+  return new Map((record.sharedExecution.teamContext?.participantRoster ?? []).map((participant, index) => {
+    return [
+      participant.profileId,
+      participant.profileId === record.athleteProfileId
+        ? "You"
+        : `Session participant ${index + 1}`,
+    ];
+  }));
+}
+
+function VoidResultConfirmation({
+  record,
+  onVoid,
+  onCompleted,
+  onCancel,
+}: {
+  record: OwnedTeamExerciseResultRecord;
+  onVoid: Props["onVoidResult"];
+  onCompleted(outcome: Exclude<TeamExerciseResultMutationOutcome, "invalid" | "failed">): void;
+  onCancel(): void;
+}) {
+  const [revisionId] = useState(() => crypto.randomUUID());
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [uncertain, setUncertain] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const normalizedReason = reason.trim();
+  const reasonValid = normalizedReason.length >= 10 && normalizedReason.length <= 500 &&
+    new TextEncoder().encode(normalizedReason).byteLength <= 2_000;
+
+  async function submit() {
+    if (!reasonValid) {
+      setError("Give a reason between 10 and 500 characters.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    const outcome = await onVoid(record.result.id, revisionId, normalizedReason);
+    setBusy(false);
+    if (outcome === "invalid") {
+      setError("This result cannot be voided from its current state.");
+      return;
+    }
+    if (outcome === "failed") {
+      setUncertain(true);
+      setError("The void could not be confirmed. Keep this reason unchanged and retry the exact request when connected.");
+      return;
+    }
+    onCompleted(outcome);
+  }
+
+  return (
+    <section className="rounded-2xl border border-red-300 bg-red-50 p-4" aria-labelledby="void-result-title">
+      <h3 id="void-result-title" className="text-lg font-semibold text-red-950">Void your complete result?</h3>
+      <p className="mt-2 text-sm text-red-900">This permanently excludes the complete result from current calculations. It cannot be undone in Version 1; the original result and audit history remain.</p>
+      <fieldset disabled={busy || uncertain} className="disabled:opacity-60">
+        <div className="mt-3">
+          <label htmlFor="void-result-reason" className="block text-sm font-medium text-red-950">Reason for voiding</label>
+          <textarea id="void-result-reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={500} aria-describedby="void-result-reason-help" className="mt-1 w-full rounded-xl border border-red-300 bg-white px-3 py-2 text-slate-900" />
+          <p id="void-result-reason-help" className="mt-1 text-xs font-normal text-red-800">Required · 10–500 characters · shared with eligible original participants.</p>
+        </div>
+      </fieldset>
+      {error && <p role="alert" className="mt-3 rounded-xl bg-red-100 p-3 text-sm text-red-900">{error}</p>}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <button type="button" disabled={busy || uncertain} onClick={onCancel} className="min-h-11 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Cancel</button>
+        <button type="button" disabled={busy || (!uncertain && !reasonValid)} onClick={() => void submit()} className="min-h-11 rounded-xl bg-red-800 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">{uncertain ? "Retry Exact Void" : "Void Complete Result"}</button>
+      </div>
+    </section>
+  );
+}
+
 function ResultDetail({
   record,
   onBack,
   onSetPrivateNote,
+  onReviseResult,
+  onVoidResult,
+  labels,
+  canMutate,
 }: {
   record: OwnedTeamExerciseResultRecord;
   onBack(): void;
   onSetPrivateNote: Props["onSetPrivateNote"];
+  onReviseResult: Props["onReviseResult"];
+  onVoidResult: Props["onVoidResult"];
+  labels: ReadonlyMap<string, string>;
+  canMutate: boolean;
 }) {
   const [note, setNote] = useState(record.privateNote?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [editingAttemptId, setEditingAttemptId] = useState<string | null>(null);
+  const [confirmingVoid, setConfirmingVoid] = useState(false);
+  const [mutationLocked, setMutationLocked] = useState(false);
   const noteByteLength = new TextEncoder().encode(note).byteLength;
   const noteTooLong = noteByteLength > PRIVATE_NOTE_MAX_BYTES;
   const execution = record.sharedExecution;
@@ -106,6 +282,29 @@ function ResultDetail({
   const context = execution.teamContext;
   const shotmaking = version.primaryFocus === "shotmaking";
   const summary = shotmaking ? computeShotmakingResult(record.result) : null;
+  const auditEntries = revisionAuditEntries(record);
+
+  function finishMutation(
+    outcome: Exclude<TeamExerciseResultMutationOutcome, "invalid" | "failed">,
+    kind: "correction" | "void"
+  ) {
+    setEditingAttemptId(null);
+    setConfirmingVoid(false);
+    if (outcome === "updated") {
+      setMessage(kind === "correction"
+        ? "Correction saved. The verified result and audit history were refreshed."
+        : "Result voided. Its verified terminal state and audit history were refreshed.");
+      return;
+    }
+    setMutationLocked(true);
+    if (outcome === "updated_cache_issue") {
+      setMessage("The change reached the cloud, but this device could not verify the refreshed result. Return to the list and refresh before making another change.");
+    } else if (outcome === "conflict") {
+      setMessage("This result changed before your request was accepted. Return to the list, refresh and review the latest version before trying again.");
+    } else {
+      setMessage("This result is already voided. Return to the list and refresh to load its terminal audit state.");
+    }
+  }
 
   async function saveNote(next: string | null) {
     setBusy(true);
@@ -131,6 +330,11 @@ function ResultDetail({
         <p className="text-xs font-medium text-slate-500">Team Exercise · {formatDate(execution.completedAt!)}</p>
         <h2 className="mt-2 text-xl font-semibold text-slate-900">{version.title}</h2>
         <p className="mt-1 text-sm text-slate-600">Exercise version {version.version}</p>
+        {record.isVoided ? (
+          <p className="mt-3 rounded-xl bg-red-100 p-3 text-sm font-semibold text-red-900">Voided · Excluded from current calculations</p>
+        ) : record.postCompletionRevisions.length > 0 ? (
+          <p className="mt-3 rounded-xl bg-amber-100 p-3 text-sm font-semibold text-amber-900">Changed after completion · Revision {record.postCompletionRevisions.length}</p>
+        ) : null}
       </section>
 
       {record.activeAttemptCorrections.length > 0 && (
@@ -148,8 +352,28 @@ function ResultDetail({
         </section>
       )}
 
+      {auditEntries.length > 0 && (
+        <section className={surfaceClass("primary")}>
+          <h3 className="text-lg font-semibold text-slate-900">Post-completion history</h3>
+          <p className="mt-1 text-xs text-slate-500">Append-only changes to your own completed result. Original facts remain preserved.</p>
+          <ol className="mt-3 space-y-3">
+            {auditEntries.map(({ revision, details }) => (
+              <li key={revision.revisionId} className={`rounded-xl p-3 text-sm ${revision.kind === "voided" ? "bg-red-50 text-red-950" : "bg-amber-50 text-amber-950"}`}>
+                <p className="font-semibold">Revision {revision.revisionNumber} · {revision.kind === "voided" ? "Complete result voided" : "Result corrected"}</p>
+                <ul className="mt-2 list-disc space-y-1 pl-5">
+                  {details.map((detail) => <li key={detail}>{detail}</li>)}
+                </ul>
+                <p className="mt-2"><span className="font-medium">Reason:</span> {revision.reason}</p>
+                <p className={`mt-1 text-xs ${revision.kind === "voided" ? "text-red-800" : "text-amber-800"}`}>Changed by you · {formatDate(revision.createdAt)}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <section className={surfaceClass("primary")}>
-        <h3 className="text-lg font-semibold text-slate-900">Your result</h3>
+        <h3 className="text-lg font-semibold text-slate-900">{record.isVoided ? "Preserved result" : "Your result"}</h3>
+        {record.isVoided && <p className="mt-2 text-sm text-red-800">These facts remain for provenance and export but are not included in current calculations.</p>}
         {summary ? (
           <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-slate-500">Average</dt><dd className="text-lg font-semibold text-slate-900">{summary.averagePercentage === null ? "—" : `${summary.averagePercentage.toFixed(0)}%`}</dd></div>
@@ -185,11 +409,42 @@ function ResultDetail({
                   if (!role) return null;
                   return <p className="mt-1 text-xs text-slate-500">Context: {role.sweeperProfileIds.length} Sweeper{role.sweeperProfileIds.length === 1 ? "" : "s"} · {role.sweepingUsed ? "sweeping used" : "no sweeping"}{role.skipProfileId ? " · Skip assigned" : ""}</p>;
                 })()}
+                {attempt.kind === "shotmaking" && canMutate && !record.isVoided && !mutationLocked && editingAttemptId !== attempt.id && (
+                  <button type="button" onClick={() => { setEditingAttemptId(attempt.id); setConfirmingVoid(false); setMessage(null); }} className="mt-3 min-h-11 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-300">Correct This Stone</button>
+                )}
+                {attempt.kind === "shotmaking" && editingAttemptId === attempt.id && (
+                  <ExercisePostCompletionCorrectionEditor
+                    record={record}
+                    attempt={attempt}
+                    participantLabels={labels}
+                    onSave={(replacement, revisionId, reason) =>
+                      onReviseResult(record.result.id, replacement, revisionId, reason)
+                    }
+                    onCompleted={(outcome) => finishMutation(outcome, "correction")}
+                    onCancel={() => setEditingAttemptId(null)}
+                  />
+                )}
               </li>
             ))}
           </ol>
         )}
       </section>
+
+      {!record.isVoided && !canMutate && (
+        <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Reconnect and refresh this result before making a post-completion correction or voiding it.</p>
+      )}
+      {message && <p role="status" className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{message}</p>}
+      {!record.isVoided && canMutate && !mutationLocked && !confirmingVoid && (
+        <button type="button" onClick={() => { setConfirmingVoid(true); setEditingAttemptId(null); setMessage(null); }} className="min-h-11 w-full rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-800 ring-1 ring-red-200">Void My Complete Result</button>
+      )}
+      {confirmingVoid && (
+        <VoidResultConfirmation
+          record={record}
+          onVoid={onVoidResult}
+          onCompleted={(outcome) => finishMutation(outcome, "void")}
+          onCancel={() => setConfirmingVoid(false)}
+        />
+      )}
 
       <section className={surfaceClass("primary")}>
         <h3 className="text-lg font-semibold text-slate-900">Session context</h3>
@@ -214,7 +469,6 @@ function ResultDetail({
           <button type="button" disabled={busy || note.trim().length === 0 || noteTooLong} onClick={() => void saveNote(note)} className="min-h-11 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">Save Private Note</button>
           <button type="button" disabled={busy || record.privateNote === null} onClick={() => void saveNote(null)} className="min-h-11 rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">Clear Private Note</button>
         </div>
-        {message && <p role="status" className="mt-3 text-sm text-slate-600">{message}</p>}
       </section>
 
       <button type="button" onClick={() => downloadResult(record)} className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
@@ -229,11 +483,24 @@ export default function ExerciseTeamResultsScreen({
   readStatus,
   onRefresh,
   onSetPrivateNote,
+  onReviseResult,
+  onVoidResult,
 }: Props) {
   const [selectedResultId, setSelectedResultId] = useState<string | null>(null);
   const selected = results.find((record) => record.result.id === selectedResultId) ?? null;
   if (selected) {
-    return <ResultDetail key={selected.result.id} record={selected} onBack={() => setSelectedResultId(null)} onSetPrivateNote={onSetPrivateNote} />;
+    return (
+      <ResultDetail
+        key={selected.result.id}
+        record={selected}
+        onBack={() => setSelectedResultId(null)}
+        onSetPrivateNote={onSetPrivateNote}
+        onReviseResult={onReviseResult}
+        onVoidResult={onVoidResult}
+        labels={participantLabels(selected)}
+        canMutate={readStatus === "refreshed"}
+      />
+    );
   }
 
   return (
@@ -268,7 +535,14 @@ export default function ExerciseTeamResultsScreen({
                 <button key={record.result.id} type="button" onClick={() => setSelectedResultId(record.result.id)} className="min-h-11 w-full rounded-xl bg-white p-4 text-left shadow-sm ring-1 ring-slate-200">
                   <p className="font-semibold text-slate-900">{version.title}</p>
                   <p className="mt-1 text-sm text-slate-500">{formatDate(record.sharedExecution.completedAt!)}</p>
-                  <p className="mt-2 text-sm text-slate-700">{summary ? (summary.scoredStoneCount === 0 ? "No scored stones" : `${summary.averagePercentage?.toFixed(0)}% average · ${summary.points}/${summary.maximumPoints} points`) : "Unscored Technique observation"}</p>
+                  <p className={`mt-2 text-sm ${record.isVoided ? "font-medium text-red-800" : "text-slate-700"}`}>
+                    {record.isVoided
+                      ? "Voided · Excluded from current calculations"
+                      : summary
+                        ? (summary.scoredStoneCount === 0 ? "No scored stones" : `${summary.averagePercentage?.toFixed(0)}% average · ${summary.points}/${summary.maximumPoints} points`)
+                        : "Unscored Technique observation"}
+                  </p>
+                  {!record.isVoided && record.postCompletionRevisions.length > 0 && <p className="mt-1 text-xs font-medium text-amber-800">Changed after completion · Revision {record.postCompletionRevisions.length}</p>}
                 </button>
               );
             })}

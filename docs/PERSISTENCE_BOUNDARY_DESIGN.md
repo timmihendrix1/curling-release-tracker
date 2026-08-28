@@ -421,7 +421,14 @@ validate, unavailable or invalid refresh never overwrites cached truth, and own 
 updates reach the cloud before the cache changes. It adds no key or parallel persistence
 path. C3d likewise uses the existing durable-first draft write and exact completion
 handoff; schemas 1 of both the Exercise Execution and immutable Team cloud payload remain
-readable, while current corrected aggregates/payloads write schema 2.
+readable, while current corrected aggregates/payloads write schema 2. ADR-0039's C4a
+post-completion revisions are a separate append-only relational server stream; they do
+not enter the recorder outbox or mutate the immutable original bundle. C4b advances the
+same Profile-scoped record to schema 6: schema 5 migrates each valid cached result with
+an identical immutable original/current result, empty revision history and non-void
+state, while current reads replace the cache only after the complete owner-only revision
+chain and every replacement sporting payload validate. No new key or recorder read
+authority is introduced.
 
 **Write-guard note (new in this revision):** the "Write path" column above now records
 whether each domain's current save effect already guards against writing its React

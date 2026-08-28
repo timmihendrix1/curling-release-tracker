@@ -3,8 +3,8 @@
 **Status:** Accepted and implemented as Exercise Stage C2b (2026-08-28). ADR-0034-0036
 now add permission cache/UI, active-draft persistence and one-device capture. Athlete
 ADR-0037 now implements restore/read models and ADR-0038 carries filtered active-correction
-audit through payload schema 2; post-completion revisions, voiding and notifications remain
-later Stage C work.
+audit through payload schema 2. ADR-0039 adds C4a post-completion server authority and
+C4b's strict client projection/cache; C4c now completes the athlete mutation/inbox UI.
 
 ## Context
 
@@ -81,8 +81,9 @@ this adapter into the existing Profile-scoped sync manager.
   this upload stage; ADR-0037 now supplies them as a separate owned projection.
 - The existing Solo Session/Assessment restore, tombstone and sync semantics are
   unchanged.
-- Stage C revision history, voiding and notifications remain separate product and
-  authority work.
+- ADR-0039 now supplies separate relational authority for post-completion revision,
+  voiding and notifications; C4b connects its owner projection without widening this
+  outbox; C4c now supplies the athlete mutation/inbox UI.
 
 ## Verification
 

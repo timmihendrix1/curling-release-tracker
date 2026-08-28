@@ -17,7 +17,7 @@ import {
 } from "./teamExerciseRecords";
 
 export const CLOUD_SPORTING_SYNC_STORAGE_KEY = "curling-release-tracker-cloud-sporting-sync";
-export const CLOUD_SPORTING_SYNC_SCHEMA_VERSION = 5;
+export const CLOUD_SPORTING_SYNC_SCHEMA_VERSION = 6;
 
 export type SportingSyncEntry = CloudSportingRecord & {
   desired: "present" | "deleted";
@@ -60,7 +60,7 @@ export type TeamExerciseEligibilitySnapshot = {
 };
 
 export type SportingSyncState = {
-  schemaVersion: 5;
+  schemaVersion: 6;
   entries: SportingSyncEntry[];
   teamEntries: TeamExerciseSyncEntry[];
   teamEligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
@@ -299,7 +299,7 @@ function parseState(raw: unknown): SportingSyncState | null {
   if (!entries) return null;
   if (root.schemaVersion === 1) {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       entries,
       teamEntries: [],
       teamEligibilitySnapshots: [],
@@ -311,7 +311,7 @@ function parseState(raw: unknown): SportingSyncState | null {
   if (!teamEntries) return null;
   if (root.schemaVersion === 2) {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       entries,
       teamEntries,
       teamEligibilitySnapshots: [],
@@ -319,12 +319,13 @@ function parseState(raw: unknown): SportingSyncState | null {
       teamExerciseResults: [],
     };
   }
-  if (root.schemaVersion !== 3 && root.schemaVersion !== 4 && root.schemaVersion !== 5) return null;
+  if (root.schemaVersion !== 3 && root.schemaVersion !== 4 &&
+      root.schemaVersion !== 5 && root.schemaVersion !== 6) return null;
   const teamEligibilitySnapshots = parseEligibilitySnapshots(root.teamEligibilitySnapshots);
   if (!teamEligibilitySnapshots) return null;
   if (root.schemaVersion === 3) {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       entries,
       teamEntries,
       teamEligibilitySnapshots,
@@ -349,7 +350,7 @@ function parseState(raw: unknown): SportingSyncState | null {
   }
   if (root.schemaVersion === 4) {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       entries,
       teamEntries,
       teamEligibilitySnapshots,
@@ -362,14 +363,23 @@ function parseState(raw: unknown): SportingSyncState | null {
   const resultIds = new Set<string>();
   const sessionIds = new Set<string>();
   for (const candidate of root.teamExerciseResults) {
-    const parsed = validateOwnedTeamExerciseResultRecord(candidate);
+    const migrationCandidate = root.schemaVersion === 5 &&
+        typeof candidate === "object" && candidate !== null && !Array.isArray(candidate)
+      ? {
+          ...(candidate as Record<string, unknown>),
+          originalResult: (candidate as Record<string, unknown>).result,
+          postCompletionRevisions: [],
+          isVoided: false,
+        }
+      : candidate;
+    const parsed = validateOwnedTeamExerciseResultRecord(migrationCandidate);
     if (!parsed || resultIds.has(parsed.result.id) || sessionIds.has(parsed.sessionId)) return null;
     resultIds.add(parsed.result.id);
     sessionIds.add(parsed.sessionId);
     teamExerciseResults.push(parsed);
   }
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     entries,
     teamEntries,
     teamEligibilitySnapshots,

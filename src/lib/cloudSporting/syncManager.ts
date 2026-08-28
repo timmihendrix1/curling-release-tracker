@@ -5,12 +5,14 @@ import type { SportingRepositories } from "../persistence/profileScopedSportingP
 import type { PersistenceWriteResult } from "../persistence/types";
 import type { Session } from "../../types";
 import type { CloudSportingRecord, CloudSportingService, SportingSyncTruth } from "./types";
-import type { ExerciseExecution } from "../exercises/executionTypes";
+import type { AthleteExerciseResult, ExerciseExecution } from "../exercises/executionTypes";
 import { EXERCISE_CATALOG } from "../exercises/catalog";
 import { validateExerciseExecution } from "../exercises/executionValidation";
 import type { TeamWorkspace } from "../team/teamService";
 import { isCanonicalUuid } from "../uuid";
 import {
+  createTeamExerciseResultCorrectionMutation,
+  createTeamExerciseResultVoidMutation,
   deserializeOwnedTeamExerciseResult,
   serializeCompletedTeamExercise,
   type OwnedTeamExerciseResultRecord,
@@ -60,6 +62,14 @@ export type TeamExercisePermissionUpdateOutcome =
 export type TeamExercisePrivateNoteUpdateOutcome =
   | "updated"
   | "updated_cache_issue"
+  | "failed";
+
+export type TeamExerciseResultMutationOutcome =
+  | "updated"
+  | "updated_cache_issue"
+  | "conflict"
+  | "result_voided"
+  | "invalid"
   | "failed";
 
 type Listener = () => void;
@@ -588,6 +598,88 @@ export class SportingCloudSyncManager {
       }
       outcome = "updated";
       this.publish();
+    });
+    return outcome;
+  }
+
+  async reviseMyTeamExerciseResult(
+    resultId: string,
+    authenticatedProfileId: string,
+    replacement: AthleteExerciseResult,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome> {
+    let outcome: TeamExerciseResultMutationOutcome = "failed";
+    await this.schedule(async () => {
+      const owned = this.state.teamExerciseResults.find(
+        (record) => record.result.id === resultId &&
+          record.athleteProfileId === authenticatedProfileId
+      );
+      if (!this.snapshot.ready || !this.storageWritable || !this.teamService ||
+          !this.isOnline() || !owned || authenticatedProfileId !== this.mountedProfileId) return;
+      const mutation = createTeamExerciseResultCorrectionMutation(
+        owned,
+        replacement,
+        revisionId,
+        reason
+      );
+      if (!mutation) {
+        outcome = "invalid";
+        return;
+      }
+      const response = await this.teamService.reviseMyResult(mutation);
+      if (!response.ok) return;
+      if (response.value.outcome === "conflict") {
+        await this.refreshOwnedTeamExerciseResults();
+        outcome = "conflict";
+        return;
+      }
+      if (response.value.outcome === "result_voided") {
+        await this.refreshOwnedTeamExerciseResults();
+        outcome = "result_voided";
+        return;
+      }
+      outcome = await this.refreshOwnedTeamExerciseResults()
+        ? "updated"
+        : "updated_cache_issue";
+    });
+    return outcome;
+  }
+
+  async voidMyTeamExerciseResult(
+    resultId: string,
+    authenticatedProfileId: string,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome> {
+    let outcome: TeamExerciseResultMutationOutcome = "failed";
+    await this.schedule(async () => {
+      const owned = this.state.teamExerciseResults.find(
+        (record) => record.result.id === resultId &&
+          record.athleteProfileId === authenticatedProfileId
+      );
+      if (!this.snapshot.ready || !this.storageWritable || !this.teamService ||
+          !this.isOnline() || !owned || authenticatedProfileId !== this.mountedProfileId) return;
+      const mutation = createTeamExerciseResultVoidMutation(owned, revisionId, reason);
+      if (!mutation) {
+        outcome = "invalid";
+        return;
+      }
+      const response = await this.teamService.voidMyResult(mutation);
+      if (!response.ok) return;
+      if (response.value.outcome === "conflict") {
+        await this.refreshOwnedTeamExerciseResults();
+        outcome = "conflict";
+        return;
+      }
+      if (response.value.outcome === "result_voided") {
+        await this.refreshOwnedTeamExerciseResults();
+        outcome = "result_voided";
+        return;
+      }
+      outcome = await this.refreshOwnedTeamExerciseResults()
+        ? "updated"
+        : "updated_cache_issue";
     });
     return outcome;
   }

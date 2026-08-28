@@ -1,8 +1,9 @@
 # ADR-0038 — Active Team Exercise attempt corrections
 
 **Status:** Accepted and implemented as Exercise Stage C3d (2026-08-28).
-Post-completion athlete revisions, ordinary voiding and participant notifications remain
-the final Stage C work.
+ADR-0039 implements C4a's post-completion athlete revision, ordinary void and participant
+notification authority plus C4b's strict client projection/cache. C4c now completes the
+athlete mutation/inbox UI and final Stage C workflow.
 
 ## Context
 
@@ -70,8 +71,10 @@ Analyze shows the affected athlete a factual history without exposing raw Profil
 
 The existing Postgres tables and RPCs accept positive payload schema versions and store
 opaque immutable text, so this stage requires no migration or authority change. Cloud
-schema 1 remains readable. Raw owned export schema 2 includes only the athlete's filtered
-active correction history alongside their own result and note.
+schema 1 remains readable. C3d introduced raw owned export schema 2 with only the
+athlete's filtered active correction history alongside their own result and note; C4b
+advances the export to schema 3 with immutable original/current result, post-completion
+history and terminal void state.
 
 ## Consequences and remaining work
 

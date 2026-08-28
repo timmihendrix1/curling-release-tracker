@@ -1,9 +1,9 @@
 # ADR-0031: Team Exercise Execution Domain Foundation
 
-**Status:** Accepted and implemented as Exercise Stage C1 (2026-08-28). ADR-0032-0038
+**Status:** Accepted and implemented as Exercise Stage C1 (2026-08-28). ADR-0032-0039
 now implement server authority, outbox/eligibility/draft persistence and one-device Team
-capture, owned reads/private notes and active attempt corrections. Post-completion
-revisions, voiding and notifications remain later Stage C review gates.
+capture, owned reads/private notes, active attempt corrections and C4a/C4b's post-
+completion authority/projection. C4c now completes the athlete mutation/inbox UI.
 
 ## Context
 

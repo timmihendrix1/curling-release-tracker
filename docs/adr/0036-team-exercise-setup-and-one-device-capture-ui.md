@@ -2,8 +2,9 @@
 
 **Status:** Accepted and implemented as Exercise Stage C3b (2026-08-28). Since then,
 ADR-0037 implements Team-result restore/read and private-note UI; ADR-0038 implements
-audited active-attempt correction/annulment. Post-completion revision/voiding and
-participant notifications remain later Stage C work.
+audited active-attempt correction/annulment; ADR-0039 implements C4a's post-completion
+server authority and C4b's strict client projection/cache. C4c now completes the
+athlete mutation/inbox UI.
 
 ## Context
 
@@ -90,8 +91,9 @@ that completion implies cloud acceptance.
 - This stage adds no database migration, RPC, storage key, Exercise-specific renderer,
   Team Measured execution or second timing path.
 - Since implemented by ADR-0037/0038: result restore/read, own private-note UI and active
-  correction audit. Post-completion revision/voiding, notifications and multi-device
-  recorder transfer remain later decisions/work.
+  correction audit. ADR-0039 adds post-completion revision/void/notification authority
+  and C4b's strict client projection/cache; C4c adds the athlete mutation/inbox UI.
+  Multi-device recorder transfer remains later work.
 
 ## Verification
 

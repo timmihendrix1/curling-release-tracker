@@ -3456,6 +3456,8 @@ export default function TrackerApp() {
                 readStatus={sportingCloudSync.teamExerciseResultReadStatus}
                 onRefresh={sportingCloudSync.refreshMyTeamExerciseResults}
                 onSetPrivateNote={sportingCloudSync.setMyTeamExercisePrivateNote}
+                onReviseResult={sportingCloudSync.reviseMyTeamExerciseResult}
+                onVoidResult={sportingCloudSync.voidMyTeamExerciseResult}
               />
             )}
 

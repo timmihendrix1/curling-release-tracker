@@ -1,8 +1,8 @@
 # Database tests
 
-This directory holds four pgTAP suites over the thirteen migrations in
-`supabase/migrations/`. All four have been executed against a real local Supabase
-Postgres applied from scratch, and all four are green.
+This directory holds five pgTAP suites over the sixteen migrations in
+`supabase/migrations/`. All five have been executed against a real local Supabase
+Postgres applied from scratch, and all five are green.
 
 | Suite | Covers | Recorded result |
 |---|---|---|
@@ -10,16 +10,18 @@ Postgres applied from scratch, and all four are green.
 | `team_foundation.test.sql` | The Team Foundation beta plus B0.2e bootstrap-retirement privilege boundary | **102 planned, 102 run, 0 failures** |
 | `free_cloud_sporting_records.test.sql` | Stage B0.4 exact terminal records, authority, RLS, idempotency, conflicts, transactional raw-payload deletion, tombstones and restore | **37 planned, 37 run, 0 failures** |
 | `team_exercise_cloud.test.sql` | Exercise Stage C2a recording permission, server-derived recorder, immutable envelope, athlete bundles, partial rejection, concrete approval, ownership RLS and private notes | **68 planned, 68 run, 0 failures** |
+| `team_exercise_post_completion.test.sql` | Exercise Stage C4a athlete-owned append-only correction, terminal void, stale/conflict handling and filtered metadata notifications | **48 planned, 48 run, 0 failures** |
 
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all thirteen migrations
+supabase db reset --local --no-seed --yes            # applies all sixteen migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
 supabase db reset --local --no-seed --yes
 supabase test db --local supabase/tests/free_cloud_sporting_records.test.sql
 supabase test db --local supabase/tests/team_exercise_cloud.test.sql
+supabase test db --local supabase/tests/team_exercise_post_completion.test.sql
 ```
 
 **Reset first.** `identity_onboarding.test.sql` asserts global zero-counts, and both
@@ -33,6 +35,30 @@ No suite ships any test scaffolding into a product migration: each creates its
 transaction and removes them again with its closing `rollback`. Neither depends on an
 optional test-helper extension — only pgTAP itself, which `supabase test db` provides
 for the duration of the run.
+
+---
+
+# Team Exercise post-completion suite (Stage C4a)
+
+**Status: executed and passing. This is the C4a server-authority foundation. C4b/C4c
+add the strict owner projection/cache, mutation orchestration, athlete UI and
+metadata-only notification inbox without changing this SQL authority suite.**
+
+```sh
+supabase db reset --local --no-seed --yes
+supabase test db --local supabase/tests/team_exercise_post_completion.test.sql
+```
+
+Recorded result: **48 assertions planned, 48 run, 0 failures** — `Files=1,
+Tests=48 ... Result: PASS`.
+
+The suite proves athlete-only ownership, allowed-field and reason bounds, byte-exact
+append-only revisions, server-derived actor, exact retry, stable-id and stale-base
+conflicts, terminal whole-result void, original/current recipient intersection,
+actor/former/non-participant exclusion, entitlement re-evaluation, metadata-only
+payloads, notification/audit cardinality, RLS, direct-write and anonymous denial,
+append-only trigger defence, grants and pinned function search paths. The existing
+68-assertion Team Exercise cloud suite remains green after all sixteen migrations.
 
 ---
 
@@ -224,7 +250,7 @@ surface, which this stage does not implement.
 ## What this stage does and does not establish
 
 **Established:** the SQL foundation and the mounted B0.2 application integration are
-implemented. All thirteen migrations apply from scratch; `complete_personal_onboarding`
+implemented. All sixteen migrations apply from scratch; `complete_personal_onboarding`
 is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
@@ -260,7 +286,7 @@ through canonical personal onboarding and proves that the forward retirement mig
 denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all thirteen migrations
+supabase db reset --local --no-seed --yes            # applies all sixteen migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 

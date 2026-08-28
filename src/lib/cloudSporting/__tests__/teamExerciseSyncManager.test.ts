@@ -35,6 +35,7 @@ const SESSION = "20000000-0000-4000-8000-000000000002";
 const TEAM = "30000000-0000-4000-8000-000000000003";
 const ATHLETE_A = "40000000-0000-4000-8000-000000000004";
 const ATHLETE_B = "50000000-0000-4000-8000-000000000005";
+const REVISION = "80000000-0000-4000-8000-000000000008";
 
 function clock() {
   let id = 20;
@@ -113,6 +114,59 @@ async function ownedReadRecord(
       note,
       updatedAt: "2026-08-28T12:00:00Z",
     },
+    revisions: [],
+  };
+}
+
+async function withCorrectedOutcome(
+  record: TeamExerciseCloudReadRecord,
+  score: 0 | 1 | 2 | 3 | 4,
+  revisionId = REVISION
+): Promise<TeamExerciseCloudReadRecord> {
+  const originalPayload = JSON.parse(record.bundle.resultPayload);
+  const correctedResult = structuredClone(originalPayload.result);
+  correctedResult.attempts[0].evaluation = { status: "scored", score };
+  delete correctedResult.updatedAt;
+  const resultPayload = JSON.stringify({ schemaVersion: 1, result: correctedResult });
+  return {
+    ...record,
+    revisions: [{
+      revisionId,
+      resultId: record.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 1,
+      kind: "corrected",
+      schemaVersion: 1,
+      resultPayload,
+      contentSha256: (await sha256Hex(resultPayload))!,
+      changedFields: ["evaluation"],
+      reason: "Corrected the observed outcome for this stone",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:00:00Z",
+    }],
+  };
+}
+
+function withTerminalVoid(
+  record: TeamExerciseCloudReadRecord,
+  revisionId = REVISION
+): TeamExerciseCloudReadRecord {
+  return {
+    ...record,
+    revisions: [{
+      revisionId,
+      resultId: record.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 1,
+      kind: "voided",
+      schemaVersion: 1,
+      resultPayload: null,
+      contentSha256: null,
+      changedFields: ["result"],
+      reason: "This complete result should not count anymore",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:00:00Z",
+    }],
   };
 }
 
@@ -137,6 +191,8 @@ function teamService(overrides: Partial<TeamExerciseCloudService> = {}): TeamExe
     setRecordingPermission: vi.fn(),
     approveSession: vi.fn(),
     setPrivateNote: vi.fn(),
+    reviseMyResult: vi.fn(),
+    voidMyResult: vi.fn(),
     ...overrides,
   } as TeamExerciseCloudService;
 }
@@ -245,6 +301,85 @@ describe("Team Exercise entries in the Profile-scoped sporting outbox", () => {
     });
   });
 
+  it("caches only a fully validated latest revision projection and restores it offline", async () => {
+    const adapter = createLocalStorageAdapter();
+    const record = await ownedReadRecord();
+    const originalPayload = JSON.parse(record.bundle.resultPayload);
+    const correctedResult = structuredClone(originalPayload.result);
+    correctedResult.attempts[0].evaluation = { status: "scored", score: 2 };
+    delete correctedResult.updatedAt;
+    const resultPayload = JSON.stringify({ schemaVersion: 1, result: correctedResult });
+    record.revisions = [{
+      revisionId: REVISION,
+      resultId: record.bundle.resultIds[0],
+      athleteProfileId: ATHLETE_A,
+      revisionNumber: 1,
+      kind: "corrected",
+      schemaVersion: 1,
+      resultPayload,
+      contentSha256: (await sha256Hex(resultPayload))!,
+      changedFields: ["evaluation"],
+      reason: "Corrected the observed outcome for this stone",
+      actorProfileId: ATHLETE_A,
+      createdAt: "2026-08-28T13:00:00Z",
+    }];
+    const online = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+    }), adapter);
+    await online.manager.initialize();
+    expect(online.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "refreshed",
+      teamExerciseResults: [{
+        originalResult: { attempts: [{ evaluation: { score: 4 } }] },
+        result: { attempts: [{ evaluation: { score: 2 } }] },
+        postCompletionRevisions: [{ revisionNumber: 1, kind: "corrected" }],
+        isVoided: false,
+      }],
+    });
+
+    const offline = harness(ATHLETE_A, () => false, teamService(), adapter);
+    await offline.manager.initialize();
+    expect(offline.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "cached",
+      teamExerciseResults: [{
+        result: { attempts: [{ evaluation: { score: 2 } }] },
+        postCompletionRevisions: [{ revisionNumber: 1 }],
+      }],
+    });
+  });
+
+  it("migrates a valid schema-5 owned-result cache without inventing revisions", async () => {
+    const adapter = createLocalStorageAdapter();
+    const record = await ownedReadRecord();
+    const first = harness(ATHLETE_A, () => true, teamService({
+      listMyResults: vi.fn(async () => ({ ok: true as const, value: [record] })),
+    }), adapter);
+    await first.manager.initialize();
+    const scoped = createProfileScopedSportingStorageAdapter(ATHLETE_A, adapter);
+    const saved = await scoped.get(CLOUD_SPORTING_SYNC_STORAGE_KEY);
+    if (saved.status !== "value" || saved.value === null) throw new Error("Missing sporting state fixture");
+    const legacy = JSON.parse(saved.value);
+    legacy.schemaVersion = 5;
+    for (const result of legacy.teamExerciseResults) {
+      delete result.originalResult;
+      delete result.postCompletionRevisions;
+      delete result.isVoided;
+    }
+    expect((await scoped.set(CLOUD_SPORTING_SYNC_STORAGE_KEY, JSON.stringify(legacy))).ok).toBe(true);
+
+    const reloaded = harness(ATHLETE_A, () => false, teamService(), adapter);
+    await reloaded.manager.initialize();
+    expect(reloaded.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "cached",
+      teamExerciseResults: [{
+        isVoided: false,
+        postCompletionRevisions: [],
+      }],
+    });
+    const restored = reloaded.manager.getSnapshot().teamExerciseResults[0];
+    expect(restored.originalResult).toEqual(restored.result);
+  });
+
   it("fails closed if cached athlete-owned results cross into another mounted Profile", async () => {
     const base = createLocalStorageAdapter();
     const record = await ownedReadRecord();
@@ -267,6 +402,164 @@ describe("Team Exercise entries in the Profile-scoped sporting outbox", () => {
       teamExerciseResultReadStatus: "issue",
       teamExerciseResults: [],
     });
+  });
+
+  it("submits one bounded athlete correction and replaces the cache only from the verified owner read", async () => {
+    const original = await ownedReadRecord();
+    const corrected = await withCorrectedOutcome(original, 2);
+    const listMyResults = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [original] })
+      .mockResolvedValueOnce({ ok: true as const, value: [corrected] });
+    const reviseMyResult = vi.fn(async () => ({ ok: true as const, value: {
+      outcome: "inserted" as const,
+      revisionId: REVISION,
+      revisionNumber: 1,
+      changedAt: "2026-08-28T13:00:00Z",
+    } }));
+    const h = harness(ATHLETE_A, () => true, teamService({ listMyResults, reviseMyResult }));
+    await h.manager.initialize();
+    const owned = h.manager.getSnapshot().teamExerciseResults[0];
+    const replacement = structuredClone(owned.result);
+    const attempt = replacement.attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing Shotmaking fixture");
+    attempt.evaluation = { status: "scored", score: 2 };
+
+    expect(await h.manager.reviseMyTeamExerciseResult(
+      owned.result.id,
+      ATHLETE_A,
+      replacement,
+      REVISION,
+      "  Corrected the observed outcome for this stone  "
+    )).toBe("updated");
+    expect(reviseMyResult).toHaveBeenCalledWith(expect.objectContaining({
+      revisionId: REVISION,
+      baseRevisionNumber: 0,
+      changedFields: ["evaluation"],
+      reason: "Corrected the observed outcome for this stone",
+    }));
+    expect(h.manager.getSnapshot()).toMatchObject({
+      teamExerciseResultReadStatus: "refreshed",
+      teamExerciseResults: [{
+        originalResult: { attempts: [{ evaluation: { score: 4 } }] },
+        result: { attempts: [{ evaluation: { score: 2 } }] },
+        postCompletionRevisions: [{ revisionId: REVISION, revisionNumber: 1 }],
+      }],
+    });
+  });
+
+  it("retries an unconfirmed correction with the exact stable revision and payload", async () => {
+    const original = await ownedReadRecord();
+    const corrected = await withCorrectedOutcome(original, 3);
+    const listMyResults = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [original] })
+      .mockResolvedValueOnce({ ok: true as const, value: [corrected] });
+    const reviseMyResult = vi.fn()
+      .mockResolvedValueOnce({ ok: false as const, error: "unavailable" as const })
+      .mockResolvedValueOnce({ ok: true as const, value: {
+        outcome: "already_present" as const,
+        revisionId: REVISION,
+        revisionNumber: 1,
+        changedAt: "2026-08-28T13:00:00Z",
+      } });
+    const h = harness(ATHLETE_A, () => true, teamService({ listMyResults, reviseMyResult }));
+    await h.manager.initialize();
+    const owned = h.manager.getSnapshot().teamExerciseResults[0];
+    const replacement = structuredClone(owned.result);
+    const attempt = replacement.attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing Shotmaking fixture");
+    attempt.evaluation = { status: "scored", score: 3 };
+    const args = [owned.result.id, ATHLETE_A, replacement, REVISION,
+      "Corrected the observed outcome for this stone"] as const;
+
+    expect(await h.manager.reviseMyTeamExerciseResult(...args)).toBe("failed");
+    expect(await h.manager.reviseMyTeamExerciseResult(...args)).toBe("updated");
+    expect(reviseMyResult).toHaveBeenCalledTimes(2);
+    expect(reviseMyResult.mock.calls[1][0]).toEqual(reviseMyResult.mock.calls[0][0]);
+    expect(h.manager.getSnapshot().teamExerciseResults[0].postCompletionRevisions).toHaveLength(1);
+  });
+
+  it("refreshes a stale conflict instead of overwriting and refuses foreign or unchanged replacements", async () => {
+    const original = await ownedReadRecord();
+    const concurrent = await withCorrectedOutcome(original, 1);
+    const listMyResults = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [original] })
+      .mockResolvedValueOnce({ ok: true as const, value: [concurrent] });
+    const reviseMyResult = vi.fn(async () => ({ ok: true as const, value: {
+      outcome: "conflict" as const,
+      revisionId: null,
+      revisionNumber: 1,
+      changedAt: "2026-08-28T13:00:00Z",
+    } }));
+    const h = harness(ATHLETE_A, () => true, teamService({ listMyResults, reviseMyResult }));
+    await h.manager.initialize();
+    const owned = h.manager.getSnapshot().teamExerciseResults[0];
+    const replacement = structuredClone(owned.result);
+    const attempt = replacement.attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing Shotmaking fixture");
+    attempt.evaluation = { status: "scored", score: 2 };
+
+    expect(await h.manager.reviseMyTeamExerciseResult(
+      owned.result.id, ATHLETE_A, replacement, REVISION,
+      "Corrected the observed outcome for this stone"
+    )).toBe("conflict");
+    expect(h.manager.getSnapshot().teamExerciseResults[0].result.attempts[0]).toMatchObject({
+      evaluation: { score: 1 },
+    });
+    expect(await h.manager.reviseMyTeamExerciseResult(
+      owned.result.id, PROFILE_B, replacement, REVISION,
+      "A foreign Profile must never revise this result"
+    )).toBe("failed");
+    expect(await h.manager.reviseMyTeamExerciseResult(
+      owned.result.id, ATHLETE_A, h.manager.getSnapshot().teamExerciseResults[0].result,
+      REVISION, "No supported fact was actually changed here"
+    )).toBe("invalid");
+    expect(reviseMyResult).toHaveBeenCalledTimes(1);
+  });
+
+  it("voids the complete result terminally and refuses any later correction", async () => {
+    const original = await ownedReadRecord();
+    const voided = withTerminalVoid(original);
+    const listMyResults = vi.fn()
+      .mockResolvedValueOnce({ ok: true as const, value: [original] })
+      .mockResolvedValueOnce({ ok: true as const, value: [voided] });
+    const voidMyResult = vi.fn(async () => ({ ok: true as const, value: {
+      outcome: "inserted" as const,
+      revisionId: REVISION,
+      revisionNumber: 1,
+      changedAt: "2026-08-28T13:00:00Z",
+    } }));
+    const reviseMyResult = vi.fn();
+    const h = harness(ATHLETE_A, () => true, teamService({
+      listMyResults,
+      voidMyResult,
+      reviseMyResult,
+    }));
+    await h.manager.initialize();
+    const owned = h.manager.getSnapshot().teamExerciseResults[0];
+    expect(await h.manager.voidMyTeamExerciseResult(
+      owned.result.id,
+      ATHLETE_A,
+      REVISION,
+      "  This complete result should not count anymore  "
+    )).toBe("updated");
+    expect(voidMyResult).toHaveBeenCalledWith(expect.objectContaining({
+      revisionId: REVISION,
+      baseRevisionNumber: 0,
+      reason: "This complete result should not count anymore",
+    }));
+    const terminal = h.manager.getSnapshot().teamExerciseResults[0];
+    expect(terminal).toMatchObject({
+      isVoided: true,
+      postCompletionRevisions: [{ kind: "voided" }],
+    });
+    expect(await h.manager.reviseMyTeamExerciseResult(
+      terminal.result.id,
+      ATHLETE_A,
+      terminal.result,
+      "80000000-0000-4000-8000-000000000009",
+      "A voided result must never become editable again"
+    )).toBe("invalid");
+    expect(reviseMyResult).not.toHaveBeenCalled();
   });
 
   it("updates and clears only the authenticated athlete's private note after cloud acknowledgement", async () => {

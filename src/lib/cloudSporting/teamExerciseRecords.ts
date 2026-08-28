@@ -10,7 +10,12 @@ import { validateExerciseExecution } from "../exercises/executionValidation";
 import { isCanonicalUuid } from "../uuid";
 import {
   TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+  TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION,
   SUPPORTED_TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSIONS,
+  type TeamExerciseResultChangedField,
+  type TeamExerciseResultCorrectionMutation,
+  type TeamExerciseResultRevisionCloudRecord,
+  type TeamExerciseResultRevisionMutation,
   type TeamExerciseCloudReadRecord,
   type TeamExerciseUploadPackage,
 } from "./teamExerciseTypes";
@@ -45,10 +50,26 @@ export type OwnedTeamExerciseResultRecord = {
   athleteProfileId: string;
   recordedByProfileId: string;
   sharedExecution: Omit<ExerciseExecution, "athleteResults" | "activeAttemptCorrections">;
+  /** Immutable recorder-authored result before any post-completion athlete revision. */
+  originalResult: AthleteExerciseResult;
+  /** Latest valid result; retained for provenance even when the whole result is voided. */
   result: AthleteExerciseResult;
   activeAttemptCorrections: ExerciseActiveAttemptCorrection[];
+  postCompletionRevisions: OwnedTeamExerciseResultRevision[];
+  isVoided: boolean;
   privateNote: { note: string; updatedAt: string } | null;
   cloudCreatedAt: string;
+};
+
+export type OwnedTeamExerciseResultRevision = {
+  revisionId: string;
+  revisionNumber: number;
+  kind: "corrected" | "voided";
+  changedFields: TeamExerciseResultChangedField[] | ["result"];
+  reason: string;
+  actorProfileId: string;
+  createdAt: string;
+  resultingResult: AthleteExerciseResult | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +92,205 @@ function validTimestamp(value: unknown): value is string {
 
 function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
+}
+
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") {
+    return Object.is(left, right);
+  }
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+      left.every((item, index) => sameJsonValue(item, right[index]));
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).filter((key) => leftRecord[key] !== undefined).sort();
+  const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined).sort();
+  return leftKeys.length === rightKeys.length && leftKeys.every(
+    (key, index) => key === rightKeys[index] && sameJsonValue(leftRecord[key], rightRecord[key])
+  );
+}
+
+function sameChangedFields(
+  actual: readonly string[],
+  expected: ReadonlySet<TeamExerciseResultChangedField>
+): boolean {
+  return actual.length === expected.size && actual.every(
+    (field) => expected.has(field as TeamExerciseResultChangedField)
+  );
+}
+
+function replacementChangedFields(
+  previous: AthleteExerciseResult,
+  replacement: AthleteExerciseResult
+): TeamExerciseResultChangedField[] | null {
+  if (replacement.id !== previous.id || replacement.athleteProfileId !== previous.athleteProfileId ||
+      replacement.createdAt !== previous.createdAt || replacement.privateNote !== undefined ||
+      !validTimestamp(replacement.updatedAt) ||
+      Date.parse(replacement.updatedAt) < Date.parse(previous.updatedAt) ||
+      replacement.attempts.length !== previous.attempts.length) return null;
+  const changed = new Set<TeamExerciseResultChangedField>();
+  let changedAttempts = 0;
+  for (let index = 0; index < previous.attempts.length; index += 1) {
+    const before = previous.attempts[index];
+    const after = replacement.attempts[index];
+    if (!after || before.id !== after.id || before.kind !== after.kind ||
+        before.athleteProfileId !== after.athleteProfileId ||
+        before.roleAssignmentSegmentId !== after.roleAssignmentSegmentId ||
+        before.sequenceNumber !== after.sequenceNumber || before.createdAt !== after.createdAt ||
+        before.recordedByProfileId !== after.recordedByProfileId ||
+        (before.kind === "shotmaking" && after.kind === "shotmaking" &&
+          before.intendedHandle !== after.intendedHandle)) return null;
+    const attemptFields = new Set<TeamExerciseResultChangedField>();
+    if (!sameJsonValue(before.actualHandle, after.actualHandle)) attemptFields.add("actualHandle");
+    if (before.kind === "shotmaking" && after.kind === "shotmaking" &&
+        !sameJsonValue(before.evaluation, after.evaluation)) attemptFields.add("evaluation");
+    if (!sameJsonValue(before.measurements, after.measurements)) attemptFields.add("measurements");
+    if (before.kind === "shotmaking" && after.kind === "shotmaking" &&
+        !sameJsonValue(before.teamRoleContextOverride, after.teamRoleContextOverride)) {
+      attemptFields.add("teamRoleContextOverride");
+    }
+    if (attemptFields.size > 0) {
+      changedAttempts += 1;
+      attemptFields.forEach((field) => changed.add(field));
+    }
+  }
+  return changedAttempts === 1 ? [...changed] : null;
+}
+
+function validateReplacementResult(
+  previous: AthleteExerciseResult,
+  replacement: AthleteExerciseResult,
+  declaredFields: readonly string[]
+): boolean {
+  const changed = replacementChangedFields(previous, replacement);
+  return changed !== null && sameChangedFields(declaredFields, new Set(changed));
+}
+
+function validatePostCompletionSequence(
+  sharedExecution: Omit<ExerciseExecution, "athleteResults" | "activeAttemptCorrections">,
+  originalResult: AthleteExerciseResult,
+  activeAttemptCorrections: ExerciseActiveAttemptCorrection[],
+  revisions: OwnedTeamExerciseResultRevision[],
+  athleteProfileId: string
+): { result: AthleteExerciseResult; isVoided: boolean } | null {
+  let current = originalResult;
+  let isVoided = false;
+  let previousChangedAt = sharedExecution.completedAt;
+  const revisionIds = new Set<string>();
+  for (let index = 0; index < revisions.length; index += 1) {
+    const revision = revisions[index];
+    if (!isCanonicalUuid(revision.revisionId) || revisionIds.has(revision.revisionId) ||
+        revision.revisionNumber !== index + 1 ||
+        revision.actorProfileId !== athleteProfileId || !validTimestamp(revision.createdAt) ||
+        revision.reason !== revision.reason.trim() || revision.reason.length < 10 ||
+        revision.reason.length > 500 || byteLength(revision.reason) > 2_000 ||
+        (previousChangedAt && Date.parse(revision.createdAt) < Date.parse(previousChangedAt)) ||
+        isVoided) return null;
+    revisionIds.add(revision.revisionId);
+    previousChangedAt = revision.createdAt;
+    if (revision.kind === "voided") {
+      if (revision.resultingResult !== null || revision.changedFields.length !== 1 ||
+          revision.changedFields[0] !== "result" || index !== revisions.length - 1) return null;
+      isVoided = true;
+      continue;
+    }
+    if (revision.kind !== "corrected" || !revision.resultingResult ||
+        !hasStrictOwnedPayloadShape(
+          sharedExecution as unknown as Record<string, unknown>,
+          revision.resultingResult as unknown as Record<string, unknown>,
+          true
+        ) ||
+        !validateReplacementResult(current, revision.resultingResult, revision.changedFields)) return null;
+    const candidate = {
+      ...sharedExecution,
+      athleteResults: [revision.resultingResult],
+      ...((sharedExecution as Record<string, unknown>).schemaVersion === 2
+        ? { activeAttemptCorrections }
+        : {}),
+    };
+    const validation = validateExerciseExecution(candidate, EXERCISE_CATALOG, {
+      ownedTeamResultProfileId: athleteProfileId,
+    });
+    if (!validation.valid) return null;
+    current = validation.value.athleteResults[0];
+  }
+  return { result: current, isVoided };
+}
+
+async function decodePostCompletionRevisions(
+  records: TeamExerciseResultRevisionCloudRecord[],
+  resultId: string,
+  athleteProfileId: string,
+  recordedByProfileId: string
+): Promise<OwnedTeamExerciseResultRevision[] | null> {
+  const revisions: OwnedTeamExerciseResultRevision[] = [];
+  const ids = new Set<string>();
+  for (const record of records) {
+    if (!isCanonicalUuid(record.revisionId) || ids.has(record.revisionId) ||
+        record.resultId !== resultId || record.athleteProfileId !== athleteProfileId ||
+        record.actorProfileId !== athleteProfileId || !Number.isInteger(record.revisionNumber) ||
+        record.revisionNumber < 1 || record.schemaVersion !== TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION ||
+        !validTimestamp(record.createdAt) || record.reason !== record.reason.trim() ||
+        record.reason.length < 10 || record.reason.length > 500 || byteLength(record.reason) > 2_000 ||
+        !Array.isArray(record.changedFields) || record.changedFields.length === 0 ||
+        new Set(record.changedFields).size !== record.changedFields.length) return null;
+    ids.add(record.revisionId);
+    if (record.kind === "voided") {
+      if (record.resultPayload !== null || record.contentSha256 !== null ||
+          record.changedFields.length !== 1 || record.changedFields[0] !== "result") return null;
+      revisions.push({
+        revisionId: record.revisionId,
+        revisionNumber: record.revisionNumber,
+        kind: "voided",
+        changedFields: ["result"],
+        reason: record.reason,
+        actorProfileId: record.actorProfileId,
+        createdAt: record.createdAt,
+        resultingResult: null,
+      });
+      continue;
+    }
+    if (record.kind !== "corrected" || typeof record.resultPayload !== "string" ||
+        record.resultPayload.length === 0 || byteLength(record.resultPayload) > 8_388_608 ||
+        typeof record.contentSha256 !== "string" ||
+        await sha256Hex(record.resultPayload) !== record.contentSha256 ||
+        !record.changedFields.every((field) => field !== "result")) return null;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(record.resultPayload);
+    } catch {
+      return null;
+    }
+    if (!isRecord(payload) || !hasOnlyKeys(payload, ["schemaVersion", "result"]) ||
+        payload.schemaVersion !== TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION ||
+        !isRecord(payload.result) || !hasOnlyKeys(payload.result, [
+          "id", "athleteProfileId", "attempts", "createdAt",
+        ]) || !Array.isArray(payload.result.attempts) ||
+        !payload.result.attempts.every((attempt) => strictAttempt(attempt, false)) ||
+        payload.result.attempts.some((attempt) =>
+          isRecord(attempt) && "recordedByProfileId" in attempt
+        )) return null;
+    const result = {
+      ...payload.result,
+      updatedAt: record.createdAt,
+      attempts: payload.result.attempts.map((attempt) => ({
+        ...(attempt as Record<string, unknown>),
+        recordedByProfileId,
+      })),
+    } as AthleteExerciseResult;
+    revisions.push({
+      revisionId: record.revisionId,
+      revisionNumber: record.revisionNumber,
+      kind: "corrected",
+      changedFields: [...record.changedFields] as TeamExerciseResultChangedField[],
+      reason: record.reason,
+      actorProfileId: record.actorProfileId,
+      createdAt: record.createdAt,
+      resultingResult: result,
+    });
+  }
+  return revisions;
 }
 
 function strictMeasurement(value: unknown): boolean {
@@ -190,6 +410,7 @@ export async function deserializeOwnedTeamExerciseResult(
     record.session.schemaVersion !== record.bundle.schemaVersion ||
     !validTimestamp(record.session.createdAt) ||
     !validTimestamp(record.bundle.createdAt) ||
+    !Array.isArray(record.revisions) ||
     await sha256Hex(record.session.coordinationPayload) !== record.session.contentSha256 ||
     await sha256Hex(record.bundle.resultPayload) !== record.bundle.contentSha256
   ) return null;
@@ -317,6 +538,22 @@ export async function deserializeOwnedTeamExerciseResult(
   )) return null;
 
   const sharedExecution = omitProperties(execution, ["athleteResults", "activeAttemptCorrections"]);
+  const activeAttemptCorrections = execution.activeAttemptCorrections ?? [];
+  const postCompletionRevisions = await decodePostCompletionRevisions(
+    record.revisions,
+    result.id,
+    authenticatedProfileId,
+    record.bundle.recordedByProfileId
+  );
+  if (!postCompletionRevisions) return null;
+  const current = validatePostCompletionSequence(
+    sharedExecution,
+    result,
+    activeAttemptCorrections,
+    postCompletionRevisions,
+    authenticatedProfileId
+  );
+  if (!current) return null;
   return {
     bundleId: record.bundle.bundleId,
     sessionId: record.session.sessionId,
@@ -324,12 +561,57 @@ export async function deserializeOwnedTeamExerciseResult(
     athleteProfileId: authenticatedProfileId,
     recordedByProfileId: record.session.recordedByProfileId,
     sharedExecution,
-    result,
-    activeAttemptCorrections: execution.activeAttemptCorrections ?? [],
+    originalResult: result,
+    result: current.result,
+    activeAttemptCorrections,
+    postCompletionRevisions,
+    isVoided: current.isVoided,
     privateNote: record.privateNote
       ? { note: record.privateNote.note, updatedAt: record.privateNote.updatedAt }
       : null,
     cloudCreatedAt: record.bundle.createdAt,
+  };
+}
+
+function parseCachedPostCompletionRevision(value: unknown): OwnedTeamExerciseResultRevision | null {
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    "revisionId", "revisionNumber", "kind", "changedFields", "reason",
+    "actorProfileId", "createdAt", "resultingResult",
+  ]) || !isCanonicalUuid(value.revisionId) || !Number.isInteger(value.revisionNumber) ||
+      (value.revisionNumber as number) < 1 ||
+      (value.kind !== "corrected" && value.kind !== "voided") ||
+      !Array.isArray(value.changedFields) || value.changedFields.length === 0 ||
+      new Set(value.changedFields).size !== value.changedFields.length ||
+      typeof value.reason !== "string" || value.reason !== value.reason.trim() ||
+      value.reason.length < 10 || value.reason.length > 500 || byteLength(value.reason) > 2_000 ||
+      !isCanonicalUuid(value.actorProfileId) || !validTimestamp(value.createdAt)) return null;
+  if (value.kind === "voided") {
+    if (value.resultingResult !== null || value.changedFields.length !== 1 ||
+        value.changedFields[0] !== "result") return null;
+    return {
+      revisionId: value.revisionId,
+      revisionNumber: value.revisionNumber as number,
+      kind: "voided",
+      changedFields: ["result"],
+      reason: value.reason,
+      actorProfileId: value.actorProfileId,
+      createdAt: value.createdAt,
+      resultingResult: null,
+    };
+  }
+  if (!isRecord(value.resultingResult) || !value.changedFields.every((field) =>
+    field === "actualHandle" || field === "evaluation" || field === "measurements" ||
+      field === "teamRoleContextOverride"
+  )) return null;
+  return {
+    revisionId: value.revisionId,
+    revisionNumber: value.revisionNumber as number,
+    kind: "corrected",
+    changedFields: [...value.changedFields] as TeamExerciseResultChangedField[],
+    reason: value.reason,
+    actorProfileId: value.actorProfileId,
+    createdAt: value.createdAt,
+    resultingResult: value.resultingResult as AthleteExerciseResult,
   };
 }
 
@@ -339,18 +621,22 @@ export function validateOwnedTeamExerciseResultRecord(
 ): OwnedTeamExerciseResultRecord | null {
   if (!isRecord(value) || !hasOnlyKeys(value, [
     "bundleId", "sessionId", "teamId", "athleteProfileId", "recordedByProfileId",
-    "sharedExecution", "result", "activeAttemptCorrections", "privateNote", "cloudCreatedAt",
+    "sharedExecution", "originalResult", "result", "activeAttemptCorrections",
+    "postCompletionRevisions", "isVoided", "privateNote", "cloudCreatedAt",
   ]) || !isCanonicalUuid(value.bundleId) || !isCanonicalUuid(value.sessionId) ||
       !isCanonicalUuid(value.teamId) || !isCanonicalUuid(value.athleteProfileId) ||
       !isCanonicalUuid(value.recordedByProfileId) || !validTimestamp(value.cloudCreatedAt) ||
       !isRecord(value.sharedExecution) || "athleteResults" in value.sharedExecution ||
       "activeAttemptCorrections" in value.sharedExecution ||
       ((value.sharedExecution as Record<string, unknown>).schemaVersion === 2 && value.activeAttemptCorrections === undefined) ||
-      !isRecord(value.result) || (value.activeAttemptCorrections !== undefined && (
+      !isRecord(value.originalResult) || !isRecord(value.result) ||
+      !Array.isArray(value.postCompletionRevisions) || typeof value.isVoided !== "boolean" ||
+      (value.activeAttemptCorrections !== undefined && (
         !Array.isArray(value.activeAttemptCorrections) ||
         !value.activeAttemptCorrections.every((correction) => strictCorrection(correction, true))
       ))) return null;
-  if (!hasStrictOwnedPayloadShape(value.sharedExecution, value.result, true)) return null;
+  if (!hasStrictOwnedPayloadShape(value.sharedExecution, value.originalResult, true) ||
+      !hasStrictOwnedPayloadShape(value.sharedExecution, value.result, true)) return null;
   if (value.privateNote !== null && (
     !isRecord(value.privateNote) ||
     !hasOnlyKeys(value.privateNote, ["note", "updatedAt"]) ||
@@ -360,9 +646,15 @@ export function validateOwnedTeamExerciseResultRecord(
     !validTimestamp(value.privateNote.updatedAt)
   )) return null;
   const activeAttemptCorrections = (value.activeAttemptCorrections ?? []) as ExerciseActiveAttemptCorrection[];
+  const postCompletionRevisions: OwnedTeamExerciseResultRevision[] = [];
+  for (const candidate of value.postCompletionRevisions) {
+    const parsed = parseCachedPostCompletionRevision(candidate);
+    if (!parsed) return null;
+    postCompletionRevisions.push(parsed);
+  }
   const candidate = {
     ...value.sharedExecution,
-    athleteResults: [value.result],
+    athleteResults: [value.originalResult],
     ...((value.sharedExecution as Record<string, unknown>).schemaVersion === 2
       ? { activeAttemptCorrections }
       : {}),
@@ -376,10 +668,26 @@ export function validateOwnedTeamExerciseResultRecord(
     execution.trainingSessionId !== value.sessionId ||
     execution.teamContext?.teamId !== value.teamId ||
     execution.teamContext.recorderProfileId !== value.recordedByProfileId ||
-    execution.athleteResults[0]?.id !== value.result.id ||
+    execution.athleteResults[0]?.id !== value.originalResult.id ||
     execution.athleteResults[0]?.athleteProfileId !== value.athleteProfileId
   ) return null;
-  return { ...value, activeAttemptCorrections } as OwnedTeamExerciseResultRecord;
+  const current = validatePostCompletionSequence(
+    value.sharedExecution as OwnedTeamExerciseResultRecord["sharedExecution"],
+    execution.athleteResults[0],
+    activeAttemptCorrections,
+    postCompletionRevisions,
+    value.athleteProfileId
+  );
+  if (!current || current.isVoided !== value.isVoided ||
+      !sameJsonValue(current.result, value.result)) return null;
+  return {
+    ...value,
+    originalResult: execution.athleteResults[0],
+    result: current.result,
+    activeAttemptCorrections,
+    postCompletionRevisions,
+    isVoided: current.isVoided,
+  } as OwnedTeamExerciseResultRecord;
 }
 
 function omitProperties<T extends object, K extends keyof T>(value: T, keys: readonly K[]): Omit<T, K> {
@@ -406,6 +714,83 @@ function correctionWithoutRecorder(
     ...(correction.after
       ? { after: attemptWithoutRecorder(correction.after) as typeof correction.after }
       : {}),
+  };
+}
+
+function normalizedRevisionReason(reason: string): string | null {
+  const normalized = reason.trim();
+  return normalized.length >= 10 && normalized.length <= 500 && byteLength(normalized) <= 2_000
+    ? normalized
+    : null;
+}
+
+/**
+ * Builds C4b's only supported correction wire shape from an already verified owned
+ * projection. Athlete identity, capture provenance and server update time cannot be
+ * supplied by the mutation caller.
+ */
+export function createTeamExerciseResultCorrectionMutation(
+  record: OwnedTeamExerciseResultRecord,
+  replacement: AthleteExerciseResult,
+  revisionId: string,
+  reason: string
+): TeamExerciseResultCorrectionMutation | null {
+  const normalizedReason = normalizedRevisionReason(reason);
+  if (record.isVoided || !isCanonicalUuid(revisionId) || !normalizedReason ||
+      validateOwnedTeamExerciseResultRecord(record) === null ||
+      !hasStrictOwnedPayloadShape(
+        record.sharedExecution as unknown as Record<string, unknown>,
+        replacement as unknown as Record<string, unknown>,
+        true
+      )) return null;
+  const candidate = {
+    ...record.sharedExecution,
+    athleteResults: [replacement],
+    ...((record.sharedExecution as unknown as Record<string, unknown>).schemaVersion === 2
+      ? { activeAttemptCorrections: record.activeAttemptCorrections }
+      : {}),
+  };
+  const validation = validateExerciseExecution(candidate, EXERCISE_CATALOG, {
+    ownedTeamResultProfileId: record.athleteProfileId,
+  });
+  if (!validation.valid) return null;
+  const validatedReplacement = validation.value.athleteResults[0];
+  const changedFields = replacementChangedFields(record.result, validatedReplacement);
+  if (!changedFields) return null;
+  const resultWithoutTransportClaims = omitProperties(validatedReplacement, [
+    "privateNote", "updatedAt",
+  ]);
+  const resultPayload = JSON.stringify({
+    schemaVersion: TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION,
+    result: {
+      ...resultWithoutTransportClaims,
+      attempts: validatedReplacement.attempts.map(attemptWithoutRecorder),
+    },
+  });
+  return {
+    revisionId,
+    resultId: record.result.id,
+    baseRevisionNumber: record.postCompletionRevisions.length,
+    schemaVersion: TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION,
+    resultPayload,
+    reason: normalizedReason,
+    changedFields,
+  };
+}
+
+export function createTeamExerciseResultVoidMutation(
+  record: OwnedTeamExerciseResultRecord,
+  revisionId: string,
+  reason: string
+): TeamExerciseResultRevisionMutation | null {
+  const normalizedReason = normalizedRevisionReason(reason);
+  if (record.isVoided || !isCanonicalUuid(revisionId) || !normalizedReason ||
+      validateOwnedTeamExerciseResultRecord(record) === null) return null;
+  return {
+    revisionId,
+    resultId: record.result.id,
+    baseRevisionNumber: record.postCompletionRevisions.length,
+    reason: normalizedReason,
   };
 }
 

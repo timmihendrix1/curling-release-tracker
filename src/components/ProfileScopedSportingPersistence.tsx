@@ -22,13 +22,14 @@ import {
   type SportingSyncSnapshot,
   type TeamExercisePrivateNoteUpdateOutcome,
   type TeamExercisePermissionUpdateOutcome,
+  type TeamExerciseResultMutationOutcome,
 } from "../lib/cloudSporting/syncManager";
 import { resolveCloudConfig } from "../lib/supabase/config";
 import { getSupabaseBrowserClient } from "../lib/supabase/supabaseClient";
 import { createSupabaseSportingCloudService } from "../lib/supabase/supabaseSportingCloudService";
 import { createSupabaseTeamExerciseCloudService } from "../lib/supabase/supabaseTeamExerciseCloudService";
 import { useIdentity } from "./identity/IdentityProvider";
-import type { ExerciseExecution } from "../lib/exercises/executionTypes";
+import type { AthleteExerciseResult, ExerciseExecution } from "../lib/exercises/executionTypes";
 import type { TeamWorkspace } from "../lib/team/teamService";
 
 const SportingPersistenceContext = createContext<SportingRepositories | null>(null);
@@ -49,6 +50,17 @@ export type SportingCloudSyncContextValue = SportingSyncSnapshot & {
     resultId: string,
     note: string | null
   ): Promise<TeamExercisePrivateNoteUpdateOutcome>;
+  reviseMyTeamExerciseResult(
+    resultId: string,
+    replacement: AthleteExerciseResult,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome>;
+  voidMyTeamExerciseResult(
+    resultId: string,
+    revisionId: string,
+    reason: string
+  ): Promise<TeamExerciseResultMutationOutcome>;
 };
 const SportingCloudSyncContext = createContext<SportingCloudSyncContextValue | null>(null);
 let unscopedTestRepositories: SportingRepositories | null = null;
@@ -194,6 +206,16 @@ function ProfileScopedSportingPersistenceInstance({
         refreshMyTeamExerciseResults: () => manager.refreshMyTeamExerciseResults(),
         setMyTeamExercisePrivateNote: (resultId, note) =>
           manager.setMyTeamExercisePrivateNote(resultId, profileId, note),
+        reviseMyTeamExerciseResult: (resultId, replacement, revisionId, reason) =>
+          manager.reviseMyTeamExerciseResult(
+            resultId,
+            profileId,
+            replacement,
+            revisionId,
+            reason
+          ),
+        voidMyTeamExerciseResult: (resultId, revisionId, reason) =>
+          manager.voidMyTeamExerciseResult(resultId, profileId, revisionId, reason),
       }}>
         <SportingPersistenceContext.Provider value={repositories}>
           {children}

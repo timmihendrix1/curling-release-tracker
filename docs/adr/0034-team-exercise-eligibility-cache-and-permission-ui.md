@@ -3,8 +3,8 @@
 **Status:** Accepted and implemented as Exercise Stage C2c (2026-08-28). ADR-0035 adds
 the Profile-scoped active Team draft and ADR-0036 uses this cache for setup/capture;
 ADR-0037 now implements athlete result/private-note reads and ADR-0038 active attempt
-corrections. Post-completion revisions, voiding and
-notifications remain later Stage C work.
+corrections. ADR-0039 adds C4a post-completion server authority and C4b's strict client
+projection/cache; C4c now completes the athlete mutation/inbox UI.
 
 ## Context
 

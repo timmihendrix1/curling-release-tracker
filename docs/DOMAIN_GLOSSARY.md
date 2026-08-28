@@ -1699,6 +1699,36 @@ without erasing its original facts or provenance. It is distinct from post-compl
 ordinary voiding and from legal/privacy erasure. **[Implemented by ADR-0038; confirmed
 in the rink UI and retained in the affected athlete's audit.]**
 
+## Post-completion Exercise Result Revision
+
+An append-only, athlete-authenticated change to the athlete's own completed Team
+Exercise result. Version 1 permits actual handle, evaluation/exclusion, supported
+Measurements and effective role/Sweeper context; athlete attribution cannot change.
+It retains a byte-exact replacement payload, bounded changed-field list, 10-500
+character reason, server-derived actor, time and strictly increasing result-local
+revision number. The owner-only client projection validates the complete sequence and
+retains immutable original plus current result and terminal state in the Profile cache.
+**[Server authority implemented by ADR-0039/C4a; client service/read/cache implemented
+by C4b; athlete mutation and audit UI implemented by C4c.]**
+
+## Ordinary Exercise Result Void
+
+The athlete-authenticated, append-only terminal state that removes the athlete's whole
+completed result from current calculations without erasing its original bundle or
+revision history. It does not delete one stone, cannot be undone in Version 1 and is
+separate from active Recorded-by-Mistake annulment, account deletion and legal erasure.
+**[Server authority and strict client projection implemented by ADR-0039/C4a-C4b;
+terminal confirmation and preserved-result UI implemented by C4c.]**
+
+## Team Exercise Result Change Notification
+
+An unread in-app account notification emitted atomically for an accepted post-completion
+correction or void. Recipients are other original Session participants who currently
+retain active membership in the same active Team and platform entitlement. It contains
+Session, actor display-name snapshot, change kind/count and reason, but no result id or
+performance values in Version 1. **[Emission authority implemented by ADR-0039/C4a;
+strict metadata-only Team inbox presentation implemented by C4c.]**
+
 ## Exercise Rotation Configuration
 
 The planned athlete order and one of five Version 1 behaviours: fixed roles, change
@@ -1766,9 +1796,11 @@ and optional private note; it never contains a sibling Athlete Result collection
 projection is rebuilt from owner-result-gated relational manifests plus hash-verified
 opaque payloads, cached only in the same immutable Profile namespace and exported from
 that same bounded shape. Its active-session correction history is likewise filtered to
-events whose before or after owner is the mounted athlete. **[Implemented by ADR-0037
-and extended by ADR-0038 in `teamExerciseRecords.ts`, schema 5 of the sporting sync
-record and Analyze → Exercises.]**
+events whose before or after owner is the mounted athlete. Post-completion history keeps
+the immutable original, latest valid result and terminal void state only after the full
+owner revision chain validates. **[Implemented by ADR-0037 and extended by ADR-0038/C4b
+in `teamExerciseRecords.ts`, schema 6 of the sporting sync record and Analyze →
+Exercises.]**
 
 ## Shotmaking Evaluation Basis
 

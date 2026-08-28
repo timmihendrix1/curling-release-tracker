@@ -19,7 +19,11 @@ Sessions. That path is a feature-specific extension built on the durable-outbox 
 idempotent-sync backbone Stage B0.4 already requires — not a second, parallel sync
 implementation. ADR-0032 now implements its Team-specific server authority and
 per-athlete partial-bundle rejection; ADR-0033 implements its Profile-scoped local
-outbox/service bridge, while Team UI remains separate Exercise work. The Exercise
+outbox/service bridge. ADR-0039 now implements the post-completion server authority:
+athlete-only append-only corrections, terminal whole-result voiding and idempotent
+metadata-only notification emission. C4b adds the strict owner-only client projection,
+provider-neutral mutation mapping and schema-6 offline cache; C4c adds the athlete-owned
+correction/terminal-void UI and metadata-only Team inbox presentation. The Exercise
 Library capability mapping now follows the
 existing Free / Personal Athlete / Team Workspace / Coaching layers in Section 17.5;
 athlete-owned raw Team Session results remain viewable and exportable independently of
@@ -1202,6 +1206,13 @@ It carries actor, Session, timestamp, reason and change kind or count. Before-an
 performance values are disclosed only where the recipient's current data-sharing grant
 permits them. In-app delivery is required for this workflow; email and push remain
 optional transports.
+
+Version 1 excludes the changing athlete from delivery. Current authorisation means an
+active membership in the same active Team plus current platform entitlement at event
+time. Because Team data-sharing grants are not implemented, ADR-0039 emits metadata
+only: Session, actor identity/display-name snapshot, change kind/count and reason, with
+no foreign result id or performance value. The existing unread account-notification
+inbox is the delivery store.
 
 ## 15. Deletion, export and retention
 

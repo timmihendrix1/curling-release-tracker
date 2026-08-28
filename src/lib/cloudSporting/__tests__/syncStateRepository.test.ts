@@ -27,7 +27,7 @@ describe("sporting sync-state migration and Team validation", () => {
     const loaded = await createSportingSyncStateRepository(adapter).load();
     expect(loaded.status).toBe("value");
     if (loaded.status === "value") {
-      expect(loaded.value.schemaVersion).toBe(5);
+      expect(loaded.value.schemaVersion).toBe(6);
       expect(loaded.value.entries).toHaveLength(1);
       expect(loaded.value.teamEntries).toEqual([]);
       expect(loaded.value.teamEligibilitySnapshots).toEqual([]);
@@ -71,7 +71,7 @@ describe("sporting sync-state migration and Team validation", () => {
     expect(loaded.status).toBe("value");
     if (loaded.status === "value") {
       expect(loaded.value).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         entries: [],
         teamEntries: [],
         teamEligibilitySnapshots: [],
@@ -128,7 +128,7 @@ describe("sporting sync-state migration and Team validation", () => {
     const loaded = await createSportingSyncStateRepository(adapter).load();
     expect(loaded.status).toBe("value");
     if (loaded.status === "value") {
-      expect(loaded.value.schemaVersion).toBe(5);
+      expect(loaded.value.schemaVersion).toBe(6);
       expect(loaded.value.activeTeamExerciseDraft).toBeNull();
       expect(loaded.value.teamExerciseResults).toEqual([]);
     }
@@ -163,7 +163,7 @@ describe("sporting sync-state migration and Team validation", () => {
     expect(loaded.status).toBe("value");
     if (loaded.status === "value") {
       expect(loaded.value).toEqual({
-        schemaVersion: 5,
+        schemaVersion: 6,
         entries: [],
         teamEntries: [],
         teamEligibilitySnapshots: [],

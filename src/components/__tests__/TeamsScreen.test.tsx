@@ -60,6 +60,70 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>, teamServi
 }
 
 describe("TeamsScreen — signed in", () => {
+  it("shows only approved metadata for a Team Exercise result change and dismisses it", async () => {
+    const user = userEvent.setup();
+    const { backend, teamService, profileId } = await setUpAdminWithTeam();
+    const sessionId = "10000000-0000-4000-8000-000000000001";
+    const actorProfileId = "20000000-0000-4000-8000-000000000002";
+    backend.notify(profileId, "team_exercise_result_changed", {
+      sessionId,
+      actorProfileId,
+      actorDisplayName: "Jamie Stone",
+      changeKind: "corrected",
+      changedFieldCount: 2,
+      reason: "Corrected after reviewing the recorded stone outcomes",
+      resultId: "30000000-0000-4000-8000-000000000003",
+      performanceScore: "TOP SECRET SCORE 4",
+    });
+
+    render(
+      <TeamsScreen
+        onClose={() => {}}
+        config={CONFIGURED}
+        identitySession={{ ...GATE_SESSION, profileId }}
+        createTeamService={() => teamService}
+      />
+    );
+
+    expect(await screen.findByText(/Jamie Stone corrected their result/)).toBeInTheDocument();
+    expect(screen.getByText(/Session 10000000 · 2 changed fields/)).toBeInTheDocument();
+    expect(screen.getByText(/Corrected after reviewing the recorded stone outcomes/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(actorProfileId);
+    expect(document.body.textContent).not.toContain(sessionId);
+    expect(document.body.textContent).not.toContain("30000000-0000-4000-8000-000000000003");
+    expect(document.body.textContent).not.toContain("TOP SECRET SCORE 4");
+
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(screen.queryByText(/Jamie Stone corrected their result/)).not.toBeInTheDocument());
+  });
+
+  it("fails closed when a Team Exercise result notification has malformed metadata", async () => {
+    const { backend, teamService, profileId } = await setUpAdminWithTeam();
+    backend.notify(profileId, "team_exercise_result_changed", {
+      sessionId: "10000000-0000-4000-8000-000000000001",
+      actorProfileId: "20000000-0000-4000-8000-000000000002",
+      actorDisplayName: "Jamie Stone",
+      changeKind: "voided",
+      changedFieldCount: 1,
+      reason: "Too short",
+      performanceScore: "TOP SECRET SCORE 4",
+    });
+
+    render(
+      <TeamsScreen
+        onClose={() => {}}
+        config={CONFIGURED}
+        identitySession={{ ...GATE_SESSION, profileId }}
+        createTeamService={() => teamService}
+      />
+    );
+
+    await screen.findByText("My Teams");
+    expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("Jamie Stone");
+    expect(document.body.textContent).not.toContain("TOP SECRET SCORE 4");
+  });
+
   it("lets an athlete control the Team's prospective Exercise recording permission", async () => {
     const user = userEvent.setup();
     const { teamService, teamId, profileId } = await setUpAdminWithTeam();
@@ -95,6 +159,8 @@ describe("TeamsScreen — signed in", () => {
       setMyTeamExerciseRecordingPermission,
       refreshMyTeamExerciseResults: vi.fn(async () => true),
       setMyTeamExercisePrivateNote: vi.fn(async () => "updated" as const),
+      reviseMyTeamExerciseResult: vi.fn(async () => "updated" as const),
+      voidMyTeamExerciseResult: vi.fn(async () => "updated" as const),
     };
     render(
       <TeamsScreen

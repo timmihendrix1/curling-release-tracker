@@ -2,8 +2,9 @@
 
 **Status:** Accepted and implemented as Exercise Stage C2a (2026-08-28). The database
 boundary is executed and verified against real local Supabase Postgres. Local durable
-queue integration, athlete-facing Team execution UI, post-completion revisions,
-voiding and participant notifications remain later Stage C review gates.
+queue integration and athlete-facing Team execution UI are now implemented by later
+ADRs; ADR-0039 adds C4a post-completion authority and C4b's strict client projection.
+C4c now completes the athlete mutation/inbox UI.
 
 ## Context
 

@@ -45,7 +45,50 @@ export type TeamExerciseCloudReadRecord = {
     note: string;
     updatedAt: string;
   } | null;
+  revisions: TeamExerciseResultRevisionCloudRecord[];
 };
+
+export const TEAM_EXERCISE_RESULT_REVISION_SCHEMA_VERSION = 1;
+
+export type TeamExerciseResultChangedField =
+  | "actualHandle"
+  | "evaluation"
+  | "measurements"
+  | "teamRoleContextOverride";
+
+export type TeamExerciseResultRevisionCloudRecord = {
+  revisionId: string;
+  resultId: string;
+  athleteProfileId: string;
+  revisionNumber: number;
+  kind: "corrected" | "voided";
+  schemaVersion: number;
+  resultPayload: string | null;
+  contentSha256: string | null;
+  changedFields: TeamExerciseResultChangedField[] | ["result"];
+  reason: string;
+  actorProfileId: string;
+  createdAt: string;
+};
+
+export type TeamExerciseResultRevisionMutation = {
+  revisionId: string;
+  resultId: string;
+  baseRevisionNumber: number;
+  reason: string;
+};
+
+export type TeamExerciseResultCorrectionMutation = TeamExerciseResultRevisionMutation & {
+  schemaVersion: number;
+  resultPayload: string;
+  changedFields: TeamExerciseResultChangedField[];
+};
+
+export type TeamExerciseResultRevisionMutationOutcome =
+  | "inserted"
+  | "already_present"
+  | "conflict"
+  | "result_voided";
 
 export type TeamExerciseBlockReason =
   | "athlete_not_session_participant"
@@ -105,5 +148,17 @@ export interface TeamExerciseCloudService {
   setPrivateNote(resultId: string, note: string | null): Promise<TeamExerciseCloudResult<{
     outcome: "created" | "updated" | "cleared" | "already_clear";
     updatedAt: string;
+  }>>;
+  reviseMyResult(record: TeamExerciseResultCorrectionMutation): Promise<TeamExerciseCloudResult<{
+    outcome: TeamExerciseResultRevisionMutationOutcome;
+    revisionId: string | null;
+    revisionNumber: number | null;
+    changedAt: string | null;
+  }>>;
+  voidMyResult(record: TeamExerciseResultRevisionMutation): Promise<TeamExerciseCloudResult<{
+    outcome: TeamExerciseResultRevisionMutationOutcome;
+    revisionId: string | null;
+    revisionNumber: number | null;
+    changedAt: string | null;
   }>>;
 }

@@ -1147,6 +1147,12 @@ result in Version 1. A Coach, recorder or other participant receives no post-com
 write authority merely through their former Session role. Broader Coach correction
 workflows require a separate future permission decision.
 
+Version 1 post-completion correction is stone-specific but cannot change athlete
+attribution. The athlete may correct the actual handle, evaluation or exclusion,
+supported Measurements and that stone's effective role/Sweeper context. Reassigning a
+stone to another athlete would mutate that person's ownership boundary and is therefore
+forbidden after completion.
+
 Every post-completion change requires a reason and creates an append-only audited
 revision. The history retains at least:
 
@@ -1159,7 +1165,10 @@ revision. The history retains at least:
 The current result and calculations use the latest valid revision and visibly mark it
 as changed after completion. A normal user-facing deletion is an audited `voided`
 state: the result is excluded from current calculations but its provenance and revision
-history remain. Irreversible account deletion, legally required erasure and retention
+history remain. Version 1 voiding applies only to the athlete's complete result, is
+terminal and cannot be undone or edited back into use. Individual stones are corrected,
+not separately deleted. The required reason is trimmed free text of 10 through 500
+characters. Irreversible account deletion, legally required erasure and retention
 expiry are separate privacy operations and must not be implemented as ordinary result
 editing.
 
@@ -1180,6 +1189,12 @@ athlete's private result values.
 
 Email and push transports are deferred. Notifications are required only for changes
 after Session completion, not for each correction during active rink-side recording.
+The athlete making the change is not notified. Version 1 evaluates current eligibility
+as an active membership in the same Team plus a current platform entitlement, uses the
+existing unread in-app Team notification inbox and sends metadata only because the
+future Team data-sharing grant is not implemented. The actor's display name is
+snapshotted at change time; no foreign result payload or performance value is copied
+into a notification.
 
 ---
 
@@ -1439,7 +1454,7 @@ retained with the result.
 
 ## Stage C — Team execution on one device
 
-**Implementation status (2026-08-28): Stages C1-C3d are implemented; Stage C is not
+**Implementation status (2026-08-28): Stages C1-C4c are implemented; Stage C is
 complete.** ADR-0031 adds the standalone Team aggregate: confirmed Profile
 participants, several athlete-owned result slots, the authenticated active-recorder
 snapshot, all five approved simple rotation configurations, actual role-assignment
@@ -1469,7 +1484,11 @@ strict Profile-owned projection for offline read, and exposes factual result det
 export and own private-note save/clear in Analyze. ADR-0038 adds durable, append-only
 active-session attempt corrections, including athlete/role changes and audited
 recorded-by-mistake annulment. Post-completion revisions, ordinary voiding and
-participant notifications remain unimplemented.
+participant notifications now have ADR-0039's executed Postgres authority, RLS,
+idempotency and notification-emission foundation. C4b adds provider-neutral mutation
+contracts, strict owner-only revision-chain projection and schema-6 offline caching.
+The athlete-facing mutation and inbox UI is implemented by C4c, completing the Stage C
+workflow on top of C4a/C4b's server and client boundaries.
 
 - select several training athletes and supporting participants;
 - enforce the athlete's explicit Team recording permission;
@@ -1494,8 +1513,10 @@ participant notifications remain unimplemented.
 The server authority and client persistence/upload portions have real database and
 application-service verification. Permission control, bounded offline Team capture,
 honest completion sync receipts and athlete-owned restore/private notes are exposed in
-UI by C2c/C3b/C3c/C3d. The remaining stage must add the post-completion revision,
-ordinary-voiding and notification workflow.
+UI by C2c/C3b/C3c/C3d. C4a adds the server half of post-completion revision, whole-result
+voiding and notification emission; C4b adds the strict client projection, provider-
+neutral mutations and offline cache. C4c adds the athlete-facing stone correction,
+terminal whole-result void and metadata-only Team inbox UI, completing Stage C.
 TypeScript mocks alone remain insufficient evidence for any new cloud-authority change.
 
 Independent review must additionally verify that completion prevents silent overwrite,

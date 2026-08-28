@@ -203,8 +203,14 @@ technique directly" in the Coaching Principles.
   private-note save/clear. No sibling result or note becomes readable. ADR-0038 adds
   C3d's durable correction of any active Shotmaking stone, exact before/after audit,
   recorded-by-mistake annulment and affected-athlete-only history under backwards-readable
-  Team cloud payload schema 2. Still **Planned**, per that specification's section 21:
-  post-completion revision/void/notification work, Training Plan
+  Team cloud payload schema 2. ADR-0039 adds C4a's executed Postgres authority for
+  athlete-only post-completion correction, terminal whole-result void and idempotent
+  metadata-only participant notifications. C4b extends the provider-neutral service,
+  strictly validates every owner-only revision chain and advances that same Profile
+  cache to schema 6 with original/current result, terminal void state and audit history.
+  C4c completes Stage C with the athlete's stone-specific correction editor, terminal
+  whole-result void confirmation, append-only audit presentation and the metadata-only
+  Team inbox card. Still **Planned**, per that specification's section 21: Training Plan
   integration, and the remaining six approved catalogue Exercises. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never
