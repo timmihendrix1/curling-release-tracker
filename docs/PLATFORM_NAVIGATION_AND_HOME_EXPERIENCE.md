@@ -42,13 +42,14 @@ deliberately narrows this:
 - **Train now has three entry paths, all inside the existing `"train"` view** — no new
   navigation item for any of them: `TrainLanding.tsx` offers **Quick Start**
   (unchanged, and still the default), **Exercises**, and **Training Plans**.
-  - **Training Plans (Version 1) is implemented**, per
+  - **Profile-owned mixed Training Plans are implemented**, per
     `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
     Plans" section.
   - **The Exercise Library and Solo Stage B are implemented** for three curated Standard
     Exercises, including the structured Ice Sheet diagram renderer. Technique and
     Shotmaking use Profile-owned Solo execution; measured Release Time reuses the
-    existing Quick Start runner. Team execution remains planned. See
+    existing Quick Start runner. One-device Team Exercise execution is implemented;
+    Team-plan orchestration remains planned. See
     `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the
     authoritative product/domain source), `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise
     Library" section, and `docs/adr/0030`.

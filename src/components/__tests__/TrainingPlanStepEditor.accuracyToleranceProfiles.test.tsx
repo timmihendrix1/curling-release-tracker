@@ -27,6 +27,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(screen.getByLabelText("Accuracy Tolerance Profile")).toBeInTheDocument();
     expect(screen.getByText(/Elite: On Target ±0.05s/)).toBeInTheDocument();
@@ -43,6 +44,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
 
@@ -57,6 +59,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
 
   it("works with no profiles passed at all (default props)", () => {
     render(<TrainingPlanStepEditor onSave={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(
       screen.queryByLabelText("Accuracy Tolerance Profile")

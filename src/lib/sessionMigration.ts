@@ -6,6 +6,7 @@ import type {
   CaptureSequence,
   CaptureSequenceStatus,
   CaptureStepRecord,
+  CuratedExercisePlanStep,
   HandleStrategy,
   MeasurementMode,
   PlanExecutionState,
@@ -22,6 +23,10 @@ import type {
 } from "../types";
 import { resolveAccuracyThresholds } from "./accuracyThresholds";
 import { sanitizeCaptureSequence } from "./captureSequence";
+import { EXERCISE_CATALOG } from "./exercises/catalog";
+import { RELEASE_TIME_VERSION_ID } from "./exercises/content";
+import { findExerciseVersion } from "./exercises/lookup";
+import type { ExerciseVersion } from "./exercises/types";
 import { validateSessionExerciseState } from "./exercises/sessionIntegration";
 import { getEffectiveTargetMode } from "./trainingBlocks";
 import {
@@ -530,17 +535,67 @@ function isValidReleaseTimingPlanStep(
     isRecord(value) &&
     typeof value.id === "string" &&
     value.type === "release-timing" &&
+    isValidCatalogVersionSnapshot(value.exerciseVersionSnapshot, "measured") &&
     isValidShotCountCompletion(value.completion) &&
     isValidHandleStrategy(value.handleStrategy) &&
     isValidReleaseTimingBlockConfiguration(value.configuration)
   );
 }
 
+function sameJsonValue(left: unknown, right: unknown): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isValidCatalogVersionSnapshot(
+  value: unknown,
+  expectedFocus?: ExerciseVersion["primaryFocus"]
+): value is ExerciseVersion {
+  if (!isRecord(value) || typeof value.id !== "string") return false;
+  const catalogVersion = findExerciseVersion(EXERCISE_CATALOG, value.id);
+  return catalogVersion !== undefined &&
+    (expectedFocus === undefined || catalogVersion.primaryFocus === expectedFocus) &&
+    sameJsonValue(catalogVersion, value);
+}
+
+function isValidCuratedExercisePlanStep(
+  value: unknown
+): value is CuratedExercisePlanStep {
+  return isRecord(value) &&
+    typeof value.id === "string" &&
+    value.type === "curated-exercise" &&
+    isRecord(value.completion) &&
+    value.completion.type === "exercise-completion" &&
+    isValidCatalogVersionSnapshot(value.exerciseVersionSnapshot) &&
+    value.exerciseVersionSnapshot.primaryFocus !== "measured";
+}
+
+function legacyReleaseTimingStep(value: unknown): ReleaseTimingPlanStep | undefined {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    value.type !== "release-timing" ||
+    !isValidShotCountCompletion(value.completion) ||
+    !isValidHandleStrategy(value.handleStrategy) ||
+    !isValidReleaseTimingBlockConfiguration(value.configuration)
+  ) return undefined;
+  const version = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID);
+  if (!version) return undefined;
+  return {
+    id: value.id,
+    type: "release-timing",
+    exerciseVersionSnapshot: JSON.parse(JSON.stringify(version)) as ExerciseVersion,
+    completion: value.completion,
+    handleStrategy: value.handleStrategy,
+    configuration: value.configuration,
+  };
+}
+
 /**
  * `Session.planExecution` has strict cross-field invariants — `activeStepIndex` must
- * validly index `steps`; every step at or before `activeStepIndex` must carry a
- * `blockId` that resolves to a real, already-migrated block; every step after it must
- * not have one yet (lazy block creation — see docs/adr/0012) — much closer to
+ * validly index `steps`; every step at or before `activeStepIndex` must carry a typed
+ * runtime reference that resolves to a real, already-migrated Block or Exercise
+ * Execution; every step after it must not have one yet (lazy materialisation — see
+ * ADR-0012/0040) — much closer to
  * AssessmentRun's invariants than to a TrainingBlock's independently-optional fields.
  * So, unlike `migrateBlocks`/`migrateShots`'s field-by-field repair style, a
  * structurally invalid `planExecution` is discarded whole rather than partially
@@ -552,7 +607,8 @@ function isValidReleaseTimingPlanStep(
  */
 function migratePlanExecution(
   raw: Record<string, unknown>,
-  blockIds: Set<string>
+  blockIds: Set<string>,
+  exerciseExecutions: Map<string, ExerciseVersion>
 ): PlanExecutionState | undefined {
   if (!isRecord(raw.planExecution)) return undefined;
   const rawExecution = raw.planExecution;
@@ -576,24 +632,46 @@ function migratePlanExecution(
   for (let index = 0; index < rawExecution.steps.length; index += 1) {
     const rawSnapshot = rawExecution.steps[index];
 
-    if (!isRecord(rawSnapshot) || !isValidReleaseTimingPlanStep(rawSnapshot.step)) {
+    if (!isRecord(rawSnapshot)) {
       return undefined;
     }
 
-    const blockId =
-      typeof rawSnapshot.blockId === "string" ? rawSnapshot.blockId : undefined;
+    const step = isValidReleaseTimingPlanStep(rawSnapshot.step) ||
+      isValidCuratedExercisePlanStep(rawSnapshot.step)
+      ? rawSnapshot.step
+      : legacyReleaseTimingStep(rawSnapshot.step);
+    if (!step) return undefined;
+
+    const legacyBlockId = typeof rawSnapshot.blockId === "string"
+      ? rawSnapshot.blockId
+      : undefined;
+    const rawRuntime = isRecord(rawSnapshot.runtime) ? rawSnapshot.runtime : undefined;
+    const runtime = legacyBlockId
+      ? { kind: "release-timing-block" as const, blockId: legacyBlockId }
+      : rawRuntime?.kind === "release-timing-block" && typeof rawRuntime.blockId === "string"
+        ? { kind: "release-timing-block" as const, blockId: rawRuntime.blockId }
+        : rawRuntime?.kind === "exercise-execution" && typeof rawRuntime.exerciseExecutionId === "string"
+          ? { kind: "exercise-execution" as const, exerciseExecutionId: rawRuntime.exerciseExecutionId }
+          : undefined;
 
     if (index <= activeStepIndex) {
-      // Every step at or before the active one must already have a real block —
-      // lazy creation means a step only becomes active once its block exists.
-      if (!blockId || !blockIds.has(blockId)) return undefined;
-    } else if (blockId !== undefined) {
-      // A not-yet-reached step must not have a block yet — this can't be
+      if (!runtime) return undefined;
+      if (
+        (step.type === "release-timing" &&
+          (runtime.kind !== "release-timing-block" || !blockIds.has(runtime.blockId))) ||
+        (step.type === "curated-exercise" &&
+          (runtime.kind !== "exercise-execution" ||
+            !exerciseExecutions.has(runtime.exerciseExecutionId) ||
+            exerciseExecutions.get(runtime.exerciseExecutionId)?.id !==
+              step.exerciseVersionSnapshot.id))
+      ) return undefined;
+    } else if (runtime !== undefined) {
+      // A not-yet-reached step must not have a runtime entity yet — this can't be
       // repaired by guessing which of the two is wrong.
       return undefined;
     }
 
-    steps.push({ step: rawSnapshot.step, blockId });
+    steps.push({ step, runtime });
   }
 
   return {
@@ -625,8 +703,16 @@ export function migrateSession(raw: unknown): Session {
       : fallbackBlockId;
 
   const captureSequence = migrateCaptureSequence(source, id, blockIds, shots);
-  const planExecution = migratePlanExecution(source, blockIds);
   const exerciseState = validateSessionExerciseState(source, id);
+  const exerciseExecutions = new Map(
+    exerciseState.valid
+      ? exerciseState.executions.map((execution) => [
+          execution.id,
+          execution.exerciseVersionSnapshot,
+        ])
+      : []
+  );
+  const planExecution = migratePlanExecution(source, blockIds, exerciseExecutions);
 
   return {
     id,

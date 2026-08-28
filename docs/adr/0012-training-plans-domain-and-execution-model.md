@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted. Implemented — Version 1, per `docs/TRAINING_SYSTEM_AND_PLANS.md` (the
+Accepted. Implemented for the original Release-Time-only model; generalised by
+ADR-0040 for profile-owned mixed Exercise plans. Per `docs/TRAINING_SYSTEM_AND_PLANS.md` (the
 authoritative product/domain spec). See `docs/SYSTEM_ARCHITECTURE.md`'s "Training
 Plans" section for the current-implementation snapshot this ADR explains the
 reasoning behind.
@@ -106,6 +107,11 @@ structurally prevented from appearing on the final step (the two kinds are mutua
 exclusive props, not an ad hoc boolean flag).
 
 ### 6. Progression is always keyed by the snapshot's stored `blockId`, never array position
+
+**Generalised by ADR-0040:** the same principle now uses a discriminated `runtime`
+reference. A Release Time step remains keyed by its stored `blockId`; a curated
+Technique/Shotmaking step is keyed by its stored `exerciseExecutionId`. Array position
+is still never used to resolve a sporting runtime entity.
 
 Every place that needs "the block for the current step" resolves it via
 `session.blocks.find(b => b.id === snapshot.blockId)` (or the equivalent

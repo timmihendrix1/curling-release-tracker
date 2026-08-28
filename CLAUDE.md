@@ -210,8 +210,10 @@ technique directly" in the Coaching Principles.
   cache to schema 6 with original/current result, terminal void state and audit history.
   C4c completes Stage C with the athlete's stone-specific correction editor, terminal
   whole-result void confirmation, append-only audit presentation and the metadata-only
-  Team inbox card. Still **Planned**, per that specification's section 21: Training Plan
-  integration, and the remaining six approved catalogue Exercises. Build on the existing
+  Team inbox card. ADR-0040 implements profile-owned mixed Training Plans through exact
+  Exercise Version snapshots and typed lazy runtime references; Team-plan execution is
+  deliberately deferred. Still **Planned**, per that specification's section 21: the
+  remaining four initial-test catalogue Exercises and release hardening. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never
   on an Exercise id or title), and read

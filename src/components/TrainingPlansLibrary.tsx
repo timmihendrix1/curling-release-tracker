@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { isPlanExecutable } from "../lib/trainingPlans/validation";
+import {
+  isReleaseTimingPlanStep,
+  trainingPlanStepFocusLabel,
+} from "../lib/trainingPlans/steps";
 import type { TrainingPlan } from "../types";
 import ConfirmModal from "./ConfirmModal";
 import { surfaceClass } from "./Surface";
@@ -15,20 +19,25 @@ type TrainingPlansLibraryProps = {
   onStart: (plan: TrainingPlan) => void;
 };
 
-const MODE_LABELS = { fixed: "Fixed", variable: "Variable", blind: "Blind" } as const;
-
 function planSummary(plan: TrainingPlan): string {
-  const totalStones = plan.steps.reduce((sum, step) => sum + step.completion.value, 0);
-  return `${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"} · ${totalStones} stones`;
+  const timingStones = plan.steps.reduce(
+    (sum, step) => sum + (isReleaseTimingPlanStep(step) ? step.completion.value : 0),
+    0
+  );
+  return `${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}${
+    timingStones > 0
+      ? ` · ${timingStones} planned timing stone${timingStones === 1 ? "" : "s"}`
+      : ""
+  }`;
 }
 
-/** Unique training modes used, in step order — e.g. "Fixed · Variable · Blind". */
-function modeComposition(plan: TrainingPlan): string {
+/** Unique Exercise focuses used, in step order. */
+function focusComposition(plan: TrainingPlan): string {
   const seen = new Set<string>();
   const ordered: string[] = [];
 
   for (const step of plan.steps) {
-    const label = MODE_LABELS[step.configuration.mode];
+    const label = trainingPlanStepFocusLabel(step);
     if (!seen.has(label)) {
       seen.add(label);
       ordered.push(label);
@@ -56,8 +65,8 @@ export default function TrainingPlansLibrary({
         </h2>
 
         <p className="mt-2 text-sm text-slate-600">
-          Save a sequence of Fixed, Variable and Blind Weight blocks so you can
-          start the same structure again without rebuilding it.
+          Save an ordered mix of Technique, Shotmaking and Release Time steps so
+          you can start the same training structure again.
         </p>
 
         <button
@@ -85,7 +94,7 @@ export default function TrainingPlansLibrary({
             )}
 
             <p className="mt-1 text-sm text-slate-600">{planSummary(plan)}</p>
-            <p className="mt-1 text-xs text-slate-500">{modeComposition(plan)}</p>
+            <p className="mt-1 text-xs text-slate-500">{focusComposition(plan)}</p>
 
             {!executable && (
               <p className="mt-2 text-xs text-amber-700">

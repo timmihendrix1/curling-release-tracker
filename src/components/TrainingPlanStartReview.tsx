@@ -1,6 +1,11 @@
 "use client";
 
 import { blockModeLabel } from "../lib/trainingBlocks";
+import {
+  isReleaseTimingPlanStep,
+  trainingPlanStepFocusLabel,
+  trainingPlanStepTitle,
+} from "../lib/trainingPlans/steps";
 import type { TrainingPlan, TrainingPlanStep } from "../types";
 import { surfaceClass } from "./Surface";
 
@@ -19,6 +24,7 @@ type TrainingPlanStartReviewProps = {
 };
 
 function handleStrategySummary(step: TrainingPlanStep): string {
+  if (!isReleaseTimingPlanStep(step)) return "Complete manually";
   switch (step.handleStrategy.type) {
     case "free":
       return "Free";
@@ -38,7 +44,10 @@ export default function TrainingPlanStartReview({
   onCancel,
   startDisabled = false,
 }: TrainingPlanStartReviewProps) {
-  const totalStones = plan.steps.reduce((sum, step) => sum + step.completion.value, 0);
+  const plannedTimingStones = plan.steps.reduce(
+    (sum, step) => sum + (isReleaseTimingPlanStep(step) ? step.completion.value : 0),
+    0
+  );
 
   return (
     <div className={surfaceClass("hero")}>
@@ -52,17 +61,28 @@ export default function TrainingPlanStartReview({
         {plan.steps.map((step, index) => (
           <li key={step.id} className={surfaceClass("inset")}>
             <p className="text-sm font-medium text-slate-900">
-              {index + 1}. {blockModeLabel(step.configuration.mode)}
+              {index + 1}. {trainingPlanStepTitle(step)}
             </p>
 
             <p className="mt-1 text-xs text-slate-600">
-              {step.completion.value} stones · {handleStrategySummary(step)}
+              {trainingPlanStepFocusLabel(step)} · {isReleaseTimingPlanStep(step)
+                ? `${blockModeLabel(step.configuration.mode)} · ${step.completion.value} stones · ${handleStrategySummary(step)}`
+                : handleStrategySummary(step)}
             </p>
           </li>
         ))}
       </ol>
 
-      <p className="mt-3 text-sm text-slate-600">Total: {totalStones} stones</p>
+      <p className="mt-3 text-sm text-slate-600">
+        {plan.steps.length} step{plan.steps.length === 1 ? "" : "s"}
+        {plannedTimingStones > 0
+          ? ` · ${plannedTimingStones} planned Release Time stone${plannedTimingStones === 1 ? "" : "s"}`
+          : ""}
+      </p>
+
+      <p className="mt-2 text-xs text-slate-500">
+        This plan runs in your Profile. Team-plan execution is not included yet.
+      </p>
 
       <div className="mt-5 flex gap-2">
         <button

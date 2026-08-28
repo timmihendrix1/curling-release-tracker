@@ -1,5 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { goToAnalyze, goToTrain, seedProfileScopedSportingValue } from "./utils";
+import {
+  freshLoad,
+  goToAnalyze,
+  goToTrain,
+  seedProfileScopedSportingValue,
+} from "./utils";
 
 const TRAINING_PLANS_STORAGE_KEY = "curling-release-tracker-training-plans";
 
@@ -70,17 +75,17 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
 
   await page.getByRole("tab", { name: "Training Plans" }).click();
   await expect(page.getByText("Release Consistency")).toBeVisible();
-  await expect(page.getByText("2 steps · 4 stones")).toBeVisible();
+  await expect(page.getByText("2 steps · 4 planned timing stones")).toBeVisible();
 
   await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
   await page.waitForSelector("text=Active Training Block");
 
   await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
-  await expect(page.getByText("Shot 0 of 2")).toBeVisible();
+  await expect(page.getByText("Stone 0 of 2")).toBeVisible();
 
   await addShot(page, "3.75");
-  await expect(page.getByText("Shot 1 of 2")).toBeVisible();
+  await expect(page.getByText("Stone 1 of 2")).toBeVisible();
 
   // Alternating handles, starting In — after one saved shot Out Handle is expected.
   await expect(
@@ -95,24 +100,24 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await page.reload();
   await goToTrain(page);
   await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
-  await expect(page.getByText("Shot 1 of 2")).toBeVisible();
+  await expect(page.getByText("Stone 1 of 2")).toBeVisible();
   await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
 
   await addShot(page, "3.80");
-  await expect(page.getByText("Step complete — Fixed Weight")).toBeVisible();
-  await expect(page.getByText("Next: Fixed Weight")).toBeVisible();
+  await expect(page.getByText("Step complete — Release Time")).toBeVisible();
+  await expect(page.getByText("Next: Release Time")).toBeVisible();
 
   await page.getByRole("button", { name: "Continue to Next Step" }).click();
   await expect(page.getByText(/Step 2 of 2/)).toBeVisible();
-  await expect(page.getByText("Shot 0 of 2")).toBeVisible();
+  await expect(page.getByText("Stone 0 of 2")).toBeVisible();
 
   await addShot(page, "3.76");
-  await expect(page.getByText("Shot 1 of 2")).toBeVisible();
+  await expect(page.getByText("Stone 1 of 2")).toBeVisible();
   await addShot(page, "3.77");
 
   await expect(page.getByText("Plan complete")).toBeVisible();
-  await expect(page.getByText("4 of 4 planned stones recorded.")).toBeVisible();
-  await expect(page.getByText("Step complete — Fixed Weight")).not.toBeVisible();
+  await expect(page.getByText("All 2 steps completed.")).toBeVisible();
+  await expect(page.getByText("Step complete — Release Time")).not.toBeVisible();
 
   await page.getByRole("button", { name: "Finish Training" }).click();
   await page.getByRole("button", { name: "Start New Session" }).waitFor();
@@ -122,4 +127,83 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await goToAnalyze(page);
   await expect(page.getByText("Blocks and Sessions")).toBeVisible();
   await expect(page.getByText("Started from: Release Consistency")).toBeVisible();
+});
+
+test("creates and executes a profile-owned mixed Technique, Shotmaking and Release Time plan", async ({
+  page,
+}) => {
+  await freshLoad(page);
+  await goToTrain(page);
+  await page.getByRole("tab", { name: "Training Plans" }).click();
+  await page.getByRole("button", { name: "Create Training Plan" }).click();
+  await page.getByPlaceholder("e.g. Release Consistency").fill("Mixed Ice Practice");
+
+  async function addCuratedStep(exerciseTitle: string) {
+    await page.getByRole("button", { name: "Add Step" }).click();
+    await page
+      .getByRole("button", { name: "Technique or Shotmaking Exercise" })
+      .click();
+    await page.getByLabel("Exercise").selectOption({ label: exerciseTitle });
+    await page.getByRole("button", { name: "Add Step" }).last().click();
+  }
+
+  await addCuratedStep("Release Point — Technique · Exercise version 1");
+  await addCuratedStep(
+    "Eight Guards, Progressively Longer — Shotmaking · Exercise version 2"
+  );
+
+  await page.getByRole("button", { name: "Add Step" }).click();
+  await page.getByRole("button", { name: "Release Time Measurement" }).click();
+  await page.getByLabel("Number of Stones").fill("1");
+  await page.getByRole("button", { name: "Add Step" }).last().click();
+  await page.getByRole("button", { name: "Save Training Plan" }).click();
+
+  await expect(page.getByText("Mixed Ice Practice")).toBeVisible();
+  await expect(page.getByText("3 steps · 1 planned timing stone")).toBeVisible();
+  await expect(page.getByText("Technique · Shotmaking · Measured")).toBeVisible();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(
+    page.getByText("This plan runs in your Profile. Team-plan execution is not included yet.")
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Start Training" }).click();
+
+  await expect(page.getByRole("heading", { name: "Release Point" })).toBeVisible();
+  await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
+  await page.getByRole("button", { name: "Complete Exercise" }).click();
+  await expect(page.getByText("Next: Eight Guards, Progressively Longer")).toBeVisible();
+
+  // A completed curated step remains the active plan surface until Continue,
+  // including after a cold UI reload where activeExerciseExecutionId is terminally clear.
+  await page.reload();
+  await goToTrain(page);
+  await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
+  await expect(page.getByText("Next: Eight Guards, Progressively Longer")).toBeVisible();
+  await page.getByRole("button", { name: "Continue to Next Step" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Eight Guards, Progressively Longer" })
+  ).toBeVisible();
+  await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
+  await page.getByRole("button", { name: "Inhandle" }).click();
+  await page.getByLabel("Rotation Count (optional)").fill("2.5");
+  await page.getByRole("button", { name: "4 points, 100 percent" }).click();
+  await page.getByRole("button", { name: "Record Stone" }).click();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
+  await expect(page.getByText(/2.5 rotations/)).toBeVisible();
+
+  // The typed Exercise runtime and its result must survive the same reload boundary
+  // as an existing Release Time block.
+  await page.reload();
+  await goToTrain(page);
+  await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
+  await expect(page.getByText("Stone 1 · Inhandle · 4\/4 \(100%\) · 2.5 rotations")).toBeVisible();
+  await page.getByRole("button", { name: "Complete Exercise" }).click();
+  await expect(page.getByText("Next: Release Time")).toBeVisible();
+  await page.getByRole("button", { name: "Continue to Next Step" }).click();
+
+  await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
+  await expect(page.getByText("Stone 0 of 1")).toBeVisible();
+  await addShot(page, "3.75");
+  await expect(page.getByText("Plan complete")).toBeVisible();
+  await expect(page.getByText("All 3 steps completed.")).toBeVisible();
 });

@@ -354,12 +354,14 @@ authenticated member rather than an arbitrary email address.
 
 ## Training Plan
 
-**[Implemented — Version 1]** A reusable, ordered configuration of Plan Steps — not
+**[Implemented — profile-owned mixed plans, ADR-0040]** A reusable, ordered
+configuration of Plan Steps — not
 training data. See `docs/TRAINING_SYSTEM_AND_PLANS.md` (the authoritative product/
 domain specification) and `docs/adr/0012-training-plans-domain-and-execution-model.md`.
 
-Starting a Training Plan creates one Training Session, in which each Plan Step becomes
-one preconfigured Training Block (`src/lib/trainingPlans/`, `TrainingPlan` in
+Starting a Training Plan creates one Training Session. A Release Time step materialises
+one preconfigured Training Block; a Technique or Shotmaking step materialises one
+embedded Profile-owned Exercise Execution (`src/lib/trainingPlans/`, `TrainingPlan` in
 `src/types/index.ts`). Editing or deleting a Training Plan never changes a Session
 already started or completed from it — an execution holds its own deep-copied
 snapshot of the plan's steps, never a live reference back to the saved plan.
@@ -370,17 +372,16 @@ Version 1.
 
 ---
 
-## Training Plan Step / Release Timing Plan Step
+## Training Plan Step / Release Timing Plan Step / Curated Exercise Plan Step
 
-**[Implemented — Version 1]** One ordered unit inside a Training Plan
-(`TrainingPlanStep`, currently an alias of `ReleaseTimingPlanStep` — the only step type
-Version 1 implements, kept as its own discriminated type so a future step type, e.g. a
-Rotation or Assessment Plan Step, can be added without redefining this one). Configures
-a future Training Block's mode, measurement mode, target configuration, Number of
-Stones (`ShotCountCompletion`), and Handle Strategy. A Plan Step is a template; the
-Training Block created from it (via `mapPlanStepToTrainingBlockInput`) is a runtime
-entity with its own generated id — the Plan Step's own id is never reused as the
-Block's id.
+**[Implemented — Stage D, ADR-0040]** One ordered unit inside a Training Plan.
+`TrainingPlanStep` is a discriminated union. `ReleaseTimingPlanStep` snapshots the
+curated Release Time Exercise Version and configures the existing runner's mode,
+measurement mode, target, Number of Stones and Handle Strategy.
+`CuratedExercisePlanStep` snapshots an exact Technique or Shotmaking Exercise Version
+and completes through the existing explicit Exercise transition without an invented
+planned volume. The materialised runtime entity always gets its own identity; a Plan
+Step id is never reused as a Block or Exercise Execution id.
 
 ---
 
@@ -398,14 +399,15 @@ same shots-saved-parity logic as `captureSequence.ts`'s Capture Sequence alterna
 
 ## Plan Execution
 
-**[Implemented — Version 1]** `Session.planExecution` — attached only to a Session
+**[Implemented — profile-owned mixed plans]** `Session.planExecution` — attached only to a Session
 started from a Training Plan; absent from every Quick Start session. Holds a deep
 copy of each Plan Step taken at start time (`PlanExecutionStepSnapshot`) plus which
-step is active and which steps' Training Blocks have been created so far (Training
-Blocks are created lazily, one at a time, as each step is reached — never all upfront).
-Step completion, and plan completion, are always derived from the active step's block's
-actual saved shots (`isActiveStepComplete`/`isPlanComplete`,
-`src/lib/trainingPlans/progress.ts`) — never a separately stored/cached flag.
+step is active and which typed runtime entities have been created so far. Runtime
+entities are created lazily, one at a time. `release-timing-block` references a real
+Training Block; `exercise-execution` references a real embedded Exercise Execution.
+Completion is derived from saved Shots for Release Time or the existing terminal
+Exercise status for Technique/Shotmaking — never a separately cached flag. Team-plan
+execution remains a future context and does not reuse this personal Session boundary.
 
 ---
 

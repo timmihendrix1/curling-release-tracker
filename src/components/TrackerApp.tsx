@@ -59,6 +59,7 @@ import type {
   TimingResult,
   TrainingBlock,
   TrainingPlan,
+  TrainingPlanStep,
 } from "../types";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { createSoloExerciseExecution } from "../lib/exercises/execution";
@@ -202,6 +203,10 @@ import {
   isPlanComplete,
   isPlanExecutionActive,
 } from "../lib/trainingPlans/progress";
+import {
+  isReleaseTimingPlanStep,
+  trainingPlanStepTitle,
+} from "../lib/trainingPlans/steps";
 
 const IS_DEV = process.env.NODE_ENV !== "production";
 
@@ -1147,13 +1152,6 @@ export default function TrackerApp() {
         (execution) => execution.id === currentSession.activeExerciseExecutionId
       )
     : undefined;
-  const displayedExerciseExecution =
-    activeExerciseExecution ??
-    (viewingExerciseExecutionId
-      ? currentSession.exerciseExecutions?.find(
-          (execution) => execution.id === viewingExerciseExecutionId
-        )
-      : undefined);
   const activeBlockShots = activeBlock
     ? getBlockShots(currentSession, activeBlock.id)
     : [];
@@ -1220,6 +1218,22 @@ export default function TrackerApp() {
     planExecution && isTrainingPlanActive
       ? getActiveStepSnapshot(planExecution)
       : undefined;
+  const activePlanRuntime = activePlanStepSnapshot?.runtime;
+  const activePlanExerciseExecution =
+    activePlanRuntime?.kind === "exercise-execution"
+      ? currentSession.exerciseExecutions?.find(
+          (execution) =>
+            execution.id === activePlanRuntime.exerciseExecutionId
+        )
+      : undefined;
+  const displayedExerciseExecution =
+    activeExerciseExecution ??
+    activePlanExerciseExecution ??
+    (viewingExerciseExecutionId
+      ? currentSession.exerciseExecutions?.find(
+          (execution) => execution.id === viewingExerciseExecutionId
+        )
+      : undefined);
   const isActivePlanStepComplete =
     planExecution && isTrainingPlanActive
       ? isActiveStepComplete(currentSession, planExecution)
@@ -1235,9 +1249,8 @@ export default function TrackerApp() {
       : null;
   const nextPlanStepLabel =
     planExecution && !isActivePlanStepFinal
-      ? blockModeLabel(
-          planExecution.steps[planExecution.activeStepIndex + 1].step.configuration
-            .mode
+      ? trainingPlanStepTitle(
+          planExecution.steps[planExecution.activeStepIndex + 1].step
         )
       : null;
   // Preselected (never locked) handle for the next shot — undefined means
@@ -1245,7 +1258,8 @@ export default function TrackerApp() {
   // number of shots already saved in this step's block, so it always follows
   // the plan's own sequence regardless of any prior one-shot override.
   const shotEntryPresetHandle =
-    isTrainingPlanActive && activePlanStepSnapshot
+    isTrainingPlanActive && activePlanStepSnapshot &&
+    isReleaseTimingPlanStep(activePlanStepSnapshot.step)
       ? resolveExpectedHandle(
           activePlanStepSnapshot.step.handleStrategy,
           activeBlockShots.length
@@ -1811,11 +1825,71 @@ export default function TrackerApp() {
   }
 
   /**
-   * Starts a Training Plan: creates step 0's TrainingBlock through the exact
-   * same validated path as "New Training Block" (tryCreateTrainingBlock),
-   * then attaches the plan-execution snapshot in the very same atomic session
-   * update — never two separate setCurrentSession calls, so the session is
-   * never briefly missing one half of the pair. See ADR-0012.
+   * Materialises exactly one profile-owned mixed-plan step through its existing
+   * domain boundary. Release Time creates a normal TrainingBlock; Technique and
+   * Shotmaking create and attach a normal Solo Exercise Execution. The returned
+   * typed runtime reference is the only link the plan orchestrator owns.
+   */
+  function materializeProfilePlanStep(
+    session: Session,
+    step: TrainingPlanStep
+  ):
+    | {
+        session: Session;
+        runtime:
+          | { kind: "release-timing-block"; blockId: string }
+          | { kind: "exercise-execution"; exerciseExecutionId: string };
+        viewingExerciseExecutionId?: string;
+      }
+    | null {
+    if (isReleaseTimingPlanStep(step)) {
+      const blockInput = mapPlanStepToTrainingBlockInput(step);
+      if (!tryCreateTrainingBlock(blockInput)) return null;
+      const withBlock = addTrainingBlock(session, blockInput);
+      return {
+        session: withBlock,
+        runtime: {
+          kind: "release-timing-block",
+          blockId: withBlock.activeBlockId,
+        },
+      };
+    }
+
+    const created = createSoloExerciseExecution(step.exerciseVersionSnapshot, {
+      trainingSessionId: session.id,
+      athleteProfileId,
+      enabledMeasurementProtocols:
+        step.exerciseVersionSnapshot.primaryFocus === "shotmaking"
+          ? resolveMeasurementProtocols(
+              EXERCISE_CATALOG,
+              step.exerciseVersionSnapshot.compatibleMeasurementProtocols
+            )
+              .map(({ protocol }) => protocol)
+              .filter((protocol) => protocol.metricType === "rotation-count")
+          : [],
+    });
+    if (!created.ok) {
+      alert(created.error.message);
+      return null;
+    }
+    const attached = attachSoloExerciseExecution(session, created.value);
+    if (!attached.ok) {
+      alert(attached.error.message);
+      return null;
+    }
+    return {
+      session: attached.value,
+      runtime: {
+        kind: "exercise-execution",
+        exerciseExecutionId: created.value.id,
+      },
+      viewingExerciseExecutionId: created.value.id,
+    };
+  }
+
+  /**
+   * Starts a profile-owned mixed Training Plan by materialising its first step and
+   * attaching the immutable plan snapshot in one Session commit.
    */
   function handleStartTrainingPlan(plan: TrainingPlan) {
     if (sessionHydration !== "ready") return;
@@ -1823,21 +1897,21 @@ export default function TrackerApp() {
     const firstStep = plan.steps[0];
     if (!firstStep) return;
 
-    const blockInput = mapPlanStepToTrainingBlockInput(firstStep);
-    if (!tryCreateTrainingBlock(blockInput)) return;
+    const session = sessionRef.current;
+    if (!session) return;
+    const materialized = materializeProfilePlanStep(session, firstStep);
+    if (!materialized) return;
 
-    setCurrentSession((session) => {
-      if (!session) return session;
-
-      const withBlock = addTrainingBlock(session, blockInput);
-      return {
-        ...withBlock,
-        planExecution: startPlanExecution(plan, withBlock.activeBlockId),
-      };
+    commitSession({
+      ...materialized.session,
+      planExecution: startPlanExecution(plan, materialized.runtime),
     });
 
     setBlockFilter(DEFAULT_SHOT_FILTER);
     setEntryMode("manual");
+    setViewingExerciseExecutionId(
+      materialized.viewingExerciseExecutionId ?? null
+    );
     setPendingReleaseTimingExerciseVersion(null);
     setPreferredTrainEntryPath("quick-start");
   }
@@ -1995,9 +2069,9 @@ export default function TrackerApp() {
   }
 
   /**
-   * Advances a Training Plan execution to its next step — same composition as
-   * handleStartTrainingPlan: atomically creates the next TrainingBlock and
-   * stamps its id onto the execution snapshot in one session update. A no-op
+   * Advances a mixed Training Plan by materialising the next step through that
+   * step's own domain boundary and stamping its typed runtime reference in the
+   * same Session commit. A no-op
    * if the plan execution isn't actually driving the current active block
    * (see isPlanExecutionActive) or there is no next step.
    */
@@ -2014,24 +2088,22 @@ export default function TrackerApp() {
     const nextStep = planExecution.steps[nextIndex]?.step;
     if (!nextStep) return;
 
-    const blockInput = mapPlanStepToTrainingBlockInput(nextStep);
-    if (!tryCreateTrainingBlock(blockInput)) return;
+    const materialized = materializeProfilePlanStep(session, nextStep);
+    if (!materialized) return;
 
-    setCurrentSession((current) => {
-      if (!current || !current.planExecution) return current;
-
-      const withBlock = addTrainingBlock(current, blockInput);
-      return {
-        ...withBlock,
-        planExecution: advanceToNextPlanStep(
-          current.planExecution,
-          withBlock.activeBlockId
-        ),
-      };
+    commitSession({
+      ...materialized.session,
+      planExecution: advanceToNextPlanStep(
+        planExecution,
+        materialized.runtime
+      ),
     });
 
     setBlockFilter(DEFAULT_SHOT_FILTER);
     setEntryMode("manual");
+    setViewingExerciseExecutionId(
+      materialized.viewingExerciseExecutionId ?? null
+    );
   }
 
   /**
@@ -2565,13 +2637,44 @@ export default function TrackerApp() {
               </button>
             </div>
           ) : displayedExerciseExecution ? (
-            <ExerciseSoloExecutionScreen
-              execution={displayedExerciseExecution}
-              writable={sessionWritable}
-              onReplace={handleReplaceExerciseExecution}
-              onBackToLibrary={handleBackToExerciseLibrary}
-              onStartNewSession={handleStartNewSession}
-            />
+            <div className="space-y-4">
+              {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
+                <TrainingPlanProgress
+                  sourcePlanName={planExecution.sourcePlanName}
+                  summary={trainingPlanProgressSummary}
+                />
+              )}
+              <ExerciseSoloExecutionScreen
+                execution={displayedExerciseExecution}
+                writable={sessionWritable}
+                onReplace={handleReplaceExerciseExecution}
+                onBackToLibrary={handleBackToExerciseLibrary}
+                onStartNewSession={handleStartNewSession}
+                withinTrainingPlan={isTrainingPlanActive}
+              />
+              {isTrainingPlanActive &&
+                isActivePlanStepComplete &&
+                planExecution &&
+                activePlanStepSnapshot &&
+                (isTrainingPlanComplete ? (
+                  <TrainingPlanStepTransition
+                    kind="plan-complete"
+                    totalSteps={planExecution.steps.length}
+                    onFinish={handleFinishPlannedTraining}
+                  />
+                ) : (
+                  nextPlanStepLabel && (
+                    <TrainingPlanStepTransition
+                      kind="continue"
+                      completedStepLabel={trainingPlanStepTitle(
+                        activePlanStepSnapshot.step
+                      )}
+                      nextStepLabel={nextPlanStepLabel}
+                      onContinue={handleContinueToNextPlanStep}
+                    />
+                  )
+                ))}
+            </div>
           ) : !activeBlock || !activeBlockAnalysis ? (
             // Quick Start (below) preserves the exact existing hero, unchanged
             // — Training Plans is a second, equally-reachable entry path
@@ -2760,16 +2863,15 @@ export default function TrackerApp() {
                 (isTrainingPlanComplete ? (
                   <TrainingPlanStepTransition
                     kind="plan-complete"
-                    totalPlannedStones={trainingPlanProgressSummary?.totalPlannedShots ?? 0}
-                    totalActualStones={trainingPlanProgressSummary?.totalActualShots ?? 0}
+                    totalSteps={planExecution.steps.length}
                     onFinish={handleFinishPlannedTraining}
                   />
                 ) : (
                   nextPlanStepLabel && (
                     <TrainingPlanStepTransition
                       kind="continue"
-                      completedStepLabel={blockModeLabel(
-                        activePlanStepSnapshot.step.configuration.mode
+                      completedStepLabel={trainingPlanStepTitle(
+                        activePlanStepSnapshot.step
                       )}
                       nextStepLabel={nextPlanStepLabel}
                       onContinue={handleContinueToNextPlanStep}

@@ -3,9 +3,14 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TrainingPlan } from "../../types";
+import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
+import { RELEASE_TIME_VERSION_ID } from "../../lib/exercises/content";
+import { findExerciseVersion } from "../../lib/exercises/lookup";
 import TrainingPlansLibrary from "../TrainingPlansLibrary";
 
 afterEach(cleanup);
+
+const releaseTimeVersion = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID)!;
 
 function buildPlan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
   return {
@@ -13,11 +18,12 @@ function buildPlan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
     name: "Release Consistency",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    schemaVersion: 1,
+    schemaVersion: 2,
     steps: [
       {
         id: "step-1",
         type: "release-timing",
+        exerciseVersionSnapshot: releaseTimeVersion,
         completion: { type: "shot-count", value: 8 },
         handleStrategy: { type: "free" },
         configuration: {
@@ -35,6 +41,7 @@ function buildPlan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
       {
         id: "step-2",
         type: "release-timing",
+        exerciseVersionSnapshot: releaseTimeVersion,
         completion: { type: "shot-count", value: 16 },
         handleStrategy: { type: "free" },
         configuration: {
@@ -85,8 +92,8 @@ describe("TrainingPlansLibrary", () => {
       />
     );
 
-    expect(screen.getByText("2 steps · 24 stones")).toBeInTheDocument();
-    expect(screen.getByText("Fixed · Variable")).toBeInTheDocument();
+    expect(screen.getByText("2 steps · 24 planned timing stones")).toBeInTheDocument();
+    expect(screen.getByText("Measured")).toBeInTheDocument();
   });
 
   it("disables Start and shows a warning for an unexecutable plan", () => {
@@ -95,6 +102,7 @@ describe("TrainingPlansLibrary", () => {
         {
           id: "step-1",
           type: "release-timing",
+          exerciseVersionSnapshot: releaseTimeVersion,
           completion: { type: "shot-count", value: 8 },
           handleStrategy: { type: "free" },
           configuration: {

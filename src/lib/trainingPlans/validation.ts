@@ -10,6 +10,10 @@ import type {
 } from "../../types";
 import { isSmartRandomAvailable, validateSmartRandomRange } from "../variableTargets";
 import { err, ok, type TrainingPlanOutcome } from "./errors";
+import {
+  isCatalogExerciseVersionSnapshot,
+  isCuratedExercisePlanStep,
+} from "./steps";
 
 function effectiveTargetMode(configuration: ReleaseTimingBlockConfiguration) {
   if (configuration.mode === "variable") return configuration.variableTargetMode;
@@ -23,7 +27,17 @@ function effectiveTargetMode(configuration: ReleaseTimingBlockConfiguration) {
  * from "executable" (this step can actually be started) — see spec section 53.
  */
 export function isStepExecutable(step: TrainingPlanStep): boolean {
+  if (!isCatalogExerciseVersionSnapshot(step.exerciseVersionSnapshot)) return false;
+
+  if (isCuratedExercisePlanStep(step)) {
+    return step.completion.type === "exercise-completion" &&
+      step.exerciseVersionSnapshot.primaryFocus !== "measured" &&
+      step.exerciseVersionSnapshot.participation.supportedModes.includes("solo");
+  }
+
   const { configuration, completion } = step;
+
+  if (step.exerciseVersionSnapshot.primaryFocus !== "measured") return false;
 
   if (!Number.isInteger(completion.value) || completion.value <= 0) return false;
 
@@ -49,7 +63,7 @@ export function validatePlanStep(step: TrainingPlanStep): TrainingPlanOutcome<tr
   if (!isStepExecutable(step)) {
     return err(
       "invalid_step",
-      "This step's configuration isn't valid yet — check its target and measurement mode."
+      "This step isn't executable — check its Exercise Version and configuration."
     );
   }
 

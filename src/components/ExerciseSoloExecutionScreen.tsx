@@ -24,6 +24,7 @@ type ExerciseSoloExecutionScreenProps = {
   onReplace: (execution: ExerciseExecution) => boolean;
   onBackToLibrary: () => void;
   onStartNewSession: () => void;
+  withinTrainingPlan?: boolean;
 };
 
 const EXCLUSION_OPTIONS: readonly {
@@ -47,6 +48,7 @@ export default function ExerciseSoloExecutionScreen({
   onReplace,
   onBackToLibrary,
   onStartNewSession,
+  withinTrainingPlan = false,
 }: ExerciseSoloExecutionScreenProps) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
@@ -526,7 +528,7 @@ export default function ExerciseSoloExecutionScreen({
             Abandon Exercise
           </button>
         </div>
-      ) : (
+      ) : !withinTrainingPlan ? (
         <button
           type="button"
           onClick={onBackToLibrary}
@@ -534,16 +536,18 @@ export default function ExerciseSoloExecutionScreen({
         >
           Back to Exercise Library
         </button>
-      )}
+      ) : null}
 
-      <button
-        type="button"
-        onClick={onStartNewSession}
-        disabled={!writable}
-        className="min-h-11 w-full rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Start New Session
-      </button>
+      {(!withinTrainingPlan || active) && (
+        <button
+          type="button"
+          onClick={onStartNewSession}
+          disabled={!writable}
+          className="min-h-11 w-full rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Start New Session
+        </button>
+      )}
 
       {confirmAbandon && (
         <ConfirmModal

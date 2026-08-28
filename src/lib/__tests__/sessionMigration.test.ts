@@ -1270,9 +1270,9 @@ describe("migrateSession — planExecution (Training Plans)", () => {
     expect(migrated.planExecution).toBeDefined();
     expect(migrated.planExecution?.sourcePlanName).toBe("Release Consistency");
     expect(migrated.planExecution?.activeStepIndex).toBe(1);
-    expect(migrated.planExecution?.steps[0].blockId).toBe("block-1");
-    expect(migrated.planExecution?.steps[1].blockId).toBe("block-2");
-    expect(migrated.planExecution?.steps[2].blockId).toBeUndefined();
+    expect(migrated.planExecution?.steps[0].runtime).toEqual({ kind: "release-timing-block", blockId: "block-1" });
+    expect(migrated.planExecution?.steps[1].runtime).toEqual({ kind: "release-timing-block", blockId: "block-2" });
+    expect(migrated.planExecution?.steps[2].runtime).toBeUndefined();
   });
 
   it("survives reload for a completed plan execution (active step is the final one)", () => {
@@ -1296,7 +1296,7 @@ describe("migrateSession — planExecution (Training Plans)", () => {
 
     expect(migrated.planExecution?.activeStepIndex).toBe(1);
     expect(migrated.planExecution?.steps).toHaveLength(2);
-    expect(migrated.planExecution?.steps[1].blockId).toBe("block-2");
+    expect(migrated.planExecution?.steps[1].runtime).toEqual({ kind: "release-timing-block", blockId: "block-2" });
 
     // Readable from history exactly the same way — migrateSessionHistory just
     // maps migrateSession over the array, so no separate assertion is needed
@@ -1418,5 +1418,54 @@ describe("migrateSession — planExecution (Training Plans)", () => {
     const once = migrateSession(raw);
     const twice = migrateSession(JSON.parse(JSON.stringify(once)));
     expect(twice).toEqual(once);
+  });
+
+  it("preserves a completed curated Exercise runtime and rejects a mismatched snapshot", () => {
+    const execution = createCompletedTechniqueExecution();
+    const step = {
+      id: "technique-step",
+      type: "curated-exercise",
+      exerciseVersionSnapshot: execution.exerciseVersionSnapshot,
+      completion: { type: "exercise-completion" },
+    };
+    const raw = {
+      id: FIXTURE_SESSION_ID,
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      exerciseExecutions: [execution],
+      planExecution: {
+        sourcePlanId: "mixed-plan",
+        sourcePlanName: "Mixed Practice",
+        activeStepIndex: 0,
+        steps: [{
+          step,
+          runtime: { kind: "exercise-execution", exerciseExecutionId: execution.id },
+        }],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution?.steps[0].runtime).toEqual({
+      kind: "exercise-execution",
+      exerciseExecutionId: execution.id,
+    });
+    expect(migrateSession(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
+
+    const mismatched = {
+      ...raw,
+      planExecution: {
+        ...raw.planExecution,
+        steps: [{
+          ...raw.planExecution.steps[0],
+          step: {
+            ...step,
+            exerciseVersionSnapshot: createTechniqueExecution().exerciseVersionSnapshot,
+          },
+          runtime: { kind: "release-timing-block", blockId: "missing" },
+        }],
+      },
+    };
+    expect(migrateSession(mismatched).planExecution).toBeUndefined();
   });
 });

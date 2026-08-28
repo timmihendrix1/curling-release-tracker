@@ -17,8 +17,7 @@ type TrainingPlanStepTransitionProps =
     }
   | {
       kind: "plan-complete";
-      totalPlannedStones: number;
-      totalActualStones: number;
+      totalSteps: number;
       onFinish: () => void;
     };
 
@@ -50,12 +49,11 @@ export default function TrainingPlanStepTransition(
       <p className="text-sm font-medium text-slate-900">Plan complete</p>
 
       <p className="mt-1 text-sm text-slate-600">
-        {props.totalActualStones} of {props.totalPlannedStones} planned stones
-        recorded.
+        All {props.totalSteps} step{props.totalSteps === 1 ? "" : "s"} completed.
       </p>
 
       <p className="mt-1 text-xs text-slate-500">
-        You can keep adding shots, or finish training now.
+        Finish the Training Session when you are ready.
       </p>
 
       <button

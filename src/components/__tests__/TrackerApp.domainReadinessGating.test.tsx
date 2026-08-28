@@ -26,6 +26,9 @@ import { createDefaultHistoryFilters } from "../../lib/historyAnalysis";
 import { createEmptyAccuracyToleranceProfilesState } from "../../lib/accuracyToleranceProfiles/persistence";
 import { createEmptySmartRandomProfilesState } from "../../lib/smartRandomProfiles/persistence";
 import { createEmptyAssessmentPersistedState } from "../../lib/assessment/persistence";
+import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
+import { RELEASE_TIME_VERSION_ID } from "../../lib/exercises/content";
+import { findExerciseVersion } from "../../lib/exercises/lookup";
 import { loadedAbsent, loadedValue, loadFailed } from "../../lib/persistence/types";
 import type { TrainingPlan } from "../../types";
 
@@ -76,16 +79,23 @@ function smartRandomProfile(id: string, name: string) {
 }
 
 function trainingPlan(id: string, name: string): TrainingPlan {
+  const releaseTimeVersion = findExerciseVersion(
+    EXERCISE_CATALOG,
+    RELEASE_TIME_VERSION_ID
+  );
+  if (!releaseTimeVersion) throw new Error("Missing Release Time test fixture");
+
   return {
     id,
     name,
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    schemaVersion: 1,
+    schemaVersion: 2,
     steps: [
       {
         id: `${id}-step-1`,
         type: "release-timing",
+        exerciseVersionSnapshot: JSON.parse(JSON.stringify(releaseTimeVersion)),
         completion: { type: "shot-count", value: 2 },
         handleStrategy: { type: "free" },
         configuration: {

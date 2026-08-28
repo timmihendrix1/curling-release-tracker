@@ -9,10 +9,14 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainLanding from "../TrainLanding";
 import type { TrainingPlan } from "../../types";
+import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
+import { RELEASE_TIME_VERSION_ID } from "../../lib/exercises/content";
+import { findExerciseVersion } from "../../lib/exercises/lookup";
 
 afterEach(cleanup);
 
 const QUICK_START_MARKER = "Set Up Training Block (test hero)";
+const releaseTimeVersion = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID)!;
 
 /**
  * A valid, executable Release Timing plan — enough for the Training Plans
@@ -25,11 +29,12 @@ function buildPlan(): TrainingPlan {
     name: "Release Consistency",
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
-    schemaVersion: 1,
+    schemaVersion: 2,
     steps: [
       {
         id: "step-1",
         type: "release-timing",
+        exerciseVersionSnapshot: releaseTimeVersion,
         completion: { type: "shot-count", value: 8 },
         handleStrategy: { type: "free" },
         configuration: {

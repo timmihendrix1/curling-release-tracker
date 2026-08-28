@@ -233,21 +233,34 @@ export type ReleaseTimingBlockConfiguration = {
   accuracyThresholds: AccuracyThresholds;
 };
 
-// One ordered unit inside a Training Plan. Version 1 only implements this one step
-// type, but keeps an explicit discriminant (`type`) so future step types (Rotation,
-// Line, Assessment, ...) can be added later without redefining this one — see spec §9.
+// One Release Time unit inside a Training Plan. Its explicit discriminant coexists
+// with CuratedExercisePlanStep after Stage D — see ADR-0040.
 export type ReleaseTimingPlanStep = {
   id: string;
   type: "release-timing";
+  /** Immutable Library provenance for the Measured Exercise this step executes. */
+  exerciseVersionSnapshot: ExerciseVersion;
   completion: ShotCountCompletion;
   handleStrategy: HandleStrategy;
   configuration: ReleaseTimingBlockConfiguration;
 };
 
-// Version 1: only Release Timing steps exist. Kept as its own alias (rather than
-// using ReleaseTimingPlanStep directly everywhere) so a future union member can be
-// added here without touching every call site.
-export type TrainingPlanStep = ReleaseTimingPlanStep;
+/**
+ * A curated Technique or Shotmaking step. Its content snapshot is the complete
+ * plan-time instruction/configuration reference; the resulting Exercise Execution
+ * records the actual variation, Measurements and execution context separately.
+ * Open-ended completion is deliberate: these Exercises finish through the existing
+ * explicit Complete Exercise transition, not an invented planned-volume threshold.
+ */
+export type CuratedExercisePlanStep = {
+  id: string;
+  type: "curated-exercise";
+  exerciseVersionSnapshot: ExerciseVersion;
+  completion: { type: "exercise-completion" };
+};
+
+/** The extensible, persisted discriminated union used by mixed Training Plans. */
+export type TrainingPlanStep = ReleaseTimingPlanStep | CuratedExercisePlanStep;
 
 // A reusable, ordered configuration — not training data. Persisted independently of
 // currentSession/sessionHistory (its own localStorage key, see
@@ -266,20 +279,27 @@ export type TrainingPlan = {
 // One step's state within an active/completed plan execution. `step` is a deep copy
 // taken at plan-start time (never a live reference to the saved TrainingPlan) — this
 // is what makes a later plan edit or deletion incapable of affecting an
-// already-started or completed Session. `blockId` is set only once this step's
-// TrainingBlock has actually been created (lazy creation — see ADR-0012); a step with
-// no blockId yet hasn't been reached. Progression always looks blocks up by this id,
-// never by array position (session.blocks[i] is never assumed to equal steps[i]).
+// already-started or completed Session. `runtime` is set only once the step's own
+// execution entity has actually been created (lazy creation — see ADR-0012/ADR-0040);
+// a step without one hasn't been reached. The discriminated runtime reference keeps
+// release-time blocks and embedded Exercise Executions distinct without teaching the
+// plan aggregate either domain's internal measurement logic.
+export type PlanStepRuntimeReference =
+  | { kind: "release-timing-block"; blockId: string }
+  | { kind: "exercise-execution"; exerciseExecutionId: string };
+
 export type PlanExecutionStepSnapshot = {
-  step: ReleaseTimingPlanStep;
-  blockId?: string;
+  step: TrainingPlanStep;
+  /** Absent only on a future, lazily-unmaterialised step. */
+  runtime?: PlanStepRuntimeReference;
 };
 
 // Attached to a Session when it was started from a Training Plan. Absent for every
 // Quick Start session. `activeStepIndex` always indexes a real entry in `steps`
 // (0..steps.length-1) — there is no separate "plan complete" index value; plan
-// completion is a derived condition (final step's block has reached its planned shot
-// count), not a stored one. See src/lib/trainingPlans/progress.ts.
+// completion is derived from the final step's own runtime (Release Time shot count or
+// curated Exercise completion status), never stored separately. See
+// src/lib/trainingPlans/progress.ts.
 export type PlanExecutionState = {
   sourcePlanId: string;
   sourcePlanName: string;

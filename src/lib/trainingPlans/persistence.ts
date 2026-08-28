@@ -10,7 +10,7 @@ import type { TrainingPlan, TrainingPlanStep } from "../../types";
 import { err, ok, type TrainingPlanOutcome } from "./errors";
 
 export const TRAINING_PLANS_STORAGE_KEY = "curling-release-tracker-training-plans";
-export const TRAINING_PLANS_SCHEMA_VERSION = 1;
+export const TRAINING_PLANS_SCHEMA_VERSION = 2;
 
 export type TrainingPlansPersistedState = {
   schemaVersion: number;
@@ -63,14 +63,8 @@ export function deletePlan(
 
 function cloneStepForDuplication(step: TrainingPlanStep): TrainingPlanStep {
   return {
-    ...step,
+    ...(JSON.parse(JSON.stringify(step)) as TrainingPlanStep),
     id: crypto.randomUUID(),
-    completion: { ...step.completion },
-    handleStrategy: { ...step.handleStrategy },
-    configuration: {
-      ...step.configuration,
-      accuracyThresholds: { ...step.configuration.accuracyThresholds },
-    },
   };
 }
 

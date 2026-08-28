@@ -1,4 +1,13 @@
-import type { ReleaseTimingPlanStep, Session, TrainingPlan } from "../../../types";
+import type { CuratedExercisePlanStep, ReleaseTimingPlanStep, Session, TrainingPlan } from "../../../types";
+import { EXERCISE_CATALOG } from "../../exercises/catalog";
+import { EIGHT_GUARDS_VERSION_ID, RELEASE_TIME_VERSION_ID } from "../../exercises/content";
+import { findExerciseVersion } from "../../exercises/lookup";
+
+function version(versionId: string) {
+  const found = findExerciseVersion(EXERCISE_CATALOG, versionId);
+  if (!found) throw new Error(`Missing test Exercise Version ${versionId}`);
+  return JSON.parse(JSON.stringify(found)) as typeof found;
+}
 
 export function buildStep(
   overrides: Partial<ReleaseTimingPlanStep> = {}
@@ -6,6 +15,8 @@ export function buildStep(
   return {
     id: overrides.id ?? crypto.randomUUID(),
     type: "release-timing",
+    exerciseVersionSnapshot:
+      overrides.exerciseVersionSnapshot ?? version(RELEASE_TIME_VERSION_ID),
     completion: overrides.completion ?? { type: "shot-count", value: 4 },
     handleStrategy: overrides.handleStrategy ?? { type: "free" },
     configuration: {
@@ -23,6 +34,18 @@ export function buildStep(
   };
 }
 
+export function buildExerciseStep(
+  overrides: Partial<CuratedExercisePlanStep> = {}
+): CuratedExercisePlanStep {
+  return {
+    id: overrides.id ?? crypto.randomUUID(),
+    type: "curated-exercise",
+    exerciseVersionSnapshot:
+      overrides.exerciseVersionSnapshot ?? version(EIGHT_GUARDS_VERSION_ID),
+    completion: { type: "exercise-completion" },
+  };
+}
+
 export function buildPlan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
   const now = "2026-01-01T00:00:00.000Z";
 
@@ -33,7 +56,7 @@ export function buildPlan(overrides: Partial<TrainingPlan> = {}): TrainingPlan {
     steps: overrides.steps ?? [buildStep()],
     createdAt: overrides.createdAt ?? now,
     updatedAt: overrides.updatedAt ?? now,
-    schemaVersion: overrides.schemaVersion ?? 1,
+    schemaVersion: overrides.schemaVersion ?? 2,
   };
 }
 
@@ -46,6 +69,8 @@ export function buildSession(overrides: Partial<Session> = {}): Session {
     blocks: overrides.blocks ?? [],
     activeBlockId: overrides.activeBlockId ?? "",
     shots: overrides.shots ?? [],
+    exerciseExecutions: overrides.exerciseExecutions,
+    activeExerciseExecutionId: overrides.activeExerciseExecutionId,
     captureSequence: overrides.captureSequence,
     planExecution: overrides.planExecution,
   };

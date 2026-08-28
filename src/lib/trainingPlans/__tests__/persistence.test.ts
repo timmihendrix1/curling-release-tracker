@@ -7,6 +7,7 @@ import {
   updatePlan,
 } from "../persistence";
 import { buildPlan } from "./testHelpers";
+import { isReleaseTimingPlanStep } from "../steps";
 
 describe("Training Plans persistence", () => {
   it("addPlan appends a plan to an empty state", () => {
@@ -53,6 +54,9 @@ describe("Training Plans persistence", () => {
     expect(copy.name).toBe("Release Consistency (Copy)");
 
     // Later edits to either plan must not affect the other.
+    if (!isReleaseTimingPlanStep(copy.steps[0]) || !isReleaseTimingPlanStep(plan.steps[0])) {
+      throw new Error("Expected Release Time steps");
+    }
     copy.steps[0].configuration.targetTime = 999;
     expect(plan.steps[0].configuration.targetTime).not.toBe(999);
   });

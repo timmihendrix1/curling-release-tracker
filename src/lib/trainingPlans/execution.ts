@@ -8,31 +8,20 @@
 // it's committed, never in a separate, later step.
 import type {
   PlanExecutionState,
-  ReleaseTimingPlanStep,
+  PlanStepRuntimeReference,
   TrainingPlan,
 } from "../../types";
-
-function cloneStep(step: ReleaseTimingPlanStep): ReleaseTimingPlanStep {
-  return {
-    ...step,
-    completion: { ...step.completion },
-    handleStrategy: { ...step.handleStrategy },
-    configuration: {
-      ...step.configuration,
-      accuracyThresholds: { ...step.configuration.accuracyThresholds },
-    },
-  };
-}
+import { cloneTrainingPlanStep } from "./steps";
 
 /**
  * Deep-copies the plan's steps into a fresh execution snapshot — never a live
  * reference to the saved TrainingPlan — so a later edit or deletion of the plan can
- * never affect this or any future execution (spec invariant #2). `firstBlockId` is
- * the id of the TrainingBlock the caller has already created for step 0.
+ * never affect this or any future execution (spec invariant #2). `firstRuntime` is
+ * the typed reference to the first step's already-created runtime entity.
  */
 export function startPlanExecution(
   plan: TrainingPlan,
-  firstBlockId: string
+  firstRuntime: PlanStepRuntimeReference
 ): PlanExecutionState {
   return {
     sourcePlanId: plan.id,
@@ -40,20 +29,20 @@ export function startPlanExecution(
     sourcePlanUpdatedAt: plan.updatedAt,
     activeStepIndex: 0,
     steps: plan.steps.map((step, index) => ({
-      step: cloneStep(step),
-      blockId: index === 0 ? firstBlockId : undefined,
+      step: cloneTrainingPlanStep(step),
+      runtime: index === 0 ? { ...firstRuntime } : undefined,
     })),
   };
 }
 
 /**
- * Advances to the next step, stamping `newBlockId` (the id of the TrainingBlock the
- * caller has already created for it) onto it. A no-op (returns the identical
+ * Advances to the next step, stamping the typed reference to the runtime entity the
+ * caller has already created for it. A no-op (returns the identical
  * reference) if already on the final step.
  */
 export function advanceToNextPlanStep(
   planExecution: PlanExecutionState,
-  newBlockId: string
+  newRuntime: PlanStepRuntimeReference
 ): PlanExecutionState {
   if (planExecution.activeStepIndex >= planExecution.steps.length - 1) {
     return planExecution;
@@ -65,7 +54,7 @@ export function advanceToNextPlanStep(
     ...planExecution,
     activeStepIndex: nextIndex,
     steps: planExecution.steps.map((snapshot, index) =>
-      index === nextIndex ? { ...snapshot, blockId: newBlockId } : snapshot
+      index === nextIndex ? { ...snapshot, runtime: { ...newRuntime } } : snapshot
     ),
   };
 }

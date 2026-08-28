@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { migrateTrainingPlans } from "../migration";
 import { isStepExecutable } from "../validation";
+import { isReleaseTimingPlanStep } from "../steps";
+import { buildExerciseStep, buildPlan } from "./testHelpers";
 
 describe("migrateTrainingPlans", () => {
   it("returns an empty state for undefined/absent data (first load)", () => {
-    expect(migrateTrainingPlans(undefined)).toEqual({ schemaVersion: 1, plans: [] });
+    expect(migrateTrainingPlans(undefined)).toEqual({ schemaVersion: 2, plans: [] });
   });
 
   it("resets to empty state for an unknown/future schemaVersion", () => {
     const result = migrateTrainingPlans({ schemaVersion: 99, plans: [{ id: "p1" }] });
-    expect(result).toEqual({ schemaVersion: 1, plans: [] });
+    expect(result).toEqual({ schemaVersion: 2, plans: [] });
   });
 
   it("migrates a well-formed plan through unchanged", () => {
@@ -49,10 +51,25 @@ describe("migrateTrainingPlans", () => {
     const migrated = migrateTrainingPlans(raw);
     expect(migrated.plans).toHaveLength(1);
     expect(migrated.plans[0].name).toBe("Release Consistency");
-    expect(migrated.plans[0].steps[0].handleStrategy).toEqual({
+    const firstStep = migrated.plans[0].steps[0];
+    expect(isReleaseTimingPlanStep(firstStep) ? firstStep.handleStrategy : undefined).toEqual({
       type: "alternating",
       startingHandle: "in",
     });
+    expect(migrated.schemaVersion).toBe(2);
+    expect(firstStep.exerciseVersionSnapshot.id).toBe("release-time-v1");
+  });
+
+  it("round-trips a schema-2 curated Exercise step with its exact snapshot", () => {
+    const plan = buildPlan({ steps: [buildExerciseStep()] });
+    const migrated = migrateTrainingPlans({ schemaVersion: 2, plans: [plan] });
+    expect(migrated).toEqual({ schemaVersion: 2, plans: [plan] });
+  });
+
+  it("drops a schema-2 plan whose Exercise snapshot was tampered with", () => {
+    const plan = buildPlan({ steps: [buildExerciseStep()] });
+    plan.steps[0].exerciseVersionSnapshot.title = "Tampered";
+    expect(migrateTrainingPlans({ schemaVersion: 2, plans: [plan] }).plans).toEqual([]);
   });
 
   it("drops a single structurally broken plan without discarding the rest of the list", () => {
@@ -107,8 +124,8 @@ describe("migrateTrainingPlans", () => {
     const step = migrated.plans[0].steps[0];
 
     expect(typeof step.id).toBe("string");
-    expect(step.handleStrategy).toEqual({ type: "free" });
-    expect(step.completion.value).toBeGreaterThan(0);
+    expect(isReleaseTimingPlanStep(step) ? step.handleStrategy : undefined).toEqual({ type: "free" });
+    expect(isReleaseTimingPlanStep(step) ? step.completion.value : 0).toBeGreaterThan(0);
     // Structurally repaired, but semantically still invalid — never silently
     // coerced into a fabricated-valid Hog-Hog Smart Random range.
     expect(isStepExecutable(step)).toBe(false);

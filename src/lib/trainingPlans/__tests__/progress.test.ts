@@ -8,7 +8,8 @@ import {
   isPlanComplete,
   isPlanExecutionActive,
 } from "../progress";
-import { buildSession, buildStep } from "./testHelpers";
+import { createCompletedTechniqueExecution, createTechniqueExecution, FIXTURE_SESSION_ID } from "../../exercises/__tests__/executionFixtures";
+import { buildExerciseStep, buildSession, buildStep } from "./testHelpers";
 
 function shotFor(blockId: string, shotNumber: number): Shot {
   return {
@@ -29,8 +30,8 @@ function planExecution(overrides: Partial<PlanExecutionState> = {}): PlanExecuti
     sourcePlanName: "Release Consistency",
     activeStepIndex: 0,
     steps: [
-      { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: "block-1" },
-      { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: undefined },
+      { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+      { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: undefined },
     ],
     ...overrides,
   };
@@ -53,6 +54,43 @@ describe("isPlanExecutionActive", () => {
   it("is false if the active step's blockId no longer resolves to a real block", () => {
     const session = buildSession({ activeBlockId: "block-1", blocks: [] });
     expect(isPlanExecutionActive(session, planExecution())).toBe(false);
+  });
+
+  it("resolves an in-progress or completed curated Exercise through its typed runtime", () => {
+    const inProgress = createTechniqueExecution();
+    const exercisePlan: PlanExecutionState = {
+      sourcePlanId: "plan-2",
+      sourcePlanName: "Technique",
+      activeStepIndex: 0,
+      steps: [{
+        step: buildExerciseStep({ exerciseVersionSnapshot: inProgress.exerciseVersionSnapshot }),
+        runtime: { kind: "exercise-execution", exerciseExecutionId: inProgress.id },
+      }],
+    };
+    const activeSession = buildSession({
+      id: FIXTURE_SESSION_ID,
+      exerciseExecutions: [inProgress],
+      activeExerciseExecutionId: inProgress.id,
+    });
+    expect(isPlanExecutionActive(activeSession, exercisePlan)).toBe(true);
+    expect(isActiveStepComplete(activeSession, exercisePlan)).toBe(false);
+
+    const completed = createCompletedTechniqueExecution();
+    const completedPlan = {
+      ...exercisePlan,
+      steps: [{
+        step: buildExerciseStep({ exerciseVersionSnapshot: completed.exerciseVersionSnapshot }),
+        runtime: { kind: "exercise-execution" as const, exerciseExecutionId: completed.id },
+      }],
+    };
+    const completedSession = buildSession({
+      id: FIXTURE_SESSION_ID,
+      exerciseExecutions: [completed],
+      activeExerciseExecutionId: undefined,
+    });
+    expect(isPlanExecutionActive(completedSession, completedPlan)).toBe(true);
+    expect(isActiveStepComplete(completedSession, completedPlan)).toBe(true);
+    expect(isPlanComplete(completedSession, completedPlan)).toBe(true);
   });
 });
 
@@ -94,15 +132,15 @@ describe("isActiveStepComplete / isFinalStep / isPlanComplete", () => {
     const finalIncomplete = planExecution({
       activeStepIndex: 1,
       steps: [
-        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: "block-1" },
-        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: "block-2" },
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
       ],
     });
     const finalComplete = planExecution({
       activeStepIndex: 1,
       steps: [
-        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: "block-1" },
-        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), blockId: "block-2" },
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
       ],
     });
 
@@ -138,7 +176,7 @@ describe("isActiveStepComplete / isFinalStep / isPlanComplete", () => {
 describe("getActiveStepSnapshot / getPlanProgressSummary", () => {
   it("resolves the active snapshot by activeStepIndex", () => {
     const execution = planExecution();
-    expect(getActiveStepSnapshot(execution)?.blockId).toBe("block-1");
+    expect(getActiveStepSnapshot(execution)?.runtime).toEqual({ kind: "release-timing-block", blockId: "block-1" });
   });
 
   it("summarizes step and total progress correctly", () => {
@@ -152,9 +190,8 @@ describe("getActiveStepSnapshot / getPlanProgressSummary", () => {
 
     expect(summary.currentStepNumber).toBe(1);
     expect(summary.totalSteps).toBe(2);
-    expect(summary.shotsSavedInCurrentStep).toBe(1);
-    expect(summary.plannedShotsInCurrentStep).toBe(2);
-    expect(summary.totalPlannedShots).toBe(4);
-    expect(summary.totalActualShots).toBe(1);
+    expect(summary.currentStepTitle).toBe("Release Time");
+    expect(summary.currentProgressLabel).toBe("Stone 1 of 2");
+    expect(summary.completedStepCount).toBe(0);
   });
 });

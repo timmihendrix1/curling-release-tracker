@@ -492,8 +492,9 @@ not unify them into one:
   boundary design that assumes one policy per key.
 - **Root-`schemaVersion`-gated, quarantine-or-wipe** — domains #4-#7. Domain #4
   (Assessment) quarantines individually invalid runs (drops one, keeps the rest). Domain #5
-  (Training Plans) does a **full root-level wipe** on any `schemaVersion` mismatch, then
-  field-repairs each plan within a matching version. Domains #6-#7 quarantine individual
+  (Training Plans) explicitly migrates schema 1 Release-Time-only plans to schema 2,
+  wipes an unknown/future root version, then field-repairs scalar configuration while
+  failing closed on a missing or rewritten schema-2 Exercise snapshot. Domains #6-#7 quarantine individual
   profiles and clear a dangling `defaultProfileId` to `null`.
 - **No explicit migration strategy** — domains #8-#10. Each has an inline default/whitelist
   check at the point of read, not a named "migration" function, since each is a single

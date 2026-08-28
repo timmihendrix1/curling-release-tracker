@@ -1,5 +1,13 @@
 # Training System and Plans
 
+> **Stage D generalisation (2026-08-28):** This document remains authoritative for
+> Release Timing Plan Step configuration and its Block/Shot execution. Its claims that
+> all Training Plan steps are Release Timing steps are superseded by
+> `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §15/Stage D and ADR-0040.
+> `TrainingPlanStep` now also includes curated Technique/Shotmaking Exercise steps;
+> mixed execution is Profile-owned for the initial test, while Team-plan execution is
+> deliberately deferred.
+
 &gt; This document defines the product model, scope, user experience and architectural direction for reusable training plans in the Curling Performance Platform.
 
 &gt;

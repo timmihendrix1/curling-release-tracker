@@ -2330,12 +2330,12 @@ this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on de
   Framework" section. None of these were in scope for Phase C by design (see
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` sections 2/20).
 
-## Training Plans (Implemented — Version 1)
+## Training Plans (Implemented — profile-owned mixed Exercise plans)
 
 See `docs/TRAINING_SYSTEM_AND_PLANS.md` for the authoritative product/domain
 specification this section only summarizes at an architecture-snapshot level, and
-`docs/adr/0012-training-plans-domain-and-execution-model.md` for the reasoning behind
-the decisions below.
+`docs/adr/0012-training-plans-domain-and-execution-model.md` plus ADR-0040 for the
+mixed-Exercise generalisation.
 
 ### Current state
 
@@ -2344,25 +2344,27 @@ the decisions below.
   offers Training Plans as one of Train's three equally-reachable entry paths, alongside
   Quick Start (the pre-existing hero, unchanged) and Exercises (added by the Exercise
   Library's Stage A — see that section below).
-- A Training Plan (`TrainingPlan`/`TrainingPlanStep`/`ReleaseTimingPlanStep`/
-  `HandleStrategy`/`ShotCountCompletion`/`ReleaseTimingBlockConfiguration`, all in
+- A Training Plan (`TrainingPlan`/the `TrainingPlanStep` union/
+  `ReleaseTimingPlanStep`/`CuratedExercisePlanStep`, all in
   `src/types/index.ts` — see ADR-0012 Decision 2 for why they live centrally rather
   than in their own `trainingPlans/types.ts`) is persisted independently of
   `currentSession`/`sessionHistory`, under its own `localStorage` key
   (`curling-release-tracker-training-plans`, `src/lib/trainingPlans/persistence.ts`).
-- Starting a plan attaches `Session.planExecution?: PlanExecutionState` — a deep-copied
-  snapshot of the plan's steps taken at start time, plus which step is active and
-  which steps' `TrainingBlock`s have been created so far. A later edit or deletion of
+- Every step snapshots an exact immutable curated `ExerciseVersion`. Starting a plan
+  attaches `Session.planExecution?: PlanExecutionState` — a second deep-copied
+  snapshot of the plan's steps, the active index and each reached step's discriminated
+  runtime reference. A later edit or deletion of
   the source `TrainingPlan` can never affect this snapshot (spec invariant #2).
-- Each step's `TrainingBlock` is created lazily, via the existing `addTrainingBlock`
-  (`src/lib/trainingBlocks.ts`) — exactly when the athlete starts the plan or taps
-  Continue — never all up front (ADR-0012 Decision 1). `handleAddShot` and Auto
-  Capture's shot-save path are completely unchanged; a plan-driven block is an
-  ordinary `TrainingBlock`.
+- Each step's existing runtime entity is created lazily when reached. Release Time
+  creates an ordinary `TrainingBlock`; Technique/Shotmaking creates an ordinary
+  Profile-owned embedded `ExerciseExecution`. The plan owns neither measurement nor
+  scoring internals. Stage D is profile-owned; Team-plan execution remains a future
+  cross-authority context and does not attach Team drafts to the personal Session.
 
 ### Domain (`src/lib/trainingPlans/`)
 
-- `mapping.ts` — `mapPlanStepToTrainingBlockInput(step): NewBlockInput`, the one
+- `mapping.ts` — `mapPlanStepToTrainingBlockInput(step): NewBlockInput`, the Release
+  Time
   boundary translating a Plan Step template into `trainingBlocks.ts`'s existing block-
   creation input (spec section 40). Never re-validates; validation lives in
   `validation.ts`.
@@ -2378,22 +2380,22 @@ the decisions below.
   `capturedShotCount`. `handleStrategyToCaptureHandleMode` maps a Handle Strategy onto
   `CaptureHandleMode` so a plan-driven block's Auto Capture setup can be pre-filled
   (still fully overridable).
-- `progress.ts` — pure, derived-only functions: `isPlanExecutionActive` (true only
-  when `session.activeBlockId` matches the active step's stored `blockId`, which
-  itself resolves to a real block — false, never a crash or a guess, if a manual "New
-  Training Block" interrupted the plan, or the reference is corrupt), `isActiveStepComplete`,
+- `steps.ts` centralises deep cloning, discriminant guards, exact catalog-snapshot
+  checks and generic plan-step labels.
+- `progress.ts` — pure, derived-only functions: `isPlanExecutionActive` resolves the
+  active step through `release-timing-block`/`blockId` or
+  `exercise-execution`/`exerciseExecutionId`, `isActiveStepComplete`,
   `isFinalStep`, `isPlanComplete`, `getPlanProgressSummary`. Progression is always
-  keyed by the snapshot's stored `blockId`, never `session.blocks` array position
-  (ADR-0012 Decision 6).
-- `execution.ts` — `startPlanExecution(plan, firstBlockId)` (deep-copies every step;
-  never a live reference back into the saved plan) and
-  `advanceToNextPlanStep(planExecution, newBlockId)`. Neither function creates a
-  `TrainingBlock` itself — the caller (`TrackerApp.tsx`) creates the block first via
-  the existing `addTrainingBlock`, then calls these to update the execution snapshot,
-  in one atomic session update (never two separate `setCurrentSession` calls).
+  keyed by the stored typed reference, never an entity-array position.
+- `execution.ts` deep-copies every plan step and stamps only a typed runtime reference.
+  `TrackerApp.tsx` materialises the entity through its existing domain boundary first,
+  then commits entity plus plan progress together.
 - `persistence.ts` / `migration.ts` — the Training Plan *library*'s own root state,
   pure state-shape functions (`addPlan`/`updatePlan`/`deletePlan`/`duplicatePlan`), and
-  its own migration (`migrateTrainingPlans`) — field-by-field repair style (like
+  schema-2 migration (`migrateTrainingPlans`). Schema 1 Release Time plans are retained
+  and receive exact Release Time Library provenance; schema-2 Exercise snapshots fail
+  closed if missing or rewritten. The remaining scalar repair follows the
+  field-by-field style (like
   `sessionMigration.ts`'s block backfill), since a `TrainingPlan`'s fields are mostly
   independent scalars. An unexecutable step's sport-specific configuration is never
   silently coerced into a fabricated-valid combination.
@@ -2405,8 +2407,9 @@ the decisions below.
 Unlike the plan library above, `Session.planExecution` follows Assessment's
 discard-the-whole-record style, not `sessionMigration.ts`'s general field-by-field
 repair style — its cross-field invariants (`activeStepIndex` validly indexes `steps`;
-every step at or before it has a `blockId` resolving to a real, already-migrated
-block; every step after it has none) are too strict to safely patch in isolation. A
+every reached step has a type-matching runtime reference resolving to a real,
+already-migrated Block or Exercise Execution; every future step has none) are too
+strict to safely patch in isolation. A
 structurally invalid `planExecution` is discarded entirely (`undefined`); `blocks`/
 `shots` (the real training data) are migrated independently, before this runs, and are
 never affected by a corrupt or missing `planExecution`. See ADR-0012 Decision 4 and
@@ -2421,15 +2424,16 @@ Training Plans library/editor/start-review sub-navigation locally — TrackerApp
 learns about a plan being started/saved/duplicated/deleted), `TrainingPlansLibrary.tsx` (list +
 Start/Edit/Duplicate/Delete + empty state), `TrainingPlanEditor.tsx` (name/description
 + ordered step list with Move Up/Down, no drag-and-drop),
-`TrainingPlanStepEditor.tsx` (reuses `TrainingSetup.tsx` unmodified for the block-
+`TrainingPlanStepEditor.tsx` (first chooses curated Technique/Shotmaking or Release
+Time; reuses `TrainingSetup.tsx` unmodified for the timing block-
 scoped fields, converting its `TrainingSetupValue` output to/from the domain's
 `ReleaseTimingBlockConfiguration` locally — the persisted type is never derived from
 the component's form-value export, see ADR-0012 Decision 3 — plus Number of Stones and
 a Handle Strategy selector), `TrainingPlanStartReview.tsx` (pre-start summary),
-`TrainingPlanProgress.tsx` (compact "Step X of Y · Shot N of M", visually secondary to
+`TrainingPlanProgress.tsx` (compact focus-appropriate step progress, visually secondary to
 active capture), and `TrainingPlanStepTransition.tsx` (two mutually exclusive states —
 "Continue to next step" mid-plan, or a distinct "Plan complete" / Finish Training once
-the final step's count is reached; the latter reuses the existing
+the final step's own completion transition is reached; the latter reuses the existing
 `handleStartNewSession` session-archiving path, introducing no new completion logic —
 ADR-0012 Decision 5).
 
@@ -2441,13 +2445,14 @@ for one shot; the next shot's preselect follows the plan's own sequence regardle
 
 ### Scope (Version 1)
 
-Not built: Skip Step, drag-and-drop step reordering, scheduling/calendar, coach/team
-features, cloud sync, shared/marketplace plans, adaptive plans, Assessment Plan Steps,
+Not built: Team-plan execution, Skip Step, drag-and-drop step reordering,
+scheduling/calendar, coach/team plan features, cloud sync, shared/marketplace plans,
+adaptive plans, Assessment Plan Steps,
 a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface beyond a
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
 
-## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C4c implemented)
+## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C4c + profile-owned Stage D implemented)
 
 `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
 domain source; this section is an architecture snapshot of Stage A, Solo Stages B1-B3,
@@ -2889,8 +2894,8 @@ Training Plan, since this module never reads or writes either of their storage k
 saved profile, or enter a one-off Custom value" control, rendered inside
 `TrainingSetup.tsx`'s existing Custom Accuracy Tolerance branch. Because Quick Start
 (`TrackerApp.tsx`), New Training Block (`NewTrainingBlock.tsx`), and the Training Plan
-Step Editor (`TrainingPlanStepEditor.tsx`) all already render `TrainingSetup.tsx`
-unmodified (see "Training Plans" above and ADR-0012), adding the two new
+Step Editor's Release Time branch (`TrainingPlanStepEditor.tsx`) all render
+`TrainingSetup.tsx` unmodified (see "Training Plans" above and ADR-0012), adding the two new
 `accuracyToleranceProfiles`/`defaultAccuracyToleranceProfileId` props to `TrainingSetup`
 and threading them down from `TrackerApp` covers all three surfaces without any
 per-surface logic. A default profile only prefills a **brand-new** configuration's
@@ -3463,11 +3468,11 @@ local component state.
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
 | `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
 | `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |
-| `TrainingPlansLibrary.tsx` | Plan list — summary (steps/stones/mode composition), Start/Edit/Duplicate/Delete, empty state; Start disabled with an inline note for an unexecutable plan |
+| `TrainingPlansLibrary.tsx` | Profile-owned plan list — mixed-focus/timing-volume summary, Start/Edit/Duplicate/Delete, empty state; Start disabled with an inline note for an unexecutable plan |
 | `TrainingPlanEditor.tsx` | Create/edit a plan — name, optional description, ordered step list with Move Up/Down/Duplicate/Delete, "Add Step" |
-| `TrainingPlanStepEditor.tsx` | Configures one Release Timing Plan Step — wraps `TrainingSetup.tsx` unmodified, adding Number of Stones and a Free/Fixed/Alternating Handle Strategy selector |
-| `TrainingPlanStartReview.tsx` | Pre-start summary (ordered steps, stones, handle strategy, total) + Start Training |
-| `TrainingPlanProgress.tsx` | Compact "Step X of Y · Shot N of M" during execution — visually secondary to active shot capture |
+| `TrainingPlanStepEditor.tsx` | Chooses a curated Technique/Shotmaking Exercise or Release Time; snapshots the exact Exercise Version, while only Release Time wraps `TrainingSetup.tsx` and adds Number of Stones plus Handle Strategy |
+| `TrainingPlanStartReview.tsx` | Profile-owned pre-start summary of ordered mixed steps and any planned Release Time volume + Start Training |
+| `TrainingPlanProgress.tsx` | Compact focus-aware "Step X of Y" and current Exercise/stone progress during execution — visually secondary to active capture |
 | `TrainingPlanStepTransition.tsx` | "Continue to next step" mid-plan, or a distinct "Plan complete" + Finish Training on the final step — never both at once |
 | `identity/IdentityProvider.tsx` | The one application-level identity owner. Mounts `TrackerApp` only for a reducer-accepted ready session; otherwise renders the global gate |
 | `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |

@@ -883,12 +883,12 @@ not duplicated here.
 
 ---
 
-## Training Plans (v1)
+## Training Plans (profile-owned mixed Stage D)
 
 **Implemented.** See `docs/TRAINING_SYSTEM_AND_PLANS.md` for the authoritative product
 and domain model, `docs/SYSTEM_ARCHITECTURE.md`'s "Training Plans" section for the
-architecture-level summary, and `docs/adr/0012-training-plans-domain-and-execution-model.md`
-for the domain-separation, lazy-block-creation, and migration-style decisions.
+architecture-level summary, and ADR-0012 plus ADR-0040 for the domain separation,
+typed lazy-runtime and migration decisions.
 
 ### Deliberately deferred to keep Version 1 focused
 
@@ -929,12 +929,11 @@ for the domain-separation, lazy-block-creation, and migration-style decisions.
 
 ### Not built (explicitly out of Version 1 scope, per the spec)
 
-Scheduling/calendars, coach-created or shared/team plans, plan marketplaces,
-AI-generated plans, automatic/performance-based progression, Assessment Plan Steps,
-and non-release-time (rotation/line/sweeping/sensor) Plan Step types — see spec
-section 4. The architecture (a discriminated `TrainingPlanStep` union with only one
-member today) is intended to make adding a new step type additive later, without
-redefining the meaning of existing release-time plans.
+Scheduling/calendars, coach-created or shared plans, **Team-plan execution**, plan
+marketplaces, AI-generated plans, automatic/performance-based progression, Assessment
+Plan Steps, and sensor-specific Plan Step types remain deferred. The architecture now
+has two persisted step members plus two typed runtime references; a Team execution
+context can be added without redefining existing personal history.
 
 ---
 
@@ -1055,7 +1054,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
-| **Exercise Stages A-C4c** | Curated Library, Solo execution, Team capture/restore/active correction and complete post-completion correction/void workflow — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3 and Team C1-C4c implemented.** Plans and content hardening remain planned. |
+| **Exercise Stages A-D** | Curated Library, Solo execution, Team capture/restore/correction and profile-owned mixed Training Plans — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3, Team C1-C4c and profile-owned Stage D implemented.** Initial-test content and release hardening remain planned. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
@@ -1267,12 +1266,13 @@ global state infrastructure beyond this feature's reviewed scope.
 
 ## Exercise Library and multi-athlete execution
 
-**Stage A, Solo Stage B (B1-B3) and Team Stages C1-C4c are implemented. Stage C is
-complete; Stages D-E remain planned.** The canonical product and domain boundary
+**Stage A, Solo Stage B (B1-B3), Team Stages C1-C4c and profile-owned Stage D are
+implemented. Stage C is complete; initial-test content/release hardening Stage E remains
+planned.** The canonical product and domain boundary
 is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
-The full closed-beta catalogue contains three Swiss Curling
-Shotmaking Exercises, four unscored Technique Exercises and two standalone Measured
-Exercises. All user-facing content is English.
+The narrowed initial-test catalogue contains three Swiss Curling Shotmaking Exercises,
+two unscored Technique Exercises and two standalone Measured Exercises. Rotation and
+Laser are deferred until Team feedback. All user-facing content is English.
 
 **Stage A (domain and curated-content foundation) — implemented.** See
 `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section for what exists:
@@ -1289,10 +1289,10 @@ Known delivery boundaries, deliberate rather than defects:
 - **Solo execution is implemented for the three current items.** Technique is unscored,
   Shotmaking records actual handle plus 0-4/exclusion and a private note, and Release Time
   links to the existing Fixed/Variable/Blind runner without a duplicate outcome record.
-- **Six of the nine approved Exercises are not authored yet** (Rotation, Laser, Release
-  Gates, the Draw and Soft Take-out Shotmaking Exercises, Rotation Count). They expand
+- **Four of the seven initial-test Exercises are not authored yet** (Release Gates, the
+  Draw and Soft Take-out Shotmaking Exercises, Rotation Count). They expand
   the same schemas and renderers; none may require a named, exercise-specific UI branch.
-  This is Stage E.
+  This is Stage E. Rotation and Laser are intentionally outside the initial test.
 - **Release Time references both release-time Measurement Protocols as `optional`.** The
   requirement is "choose one and keep it for the whole execution", which the Exercise
   states as a setup instruction. Nothing in the approved content makes either mode the
@@ -1319,7 +1319,8 @@ ADR-0038 implements C3d's durable active-attempt corrections and audited annulme
 ADR-0039 implements C4a's executed append-only Postgres authority and metadata-only
 notification emission; C4b adds provider-neutral mutation mapping, strict owner-only
 revision projection and schema-6 offline cache; C4c adds the athlete correction/void
-workflow, audit presentation and metadata-only Team inbox. Stages D-E remain planned.** B2 embeds
+workflow, audit presentation and metadata-only Team inbox. ADR-0040 implements
+profile-owned mixed Stage D; Stage E remains planned.** B2 embeds
 Technique and Shotmaking executions in the existing Profile-owned Session, local
 repository/archive transition and Free-cloud `training_session` record, with strict
 terminal-history validation and no extra storage silo. It deliberately leaves Measured
@@ -1327,8 +1328,8 @@ Release Time on the current Block/Shot execution path; B3 provides the generic S
 and stores only immutable Library provenance for a measured entry. The remaining work
 follows the specification's order and review gates: one-device Team execution with
 bounded offline upload, generalised simple
-Training Plans containing curated Exercise steps, then the remaining approved content and
-release hardening. C1 is deliberately standalone: it models confirmed Profile
+Training Plans containing curated Exercise steps (now implemented for the Profile-owned
+context), then the remaining initial-test content and release hardening. C1 is deliberately standalone: it models confirmed Profile
 participants, multiple athlete result slots, the active recorder, planned rotation and
 actual role segments. C2a adds three executed migrations and 68 passing pgTAP assertions
 for explicit recording permission, immutable shared coordination, athlete-owned result

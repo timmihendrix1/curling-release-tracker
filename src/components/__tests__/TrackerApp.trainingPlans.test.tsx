@@ -2,6 +2,13 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
+import {
+  EIGHT_GUARDS_VERSION_ID,
+  RELEASE_POINT_VERSION_ID,
+  RELEASE_TIME_VERSION_ID,
+} from "../../lib/exercises/content";
+import { findExerciseVersion } from "../../lib/exercises/lookup";
 import TrackerApp from "../TrackerApp";
 
 afterEach(cleanup);
@@ -74,7 +81,88 @@ function addShot(releaseTime: string) {
   screen.getByRole("button", { name: "Add Shot" }).click();
 }
 
+function catalogVersion(id: string) {
+  const version = findExerciseVersion(EXERCISE_CATALOG, id);
+  if (!version) throw new Error(`Missing Exercise Version ${id}`);
+  return version;
+}
+
+function seedMixedTrainingPlan() {
+  const releaseTime = releaseTimingStep({
+    id: "mixed-release-time",
+    stones: 1,
+    handleStrategy: { type: "free" },
+  });
+  const plan = {
+    id: "mixed-plan",
+    name: "Complete Mixed Practice",
+    createdAt: "2026-08-28T00:00:00.000Z",
+    updatedAt: "2026-08-28T00:00:00.000Z",
+    schemaVersion: 2,
+    steps: [
+      {
+        id: "technique-step",
+        type: "curated-exercise",
+        exerciseVersionSnapshot: catalogVersion(RELEASE_POINT_VERSION_ID),
+        completion: { type: "exercise-completion" },
+      },
+      {
+        id: "shotmaking-step",
+        type: "curated-exercise",
+        exerciseVersionSnapshot: catalogVersion(EIGHT_GUARDS_VERSION_ID),
+        completion: { type: "exercise-completion" },
+      },
+      {
+        ...releaseTime,
+        exerciseVersionSnapshot: catalogVersion(RELEASE_TIME_VERSION_ID),
+      },
+    ],
+  };
+  localStorage.setItem(
+    "curling-release-tracker-training-plans",
+    JSON.stringify({ schemaVersion: 2, plans: [plan] })
+  );
+}
+
 describe("TrackerApp — Training Plans execution", () => {
+  it("executes a profile-owned Technique → Shotmaking → Measured plan through the existing runners", async () => {
+    seedMixedTrainingPlan();
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+    navButton("Train").click();
+    await waitFor(() => screen.getByText("Set Up Training Block"));
+    screen.getByRole("tab", { name: "Training Plans" }).click();
+    await waitFor(() => screen.getByText("Complete Mixed Practice"));
+    expect(screen.getByText("Technique · Shotmaking · Measured")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Start" }).click();
+    await waitFor(() => screen.getByRole("button", { name: "Start Training" }));
+    screen.getByRole("button", { name: "Start Training" }).click();
+
+    await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
+    expect(screen.getByText(/Step 1 of 3/)).toBeInTheDocument();
+    screen.getByRole("button", { name: "Complete Exercise" }).click();
+    await waitFor(() => screen.getByText("Next: Eight Guards, Progressively Longer"));
+    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+
+    await waitFor(() => screen.getByRole("heading", { name: "Eight Guards, Progressively Longer" }));
+    expect(screen.getByText(/Step 2 of 3/)).toBeInTheDocument();
+    screen.getByRole("button", { name: "Inhandle" }).click();
+    screen.getByRole("button", { name: "4 points, 100 percent" }).click();
+    const recordStone = screen.getByRole("button", { name: "Record Stone" });
+    await waitFor(() => expect(recordStone).toBeEnabled());
+    recordStone.click();
+    await waitFor(() => screen.getByText("1 stone recorded"));
+    screen.getByRole("button", { name: "Complete Exercise" }).click();
+    await waitFor(() => screen.getByText("Next: Release Time"));
+    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+
+    await waitFor(() => screen.getByText("Active Training Block"));
+    expect(screen.getByText(/Step 3 of 3/)).toBeInTheDocument();
+    addShot("3.75");
+    await waitFor(() => screen.getByText("Plan complete"));
+    expect(screen.getByText("All 3 steps completed.")).toBeInTheDocument();
+  });
+
   it("drives a full plan through both steps to completion, then archives it via Finish Training", async () => {
     seedTrainingPlan();
     render(<TrackerApp />);
@@ -85,7 +173,7 @@ describe("TrackerApp — Training Plans execution", () => {
 
     screen.getByRole("tab", { name: "Training Plans" }).click();
     await waitFor(() => screen.getByText("Release Consistency"));
-    expect(screen.getByText("2 steps · 4 stones")).toBeInTheDocument();
+    expect(screen.getByText("2 steps · 4 planned timing stones")).toBeInTheDocument();
 
     screen.getByRole("button", { name: "Start" }).click();
     await waitFor(() =>
@@ -97,10 +185,10 @@ describe("TrackerApp — Training Plans execution", () => {
 
     // Step 1: alternating handles starting In.
     expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
-    expect(screen.getByText("Shot 0 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Stone 0 of 2")).toBeInTheDocument();
 
     addShot("3.75");
-    await waitFor(() => screen.getByText("Shot 1 of 2"));
+    await waitFor(() => screen.getByText("Stone 1 of 2"));
 
     // After one saved shot, the alternating strategy now expects Out Handle.
     // (The Live Summary filter below also has an "Out Handle" chip — the
@@ -111,31 +199,31 @@ describe("TrackerApp — Training Plans execution", () => {
 
     addShot("3.80");
     await waitFor(() =>
-      screen.getByText("Step complete — Fixed Weight")
+      screen.getByText("Step complete — Release Time")
     );
-    expect(screen.getByText("Next: Fixed Weight")).toBeInTheDocument();
+    expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
     expect(
       screen.queryByText("Plan complete")
     ).not.toBeInTheDocument();
 
     screen.getByRole("button", { name: "Continue to Next Step" }).click();
     await waitFor(() => screen.getByText(/Step 2 of 2/));
-    expect(screen.getByText("Shot 0 of 2")).toBeInTheDocument();
+    expect(screen.getByText("Stone 0 of 2")).toBeInTheDocument();
 
     // Step 2: Free handles — no preselect assertion needed, just completion.
     addShot("3.76");
-    await waitFor(() => screen.getByText("Shot 1 of 2"));
+    await waitFor(() => screen.getByText("Stone 1 of 2"));
     addShot("3.77");
 
     await waitFor(() => screen.getByText("Plan complete"));
-    expect(screen.getByText("4 of 4 planned stones recorded.")).toBeInTheDocument();
+    expect(screen.getByText("All 2 steps completed.")).toBeInTheDocument();
     expect(
-      screen.queryByText("Step complete — Fixed Weight")
+      screen.queryByText("Step complete — Release Time")
     ).not.toBeInTheDocument();
 
     // Deliberate extra shots remain allowed after plan completion.
     addShot("3.78");
-    await waitFor(() => screen.getByText("5 of 4 planned stones recorded."));
+    await waitFor(() => expect(screen.getByText("All 2 steps completed.")).toBeInTheDocument());
     expect(screen.getByText("Plan complete")).toBeInTheDocument();
 
     screen.getByRole("button", { name: "Finish Training" }).click();

@@ -24,6 +24,10 @@ import type {
   VariableTargetMode,
 } from "../../types";
 import { resolveAccuracyThresholds } from "../accuracyThresholds";
+import { EXERCISE_CATALOG } from "../exercises/catalog";
+import { RELEASE_TIME_VERSION_ID } from "../exercises/content";
+import { findExerciseVersion } from "../exercises/lookup";
+import type { ExerciseVersion } from "../exercises/types";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
 import {
   createEmptyTrainingPlansPersistedState,
@@ -106,8 +110,44 @@ function migrateConfiguration(raw: unknown): ReleaseTimingBlockConfiguration {
   };
 }
 
-function migrateStep(raw: unknown): TrainingPlanStep {
+function cloneVersion(version: ExerciseVersion): ExerciseVersion {
+  return JSON.parse(JSON.stringify(version)) as ExerciseVersion;
+}
+
+function resolveSnapshot(raw: unknown): ExerciseVersion | undefined {
+  if (!isRecord(raw) || typeof raw.id !== "string") return undefined;
+  const catalogVersion = findExerciseVersion(EXERCISE_CATALOG, raw.id);
+  if (!catalogVersion || JSON.stringify(catalogVersion) !== JSON.stringify(raw)) {
+    return undefined;
+  }
+  return cloneVersion(catalogVersion);
+}
+
+function currentReleaseTimeSnapshot(): ExerciseVersion {
+  const version = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID);
+  if (!version) throw new Error("The curated Release Time Exercise Version is missing.");
+  return cloneVersion(version);
+}
+
+function migrateStep(raw: unknown, sourceSchemaVersion: number): TrainingPlanStep | undefined {
   const source = isRecord(raw) ? raw : {};
+
+  if (source.type === "curated-exercise") {
+    const exerciseVersionSnapshot = resolveSnapshot(source.exerciseVersionSnapshot);
+    if (
+      !exerciseVersionSnapshot ||
+      exerciseVersionSnapshot.primaryFocus === "measured"
+    ) return undefined;
+
+    return {
+      id: typeof source.id === "string" ? source.id : crypto.randomUUID(),
+      type: "curated-exercise",
+      exerciseVersionSnapshot,
+      completion: { type: "exercise-completion" },
+    };
+  }
+
+  if (source.type !== undefined && source.type !== "release-timing") return undefined;
 
   const rawCompletionValue = isRecord(source.completion)
     ? source.completion.value
@@ -120,9 +160,17 @@ function migrateStep(raw: unknown): TrainingPlanStep {
       ? rawCompletionValue
       : 8;
 
+  const exerciseVersionSnapshot = sourceSchemaVersion === 1
+    ? currentReleaseTimeSnapshot()
+    : resolveSnapshot(source.exerciseVersionSnapshot);
+  if (!exerciseVersionSnapshot || exerciseVersionSnapshot.primaryFocus !== "measured") {
+    return undefined;
+  }
+
   const step: ReleaseTimingPlanStep = {
     id: typeof source.id === "string" ? source.id : crypto.randomUUID(),
     type: "release-timing",
+    exerciseVersionSnapshot,
     completion: { type: "shot-count", value: completionValue },
     handleStrategy: migrateHandleStrategy(source.handleStrategy),
     configuration: migrateConfiguration(source.configuration),
@@ -131,11 +179,15 @@ function migrateStep(raw: unknown): TrainingPlanStep {
   return step;
 }
 
-function migratePlan(raw: unknown): TrainingPlan | undefined {
+function migratePlan(raw: unknown, sourceSchemaVersion: number): TrainingPlan | undefined {
   if (!isRecord(raw)) return undefined;
 
   const now = new Date().toISOString();
-  const steps = Array.isArray(raw.steps) ? raw.steps.map(migrateStep) : [];
+  const migratedSteps = Array.isArray(raw.steps)
+    ? raw.steps.map((step) => migrateStep(step, sourceSchemaVersion))
+    : [];
+  if (migratedSteps.some((step) => step === undefined)) return undefined;
+  const steps = migratedSteps as TrainingPlanStep[];
 
   return {
     id: typeof raw.id === "string" ? raw.id : crypto.randomUUID(),
@@ -156,7 +208,7 @@ function migratePlan(raw: unknown): TrainingPlan | undefined {
  */
 export function migrateTrainingPlans(raw: unknown): TrainingPlansPersistedState {
   if (!isRecord(raw)) return createEmptyTrainingPlansPersistedState();
-  if (raw.schemaVersion !== TRAINING_PLANS_SCHEMA_VERSION) {
+  if (raw.schemaVersion !== 1 && raw.schemaVersion !== TRAINING_PLANS_SCHEMA_VERSION) {
     return createEmptyTrainingPlansPersistedState();
   }
 
@@ -165,7 +217,7 @@ export function migrateTrainingPlans(raw: unknown): TrainingPlansPersistedState 
   const plans = rawPlans
     .map((plan) => {
       try {
-        return migratePlan(plan);
+        return migratePlan(plan, raw.schemaVersion as number);
       } catch {
         return undefined;
       }

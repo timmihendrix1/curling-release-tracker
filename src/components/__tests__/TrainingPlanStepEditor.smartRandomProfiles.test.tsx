@@ -28,6 +28,7 @@ describe("TrainingPlanStepEditor — Smart Random Profiles", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Variable Weight" }));
     expect(screen.getByLabelText("Smart Random Profile")).toBeInTheDocument();
     expect(
@@ -46,6 +47,7 @@ describe("TrainingPlanStepEditor — Smart Random Profiles", () => {
       />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Variable Weight" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
 
@@ -61,6 +63,7 @@ describe("TrainingPlanStepEditor — Smart Random Profiles", () => {
 
   it("works with no profiles passed at all (default props)", () => {
     render(<TrainingPlanStepEditor onSave={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
     fireEvent.click(screen.getByRole("button", { name: "Variable Weight" }));
     expect(
       screen.queryByLabelText("Smart Random Profile")

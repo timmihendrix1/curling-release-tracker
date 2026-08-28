@@ -4,6 +4,12 @@ import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { blockModeLabel } from "../lib/trainingBlocks";
+import { TRAINING_PLANS_SCHEMA_VERSION } from "../lib/trainingPlans/persistence";
+import {
+  isReleaseTimingPlanStep,
+  trainingPlanStepFocusLabel,
+  trainingPlanStepTitle,
+} from "../lib/trainingPlans/steps";
 import { validatePlan } from "../lib/trainingPlans/validation";
 import type { TrainingPlan, TrainingPlanStep } from "../types";
 import ConfirmModal from "./ConfirmModal";
@@ -21,6 +27,7 @@ type TrainingPlanEditorProps = {
 };
 
 function handleStrategyLabel(step: TrainingPlanStep): string {
+  if (!isReleaseTimingPlanStep(step)) return "Complete manually";
   switch (step.handleStrategy.type) {
     case "free":
       return "Free";
@@ -35,14 +42,8 @@ function handleStrategyLabel(step: TrainingPlanStep): string {
 
 function cloneStepForDuplication(step: TrainingPlanStep): TrainingPlanStep {
   return {
-    ...step,
+    ...(JSON.parse(JSON.stringify(step)) as TrainingPlanStep),
     id: crypto.randomUUID(),
-    completion: { ...step.completion },
-    handleStrategy: { ...step.handleStrategy },
-    configuration: {
-      ...step.configuration,
-      accuracyThresholds: { ...step.configuration.accuracyThresholds },
-    },
   };
 }
 
@@ -101,7 +102,7 @@ export default function TrainingPlanEditor({
       steps,
       createdAt: initialPlan?.createdAt ?? now,
       updatedAt: now,
-      schemaVersion: 1,
+      schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
     };
 
     const validation = validatePlan(plan);
@@ -165,12 +166,16 @@ export default function TrainingPlanEditor({
                 </p>
 
                 <p className="mt-1 font-medium text-slate-900">
-                  {blockModeLabel(step.configuration.mode)}
-                  {step.configuration.name ? ` — ${step.configuration.name}` : ""}
+                  {trainingPlanStepTitle(step)}
+                  {isReleaseTimingPlanStep(step) && step.configuration.name
+                    ? ` — ${step.configuration.name}`
+                    : ""}
                 </p>
 
                 <p className="mt-1 text-sm text-slate-600">
-                  {step.completion.value} stones · {handleStrategyLabel(step)}
+                  {trainingPlanStepFocusLabel(step)} · {isReleaseTimingPlanStep(step)
+                    ? `${blockModeLabel(step.configuration.mode)} · ${step.completion.value} stones · ${handleStrategyLabel(step)}`
+                    : handleStrategyLabel(step)}
                 </p>
 
                 <div className="mt-3 flex flex-wrap gap-2">

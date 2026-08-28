@@ -1,10 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { isPlanExecutable, isStepExecutable, validatePlan, validatePlanStep } from "../validation";
-import { buildPlan, buildStep } from "./testHelpers";
+import { buildExerciseStep, buildPlan, buildStep } from "./testHelpers";
 
 describe("isStepExecutable", () => {
+  it("fails closed instead of throwing when legacy input reaches the boundary without a snapshot", () => {
+    const legacyStep = buildStep() as unknown as Record<string, unknown>;
+    delete legacyStep.exerciseVersionSnapshot;
+
+    expect(isStepExecutable(legacyStep as never)).toBe(false);
+  });
+
   it("is true for a valid Fixed Weight step", () => {
     expect(isStepExecutable(buildStep())).toBe(true);
+  });
+
+  it("accepts a curated Solo Technique or Shotmaking step", () => {
+    expect(isStepExecutable(buildExerciseStep())).toBe(true);
+  });
+
+  it("rejects a tampered Exercise Version snapshot", () => {
+    const step = buildExerciseStep();
+    step.exerciseVersionSnapshot = {
+      ...step.exerciseVersionSnapshot,
+      title: "Changed after plan creation",
+    };
+    expect(isStepExecutable(step)).toBe(false);
   });
 
   it("is false when the completion count is not a positive integer", () => {
@@ -96,6 +116,10 @@ describe("isPlanExecutable", () => {
 
   it("is true when every step is executable", () => {
     expect(isPlanExecutable(buildPlan({ steps: [buildStep(), buildStep()] }))).toBe(true);
+  });
+
+  it("is true for a mixed curated Exercise and Release Time sequence", () => {
+    expect(isPlanExecutable(buildPlan({ steps: [buildExerciseStep(), buildStep()] }))).toBe(true);
   });
 });
 

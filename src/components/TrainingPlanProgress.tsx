@@ -24,7 +24,11 @@ export default function TrainingPlanProgress({
       </p>
 
       <p className="mt-1 text-sm font-medium text-slate-700">
-        Shot {summary.shotsSavedInCurrentStep} of {summary.plannedShotsInCurrentStep}
+        {summary.currentStepTitle}
+      </p>
+
+      <p className="mt-1 text-sm text-slate-600">
+        {summary.currentProgressLabel}
       </p>
     </div>
   );

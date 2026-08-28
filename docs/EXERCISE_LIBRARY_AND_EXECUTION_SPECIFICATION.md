@@ -142,7 +142,7 @@ An approved closed-beta source diagram may be reused only if every user-facing l
 English. German text embedded in the source image must be cropped, replaced or covered
 by a faithful English label without changing the sporting meaning. The unmodified
 source asset and its attribution metadata remain retained for provenance. Version 1
-does not introduce a general localisation framework merely for these nine Exercises.
+does not introduce a general localisation framework merely for the initial curated Exercises.
 
 ---
 
@@ -330,10 +330,12 @@ No user-facing or platform-admin authoring interface is required in Version 1. C
 content corrections are made through reviewed content changes that create new immutable
 Exercise Versions when their meaning changes.
 
-## 5.6 Approved Version 1 test catalogue
+## 5.6 Approved initial closed-test catalogue
 
-The closed-beta Version 1 catalogue contains exactly nine curated Exercises selected
-with the Elite Team that will test the release.
+The initial closed test contains seven curated Exercises selected with the Elite Team.
+The previously discussed Technique Exercises **Rotation** and **Laser** are deliberately
+deferred until Team feedback justifies their capture and presentation needs; they remain
+future content, not deleted concepts.
 
 ### Swiss Curling Shotmaking Exercises
 
@@ -354,9 +356,7 @@ are deferred content expansion, not Version 1 implementation scope.
 ### Technique Exercises
 
 1. **Release Point**;
-2. **Rotation**;
-3. **Laser**; and
-4. **Release Gates** (source / search alias: `Törli`).
+2. **Release Gates** (source / search alias: `Törli`).
 
 ### Standalone Measured Exercises
 
@@ -364,9 +364,9 @@ are deferred content expansion, not Version 1 implementation scope.
 2. **Rotation Count**.
 
 The first domain and UI vertical slice uses Release Point, Eight Guards, Progressively
-Longer and standalone Release Time. The other six approved Exercises expand the same
-schemas and renderers before the closed beta; none may require a named,
-exercise-specific UI branch.
+Longer and standalone Release Time. The other four initial-test Exercises expand the
+same schemas and renderers before Team testing; none may require a named,
+exercise-specific UI branch. Rotation and Laser may be reconsidered after that test.
 
 ---
 
@@ -1402,7 +1402,7 @@ Exercise domain decisions already approved in this specification changes.
 - approve this specification;
 - verify the restricted source-diagram beta boundary and preserve the wider-release
   rights gate from Section 5.4;
-- approve the detailed content and diagrams for the nine Exercises in Section 5.6; and
+- approve the detailed content and diagrams for the initial-test Exercises in Section 5.6; and
 - reconcile canonical glossary and roadmap references.
 
 No production implementation begins before this gate.
@@ -1529,6 +1529,13 @@ of every accepted child record and emitted notification.
 
 ## Stage D — Generalised simple Training Plans
 
+**Implementation status (2026-08-28): Implemented for Profile-owned plans.** ADR-0040
+generalises the persisted step union and lazy runtime reference, retains the existing
+Release Time runner, and composes Technique/Shotmaking through the embedded Solo
+Exercise Execution. Exact Exercise Version snapshots survive plan edits and catalog
+updates. Team-plan execution is a preserved future execution context; it is not part of
+the initial test implementation.
+
 - extend the existing discriminated Training Plan step model with curated Exercise
   steps;
 - preserve lazy execution and snapshot integrity where still appropriate;
@@ -1538,9 +1545,9 @@ of every accepted child record and emitted notification.
 Independent review must verify that plan edits and newer Exercise Versions never alter
 started or completed history.
 
-## Stage E — Content expansion and release hardening
+## Stage E — Initial-test content expansion and release hardening
 
-- add the remaining six approved beta Exercises from Section 5.6;
+- add the remaining four approved initial-test Exercises from Section 5.6;
 - validate every instruction, source diagram and attribution inside the restricted
   beta boundary;
 - verify generic 0–4 capture without hidden exercise-specific thresholds;

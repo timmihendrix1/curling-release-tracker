@@ -16,6 +16,13 @@ import {
 } from "../progress";
 import { deletePlan, updatePlan, addPlan, createEmptyTrainingPlansPersistedState } from "../persistence";
 import { buildPlan, buildStep } from "./testHelpers";
+import { isReleaseTimingPlanStep } from "../steps";
+
+function timingStep(plan: ReturnType<typeof buildPlan>, index: number) {
+  const step = plan.steps[index];
+  if (!step || !isReleaseTimingPlanStep(step)) throw new Error("Expected Release Time step");
+  return step;
+}
 
 function emptySession(): Session {
   return {
@@ -57,12 +64,12 @@ describe("Training Plan execution — full lifecycle", () => {
     // mirrors TrackerApp.handleStartTrainingPlan.
     let session = addTrainingBlock(
       emptySession(),
-      mapPlanStepToTrainingBlockInput(plan.steps[0])
+      mapPlanStepToTrainingBlockInput(timingStep(plan, 0))
     );
-    session = { ...session, planExecution: startPlanExecution(plan, session.activeBlockId) };
+    session = { ...session, planExecution: startPlanExecution(plan, { kind: "release-timing-block", blockId: session.activeBlockId }) };
 
     const step1BlockId = session.activeBlockId;
-    expect(session.planExecution?.steps[0].blockId).toBe(step1BlockId);
+    expect(session.planExecution?.steps[0].runtime).toEqual({ kind: "release-timing-block", blockId: step1BlockId });
 
     // Not complete yet.
     expect(isActiveStepComplete(session, session.planExecution!)).toBe(false);
@@ -76,15 +83,15 @@ describe("Training Plan execution — full lifecycle", () => {
     expect(isPlanComplete(session, session.planExecution!)).toBe(false);
 
     // Continue to step 2 — mirrors TrackerApp.handleContinueToNextPlanStep.
-    session = addTrainingBlock(session, mapPlanStepToTrainingBlockInput(plan.steps[1]));
+    session = addTrainingBlock(session, mapPlanStepToTrainingBlockInput(timingStep(plan, 1)));
     session = {
       ...session,
-      planExecution: advanceToNextPlanStep(session.planExecution!, session.activeBlockId),
+      planExecution: advanceToNextPlanStep(session.planExecution!, { kind: "release-timing-block", blockId: session.activeBlockId }),
     };
 
     const step2BlockId = session.activeBlockId;
     expect(step2BlockId).not.toBe(step1BlockId);
-    expect(getActiveStepSnapshot(session.planExecution!)?.blockId).toBe(step2BlockId);
+    expect(getActiveStepSnapshot(session.planExecution!)?.runtime).toEqual({ kind: "release-timing-block", blockId: step2BlockId });
     expect(isFinalStep(session.planExecution!)).toBe(true);
     expect(isActiveStepComplete(session, session.planExecution!)).toBe(false);
 
@@ -106,12 +113,13 @@ describe("Training Plan execution — full lifecycle", () => {
   it("editing the source plan after starting never changes the active session", () => {
     let session = addTrainingBlock(
       emptySession(),
-      mapPlanStepToTrainingBlockInput(plan.steps[0])
+      mapPlanStepToTrainingBlockInput(timingStep(plan, 0))
     );
-    session = { ...session, planExecution: startPlanExecution(plan, session.activeBlockId) };
+    session = { ...session, planExecution: startPlanExecution(plan, { kind: "release-timing-block", blockId: session.activeBlockId }) };
 
     let library = addPlan(createEmptyTrainingPlansPersistedState(), plan);
     const edited = { ...plan, name: "Renamed Plan", updatedAt: "2027-01-01T00:00:00.000Z" };
+    if (!isReleaseTimingPlanStep(edited.steps[0])) throw new Error("Expected timing step");
     edited.steps[0].configuration.targetTime = 4.5;
     const updateResult = updatePlan(library, edited);
     expect(updateResult.ok).toBe(true);
@@ -119,16 +127,19 @@ describe("Training Plan execution — full lifecycle", () => {
 
     // The session's snapshot is untouched — different name, different target.
     expect(session.planExecution?.sourcePlanName).toBe("Release Consistency");
-    expect(session.planExecution?.steps[0].step.configuration.targetTime).toBe(3.75);
+    const snapshottedStep = session.planExecution?.steps[0].step;
+    expect(snapshottedStep && isReleaseTimingPlanStep(snapshottedStep)
+      ? snapshottedStep.configuration.targetTime
+      : undefined).toBe(3.75);
     expect(library.plans[0].name).toBe("Renamed Plan");
   });
 
   it("deleting the source plan after starting never touches the active session", () => {
     let session = addTrainingBlock(
       emptySession(),
-      mapPlanStepToTrainingBlockInput(plan.steps[0])
+      mapPlanStepToTrainingBlockInput(timingStep(plan, 0))
     );
-    session = { ...session, planExecution: startPlanExecution(plan, session.activeBlockId) };
+    session = { ...session, planExecution: startPlanExecution(plan, { kind: "release-timing-block", blockId: session.activeBlockId }) };
 
     const library = deletePlan(addPlan(createEmptyTrainingPlansPersistedState(), plan), plan.id);
 
