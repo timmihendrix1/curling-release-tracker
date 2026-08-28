@@ -2447,11 +2447,14 @@ a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface be
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
 
-## Exercise Library and execution (Stage A + Solo Stage B implemented)
+## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C3b implemented)
 
 `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
-domain source; this section is an architecture snapshot of Stage A and Solo Stages B1-B3.
-Team execution, generalised Training Plans and content expansion are **not implemented** — see
+domain source; this section is an architecture snapshot of Stage A, Solo Stages B1-B3,
+Team domain Stage C1, server-authority Stage C2a, client persistence/upload Stage C2b,
+offline eligibility/permission UI Stage C2c, active-draft persistence Stage C3a and
+one-device setup/capture UI Stage C3b. Team result/private-note reads, generalised
+Training Plans and content expansion are **not implemented** — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library and multi-athlete execution".
 
 ### Current state
@@ -2461,15 +2464,37 @@ Team execution, generalised Training Plans and content expansion are **not imple
   ADR-0028's Solo Exercise Execution domain, ADR-0029's strict embedding of Technique
   and Shotmaking executions in the existing Profile-owned Session repository and
   `training_session` Free-cloud record, and ADR-0030's focus-driven Solo rink UI and
-  Release Time Library linkage.
-- **Not implemented (Planned):** Team participants/roles/rotation, offline
-  Team upload, Exercise Training Plan steps, Exercise authoring and Exercise analytics.
+  Release Time Library linkage. ADR-0031 adds Stage C1's standalone Team domain:
+  confirmed Profile participants, multiple athlete results, one active recorder, five
+  rotation configurations, actual role segments and Team attempt attribution. ADR-0032
+  adds executed Postgres schema/RLS/RPCs for recording permission, the shared immutable
+  Session envelope, athlete-owned bundles, partial rejection, concrete approval and
+  athlete-only private notes. ADR-0033 adds the strict Team serializer, provider-neutral
+  and Supabase RPC service, plus schema-v2 Team entries in ADR-0027's existing
+  Profile-scoped durable outbox with ordered upload and partial-sync receipts. ADR-0034
+  advances that record to schema 3 with a strict active-roster/permission observation
+  cache and adds the athlete's own permission control to Team settings. ADR-0035 advances
+  the same record to schema 4 with one recorder/Profile-bound in-progress Team aggregate
+  and an atomic exact-completion-to-outbox transition. ADR-0036 adds cache-bounded Team
+  setup, reload-safe one-device capture, actual role rotation, per-athlete Shotmaking
+  results, manual half-step Rotation Count and honest completion sync truth.
+- **Not implemented (Planned):** Team result/private-note read and edit UI, athlete
+  result restore, revisions, voiding and notifications; Exercise Training Plan steps,
+  Exercise authoring and Exercise analytics.
 - There is no Exercise `localStorage` key, repository or cloud record kind. Optional
   `Session.exerciseExecutions`, `activeExerciseExecutionId` and the measured-entry
   `releaseTimingExerciseVersionSnapshot` provenance field reuse the two
   existing Session keys, Profile namespace, archive transition and cloud serializer.
   Legacy and direct-Quick-Start Sessions omit these fields and retain their old wire shape.
   `TrainingBlock` and `Shot` are unchanged.
+- C1 Team aggregates are not accepted by that Solo Session boundary or cloud serializer.
+  C2b deliberately reuses the existing Profile-scoped outbox key with separate Team
+  envelope/bundle entries; it does not create a Team Session key or widen the Solo
+  serializer. C2a deliberately adds a separate Team
+  cloud authority instead of widening the recorder-owned `training_session` record.
+  Private Athlete Notes are forbidden in the shared recorder aggregate and stored only
+  through the athlete-owned SQL boundary. Team Release Time cannot create a parallel
+  Measured execution.
 
 ### Domain (`src/lib/exercises/`)
 
@@ -2503,17 +2528,24 @@ of that aggregate; no runtime dependency cycle is introduced.
   Modes and **reuses the existing Training semantics directly**: `MeasurementMode` from
   `src/types/index.ts`, `measurementModeLabel` from `src/lib/trainingBlocks.ts`, and
   `TimingProviderType` for `allowedSources` — no second definition of Backline-Hog or
-  Hog-Hog exists. `allowedSources` is exactly `["manual"]` and `target` is validated as
-  `null`: no curated protocol prescribes a target or tolerance, and none implies
-  hardware capture that does not exist.
-- `executionTypes.ts` / `execution.ts` — ADR-0028's domain-only Solo aggregate and
-  transitions. An execution deep-snapshots its curated Version and enabled Measurement
-  Protocols, retains actual configuration separately, uses one role segment and one
-  athlete-owned result, and never overloads the release-timing `Shot` type.
-- `executionValidation.ts` — the fail-closed boundary for a future persisted aggregate:
-  exact catalog snapshots, schema/lifecycle, ownership, focus, protocol compatibility,
-  globally unique stable IDs, one-based attempt order and Measurement provenance are
-  validated together and all detected issues are returned.
+  Hog-Hog exists. C3b adds manual Rotation Count in rotations with no release-time mode
+  and a strict 0.5 value increment. `allowedSources` is exactly `["manual"]` and
+  `target` is validated as `null`: no curated protocol prescribes a target or tolerance,
+  and none implies hardware capture that does not exist.
+- `executionTypes.ts` / `execution.ts` — ADR-0028's Solo aggregate and transitions plus
+  the shared contracts Stage C1 extends. A Solo execution deep-snapshots its curated
+  Version and enabled Measurement Protocols, uses one role segment and one
+  athlete-owned result, and never overloads the release-timing `Shot` type. Absence of
+  `teamContext` remains the backwards-compatible Solo shape; Team-only recorder/role
+  fields cannot appear on it.
+- `teamExecution.ts` — Stage C1 creation, Team Shotmaking attempt capture, manual and
+  planned role changes, rotation recommendations, completion/abandonment and rink-order
+  derivation. Planned rotation never overwrites actual role-segment history.
+- `executionValidation.ts` — one fail-closed persisted boundary for both shapes. Team
+  validation checks roster/result cardinality, role membership, recorder attribution,
+  chronological segments, automatic-rotation claims, required deviations, globally
+  unique ids and per-athlete attempt sequence together. It rejects private Athlete Notes
+  in the shared aggregate and rejects a parallel Team Measured execution.
 - `executionResult.ts` — pure factual derivation. Zero is scored, exclusions are retained
   but omitted from the denominator, maximum points follow actual scored-stone count, and
   Measurement summaries remain grouped by snapshotted protocol identity.
@@ -2523,13 +2555,69 @@ of that aggregate; no runtime dependency cycle is introduced.
   and explicit abandonment before archive. Technique and Shotmaking use embedded
   executions. Measured Release Time stays on the existing Block/Shot path; only its exact
   catalog Version snapshot is accepted as optional Session provenance.
+
+### Team cloud authority, client upload, offline eligibility, active draft and rink UI (`supabase/`, `src/lib/cloudSporting/`, Stages C2a-C3b)
+
+ADR-0032 adds three forward-only migrations, deliberately separate from the
+Profile-owned `sporting_records` table:
+
+- `20260828120000_team_exercise_cloud_schema.sql` — historical recording permissions,
+  immutable Team Session envelopes, relational participant/execution manifests,
+  athlete-owned result bundles/result references, concrete Session approvals and
+  separate private Athlete Notes;
+- `20260828120100_team_exercise_cloud_rls.sql` — SELECT-only authenticated ACL plus
+  ownership/eligibility RLS, no browser write policy and no anonymous table access; and
+- `20260828120200_team_exercise_cloud_functions.sql` — athlete-owned permission and note
+  mutations, server-derived-recorder envelope upload, independent per-athlete bundle
+  upload, exact retry/conflict outcomes and concrete-Session approval.
+
+The shared coordination payload and athlete payloads are lossless TEXT with server-owned
+SHA-256 digests; UUID-only authority manifests are relational. One athlete-specific
+block returns a named bundle outcome without rolling back accepted bundles. Participation
+alone grants no historical read, and the recorder cannot use the upload boundary to read
+or write an athlete's private note. `supabase/tests/team_exercise_cloud.test.sql` has been
+executed against real local Postgres and passes 68/68.
+
+ADR-0033 connects this boundary without inventing a second sync engine:
+
+- `teamExerciseRecords.ts` validates one completed C1 aggregate and splits recorder-free,
+  non-private coordination from one private-note-free result payload per athlete;
+- `teamExerciseTypes.ts` is the provider-neutral RPC/upload contract and
+  `supabaseTeamExerciseCloudService.ts` maps only named, non-leaking outcomes;
+- `syncStateRepository.ts` schema 4 keeps legacy personal `entries`, C2b `teamEntries`
+  and C2c `teamEligibilitySnapshots` under the same immutable Profile namespace, then
+  adds at most one strictly validated in-progress `activeTeamExerciseDraft`; schemas 1-3
+  migrate without a draft; and
+- `SportingCloudSyncManager` durably writes the full package before upload, sends the
+  envelope before bundles, verifies exact hashes, retains unavailable/blocked entries,
+  clears acknowledged opaque payloads while retaining receipts, and exposes per-Session
+  pending/fully-synced/partially-blocked/issue truth.
+
+Production composition injects the Team service and exposes upload, eligibility and
+active-draft methods bound to the mounted Profile. `TeamsScreen` refreshes the bounded
+cache from the active workspace and Team-member RLS permission read, and lets the
+authenticated athlete grant or revoke only their own prospective permission. The draft
+write rolls back in-memory state on storage failure; exact completion atomically replaces
+the draft with the immutable Session/bundle package before upload. ADR-0036's Team setup
+uses only cached Teams containing the recorder, derives the recorder from the signed-in
+Profile, confirms present and eligible athletes plus actual initial roles, and requests
+no planned volume. `ExerciseTeamExecutionScreen` persists every C1 attempt or role
+transition before advancing its controls, resumes the active draft when Train is opened after a reload, keeps
+Technique observation-only, records per-athlete Shotmaking outcomes and optional manual
+Rotation Count, and shows the manager's real completion receipt. Athlete cloud
+restore/result reads, private-note UI, revisions, voiding and notifications remain later
+Stage C work.
 - `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic Solo rink screen. It branches on
   focus/guidance semantics, never catalog identity: observation-only Technique, actual
   handle plus 0-4/exclusion Shotmaking capture, private note, lifecycle actions and
   descriptive current/final results.
+- `ExerciseTeamSetupScreen.tsx` / `ExerciseTeamExecutionScreen.tsx` — ADR-0036's generic
+  cache-bounded Team setup and durable one-device Technique/Shotmaking capture. Both use
+  declared focus/guidance/protocol semantics rather than catalog identity.
 - `content.ts` — the three approved Stage A Exercises (Release Point, Eight Guards
-  Progressively Longer, Release Time), each at version 1. All user-facing strings are
-  English. Original German source titles exist only under
+  Progressively Longer, Release Time). Release Point and Release Time remain at Version
+  1; immutable Eight Guards Version 1 is retained and current Version 2 adds optional
+  Rotation Count. All user-facing strings are English. Original German source titles exist only under
   `source.nonDisplayedSourceMetadata`, which no component renders (it feeds attribution
   traceability and Library search only).
 - `diagrams.ts` — the independently authored structured diagram for Eight Guards.
@@ -2550,7 +2638,8 @@ of that aggregate; no runtime dependency cycle is introduced.
   role under a no-sweeping policy, or required sweeping on a Solo-only Exercise); an
   unknown, malformed or **duplicated** Measurement Protocol reference; a protocol that
   lists the same allowed source twice, prescribes a target, or names an unknown metric,
-  unit, mode or source; unsupported diagram kinds, element kinds and coordinate systems;
+  unit, mode or source; or pairs Release Time/Rotation Count with the wrong unit or mode;
+  unsupported diagram kinds, element kinds and coordinate systems;
   malformed or out-of-range normalised coordinates; a Diagram missing its English caption
   or accessible summary; and an incomplete or publicly addressable restricted source
   image.
@@ -2682,7 +2771,7 @@ renderer's notice is the second line of defence.
   and Source and attribution as progressive-disclosure rows. A Measured Exercise's
   Compatible Measurements row opens by default — branching on the declared Primary
   Exercise Focus, never on which Exercise it is.
-- **The immutable Exercise Version is shown for every Exercise** ("Exercise version 1"
+- **The immutable Exercise Version is shown for every Exercise** ("Exercise version N"
   in the hero, repeated in the provenance rows), deliberately worded so it can never be
   read as the source collection's own version, which appears separately as "Source
   version" and only where a collection exists.
@@ -2698,8 +2787,9 @@ renderer's notice is the second line of defence.
   `ExerciseRendererGenericity.test.tsx` renders a synthetic Exercise Version that is not
   in the catalog through the same components, and statically asserts that none of the
   Exercise UI components contains any catalog Exercise id, Version id or display title.
-- Stage A is read-only: there is deliberately **no start action, enabled or disabled**,
-  on the Library or the detail.
+- Stage A delivered the read-only Library. ADR-0030 later added the generic Solo/detail
+  actions, and ADR-0036 adds an independently gated Team setup action for Technique and
+  Shotmaking. Measured Release Time retains only its existing timing-runner action.
 - Train's page header description now reads "Find an exercise, set up a session, and
   record release times as you throw." Quick Start remains an entry mechanism, not a
   synonym for Release Time.
@@ -3322,6 +3412,8 @@ local component state.
 | `ExerciseSummaryCard.tsx` | One generic Library row from Exercise Version data — title, goal, focus/classification/difficulty/participation/Sweeper badges, `View Details` |
 | `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version and focus-semantic start action; branches only on declared domain semantics, never on an Exercise id or title |
 | `ExerciseSoloExecutionScreen.tsx` | Generic Solo Technique/Shotmaking rink screen: snapshotted instructions and actual context, private Athlete Note, 0-4/exclusion Shotmaking attempt capture, factual live/final result and lifecycle/session actions; no catalog-id conditional |
+| `ExerciseTeamSetupScreen.tsx` | Cache-bounded Team setup: authenticated recorder, present participants, eligible training athletes, actual initial roles/sweeping, variation and five rotation choices; no planned volume or guessed roster |
+| `ExerciseTeamExecutionScreen.tsx` | Durable one-device Team Technique/Shotmaking capture: actual lineup and role transitions, per-athlete 0-4/exclusion attempts, optional manual half-step Rotation Count, live factual results, exact completion/sync truth and confirmed local-draft discard |
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
 | `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
 | `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |
@@ -3390,25 +3482,31 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 
 ### Exercise Library domain modules (`src/lib/exercises/`)
 
-Stage A only — curated content and its validation boundary. Nothing here persists
-anything, and no execution/result/attempt/note model exists yet. Types live in this
-folder (not centrally) because nothing in `src/types/index.ts` references an Exercise —
-the same rule ADR-0012 Decision 2 states, applied to a domain that does not create a
-cycle. See "Exercise Library" above and ADR-0023.
+Stage A content, Solo Stage B execution and Team Stages C1-C3b. Solo Technique and
+Shotmaking executions are embedded in `Session`, so `src/types/index.ts` has one
+type-only reference back to this folder without a runtime cycle. The standalone C1 Team
+aggregate is deliberately rejected by that Solo persistence boundary. See "Exercise
+Library" above and ADR-0023/0028-0036.
 
 | Module | Responsibility |
 |---|---|
 | `types.ts` | `Exercise` (stable identity) vs. `ExerciseVersion` (immutable content), the independent classification dimensions, participation/sweeping/equipment/instruction/variation shapes, the `ExerciseGuidance` and `ExerciseDiagram` unions, `MeasurementProtocol`, `RestrictedAssetReference`/`RestrictedDistribution`, and `ExerciseCatalogPackage` |
 | `errors.ts` | `ExerciseCatalogIssueCode`/`ExerciseCatalogIssue`/`ExerciseCatalogValidationResult` — the same discriminated-result convention as `assessment/templateValidation.ts` |
 | `validation.ts` | `validateExerciseCatalogPackage` — every package, identity, versioning, content, classification, participation/sweeping, protocol-reference and diagram invariant, checked at runtime against untrusted data and reported in full |
-| `measurementProtocols.ts` | The two reusable, versioned release-time Measurement Protocols, reusing the existing `MeasurementMode`/`measurementModeLabel`/`TimingProviderType` semantics; `allowedSources` is `["manual"]` and `target` is always `null` |
+| `measurementProtocols.ts` | Two reusable versioned release-time protocols plus manual Rotation Count; release-time reuses existing `MeasurementMode`/`measurementModeLabel`, Rotation Count uses rotations without a timing mode, every protocol is target-free and currently manual-only |
 | `diagrams.ts` | The independently authored `normalized-ice-sheet-v1` structured diagram for Eight Guards — hand-authored literals, no source-document geometry |
-| `content.ts` | The three curated Stage A Exercise Versions; English only, with German source titles confined to `nonDisplayedSourceMetadata` |
+| `content.ts` | Three curated Exercises; immutable Eight Guards v1 plus current v2, Release Point/Release Time v1; English only, with German source titles confined to `nonDisplayedSourceMetadata` |
 | `catalog.ts` | Builds, recursively deep-freezes and import-time-validates `EXERCISE_CATALOG`; `assertValidExerciseCatalogPackage` throws one actionable message rather than rendering broken content |
 | `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
 | `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |
 | `presentation.ts` | Every English label for a domain value, the Library's shared UI copy, and its `FeatureExplanation` for the existing `InfoButton` |
 | `restrictedAssets.ts` | `resolveRestrictedAssetAccess` — the only path from an opaque restricted reference to a renderable source, fail-closed with a named reason (ADR-0023) |
+| `executionTypes.ts` | Exercise execution lifecycle, configuration, attempts, measurements, athlete results, Team participant/rotation context and actual role-segment contracts |
+| `execution.ts` | Stage B Solo creation, attempt, note, completion and abandonment transitions |
+| `teamExecution.ts` | Stage C1 standalone Team creation, Shotmaking capture, role changes, rotation recommendations, completion/abandonment and rink-order derivation |
+| `executionValidation.ts` | Fail-closed untrusted aggregate validation for backwards-compatible Solo and standalone Team shapes; Team recorder/roster/role/rotation/result/privacy invariants are checked together |
+| `executionResult.ts` | Pure per-athlete Shotmaking and Measurement summaries; no stored derived result |
+| `sessionIntegration.ts` | Strict Stage B embedding in the Profile-owned Session and explicit rejection of C1 Team aggregates until their coordination/athlete-bundle persistence boundary exists |
 
 ### Training Plan domain modules (`src/lib/trainingPlans/`)
 

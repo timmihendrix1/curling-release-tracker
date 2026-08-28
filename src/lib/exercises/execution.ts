@@ -261,6 +261,7 @@ function validateMeasurements(
       !protocol ||
       !Number.isFinite(measurement.value) ||
       measurement.value <= 0 ||
+      (protocol.metricType === "rotation-count" && !Number.isInteger(measurement.value * 2)) ||
       !protocol.allowedSources.includes(measurement.source) ||
       !validTimestamp(measurement.recordedAt) ||
       (measurement.observerProfileId !== undefined && !isCanonicalUuid(measurement.observerProfileId))
@@ -423,6 +424,12 @@ export function updatePrivateAthleteNote(
   note: string,
   at = new Date().toISOString()
 ): ExerciseExecutionOutcome<ExerciseExecution> {
+  if (execution.teamContext) {
+    return exerciseExecutionError(
+      "invalid-input",
+      "Private Athlete Notes are not stored in the shared Team execution aggregate."
+    );
+  }
   const index = execution.athleteResults.findIndex((result) => result.athleteProfileId === athleteProfileId);
   if (index < 0) return exerciseExecutionError("wrong-athlete", "An athlete may edit only their own Exercise Result note.");
   if (!validTimestamp(at)) return exerciseExecutionError("invalid-input", "The note update time is invalid.");

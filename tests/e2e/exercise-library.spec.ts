@@ -20,6 +20,37 @@ async function expectNoHorizontalOverflow(page: import("@playwright/test").Page)
   expect(overflow.bodyScroll).toBeLessThanOrEqual(overflow.innerWidth);
 }
 
+async function seedTeamExerciseEligibility(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    const trustedRaw = localStorage.getItem("curling.identity.trustedDevice.v1");
+    if (trustedRaw === null) throw new Error("The trusted E2E Profile is missing.");
+    const trusted: unknown = JSON.parse(trustedRaw);
+    if (typeof trusted !== "object" || trusted === null || !("profileId" in trusted) || typeof trusted.profileId !== "string") {
+      throw new Error("The trusted E2E Profile is malformed.");
+    }
+    const state = {
+      schemaVersion: 4,
+      entries: [],
+      teamEntries: [],
+      teamEligibilitySnapshots: [{
+        teamId: "41000000-0000-4000-8000-000000000004",
+        teamName: "Elite E2E Team",
+        cachedAt: "2026-08-28T08:00:00.000Z",
+        participants: [
+          { profileId: trusted.profileId, displayName: "E2E Recorder", participationAsPlayer: false, functions: ["coach"], recordingPermissionGranted: false },
+          { profileId: "42000000-0000-4000-8000-000000000004", displayName: "Athlete A", participationAsPlayer: true, functions: [], recordingPermissionGranted: true },
+          { profileId: "43000000-0000-4000-8000-000000000004", displayName: "Athlete B", participationAsPlayer: true, functions: [], recordingPermissionGranted: true },
+        ],
+      }],
+      activeTeamExerciseDraft: null,
+    };
+    const key = `curling.sporting.profile.v1.${trusted.profileId}.curling-release-tracker-cloud-sporting-sync`;
+    localStorage.setItem(key, JSON.stringify(state));
+  });
+  await page.reload();
+  await page.waitForSelector("text=Today's Plan");
+}
+
 test.describe("Exercise Library and Solo execution", () => {
   test("Train exposes Quick Start, Exercises and Training Plans, all reachable and unclipped at 390 px", async ({
     page,
@@ -265,9 +296,13 @@ test.describe("Exercise Library and Solo execution", () => {
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
 
-    for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
+    for (const [title, version] of [
+      ["Release Point", 1],
+      ["Eight Guards, Progressively Longer", 2],
+      ["Release Time", 1],
+    ] as const) {
       await page.getByRole("button", { name: `View Details: ${title}` }).click();
-      await expect(page.getByText("Exercise version 1")).toBeVisible();
+      await expect(page.getByText(`Exercise version ${version}`)).toBeVisible();
 
       const body = await page.locator("body").textContent();
       expect(body).not.toMatch(/Übung|Steine|immer länger/);
@@ -386,5 +421,62 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.getByRole("button", { name: "Start Training" }).click();
     await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Blind Weight Block" })).toBeVisible();
+  });
+
+  test("routes Team setup through the Profile-scoped boundary and fails closed without a cached roster", async ({ page }) => {
+    await freshLoad(page);
+    await goToTrain(page);
+    await openTrainTab(page, "Exercises");
+    await page.getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" }).click();
+
+    const teamAction = page.getByRole("button", { name: "Set Up Team Exercise" });
+    await expect(teamAction).toBeEnabled();
+    await teamAction.click();
+
+    await expect(page.getByRole("heading", { name: "Team setup unavailable" })).toBeVisible();
+    await expect(page.getByText(/previously verified active roster/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start Team Exercise" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Back to Exercise Library" }).click();
+    await expect(page.getByText("3 exercises")).toBeVisible();
+  });
+
+  test("persists one-device Team Shotmaking, rotations and role changes across reload", async ({ page, context }) => {
+    await freshLoad(page);
+    await seedTeamExerciseEligibility(page);
+    await goToTrain(page);
+    await openTrainTab(page, "Exercises");
+    await page.getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" }).click();
+    await page.getByRole("button", { name: "Set Up Team Exercise" }).click();
+    await expectNoHorizontalOverflow(page);
+
+    const present = page.getByRole("heading", { name: "Who is present?" }).locator("..");
+    await present.getByLabel("Athlete A").check();
+    await present.getByLabel("Athlete B").check();
+    const athletes = page.getByRole("heading", { name: "Training athletes" }).locator("..");
+    await athletes.getByLabel("Athlete A").check();
+    await athletes.getByLabel("Athlete B").check();
+    await page.getByLabel("Athlete rotation plan").selectOption("after-every-stone");
+    await page.getByRole("button", { name: "Start Team Exercise" }).click();
+
+    await expect(page.getByText("Athlete A · Stone 1")).toBeVisible();
+    await page.getByRole("button", { name: "Inhandle" }).click();
+    await page.getByLabel(/Rotation Count/).fill("2.5");
+    await page.getByRole("button", { name: "4 points, 100 percent" }).click();
+    await page.getByRole("button", { name: "Record Stone" }).click();
+    await expect(page.getByText(/2.5 rotations/)).toBeVisible();
+    await expect(page.getByText(/Planned rotation: Athlete B delivers next/)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.reload();
+    await goToTrain(page);
+    await expect(page.getByText(/2.5 rotations/)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+    await page.getByRole("button", { name: "Apply Planned Rotation" }).click();
+    await expect(page.getByText("Athlete B · Stone 1")).toBeVisible();
+
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "Complete Team Exercise" }).click();
+    await expect(page.getByRole("heading", { name: "Saved on this device" })).toBeVisible();
+    await context.setOffline(false);
   });
 });

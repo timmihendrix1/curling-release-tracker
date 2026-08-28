@@ -37,6 +37,8 @@ import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
 import ExerciseSoloExecutionScreen from "./ExerciseSoloExecutionScreen";
+import ExerciseTeamExecutionScreen from "./ExerciseTeamExecutionScreen";
+import ExerciseTeamSetupScreen from "./ExerciseTeamSetupScreen";
 import TrainLanding, { type TrainEntryPath } from "./TrainLanding";
 import TrainingPlanProgress from "./TrainingPlanProgress";
 import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
@@ -44,6 +46,7 @@ import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 import {
   useSportingProfileId,
   useSportingRepositories,
+  useSportingCloudSync,
 } from "./ProfileScopedSportingPersistence";
 
 import type {
@@ -60,6 +63,8 @@ import type { AssessmentRun } from "../lib/assessment/types";
 import { createSoloExerciseExecution } from "../lib/exercises/execution";
 import type { ExerciseExecution } from "../lib/exercises/executionTypes";
 import type { ExerciseVersion } from "../lib/exercises/types";
+import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
+import { resolveMeasurementProtocols } from "../lib/exercises/lookup";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import {
@@ -272,6 +277,7 @@ function snapshotExerciseVersion(version: ExerciseVersion): ExerciseVersion {
 
 export default function TrackerApp() {
   const athleteProfileId = useSportingProfileId();
+  const sportingCloudSync = useSportingCloudSync();
   const {
     session: sessionRepository,
     historyFilters: historyFiltersRepository,
@@ -292,6 +298,10 @@ export default function TrackerApp() {
   const [pendingReleaseTimingExerciseVersion, setPendingReleaseTimingExerciseVersion] =
     useState<ExerciseVersion | null>(null);
   const [viewingExerciseExecutionId, setViewingExerciseExecutionId] =
+    useState<string | null>(null);
+  const [pendingTeamExerciseVersion, setPendingTeamExerciseVersion] =
+    useState<ExerciseVersion | null>(null);
+  const [lastCompletedTeamSessionId, setLastCompletedTeamSessionId] =
     useState<string | null>(null);
 
   const [currentSession, setCurrentSession] =
@@ -1102,6 +1112,17 @@ export default function TrackerApp() {
   const smartRandomProfilesWritable = smartRandomProfilesHydration === "ready";
 
   const activeBlock = getActiveBlock(currentSession);
+  const activeTeamExerciseDraft = sportingCloudSync?.activeTeamExerciseDraft ?? null;
+  const activeTeamEligibilitySnapshot = activeTeamExerciseDraft?.teamContext
+    ? sportingCloudSync?.teamEligibilitySnapshots.find(
+        (snapshot) => snapshot.teamId === activeTeamExerciseDraft.teamContext?.teamId
+      )
+    : undefined;
+  const completedTeamSyncReceipt = lastCompletedTeamSessionId
+    ? sportingCloudSync?.teamSessions.find(
+        (session) => session.sessionId === lastCompletedTeamSessionId
+      )
+    : undefined;
   const activeExerciseExecution = currentSession.activeExerciseExecutionId
     ? currentSession.exerciseExecutions?.find(
         (execution) => execution.id === currentSession.activeExerciseExecutionId
@@ -1664,6 +1685,11 @@ export default function TrackerApp() {
     const created = createSoloExerciseExecution(version, {
       trainingSessionId: session.id,
       athleteProfileId,
+      enabledMeasurementProtocols: version.primaryFocus === "shotmaking"
+        ? resolveMeasurementProtocols(EXERCISE_CATALOG, version.compatibleMeasurementProtocols)
+            .map(({ protocol }) => protocol)
+            .filter((protocol) => protocol.metricType === "rotation-count")
+        : [],
     });
     if (!created.ok) {
       alert(created.error.message);
@@ -2453,7 +2479,73 @@ export default function TrackerApp() {
 
       {activeView === "train" && (
         <>
-          {displayedExerciseExecution ? (
+          {activeTeamExerciseDraft ? (
+            <ExerciseTeamExecutionScreen
+              execution={activeTeamExerciseDraft}
+              eligibilitySnapshot={activeTeamEligibilitySnapshot}
+              onSave={async (execution) =>
+                sportingCloudSync?.saveActiveTeamExerciseDraft(execution) ?? false}
+              onComplete={async (execution) => {
+                const completed = await (
+                  sportingCloudSync?.finalizeActiveTeamExerciseDraft(execution) ?? false
+                );
+                if (completed) setLastCompletedTeamSessionId(execution.trainingSessionId);
+                return completed;
+              }}
+              onDiscard={async (executionId) =>
+                sportingCloudSync?.discardActiveTeamExerciseDraft(executionId) ?? false}
+            />
+          ) : pendingTeamExerciseVersion ? (
+            <ExerciseTeamSetupScreen
+              version={pendingTeamExerciseVersion}
+              recorderProfileId={athleteProfileId}
+              eligibilitySnapshots={sportingCloudSync?.teamEligibilitySnapshots ?? []}
+              onStart={async (execution) => {
+                const saved = await (
+                  sportingCloudSync?.saveActiveTeamExerciseDraft(execution) ?? false
+                );
+                if (saved) setPendingTeamExerciseVersion(null);
+                return saved;
+              }}
+              onCancel={() => setPendingTeamExerciseVersion(null)}
+            />
+          ) : lastCompletedTeamSessionId ? (
+            <div className="space-y-4">
+              <section className={surfaceClass("hero")}>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Team exercise completed
+                </p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-900">
+                  {completedTeamSyncReceipt?.status === "fully_synced"
+                    ? "Saved to the cloud"
+                    : completedTeamSyncReceipt?.status === "partially_synced_athlete_result_blocked"
+                      ? "Some athlete results need approval"
+                      : completedTeamSyncReceipt?.status === "sync_issue"
+                        ? "Sync needs attention"
+                        : "Saved on this device"}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  {completedTeamSyncReceipt?.status === "fully_synced"
+                    ? "The Team Session and every athlete result were acknowledged."
+                    : completedTeamSyncReceipt?.status === "partially_synced_athlete_result_blocked"
+                      ? "Accepted results are safe. Blocked athlete results remain on this device and can be retried after approval."
+                      : completedTeamSyncReceipt?.status === "sync_issue"
+                        ? "The completed Session remains on this device. Use the account sync control to retry."
+                        : "The completed Session will upload when a connection is available."}
+                </p>
+              </section>
+              <button
+                type="button"
+                onClick={() => {
+                  setLastCompletedTeamSessionId(null);
+                  setPreferredTrainEntryPath("exercises");
+                }}
+                className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
+              >
+                Back to Exercise Library
+              </button>
+            </div>
+          ) : displayedExerciseExecution ? (
             <ExerciseSoloExecutionScreen
               execution={displayedExerciseExecution}
               writable={sessionWritable}
@@ -2547,6 +2639,11 @@ export default function TrackerApp() {
               startPlanDisabled={!sessionWritable}
               onStartExercise={handleStartExercise}
               startExerciseDisabled={!sessionWritable}
+              onSetUpTeamExercise={(version) => {
+                setPendingTeamExerciseVersion(snapshotExerciseVersion(version));
+                setLastCompletedTeamSessionId(null);
+              }}
+              teamExerciseStartDisabled={!sportingCloudSync?.ready || !!sportingCloudSync.activeTeamExerciseDraft}
               onSavePlan={handleSaveTrainingPlan}
               onDeletePlan={handleDeleteTrainingPlan}
               onDuplicatePlan={handleDuplicateTrainingPlan}

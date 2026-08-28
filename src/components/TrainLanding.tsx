@@ -61,6 +61,8 @@ type TrainLandingProps = {
   onEntryPathChange?: (path: TrainEntryPath) => void;
   onStartExercise: (version: ExerciseVersion) => boolean;
   startExerciseDisabled?: boolean;
+  onSetUpTeamExercise?: (version: ExerciseVersion) => void;
+  teamExerciseStartDisabled?: boolean;
 };
 
 export type TrainEntryPath = "quick-start" | "exercises" | "plans";
@@ -115,6 +117,8 @@ export default function TrainLanding({
   onEntryPathChange,
   onStartExercise,
   startExerciseDisabled = false,
+  onSetUpTeamExercise,
+  teamExerciseStartDisabled = false,
 }: TrainLandingProps) {
   const reactId = useId();
   const tabId = (path: TrainEntryPath) => `${reactId}-tab-${path}`;
@@ -295,7 +299,11 @@ export default function TrainLanding({
                 onEntryPathChange?.("quick-start");
               }
             }}
+            onStartTeam={onSetUpTeamExercise
+              ? () => onSetUpTeamExercise(openExerciseVersion)
+              : undefined}
             startDisabled={startExerciseDisabled}
+            teamStartDisabled={teamExerciseStartDisabled}
           />
         )}
 

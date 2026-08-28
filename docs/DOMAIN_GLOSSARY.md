@@ -1634,12 +1634,13 @@ A reusable definition of what is measured, in which unit, between which referenc
 points, by which allowed sources and under which validation rules. It can define a
 standalone Measured Exercise or be attached compatibly to another Exercise; a protocol
 is not duplicated inside every Exercise definition.
-**[Implemented — two versioned release-time protocols reusing the existing
-Measurement Mode semantics, referenced by Exercise Version and rendered on the detail.
-Neither prescribes a target or tolerance, and neither claims hardware capture. Stage B1
-can snapshot an enabled protocol and retain a manual Measurement against it. B2/B3 do not
-persist a parallel Measured execution: Library Release Time opens the existing Block/Shot
-runner and retains only its exact Exercise Version as Session provenance.]**
+**[Implemented — two versioned release-time protocols reuse the existing Measurement
+Mode semantics, and one manual Rotation Count protocol uses the rotations unit with no
+release-time mode. None prescribes a target or tolerance or claims hardware capture.
+Rotation Count accepts positive full or half rotations and is optionally referenced by
+Eight Guards Version 2. Solo and Team Shotmaking can snapshot and retain it; Library
+Release Time still opens the existing Block/Shot runner and retains only its exact
+Exercise Version as Session provenance.]**
 
 ## Exercise Catalog Package
 
@@ -1657,27 +1658,90 @@ selected variation, volume, Measurements, participants, roles, sweeping and devi
 then owns the athlete-associated results and attempts. Version 1 permits one active
 Exercise Execution at a time. **[Implemented for Solo Technique and Shotmaking — ADR-0028
 provides the aggregate, ADR-0029 embeds it in Profile-owned Session persistence, and
-ADR-0030 supplies the generic rink UI. Measured Release Time intentionally uses the
-existing Block/Shot runner with immutable Library provenance rather than an
-`ExerciseExecution`. Team cardinality remains Planned.]**
+ADR-0030 supplies the generic rink UI. ADR-0031 adds standalone Team cardinality,
+participant/recorder context and role rotation as Stage C1. ADR-0032 adds the
+server-authoritative completed-Session/bundle boundary as Stage C2a; ADR-0033 adds its
+Profile-scoped durable serializer/outbox/upload bridge as Stage C2b; ADR-0034 adds the
+Profile-scoped offline eligibility snapshot and athlete-owned permission UI as Stage C2c;
+ADR-0035 adds one reload-safe Profile-bound active Team draft and atomic completion
+handoff as Stage C3a. ADR-0036 adds cache-bounded Team setup and durable one-device
+Technique/Shotmaking capture as Stage C3b. Team result/private-note read UI is still
+Planned. Measured Release Time intentionally uses the existing Block/Shot runner
+with immutable Library provenance rather than a parallel `ExerciseExecution`.]**
+
+## Exercise Role Assignment Segment
+
+One immutable stretch of actual Team lineup inside an Exercise Execution: delivering
+athlete, known Sweepers, optional Skip, observer, Coaches and timekeeper, actual sweeping
+use, active recorder and the transition reason. Attempts reference the segment active
+when recorded. Planned rotation is never substituted for this historical truth.
+**[Implemented in the Stage C1 Team domain, persisted as part of ADR-0035's active Team
+draft and shown/changed by ADR-0036's Team capture UI.]**
+
+## Exercise Rotation Configuration
+
+The planned athlete order and one of five Version 1 behaviours: fixed roles, change
+after every stone, change after a configured stone count, change after one complete
+series, or manual change. It assists recording but never rewrites actual role segments.
+**[Implemented in the standalone Stage C1 Team domain. Automatic stone-based changes
+are recommendations until the recorder applies them as a new actual segment; series
+completion and manual changes are explicit in ADR-0036's UI. ADR-0035 persists the
+configuration and its recorded segments inside the active Team draft.]**
 
 ## Athlete Exercise Result
 
 The athlete-owned result within an Exercise Execution. Several athletes may receive
 individual results in the same Team Session. It may contain attempts, Measurements and
 one private Athlete Note; recorder, device and Team do not become its owner. **[Implemented
-for the one-athlete Stage B domain; B2 persists that result and private note as part of
-the athlete's Profile-owned Session, and B3 exposes both through the Solo rink UI. Team
-cardinality and shared access remain Planned.]**
+for the one-athlete Stage B flow and for multiple result slots in the standalone Stage
+C1 Team domain. A private note is intentionally forbidden in the shared recorder
+aggregate. ADR-0032 stores Team private notes only through an athlete-authenticated SQL
+boundary and cloud-persists immutable athlete-owned bundles; ADR-0033 supplies their
+recorder-side upload queue, ADR-0035 persists the in-progress non-private results, and
+ADR-0036 captures and displays live factual results per athlete. Athlete-owned cloud
+restore/read and private-note UI remain a later Stage C gate.]**
+
+## Team Exercise Recording Permission
+
+An explicit prospective permission from one athlete to one Team to record that athlete's
+individual results in shared Training Sessions. It is separate from Membership,
+entitlement and every lasting data-sharing grant. Revocation affects future authority and
+does not erase accepted history; an affected athlete may instead approve one concrete
+already-confirmed Session. **[Implemented server-side in Stage C2a — historical grant
+periods, athlete-owned grant/revoke RPC, active-Team eligibility visibility and
+per-bundle revalidation. ADR-0034 implements the self-service Team UI and a strict,
+Profile-scoped latest-known eligibility cache; cached state never replaces upload-time authority.]**
+
+## Team Exercise Session Envelope
+
+The immutable shared coordination record for one completed Team Training Session:
+Team, server-derived recorder provenance, timestamps, confirmed participant kinds,
+Exercise Execution stable IDs and non-private coordination payload. It owns no athlete's
+performance result and participation alone grants no historical read. **[Implemented
+server-side in Stage C2a with exact TEXT payload, digest, relational manifest,
+stable-ID idempotence and owner-result-gated RLS. Local serialization/outbox wiring is
+implemented by ADR-0033 with an exact-digest upload receipt.]**
+
+## Team Exercise Athlete Bundle
+
+One immutable cloud record containing one training athlete's results for a completed
+Team Session. It is owned by that athlete, retains server-derived recorder provenance,
+and retries independently so another athlete's missing authority cannot roll it back.
+Its private notes are stored separately and writable only by the authenticated athlete.
+**[Implemented server-side in Stage C2a, including result/execution stable references,
+partial rejection, concrete-Session approval and private-note RLS. The TypeScript upload
+service and durable local queue integration are implemented by ADR-0033, including
+independently retained pending, synced, blocked and issue outcomes.]**
 
 ## Shotmaking Evaluation Basis
 
 The provenance for a Shotmaking attempt's 0–4 outcome meaning. The closed beta records
 generic Team/self-assessed values without a platform rubric, so results are not assumed
 comparable across Teams. Future recommended or Team-adjusted rubrics require versioned
-snapshots and never reinterpret history. **[Implemented for Solo execution: the curated
-Version and `ExerciseExecution` both retain `team-defined-unstructured`; no standardised
-rubric or cross-Team comparison exists.]**
+snapshots and never reinterpret history. **[Implemented for Solo and Team execution: the
+curated Version and `ExerciseExecution` retain `team-defined-unstructured`; ADR-0036
+shows the same generic 0–4 Team-assessed scale and no standardised rubric or cross-Team
+comparison exists.]**
 
 ## Training Category
 

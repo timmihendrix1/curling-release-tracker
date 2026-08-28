@@ -1,23 +1,25 @@
 # Database tests
 
-This directory holds three pgTAP suites over the ten migrations in
-`supabase/migrations/`. All three have been executed against a real local Supabase
-Postgres applied from scratch, and all three are green.
+This directory holds four pgTAP suites over the thirteen migrations in
+`supabase/migrations/`. All four have been executed against a real local Supabase
+Postgres applied from scratch, and all four are green.
 
 | Suite | Covers | Recorded result |
 |---|---|---|
 | `identity_onboarding.test.sql` | Stage B0.2a — the four Identity/Onboarding tables, their RLS and grant boundary, and the four new RPCs | **187 planned, 187 run, 0 failures** |
 | `team_foundation.test.sql` | The Team Foundation beta plus B0.2e bootstrap-retirement privilege boundary | **102 planned, 102 run, 0 failures** |
 | `free_cloud_sporting_records.test.sql` | Stage B0.4 exact terminal records, authority, RLS, idempotency, conflicts, transactional raw-payload deletion, tombstones and restore | **37 planned, 37 run, 0 failures** |
+| `team_exercise_cloud.test.sql` | Exercise Stage C2a recording permission, server-derived recorder, immutable envelope, athlete bundles, partial rejection, concrete approval, ownership RLS and private notes | **68 planned, 68 run, 0 failures** |
 
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all ten migrations
+supabase db reset --local --no-seed --yes            # applies all thirteen migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
 supabase db reset --local --no-seed --yes
 supabase test db --local supabase/tests/free_cloud_sporting_records.test.sql
+supabase test db --local supabase/tests/team_exercise_cloud.test.sql
 ```
 
 **Reset first.** `identity_onboarding.test.sql` asserts global zero-counts, and both
@@ -26,11 +28,38 @@ freshly reset database without `supabase/seed.sql` — see the detailed precondi
 notes below. Running a suite after the E2E seed correctly fails on the one-active-
 document-per-kind constraint rather than silently reusing a different legal snapshot.
 
-Neither suite ships any test scaffolding into a product migration: each creates its
+No suite ships any test scaffolding into a product migration: each creates its
 `tests` schema, role-switching helpers and their single `grant usage` inside its own
 transaction and removes them again with its closing `rollback`. Neither depends on an
 optional test-helper extension — only pgTAP itself, which `supabase test db` provides
 for the duration of the run.
+
+---
+
+# Team Exercise cloud suite (Stage C2a)
+
+**Status: executed and passing. This is the server authority slice, not an athlete-usable
+Team execution feature.**
+
+```sh
+supabase db reset --local --no-seed --yes
+supabase test db --local supabase/tests/team_exercise_cloud.test.sql
+```
+
+Recorded result: **68 assertions planned, 68 run, 0 failures** — `Files=1,
+Tests=68 ... Result: PASS`.
+
+The suite proves the three `20260828120*` migrations apply after the prior ten and
+exercises prospective grant/revoke history, server-derived recorder attribution,
+lossless TEXT payloads, stable-ID retries and conflicts, independent athlete blocking,
+concrete-Session approval, former-Membership handling, athlete-owned RLS, physical
+private-note separation, direct-write denial, anonymous denial, grants and pinned
+function search paths. Concurrency-sensitive first writes share transaction locks in the
+RPCs. The permission-versus-first-bundle race was additionally executed with two
+independent local `psql` connections and a six-second open transaction in both
+orderings: bundle-first produced one accepted bundle followed by revocation;
+revocation-first produced `blocked / recording_permission_missing` and no bundle. That
+observation is manual and is not part of the 68 single-session pgTAP assertions.
 
 ---
 
@@ -195,7 +224,7 @@ surface, which this stage does not implement.
 ## What this stage does and does not establish
 
 **Established:** the SQL foundation and the mounted B0.2 application integration are
-implemented. All ten migrations apply from scratch; `complete_personal_onboarding`
+implemented. All thirteen migrations apply from scratch; `complete_personal_onboarding`
 is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
@@ -231,7 +260,7 @@ through canonical personal onboarding and proves that the forward retirement mig
 denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all ten migrations
+supabase db reset --local --no-seed --yes            # applies all thirteen migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 

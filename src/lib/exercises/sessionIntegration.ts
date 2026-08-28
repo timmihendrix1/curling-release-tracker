@@ -200,6 +200,12 @@ export function validateSessionExerciseState(
         message: "B2 does not persist Measured execution beside the existing Release Timing runner.",
       });
     }
+    if (validation.value.teamContext !== undefined) {
+      issues.push({
+        path: `exerciseExecutions[${index}].teamContext`,
+        message: "Stage C1 Team execution cannot enter the Profile-owned Solo Session before the shared coordination and athlete-bundle persistence boundary exists.",
+      });
+    }
     if (ids.has(validation.value.id)) {
       issues.push({
         path: `exerciseExecutions[${index}].id`,
@@ -255,6 +261,9 @@ export function attachSoloExerciseExecution(
   session: Session,
   execution: ExerciseExecution
 ): SessionExerciseMutationResult {
+  if (execution.teamContext !== undefined) {
+    return failed("A Team Exercise Execution cannot use the Solo Session attachment boundary.");
+  }
   const current = validateSessionExerciseState(session, session.id);
   if (!current.valid) return failed("The Training Session's Exercise state is invalid.");
   if (current.activeExecutionId) {

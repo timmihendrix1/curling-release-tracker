@@ -5,7 +5,10 @@ export type ExerciseExecutionErrorCode =
   | "unsupported-measurement-protocol"
   | "required-measurement-protocol-missing"
   | "execution-not-active"
+  | "wrong-recorder"
   | "wrong-athlete"
+  | "invalid-role-assignment"
+  | "rotation-not-due"
   | "invalid-attempt"
   | "not-completable";
 

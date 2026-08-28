@@ -1,6 +1,7 @@
 // Curated Stage A Exercise content (spec sections 5.6, 10.1-10.3, 11).
 //
-// Three Exercises, each with exactly one immutable Exercise Version. Every
+// Three Exercises with immutable Exercise Versions; Eight Guards retains v1 and
+// publishes v2 for the later Rotation Count capability. Every
 // user-facing string here is English. Original German source titles appear
 // only inside `nonDisplayedSourceMetadata`, which no component renders — they
 // exist for attribution traceability and Library search (spec 3.6).
@@ -14,6 +15,7 @@ import { buildEightGuardsDiagram } from "./diagrams";
 import {
   RELEASE_TIME_BACK_HOG_PROTOCOL_ID,
   RELEASE_TIME_HOG_HOG_PROTOCOL_ID,
+  ROTATION_COUNT_PROTOCOL_ID,
 } from "./measurementProtocols";
 import {
   EXERCISE_CONTENT_SCHEMA_VERSION,
@@ -27,7 +29,8 @@ export const EIGHT_GUARDS_EXERCISE_ID = "eight-guards-progressively-longer";
 export const RELEASE_TIME_EXERCISE_ID = "release-time";
 
 export const RELEASE_POINT_VERSION_ID = "release-point-v1";
-export const EIGHT_GUARDS_VERSION_ID = "eight-guards-progressively-longer-v1";
+export const EIGHT_GUARDS_V1_VERSION_ID = "eight-guards-progressively-longer-v1";
+export const EIGHT_GUARDS_VERSION_ID = "eight-guards-progressively-longer-v2";
 export const RELEASE_TIME_VERSION_ID = "release-time-v1";
 
 /** Curling's familiar 0-4 scale (spec 11.1). Zero is a valid scored result, never missing data. */
@@ -120,9 +123,9 @@ function buildReleasePointVersion(): ExerciseVersion {
 // 2. Eight Guards, Progressively Longer — Shotmaking Exercise
 // ---------------------------------------------------------------------------
 
-function buildEightGuardsVersion(): ExerciseVersion {
+function buildEightGuardsVersion1(): ExerciseVersion {
   return {
-    id: EIGHT_GUARDS_VERSION_ID,
+    id: EIGHT_GUARDS_V1_VERSION_ID,
     exerciseId: EIGHT_GUARDS_EXERCISE_ID,
     version: 1,
     contentSchemaVersion: EXERCISE_CONTENT_SCHEMA_VERSION,
@@ -225,6 +228,20 @@ function buildEightGuardsVersion(): ExerciseVersion {
         searchAliases: ["Guard Übung 10", "8 Steine Guard"],
       },
     },
+  };
+}
+
+/** Version 2 adds the approved optional half-rotation measurement without rewriting v1. */
+function buildEightGuardsVersion2(): ExerciseVersion {
+  return {
+    ...buildEightGuardsVersion1(),
+    id: EIGHT_GUARDS_VERSION_ID,
+    version: 2,
+    compatibleMeasurementProtocols: [{
+      protocolId: ROTATION_COUNT_PROTOCOL_ID,
+      protocolVersion: 1,
+      requirement: "optional",
+    }],
   };
 }
 
@@ -341,7 +358,7 @@ function buildReleaseTimeVersion(): ExerciseVersion {
 // ---------------------------------------------------------------------------
 
 /** Exported unfrozen so tests can verify the builders are deterministic; product code uses the frozen catalog. */
-export function buildStageAExercises(): Exercise[] {
+export function buildCuratedExercises(): Exercise[] {
   return [
     { id: RELEASE_POINT_EXERCISE_ID, currentVersionId: RELEASE_POINT_VERSION_ID },
     { id: EIGHT_GUARDS_EXERCISE_ID, currentVersionId: EIGHT_GUARDS_VERSION_ID },
@@ -349,6 +366,11 @@ export function buildStageAExercises(): Exercise[] {
   ];
 }
 
-export function buildStageAExerciseVersions(): ExerciseVersion[] {
-  return [buildReleasePointVersion(), buildEightGuardsVersion(), buildReleaseTimeVersion()];
+export function buildCuratedExerciseVersions(): ExerciseVersion[] {
+  return [
+    buildReleasePointVersion(),
+    buildEightGuardsVersion1(),
+    buildEightGuardsVersion2(),
+    buildReleaseTimeVersion(),
+  ];
 }

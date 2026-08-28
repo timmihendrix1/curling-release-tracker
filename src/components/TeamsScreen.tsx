@@ -13,6 +13,10 @@ import type {
 import type { InvitationProposal, TeamService, TeamSummary, TeamWorkspace } from "../lib/team/teamService";
 import ConfirmModal from "./ConfirmModal";
 import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
+import {
+  useSportingCloudSync,
+  type SportingCloudSyncContextValue,
+} from "./ProfileScopedSportingPersistence";
 
 type TeamsScreenProps = {
   onClose: () => void;
@@ -20,6 +24,7 @@ type TeamsScreenProps = {
   config?: CloudConfig;
   createTeamService?: (config: ConfiguredCloudConfig) => TeamService;
   identitySession?: GateSession;
+  exerciseSync?: SportingCloudSyncContextValue | null;
 };
 
 type StatusMessage = { kind: "error" | "success"; text: string };
@@ -80,6 +85,8 @@ type TeamWorkspaceDetailProps = {
   onArchiveTeam: () => void;
   onRestoreTeam: () => void;
   onLeaveTeam: () => void;
+  exerciseRecordingPermission: boolean | null;
+  onSetExerciseRecordingPermission: (granted: boolean) => void;
 };
 
 function displayNameForMembership(workspace: TeamWorkspace, membershipId: string): string {
@@ -127,6 +134,8 @@ function TeamWorkspaceDetail({
   onArchiveTeam,
   onRestoreTeam,
   onLeaveTeam,
+  exerciseRecordingPermission,
+  onSetExerciseRecordingPermission,
 }: TeamWorkspaceDetailProps) {
   return (
     <div className="space-y-4">
@@ -244,6 +253,37 @@ function TeamWorkspaceDetail({
           ))}
         </ul>
       </div>
+
+      {workspace.team.status === "active" && (
+        <section className="rounded-xl border border-slate-200 p-4">
+          <h4 className="text-sm font-semibold text-slate-800">
+            Exercise recording permission
+          </h4>
+          <p className="mt-1 text-sm text-slate-600">
+            Allow this Team to record your individual Exercise results when you take part
+            in a shared Training Session. This does not share your existing history or analytics.
+          </p>
+          {exerciseRecordingPermission === null ? (
+            <p className="mt-3 text-sm text-slate-500">
+              The current permission could not be confirmed. Connect and reopen this Team to try again.
+            </p>
+          ) : (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-slate-700">
+                {exerciseRecordingPermission ? "Permission granted" : "Permission not granted"}
+              </p>
+              <button
+                type="button"
+                onClick={() => onSetExerciseRecordingPermission(!exerciseRecordingPermission)}
+                disabled={busy}
+                className={exerciseRecordingPermission ? dangerButtonClassName : secondaryButtonClassName}
+              >
+                {exerciseRecordingPermission ? "Revoke Permission" : "Grant Permission"}
+              </button>
+            </div>
+          )}
+        </section>
+      )}
 
       {workspace.isAdmin && workspace.team.status === "active" && (
         <div className="rounded-xl bg-slate-100 p-4">
@@ -433,8 +473,16 @@ function TeamWorkspaceDetail({
  * rendering; production composition reaches it exclusively behind the global gate.
  * No TeamService method is called without a gate-approved session.
  */
-export default function TeamsScreen({ onClose, config, createTeamService, identitySession }: TeamsScreenProps) {
+export default function TeamsScreen({
+  onClose,
+  config,
+  createTeamService,
+  identitySession,
+  exerciseSync,
+}: TeamsScreenProps) {
   const identity = useOptionalIdentity();
+  const contextSportingSync = useSportingCloudSync();
+  const sportingSync = exerciseSync === undefined ? contextSportingSync : exerciseSync;
   const session = identitySession ?? identity?.session ?? null;
   const resolvedConfig = useMemo<CloudConfig>(() => config ?? resolveCloudConfig(), [config]);
   const teamService = useMemo<TeamService | null>(() => {
@@ -523,6 +571,7 @@ export default function TeamsScreen({ onClose, config, createTeamService, identi
     if (!mountedRef.current) return;
     report(workspaceResult, (value) => {
       setWorkspace(value);
+      void sportingSync?.refreshTeamExerciseEligibility(value);
       if (value.isAdmin) {
         teamService.listInvitations(teamId).then((invitationsResult) => {
           if (mountedRef.current && invitationsResult.ok) setInvitations(invitationsResult.value);
@@ -560,6 +609,16 @@ export default function TeamsScreen({ onClose, config, createTeamService, identi
   // effect above (react-hooks/set-state-in-effect) purely to clear stale data when
   // navigating back to the team list or between teams.
   const activeWorkspace = workspace && workspace.team.id === selectedTeamId ? workspace : null;
+  const activeExerciseEligibility = activeWorkspace
+    ? sportingSync?.teamEligibilitySnapshots.find(
+        (snapshot) => snapshot.teamId === activeWorkspace.team.id
+      ) ?? null
+    : null;
+  const myExerciseRecordingPermission = session && activeExerciseEligibility
+    ? activeExerciseEligibility.participants.find(
+        (participant) => participant.profileId === session.profileId
+      )?.recordingPermissionGranted ?? null
+    : null;
 
   async function withBusy(action: () => Promise<void>) {
     setBusy(true);
@@ -569,6 +628,33 @@ export default function TeamsScreen({ onClose, config, createTeamService, identi
     } finally {
       if (mountedRef.current) setBusy(false);
     }
+  }
+
+  function handleSetExerciseRecordingPermission(granted: boolean) {
+    if (!sportingSync || !activeWorkspace) return;
+    withBusy(async () => {
+      const outcome = await sportingSync.setMyTeamExerciseRecordingPermission(
+        activeWorkspace.team.id,
+        granted
+      );
+      if (!mountedRef.current) return;
+      setStatus(outcome === "updated"
+        ? {
+            kind: "success",
+            text: granted
+              ? "Exercise recording permission granted."
+              : "Exercise recording permission revoked.",
+          }
+        : outcome === "updated_cache_issue"
+          ? {
+              kind: "error",
+              text: "Permission was updated in the cloud, but the offline Team cache could not be saved. Reopen this Team while connected before starting offline training.",
+            }
+          : {
+            kind: "error",
+            text: "Exercise recording permission could not be updated. Check the connection and try again.",
+          });
+    });
   }
 
   function handleCreateTeam() {
@@ -1046,6 +1132,8 @@ export default function TeamsScreen({ onClose, config, createTeamService, identi
                     onArchiveTeam={handleArchiveTeam}
                     onRestoreTeam={handleRestoreTeam}
                     onLeaveTeam={handleLeaveTeam}
+                    exerciseRecordingPermission={myExerciseRecordingPermission}
+                    onSetExerciseRecordingPermission={handleSetExerciseRecordingPermission}
                   />
                 )}
               </>

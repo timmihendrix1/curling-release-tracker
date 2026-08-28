@@ -28,7 +28,9 @@ type ExerciseDetailProps = {
   measurementProtocols: readonly ResolvedMeasurementProtocol[];
   onBack: () => void;
   onStart: () => void;
+  onStartTeam?: () => void;
   startDisabled?: boolean;
+  teamStartDisabled?: boolean;
   restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
@@ -121,7 +123,9 @@ export default function ExerciseDetail({
   measurementProtocols,
   onBack,
   onStart,
+  onStartTeam,
   startDisabled = false,
+  teamStartDisabled = false,
   restrictedAssetResolver,
 }: ExerciseDetailProps) {
   const { guidance, participation, sweeping, source } = version;
@@ -391,9 +395,9 @@ export default function ExerciseDetail({
         </h3>
         <p className="mt-2 text-sm text-slate-600">
           {version.primaryFocus === "technique" &&
-            "Start a Solo observation exercise. The app records no score; you can keep a private note."}
+            "Practise Solo with a private note, or set up a shared Team observation. The app records no technique score."}
           {version.primaryFocus === "shotmaking" &&
-            "Start Solo with no planned stone limit. Record the actual handle and a self-assessed 0–4 outcome for each stone."}
+            "Practise Solo or with a Team, with no planned stone limit. Record the actual handle, optional Rotation Count and a 0–4 outcome for each stone."}
           {version.primaryFocus === "measured" &&
             "Continue with the existing Fixed, Variable and Blind Weight setup. No second measurement runner is created."}
         </p>
@@ -405,6 +409,16 @@ export default function ExerciseDetail({
         >
           {version.primaryFocus === "measured" ? "Continue to Timing Setup" : "Start Exercise"}
         </button>
+        {onStartTeam && version.primaryFocus !== "measured" && version.participation.supportedModes.includes("team") && (
+          <button
+            type="button"
+            onClick={onStartTeam}
+            disabled={teamStartDisabled}
+            className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Set Up Team Exercise
+          </button>
+        )}
       </section>
     </div>
   );

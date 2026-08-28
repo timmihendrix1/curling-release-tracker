@@ -191,11 +191,11 @@ export function exerciseRecommendedVolumeLabel(volume: ExerciseRecommendedVolume
 }
 
 export function measurementMetricTypeLabel(metricType: MeasurementMetricType): string {
-  return metricType === "release-time" ? "Release Time" : metricType;
+  return metricType === "release-time" ? "Release Time" : "Rotation Count";
 }
 
 export function measurementUnitLabel(unit: MeasurementUnit): string {
-  return unit === "seconds" ? "seconds" : unit;
+  return unit === "seconds" ? "seconds" : "rotations";
 }
 
 /**

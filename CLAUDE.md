@@ -179,8 +179,25 @@ technique directly" in the Coaching Principles.
   Free-cloud record. ADR-0030 adds B3's generic Solo rink UI: unscored Technique,
   actual-handle plus 0-4/exclusion Shotmaking, private notes and factual results. Measured
   Release Time links to the unchanged Fixed/Variable/Blind runner and stores only exact
-  Library provenance. There is no Exercise key, repository, cloud kind or duplicate timing path.
-  Still **Planned**, per that specification's section 21: multi-athlete Team execution and offline upload, Training Plan
+  Library provenance. ADR-0031 adds the standalone Stage C1 Team domain: confirmed
+  Profile participants, several athlete result slots, one recorder, five simple
+  rotation configurations, actual role segments and Team Shotmaking attribution. It is
+  deliberately rejected by Solo Session/cloud persistence; private Athlete Notes never
+  enter the shared recorder aggregate, and Team Release Time still uses the timing
+  runner. ADR-0032 adds Stage C2a's executed database boundary: explicit recording
+  permission, a server-derived-recorder Session envelope, athlete-owned bundles,
+  independent partial rejection, concrete approval and athlete-only notes. ADR-0033
+  adds Stage C2b's strict serializer and provider-neutral/Supabase upload service;
+  ADR-0034 adds Stage C2c's offline eligibility cache and athlete permission UI;
+  ADR-0035 advances the existing Profile-scoped sporting sync record to schema 4 with
+  one reload-safe active Team draft and an atomic exact-completion-to-outbox transition,
+  alongside durable-first ordered upload, exact receipts, reload/account-switch isolation
+  and blocked-bundle retry. ADR-0036 adds C3b's generic Team setup and one-device capture
+  UI, including cached eligibility, authenticated-recorder attribution, actual role
+  rotation, per-athlete Shotmaking outcomes and optional half-step Rotation Count. Team
+  Release Time continues to use the existing timing runner; no duplicate timing path
+  exists. Still **Planned**, per that specification's section 21: Team result/private-note
+  reads, revision/void/notification work, Training Plan
   integration, and the remaining six approved catalogue Exercises. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never

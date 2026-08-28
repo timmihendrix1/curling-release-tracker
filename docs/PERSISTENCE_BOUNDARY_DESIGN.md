@@ -388,6 +388,29 @@ key with a smaller/empty value — never a key removal.
 | 9 | `curling-release-tracker-assessment-last-threshold-preset` | `assessmentPreferences.ts:12` | raw string, `AccuracyThresholdPreset` | `getLastAssessmentThresholdPreset()` (`:30-36`), called from `AssessScreen.tsx:119` | `setLastAssessmentThresholdPreset()` (`:38-40`), called from `AssessScreen.tsx:379` | None | None | Inline whitelist check against `VALID_PRESETS`, fallback `"standard"` (`:27,33-35`) | same test file |
 | 10 | `curling-release-tracker-assessment-last-custom-threshold` | `assessmentPreferences.ts:13` | `AccuracyThresholds \| null` | `getLastAssessmentCustomThreshold()` (`:42-60`), called from `AssessScreen.tsx:121` | `setLastAssessmentCustomThreshold()` (`:62-64`), called from `AssessScreen.tsx:381` | None | None | Inline try/catch around `JSON.parse` + shape check (`:46-59`); explicitly documented (`:29`) as never authoritative — a Run's real threshold snapshot always comes from an explicit confirmation, never silently from this preference | same test file |
 
+**Stage C1/C2a Team Exercise boundary.** ADR-0031 itself added no local key, and its Team aggregate is
+explicitly rejected by `validateSessionExerciseState`, `attachSoloExerciseExecution`
+and the `training_session` cloud serializer. It cannot enter either Session key above.
+ADR-0032 now implements and verifies the separate server boundary: immutable shared Team
+coordination, independently retried athlete-owned result bundles and athlete-only notes
+over real RLS/RPCs. It does not widen keys #1/#2 or treat the recorder as owner. The next
+ADR-0033 implements that Stage C2b gate by upgrading ADR-0027's same Profile-scoped
+outbox record to schema 2. ADR-0034 advances it to schema 3 for the bounded offline
+Team-start eligibility cache, and ADR-0035 advances it to schema 4 with one in-progress
+Team draft. Existing personal entries remain under `entries`; immutable Team Session
+envelopes and independently acknowledged athlete bundles live under `teamEntries`;
+roster/permission observations live under `teamEligibilitySnapshots`; and
+`activeTeamExerciseDraft` holds either `null` or one strictly validated recorder-owned
+aggregate. Schemas 1-3 load deterministically as schema 4 with no active draft.
+The full Team package is durably written before any C2a RPC is called, a failed write
+prevents upload, and account switching selects a different physical Profile namespace.
+Exact completion replaces that draft with its full outbox package in one local write
+before upload. This is a one-way recorder queue, not a Team result read model or a
+second sync engine. ADR-0036 now drives this boundary from cache-bounded Team setup and
+one-device capture: start and every C1 transition must save durably before the UI moves
+on, reload resumes the one draft, explicit confirmed discard removes it, and completion
+uses only the exact atomic handoff. It adds no key or parallel persistence path.
+
 **Write-guard note (new in this revision):** the "Write path" column above now records
 whether each domain's current save effect already guards against writing its React
 state's *initial default* before the mount-time load completes. Only #1 (`if

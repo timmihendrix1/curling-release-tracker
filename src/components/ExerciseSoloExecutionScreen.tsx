@@ -13,7 +13,7 @@ import type {
   ExerciseExecution,
   ShotmakingExclusionReason,
 } from "../lib/exercises/executionTypes";
-import { exerciseFocusLabel } from "../lib/exercises/presentation";
+import { exerciseFocusLabel, measurementUnitLabel } from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
@@ -50,6 +50,7 @@ export default function ExerciseSoloExecutionScreen({
 }: ExerciseSoloExecutionScreenProps) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
+  const [rotationCount, setRotationCount] = useState("");
   const [showExclusion, setShowExclusion] = useState(false);
   const [exclusionReason, setExclusionReason] =
     useState<ShotmakingExclusionReason | "">("");
@@ -61,7 +62,17 @@ export default function ExerciseSoloExecutionScreen({
   const result = execution.athleteResults[0];
   const active = execution.status === "in-progress";
   const shotmaking = version.primaryFocus === "shotmaking";
+  const rotationProtocol = execution.configuration.enabledMeasurementProtocols.find(
+    (protocol) => protocol.metricType === "rotation-count"
+  );
   const shotSummary = shotmaking ? computeShotmakingResult(result) : null;
+
+  function measurementLabel(protocolId: string, protocolVersion: number, value: number): string {
+    const protocol = execution.configuration.enabledMeasurementProtocols.find(
+      (candidate) => candidate.id === protocolId && candidate.version === protocolVersion
+    );
+    return `${value} ${protocol ? measurementUnitLabel(protocol.unit) : "measurement"}`;
+  }
 
   function replace(next: ExerciseExecution): boolean {
     if (!onReplace(next)) {
@@ -74,10 +85,13 @@ export default function ExerciseSoloExecutionScreen({
 
   function recordScore() {
     if (actualHandle === null || score === null) return;
+    const measurement = buildRotationMeasurement();
+    if (measurement === null) return;
     const outcome = addShotmakingAttempt(execution, {
       athleteProfileId: result.athleteProfileId,
       actualHandle,
       evaluation: { status: "scored", score },
+      measurements: measurement,
     });
     if (!outcome.ok) {
       setError(outcome.error.message);
@@ -86,6 +100,7 @@ export default function ExerciseSoloExecutionScreen({
     if (replace(outcome.value)) {
       setActualHandle(null);
       setScore(null);
+      setRotationCount("");
     }
   }
 
@@ -95,6 +110,8 @@ export default function ExerciseSoloExecutionScreen({
       exclusionReason === "" ||
       (exclusionReason === "other" && exclusionExplanation.trim().length === 0)
     ) return;
+    const measurement = buildRotationMeasurement();
+    if (measurement === null) return;
     const outcome = addShotmakingAttempt(execution, {
       athleteProfileId: result.athleteProfileId,
       actualHandle,
@@ -105,6 +122,7 @@ export default function ExerciseSoloExecutionScreen({
           ? { explanation: exclusionExplanation.trim() }
           : {}),
       },
+      measurements: measurement,
     });
     if (!outcome.ok) {
       setError(outcome.error.message);
@@ -115,7 +133,25 @@ export default function ExerciseSoloExecutionScreen({
       setShowExclusion(false);
       setExclusionReason("");
       setExclusionExplanation("");
+      setRotationCount("");
     }
+  }
+
+  function buildRotationMeasurement() {
+    if (rotationCount.trim() === "") return [];
+    const value = Number(rotationCount);
+    if (!rotationProtocol || !Number.isFinite(value) || value <= 0 || !Number.isInteger(value * 2)) {
+      setError("Rotation Count must be a positive whole or half rotation, for example 2 or 2.5.");
+      return null;
+    }
+    return [{
+      id: crypto.randomUUID(),
+      protocolId: rotationProtocol.id,
+      protocolVersion: rotationProtocol.version,
+      value,
+      source: "manual" as const,
+      recordedAt: new Date().toISOString(),
+    }];
   }
 
   function complete() {
@@ -232,6 +268,22 @@ export default function ExerciseSoloExecutionScreen({
               ))}
             </div>
           </fieldset>
+
+          {rotationProtocol && (
+            <label className="mt-4 block text-sm font-medium text-slate-700">
+              Rotation Count <span className="font-normal text-slate-500">(optional)</span>
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                inputMode="decimal"
+                value={rotationCount}
+                onChange={(event) => setRotationCount(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                placeholder="e.g. 2.5"
+              />
+            </label>
+          )}
 
           <fieldset className="mt-4">
             <legend className="text-sm font-medium text-slate-700">
@@ -411,6 +463,9 @@ export default function ExerciseSoloExecutionScreen({
                             }`}
                       </span>
                     )}
+                    {attempt.measurements.map((measurement) => (
+                      <span key={measurement.id}>{` · ${measurementLabel(measurement.protocolId, measurement.protocolVersion, measurement.value)}`}</span>
+                    ))}
                   </li>
                 ))}
               </ol>

@@ -1055,7 +1055,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
-| **Exercise Stage B** | Exercise execution — see "Exercise Library and multi-athlete execution" below. | **Not started**, and now behind B0.2-B0.4. |
+| **Exercise Stages A-C3b** | Curated Library, Solo execution, Team domain/cloud/outbox/eligibility/draft foundations and one-device Team capture — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3 and Team C1-C3b implemented.** Remaining Team read/private-note, revision/void/notification work, Plans and content hardening remain planned. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
@@ -1267,7 +1267,9 @@ global state infrastructure beyond this feature's reviewed scope.
 
 ## Exercise Library and multi-athlete execution
 
-**Stage A and Solo Stage B (B1-B3) are implemented. Stages C-E remain planned.** The canonical product and domain boundary
+**Stage A, Solo Stage B (B1-B3) and Team Stages C1-C3b are implemented. The remaining Stage C read/private-note and
+revision/notification work and
+Stages D-E remain planned.** The canonical product and domain boundary
 is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
 The full closed-beta catalogue contains three Swiss Curling
 Shotmaking Exercises, four unscored Technique Exercises and two standalone Measured
@@ -1299,14 +1301,21 @@ Known delivery boundaries, deliberate rather than defects:
   execution rule without inventing a content preference: every standalone Measured
   execution must enable at least one compatible protocol, while either protocol remains
   a valid choice.
-- **No Rotation Count Measurement Protocol.** `MeasurementMetricType` currently has one
-  value; the second arrives with the Exercise that needs it (Stage E).
+- **Rotation Count is available where capture needs it.** C3b adds a manual, target-free
+  versioned protocol in rotations and validates positive 0.5 increments. Eight Guards
+  Version 1 remains immutable; current Version 2 adds the optional reference. A separate
+  standalone Rotation Count Exercise remains part of Stage E.
 - **Search does not match a referenced protocol's name.** `exerciseSearchableText`
   operates on one Exercise Version without the catalog, so "hog" does not find Release
   Time via its protocol names. Widen it if discovery feedback asks for it.
 
-**Exercise Solo Stage B is implemented through B3 (ADR-0028 through ADR-0030); Stages C-E
-remain planned.** B2 embeds
+**Exercise Solo Stage B is implemented through B3 (ADR-0028 through ADR-0030), ADR-0031
+implements Stage C1's Team domain foundation, ADR-0032 implements Stage C2a's real
+server authority, ADR-0033 implements C2b's client persistence/upload bridge, and
+ADR-0034 implements C2c's eligibility cache and athlete permission UI; ADR-0035
+implements C3a's reload-safe active Team draft and atomic completion handoff; ADR-0036
+implements C3b's setup and one-device capture UI; the
+rest of Stages C-E remains planned.** B2 embeds
 Technique and Shotmaking executions in the existing Profile-owned Session, local
 repository/archive transition and Free-cloud `training_session` record, with strict
 terminal-history validation and no extra storage silo. It deliberately leaves Measured
@@ -1315,7 +1324,23 @@ and stores only immutable Library provenance for a measured entry. The remaining
 follows the specification's order and review gates: one-device Team execution with
 bounded offline upload, generalised simple
 Training Plans containing curated Exercise steps, then the remaining approved content and
-release hardening. Existing Release Timing Training Plans and history must remain
+release hardening. C1 is deliberately standalone: it models confirmed Profile
+participants, multiple athlete result slots, the active recorder, planned rotation and
+actual role segments. C2a adds three executed migrations and 68 passing pgTAP assertions
+for explicit recording permission, immutable shared coordination, athlete-owned result
+bundles, independent partial rejection, concrete-Session approval and athlete-only notes.
+C2b adds strict payload splitting and the provider-neutral/Supabase upload service.
+C2c advances the same Profile-scoped record to schema 3 with a bounded active Team
+roster/recording-permission snapshot and adds the athlete-owned grant/revoke control to
+Team settings. C3a advances it to schema 4 with exactly one validated recorder-owned
+in-progress Team aggregate; reload/account isolation, failed-write rollback, explicit
+discard and atomic exact-completion-to-outbox replacement are tested. C3b now consumes
+those boundaries for cached setup, durable capture, actual role rotation, per-athlete
+Shotmaking results, manual half-step Rotation Count, completion and an honest sync
+receipt. Athlete-result restore/read and private-note UI remain absent. Private Athlete
+Notes remain excluded from the shared recorder
+aggregate, and Team Release Time still uses the existing timing runner rather than a
+parallel Team Measured execution. Existing Release Timing Training Plans and history must remain
 compatible throughout. Exercise authoring, public/community libraries, standardised
 Shotmaking rubrics, advanced analytics, sensor coordinates and video analysis remain
 deliberately deferred.
@@ -1331,11 +1356,13 @@ their **Free** cloud persistence and basic restore, are Free (the **Free Cloud C
 not part of the paid personal tier; Team Session coordination remains a Team Workspace
 capability. See `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` §20.
 
-Stage C additionally requires real database/RLS/transaction verification and a focused
-persistence/upload-protocol design; TypeScript tests alone are not sufficient evidence
-for it. Much of that durable-queue design is now Stage B0.4's outbox rather than
-Exercise-specific work, but Stage C's own Team-authority revalidation and per-athlete
-partial-rejection behaviour remain its own.
+The client persistence boundary now proves reload, storage failure, account switching,
+lost acknowledgement and per-athlete partial-sync receipts. Permission control and its
+offline eligibility cache and one-device Team capture are usable. Remaining Stage C work
+must make the result/private-note paths usable in Team UI, then add audited active and
+post-completion correction/void workflows and participant notifications. Any further
+database/RLS/transaction change still requires real database evidence; TypeScript tests
+alone are not sufficient.
 
 **Restricted source diagrams.** The supplied Swiss Curling diagrams may be shown only to
 the named one-Team closed beta with visible attribution and genuinely restricted

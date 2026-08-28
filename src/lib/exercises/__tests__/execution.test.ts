@@ -47,6 +47,14 @@ function releaseTimeProtocol() {
   return protocol;
 }
 
+function rotationCountProtocol() {
+  const protocol = EXERCISE_CATALOG.measurementProtocols.find(
+    (candidate) => candidate.metricType === "rotation-count"
+  );
+  if (!protocol) throw new Error("Missing Rotation Count protocol fixture");
+  return protocol;
+}
+
 function createTechnique() {
   const outcome = createSoloExerciseExecution(version(RELEASE_POINT_VERSION_ID), {
     trainingSessionId: SESSION_ID,
@@ -62,6 +70,7 @@ function createShotmaking() {
     trainingSessionId: SESSION_ID,
     athleteProfileId: ATHLETE_ID,
     selectedVariationId: "same-handle",
+    enabledMeasurementProtocols: [rotationCountProtocol()],
     clock: clock(),
   });
   if (!outcome.ok) throw new Error(outcome.error.message);
@@ -216,6 +225,32 @@ describe("Solo Exercise Execution", () => {
       actualHandle: "in",
       evaluation: { status: "scored", score: 0 },
     });
+  });
+
+  it("accepts whole and half Rotation Counts and rejects other increments", () => {
+    const execution = createShotmaking();
+    const rotationMeasurement = (value: number): ExerciseMeasurement => ({
+      id: IDS[20],
+      protocolId: rotationCountProtocol().id,
+      protocolVersion: rotationCountProtocol().version,
+      value,
+      source: "manual",
+      recordedAt: "2026-08-27T10:01:00.000Z",
+    });
+    expect(addShotmakingAttempt(execution, {
+      athleteProfileId: ATHLETE_ID,
+      actualHandle: "in",
+      evaluation: { status: "scored", score: 4 },
+      measurements: [rotationMeasurement(2.5)],
+      clock: clock(4),
+    })).toMatchObject({ ok: true });
+    expect(addShotmakingAttempt(execution, {
+      athleteProfileId: ATHLETE_ID,
+      actualHandle: "in",
+      evaluation: { status: "scored", score: 4 },
+      measurements: [rotationMeasurement(2.25)],
+      clock: clock(4),
+    })).toMatchObject({ ok: false, error: { code: "invalid-attempt" } });
   });
 
   it("retains excluded attempts and requires an explanation for Other", () => {

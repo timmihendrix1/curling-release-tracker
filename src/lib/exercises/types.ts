@@ -306,16 +306,17 @@ export type ExerciseSource = {
 // duplicated as ad-hoc fields inside each Exercise.
 // ---------------------------------------------------------------------------
 
-/** Stage A defines only release time. Rotation Count arrives with its Exercise (Stage E). */
-export type MeasurementMetricType = "release-time";
+/** Reusable factual metrics currently supported by Exercise execution. */
+export type MeasurementMetricType = "release-time" | "rotation-count";
 
 export const MEASUREMENT_METRIC_TYPES: readonly MeasurementMetricType[] = [
   "release-time",
+  "rotation-count",
 ];
 
-export type MeasurementUnit = "seconds";
+export type MeasurementUnit = "seconds" | "rotations";
 
-export const MEASUREMENT_UNITS: readonly MeasurementUnit[] = ["seconds"];
+export const MEASUREMENT_UNITS: readonly MeasurementUnit[] = ["seconds", "rotations"];
 
 export type MeasurementProtocol = {
   id: string;
@@ -330,7 +331,8 @@ export type MeasurementProtocol = {
    * points are identical — this is not a second, competing definition of
    * Backline-Hog / Hog-Hog.
    */
-  measurementMode: MeasurementMode;
+  /** Required only for release-time protocols; absent for Rotation Count. */
+  measurementMode?: MeasurementMode;
   /** English description of the reference points. */
   referencePoints: string;
   /**

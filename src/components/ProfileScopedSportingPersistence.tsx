@@ -17,15 +17,33 @@ import {
 } from "../lib/persistence/profileScopedSportingPersistence";
 import { createProfileScopedSportingStorageAdapter } from "../lib/persistence/profileScopedSportingPersistence";
 import { createSportingSyncStateRepository } from "../lib/cloudSporting/syncStateRepository";
-import { SportingCloudSyncManager, type SportingSyncSnapshot } from "../lib/cloudSporting/syncManager";
+import {
+  SportingCloudSyncManager,
+  type SportingSyncSnapshot,
+  type TeamExercisePermissionUpdateOutcome,
+} from "../lib/cloudSporting/syncManager";
 import { resolveCloudConfig } from "../lib/supabase/config";
 import { getSupabaseBrowserClient } from "../lib/supabase/supabaseClient";
 import { createSupabaseSportingCloudService } from "../lib/supabase/supabaseSportingCloudService";
+import { createSupabaseTeamExerciseCloudService } from "../lib/supabase/supabaseTeamExerciseCloudService";
 import { useIdentity } from "./identity/IdentityProvider";
+import type { ExerciseExecution } from "../lib/exercises/executionTypes";
+import type { TeamWorkspace } from "../lib/team/teamService";
 
 const SportingPersistenceContext = createContext<SportingRepositories | null>(null);
 const SportingProfileIdContext = createContext<string | null>(null);
-type SportingCloudSyncContextValue = SportingSyncSnapshot & { retry(): void };
+export type SportingCloudSyncContextValue = SportingSyncSnapshot & {
+  retry(): void;
+  enqueueCompletedTeamExercise(execution: ExerciseExecution): Promise<boolean>;
+  saveActiveTeamExerciseDraft(execution: ExerciseExecution): Promise<boolean>;
+  finalizeActiveTeamExerciseDraft(execution: ExerciseExecution): Promise<boolean>;
+  discardActiveTeamExerciseDraft(executionId: string): Promise<boolean>;
+  refreshTeamExerciseEligibility(workspace: TeamWorkspace): Promise<boolean>;
+  setMyTeamExerciseRecordingPermission(
+    teamId: string,
+    granted: boolean
+  ): Promise<TeamExercisePermissionUpdateOutcome>;
+};
 const SportingCloudSyncContext = createContext<SportingCloudSyncContextValue | null>(null);
 let unscopedTestRepositories: SportingRepositories | null = null;
 
@@ -71,13 +89,16 @@ function ProfileScopedSportingPersistenceInstance({
   const manager = useMemo(() => {
     const adapter = createProfileScopedSportingStorageAdapter(profileId);
     const config = resolveCloudConfig();
-    const service = config.status === "configured"
-      ? createSupabaseSportingCloudService(getSupabaseBrowserClient(config))
-      : null;
+    const client = config.status === "configured" ? getSupabaseBrowserClient(config) : null;
+    const service = client ? createSupabaseSportingCloudService(client) : null;
+    const teamService = client ? createSupabaseTeamExerciseCloudService(client) : null;
     return new SportingCloudSyncManager(
       baseRepositories,
       createSportingSyncStateRepository(adapter),
-      service
+      service,
+      undefined,
+      teamService,
+      profileId
     );
   }, [baseRepositories, profileId]);
   const repositories = useMemo(() => manager.decorateRepositories(), [manager]);
@@ -152,6 +173,18 @@ function ProfileScopedSportingPersistenceInstance({
       <SportingCloudSyncContext.Provider value={{
         ...syncSnapshot,
         retry: () => void manager.retry(),
+        enqueueCompletedTeamExercise: (execution) =>
+          manager.enqueueCompletedTeamExercise(execution, profileId),
+        saveActiveTeamExerciseDraft: (execution) =>
+          manager.saveActiveTeamExerciseDraft(execution, profileId),
+        finalizeActiveTeamExerciseDraft: (execution) =>
+          manager.finalizeActiveTeamExerciseDraft(execution, profileId),
+        discardActiveTeamExerciseDraft: (executionId) =>
+          manager.discardActiveTeamExerciseDraft(executionId, profileId),
+        refreshTeamExerciseEligibility: (workspace) =>
+          manager.refreshTeamExerciseEligibility(workspace, profileId),
+        setMyTeamExerciseRecordingPermission: (teamId, granted) =>
+          manager.setMyTeamExerciseRecordingPermission(teamId, profileId, granted),
       }}>
         <SportingPersistenceContext.Provider value={repositories}>
           {children}

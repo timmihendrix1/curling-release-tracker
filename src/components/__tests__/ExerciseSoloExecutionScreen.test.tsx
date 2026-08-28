@@ -12,7 +12,7 @@ import {
 } from "../../lib/exercises/__tests__/executionFixtures";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
 import type { ExerciseExecution } from "../../lib/exercises/executionTypes";
-import { findExerciseVersion } from "../../lib/exercises/lookup";
+import { findExerciseVersion, resolveMeasurementProtocols } from "../../lib/exercises/lookup";
 import ExerciseSoloExecutionScreen from "../ExerciseSoloExecutionScreen";
 
 afterEach(cleanup);
@@ -23,6 +23,10 @@ function createShotmakingExecution(): ExerciseExecution {
   const outcome = createSoloExerciseExecution(version, {
     trainingSessionId: FIXTURE_SESSION_ID,
     athleteProfileId: FIXTURE_ATHLETE_ID,
+    enabledMeasurementProtocols: resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      version.compatibleMeasurementProtocols
+    ).map(({ protocol }) => protocol),
   });
   if (!outcome.ok) throw new Error(outcome.error.message);
   return outcome.value;
@@ -101,6 +105,24 @@ describe("ExerciseSoloExecutionScreen", () => {
     const result = screen.getByRole("heading", { name: "Exercise result" }).closest("section");
     expect(result).not.toBeNull();
     expect(within(result as HTMLElement).getByText("3/4")).toBeInTheDocument();
+  });
+
+  it("records optional Rotation Count in whole or half rotations", () => {
+    render(<Harness initial={createShotmakingExecution()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), { target: { value: "2.5" } });
+    fireEvent.click(screen.getByRole("button", { name: "4 points, 100 percent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
+
+    expect(screen.getByText(/2.5 rotations/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Outhandle" }));
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), { target: { value: "2.25" } });
+    fireEvent.click(screen.getByRole("button", { name: "3 points, 75 percent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("whole or half rotation");
   });
 
   it("disables every persisted mutation while the Session domain is not writable", () => {

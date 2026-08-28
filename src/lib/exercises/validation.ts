@@ -207,10 +207,28 @@ export function validateExerciseCatalogPackage(
         `${where} has an unsupported unit ${JSON.stringify(protocol.unit)}.`
       );
     }
-    if (!isOneOf(protocol.measurementMode, VALID_MEASUREMENT_MODES)) {
+    if (protocol.metricType === "release-time" && !isOneOf(protocol.measurementMode, VALID_MEASUREMENT_MODES)) {
       add(
         "invalid_measurement_protocol",
         `${where} has an invalid measurement mode ${JSON.stringify(protocol.measurementMode)}.`
+      );
+    }
+    if (protocol.metricType === "release-time" && protocol.unit !== "seconds") {
+      add(
+        "invalid_measurement_protocol",
+        `${where} must use seconds for Release Time.`
+      );
+    }
+    if (protocol.metricType === "rotation-count" && protocol.measurementMode !== undefined) {
+      add(
+        "invalid_measurement_protocol",
+        `${where} must not declare a release-time measurement mode.`
+      );
+    }
+    if (protocol.metricType === "rotation-count" && protocol.unit !== "rotations") {
+      add(
+        "invalid_measurement_protocol",
+        `${where} must use rotations for Rotation Count.`
       );
     }
     if (!isNonEmptyString(protocol.referencePoints)) {
@@ -239,7 +257,7 @@ export function validateExerciseCatalogPackage(
     if (protocol.target !== null) {
       add(
         "invalid_measurement_protocol",
-        `${where} must not prescribe a target or tolerance in Stage A (found ${JSON.stringify(
+        `${where} must not prescribe a curated target or tolerance (found ${JSON.stringify(
           protocol.target
         )}).`
       );

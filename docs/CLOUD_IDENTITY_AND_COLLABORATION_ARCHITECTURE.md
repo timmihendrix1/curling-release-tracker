@@ -17,8 +17,10 @@ is not exposed by Team participation or a Team data-sharing grant. Section 12.4 
 the separately approved, bounded offline upload path for one-device Team Exercise
 Sessions. That path is a feature-specific extension built on the durable-outbox and
 idempotent-sync backbone Stage B0.4 already requires — not a second, parallel sync
-implementation. Its Team-specific authority revalidation and partial-bundle rejection
-remain separate Exercise work. The Exercise Library capability mapping now follows the
+implementation. ADR-0032 now implements its Team-specific server authority and
+per-athlete partial-bundle rejection; ADR-0033 implements its Profile-scoped local
+outbox/service bridge, while Team UI remains separate Exercise work. The Exercise
+Library capability mapping now follows the
 existing Free / Personal Athlete / Team Workspace / Coaching layers in Section 17.5;
 athlete-owned raw Team Session results remain viewable and exportable independently of
 a Personal Athlete entitlement.
@@ -1093,9 +1095,10 @@ do not replace durable pull, push, retry, idempotency and conflict handling.
 
 The Exercise Library Version 1 requires one feature-specific offline path: one
 authenticated recorder device may capture and complete a multi-athlete Team Exercise
-Session locally, then upload it when connectivity returns. This is a later Exercise
-Library implementation requirement and not an already existing capability. **Corrected
-2026-08-24:** it is a **separately specified extension built on Stage B0.4's durable outbox,
+Session locally, then upload it when connectivity returns. ADR-0032 implements and
+verifies its server-side authority/record boundary and ADR-0033 implements the durable
+Profile-scoped outbox/service bridge. Local capture and Team UI remain, so this is not
+yet an end-to-end application capability. **Corrected 2026-08-24:** it is a **separately specified extension built on Stage B0.4's durable outbox,
 stable-ID and idempotent-upload backbone** (§12.1), not a parallel mechanism. What is
 genuinely Exercise-specific is only: **Team authority revalidation per athlete, the shared
 Session envelope, per-athlete result bundles, and partial rejection with per-bundle
@@ -1126,9 +1129,10 @@ in Version 1.
 
 This bounded queue does not provide generic bidirectional domain sync, concurrent
 recording, cross-device continuation, offline role or permission changes, or a general
-conflict-resolution protocol. Its persistence format, account-isolation mechanism,
-atomic server boundary and retry evidence require a focused design and real database
-verification before implementation can be called complete.
+conflict-resolution protocol. ADR-0032 supplies the focused, real-database-verified
+server persistence and atomic partial-upload boundary. The feature remains incomplete
+until the existing Profile-scoped local queue is extended and the full retry/account-
+switch/UI path is verified.
 
 ## 13. Security model
 
@@ -2091,8 +2095,9 @@ in `docs/TECHNICAL_DEBT_AND_ROADMAP.md`, not scope belonging to this phase.
 - Add versioned training plans and planned sessions.
 - Assign planned sessions to athletes and teams.
 - Cache assignments for offline execution.
-- Implement the bounded, one-recorder completed-Team-Session upload defined in Section
-  12.4, with durable local state, per-athlete authority checks and idempotent retry.
+- Complete the bounded, one-recorder Team-Session path defined in Section 12.4: build on
+  ADR-0032's per-athlete authority and ADR-0033's durable local outbox/service by adding
+  capture UI and visible partial-retry states.
 - Return recipient status and linked athlete session.
 
 ### Phase 7: Closed team pilot

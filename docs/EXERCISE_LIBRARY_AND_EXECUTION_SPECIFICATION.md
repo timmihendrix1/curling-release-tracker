@@ -14,7 +14,7 @@
 
 This document is **approved for staged implementation** and is the canonical product
 and domain source for the Exercise Library and non-release-time exercise execution.
-The Swiss Curling rights check in section 5.7 remains an external release gate before
+The Swiss Curling rights check in section 5.4 remains an external release gate before
 access expands beyond the named closed-beta team; it is not an open Version 1 product
 decision.
 
@@ -1426,6 +1426,33 @@ retained with the result.
 
 ## Stage C — Team execution on one device
 
+**Implementation status (2026-08-28): Stages C1-C3b are implemented; Stage C is not
+complete.** ADR-0031 adds the standalone Team aggregate: confirmed Profile
+participants, several athlete-owned result slots, the authenticated active-recorder
+snapshot, all five approved simple rotation configurations, actual role-assignment
+segments and per-attempt athlete/recorder attribution. Its strict validator rejects
+corrupt roster, role, rotation, result and recorder claims together. Private Athlete
+Notes are forbidden in this shared recorder aggregate. C1 deliberately introduced no
+Session attachment, local storage, upload service, revision/notification workflow or
+UI; later ADRs now supply the completed upload, active-draft and capture boundaries,
+while Team Release Time still uses the existing timing runner rather than creating a
+parallel Measured execution. ADR-0032 implements the real Postgres boundary for explicit
+recording permission, immutable completed-Session envelopes, independently retried
+athlete-owned bundles, concrete-Session approval and athlete-only private notes. Its
+three migrations and 68-test pgTAP suite are executed. ADR-0033 adds the strict
+coordination/result serializer, provider-neutral plus Supabase RPC service and schema-v2
+extension of the existing Profile-scoped sporting outbox. It durably stores the complete
+package before ordered upload and retains pending, blocked, issue and exact-digest
+acknowledgement state across reload and account switching. ADR-0034 advances that same
+state to schema 3 with a strict latest-known active roster/permission snapshot and adds
+the athlete-owned permission control in Team settings. ADR-0035 advances the same record
+to schema 4 with one Profile-bound active Team draft and atomically replaces its exact
+completion with the immutable Session/bundle outbox. ADR-0036 adds cache-bounded Team
+setup and durable one-device Technique/Shotmaking capture with actual role changes,
+per-athlete results, optional manual half-step Rotation Count and honest completion sync
+truth. Team result/private-note read UI, revisions, voiding and notifications remain
+unimplemented.
+
 - select several training athletes and supporting participants;
 - enforce the athlete's explicit Team recording permission;
 - assign and rotate roles;
@@ -1446,10 +1473,12 @@ retained with the result.
   and
 - prove that Team coordination does not transfer data ownership.
 
-This stage requires real database/RLS/transaction verification if it writes athlete-owned
-cloud records. It also requires a focused persistence and upload-protocol design because
-the required durable queue does not exist today. TypeScript mocks alone are insufficient
-evidence.
+The server authority and client persistence/upload portions have real database and
+application-service verification. Permission control, bounded offline Team capture and
+honest completion sync receipts are exposed in UI by C2c/C3b. The remaining stage must
+expose athlete-owned result/private-note reads and then add the active/post-completion
+revision, voiding and notification workflow.
+TypeScript mocks alone remain insufficient evidence for any new cloud-authority change.
 
 Independent review must additionally verify that completion prevents silent overwrite,
 that before-and-after values follow current data grants, that private Athlete Notes

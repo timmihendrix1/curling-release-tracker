@@ -808,7 +808,51 @@ describe("Measurement Protocols", () => {
     );
   });
 
-  it("rejects a protocol that prescribes a target or tolerance in Stage A", () => {
+  it("keeps Release Time and Rotation Count protocol semantics distinct", () => {
+    expectRejected(
+      buildTestPackage({
+        measurementProtocols: [buildTestProtocol({ measurementMode: undefined })],
+      }),
+      "invalid_measurement_protocol"
+    );
+    expectRejected(
+      buildTestPackage({
+        measurementProtocols: [buildTestProtocol({ unit: "rotations" })],
+      }),
+      "invalid_measurement_protocol"
+    );
+    expectRejected(
+      buildTestPackage({
+        measurementProtocols: [buildTestProtocol({
+          metricType: "rotation-count",
+          unit: "rotations",
+        })],
+      }),
+      "invalid_measurement_protocol"
+    );
+    expectRejected(
+      buildTestPackage({
+        measurementProtocols: [buildTestProtocol({
+          metricType: "rotation-count",
+          unit: "seconds",
+          measurementMode: undefined,
+        })],
+      }),
+      "invalid_measurement_protocol"
+    );
+    expect(validateExerciseCatalogPackage(buildTestPackage({
+      measurementProtocols: [buildTestProtocol({
+        id: "test-rotation-count",
+        name: "Test Rotation Count",
+        metricType: "rotation-count",
+        unit: "rotations",
+        measurementMode: undefined,
+      })],
+      versions: [buildTestVersion({ compatibleMeasurementProtocols: [] })],
+    }))).toEqual({ valid: true });
+  });
+
+  it("rejects a protocol that prescribes a target or tolerance", () => {
     expectRejected(
       buildTestPackage({
         measurementProtocols: [buildTestProtocol({ target: 3.75 as unknown as null })],

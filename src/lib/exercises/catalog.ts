@@ -2,10 +2,10 @@
 // compiled with the application (spec 5.5). Not persisted, not fetched, and
 // deliberately not expressed as conditional UI logic for named Exercises.
 import {
-  buildStageAExercises,
-  buildStageAExerciseVersions,
+  buildCuratedExercises,
+  buildCuratedExerciseVersions,
 } from "./content";
-import { STAGE_A_MEASUREMENT_PROTOCOLS } from "./measurementProtocols";
+import { CURATED_MEASUREMENT_PROTOCOLS } from "./measurementProtocols";
 import {
   EXERCISE_CATALOG_PACKAGE_SCHEMA_VERSION,
   type ExerciseCatalogPackage,
@@ -37,9 +37,9 @@ export function buildExerciseCatalogPackage(): ExerciseCatalogPackage {
   return {
     packageSchemaVersion: EXERCISE_CATALOG_PACKAGE_SCHEMA_VERSION,
     contentLanguage: "en",
-    exercises: buildStageAExercises(),
-    versions: buildStageAExerciseVersions(),
-    measurementProtocols: STAGE_A_MEASUREMENT_PROTOCOLS.map((protocol) => ({ ...protocol })),
+    exercises: buildCuratedExercises(),
+    versions: buildCuratedExerciseVersions(),
+    measurementProtocols: CURATED_MEASUREMENT_PROTOCOLS.map((protocol) => ({ ...protocol })),
   };
 }
 

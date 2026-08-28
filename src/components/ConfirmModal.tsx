@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 type ConfirmModalProps = {
   title: string;
   message: string;
@@ -19,10 +21,16 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
+  const titleId = useId();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-        <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+      >
+        <h2 id={titleId} className="text-xl font-semibold text-slate-900">{title}</h2>
 
         <p className="mt-3 text-sm leading-6 text-slate-600">{message}</p>
 

@@ -371,6 +371,40 @@ describe("Exercise detail", () => {
     expect(onStartExercise).not.toHaveBeenCalled();
   });
 
+  it("offers a separate Team setup action for Technique and Shotmaking", () => {
+    const onSetUpTeamExercise = vi.fn();
+    renderTrainLanding({ onSetUpTeamExercise });
+    openExercises();
+    openDetail("Eight Guards, Progressively Longer");
+
+    fireEvent.click(screen.getByRole("button", { name: "Set Up Team Exercise" }));
+    expect(onSetUpTeamExercise).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Eight Guards, Progressively Longer", primaryFocus: "shotmaking" })
+    );
+  });
+
+  it("does not create a parallel Team action for Measured Release Time", () => {
+    renderTrainLanding({ onSetUpTeamExercise: vi.fn() });
+    openExercises();
+    openDetail("Release Time");
+
+    expect(screen.queryByRole("button", { name: "Set Up Team Exercise" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue to Timing Setup" })).toBeInTheDocument();
+  });
+
+  it("gates Team setup independently from Solo Session persistence", () => {
+    renderTrainLanding({
+      onSetUpTeamExercise: vi.fn(),
+      teamExerciseStartDisabled: true,
+      startExerciseDisabled: false,
+    });
+    openExercises();
+    openDetail("Release Point");
+
+    expect(screen.getByRole("button", { name: "Start Exercise" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Set Up Team Exercise" })).toBeDisabled();
+  });
+
   it("moves a successfully linked Measured Exercise to the existing Quick Start panel", () => {
     const onEntryPathChange = vi.fn();
     renderTrainLanding({ onEntryPathChange });
@@ -840,9 +874,13 @@ describe("version, provenance and participant wording", () => {
     renderTrainLanding();
     openExercises();
 
-    for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
+    for (const [title, version] of [
+      ["Release Point", 1],
+      ["Eight Guards, Progressively Longer", 2],
+      ["Release Time", 1],
+    ] as const) {
       openDetail(title);
-      expect(screen.getByText("Exercise version 1")).toBeInTheDocument();
+      expect(screen.getByText(`Exercise version ${version}`)).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     }
 

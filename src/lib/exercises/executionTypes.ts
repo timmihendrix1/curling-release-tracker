@@ -11,7 +11,12 @@ export type ExerciseExecutionVolume = {
   value: number;
 };
 export type ExerciseExecutionDeviation = {
-  kind: "sweeper-count" | "sweeping-use" | "required-measurement" | "other";
+  kind:
+    | "sweeper-count"
+    | "sweeping-use"
+    | "role-assignment"
+    | "required-measurement"
+    | "other";
   description: string;
 };
 
@@ -32,7 +37,46 @@ export type ExerciseRoleAssignmentSegment = {
   sweeperProfileIds: string[];
   skipProfileId?: string;
   observerProfileId?: string;
+  coachProfileIds?: string[];
   timekeeperProfileId?: string;
+  /** Required on Team segments; absent on the legacy Solo shape. */
+  sweepingUsed?: boolean;
+  /** Required on Team segments; the authenticated recorder who established it. */
+  recordedByProfileId?: string;
+  /** Required on Team segments so planned rotation never replaces actual history. */
+  transitionReason?: ExerciseRoleTransitionReason;
+};
+
+export type ExerciseRoleTransitionReason =
+  | "initial"
+  | "manual"
+  | "after-every-stone"
+  | "after-stone-count"
+  | "after-series";
+
+export type ExerciseTeamParticipant = {
+  profileId: string;
+  participation: "training-athlete" | "supporting";
+};
+
+export type ExerciseRotationConfiguration =
+  | { kind: "fixed"; athleteOrder: string[] }
+  | { kind: "after-every-stone"; athleteOrder: string[] }
+  | { kind: "after-stone-count"; athleteOrder: string[]; stoneCount: number }
+  | { kind: "after-series"; athleteOrder: string[] }
+  | { kind: "manual"; athleteOrder: string[] };
+
+/**
+ * Stage C1's locally usable Team context. Permission state is deliberately not
+ * represented as cloud authority: the server-side Stage C upload boundary must
+ * authenticate and revalidate every athlete bundle independently.
+ */
+export type ExerciseTeamContext = {
+  kind: "team";
+  teamId: string;
+  recorderProfileId: string;
+  participantRoster: ExerciseTeamParticipant[];
+  rotation: ExerciseRotationConfiguration;
 };
 
 export type ExerciseMeasurement = {
@@ -69,6 +113,8 @@ type ExerciseAttemptBase = {
   roleAssignmentSegmentId: string;
   sequenceNumber: number;
   createdAt: string;
+  /** Required for Team attempts; absent on the legacy Solo shape. */
+  recordedByProfileId?: string;
 };
 
 export type ShotmakingExerciseAttempt = ExerciseAttemptBase & {
@@ -113,5 +159,7 @@ export type ExerciseExecution = {
   abandonedAt?: string;
   roleAssignmentSegments: ExerciseRoleAssignmentSegment[];
   athleteResults: AthleteExerciseResult[];
+  /** Absence is the backwards-compatible Stage B Solo execution shape. */
+  teamContext?: ExerciseTeamContext;
   schemaVersion: number;
 };

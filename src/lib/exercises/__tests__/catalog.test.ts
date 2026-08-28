@@ -6,6 +6,7 @@ import {
 } from "../catalog";
 import {
   EIGHT_GUARDS_EXERCISE_ID,
+  EIGHT_GUARDS_V1_VERSION_ID,
   EIGHT_GUARDS_VERSION_ID,
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
@@ -25,6 +26,7 @@ import {
 import {
   RELEASE_TIME_BACK_HOG_PROTOCOL_ID,
   RELEASE_TIME_HOG_HOG_PROTOCOL_ID,
+  ROTATION_COUNT_PROTOCOL_ID,
 } from "../measurementProtocols";
 import {
   EXERCISE_CATALOG_PACKAGE_SCHEMA_VERSION,
@@ -51,7 +53,7 @@ describe("production Exercise catalog", () => {
       EIGHT_GUARDS_EXERCISE_ID,
       RELEASE_TIME_EXERCISE_ID,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(3);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(4);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -62,10 +64,10 @@ describe("production Exercise catalog", () => {
     expect(new Set(versionIds).size).toBe(versionIds.length);
   });
 
-  it("gives every Exercise Version the current content schema version and version number 1", () => {
+  it("gives every Exercise Version the current content schema version and a positive version number", () => {
     for (const version of EXERCISE_CATALOG.versions) {
       expect(version.contentSchemaVersion).toBe(EXERCISE_CONTENT_SCHEMA_VERSION);
-      expect(version.version).toBe(1);
+      expect(version.version).toBeGreaterThan(0);
     }
   });
 
@@ -161,6 +163,9 @@ describe("deterministic lookup", () => {
     expect(
       listExerciseVersions(EXERCISE_CATALOG, RELEASE_POINT_EXERCISE_ID).map((v) => v.version)
     ).toEqual([1]);
+    expect(
+      listExerciseVersions(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID).map((v) => v.version)
+    ).toEqual([1, 2]);
     expect(listExerciseVersions(EXERCISE_CATALOG, "not-a-real-exercise")).toEqual([]);
   });
 });
@@ -185,6 +190,18 @@ describe("Measurement Protocols", () => {
       findMeasurementProtocol(EXERCISE_CATALOG, RELEASE_TIME_HOG_HOG_PROTOCOL_ID, 1)
         ?.measurementMode
     ).toBe("hog-hog");
+  });
+
+  it("defines manual Rotation Count independently of release-time modes", () => {
+    const protocol = findMeasurementProtocol(EXERCISE_CATALOG, ROTATION_COUNT_PROTOCOL_ID, 1);
+    expect(protocol).toMatchObject({
+      metricType: "rotation-count",
+      unit: "rotations",
+      allowedSources: ["manual"],
+      target: null,
+    });
+    expect(protocol?.measurementMode).toBeUndefined();
+    expect(protocol?.guidance).toContain("0.5");
   });
 
   it("claims no hardware capture support", () => {
@@ -246,6 +263,19 @@ describe("curated Stage A content", () => {
     expect(version.sourceReferenceGoal?.evaluated).toBe(false);
     expect(version.sourceReferenceGoal?.text).toContain("6 of 8 stones");
     expect(version.sourceReferenceGoal?.text).toContain("not evaluated by the app");
+    expect(version.compatibleMeasurementProtocols).toEqual([{
+      protocolId: ROTATION_COUNT_PROTOCOL_ID,
+      protocolVersion: 1,
+      requirement: "optional",
+    }]);
+  });
+
+  it("keeps Eight Guards version 1 unchanged while version 2 adds Rotation Count", () => {
+    const v1 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_V1_VERSION_ID);
+    const v2 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
+    expect(v1).toMatchObject({ version: 1, compatibleMeasurementProtocols: [] });
+    expect(v2).toMatchObject({ version: 2 });
+    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v2?.id);
   });
 
   it("Eight Guards carries visible English Swiss Curling attribution and an independently drawn diagram", () => {

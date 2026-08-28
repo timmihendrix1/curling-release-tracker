@@ -2,8 +2,9 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import TeamsScreen from "../TeamsScreen";
+import type { SportingCloudSyncContextValue } from "../ProfileScopedSportingPersistence";
 import type { ConfiguredCloudConfig } from "../../lib/supabase/config";
 import type { GateSession } from "../../lib/identity/identityRuntime";
 import { FakeTeamBackend, FakeTeamService } from "../../lib/team/fakeTeamService";
@@ -47,7 +48,7 @@ async function setUpAdminWithTeam() {
   backend.grantPilotTeamCreationCapability(profile.id);
   const created = await teamService.createTeam({ name: "The Curlers", participationAsPlayer: true, functions: [] });
   if (!created.ok) throw new Error("setup failed");
-  return { backend, teamService, teamId: created.value.team.id };
+  return { backend, teamService, teamId: created.value.team.id, profileId: profile.id };
 }
 
 async function openWorkspace(user: ReturnType<typeof userEvent.setup>, teamService: FakeTeamService) {
@@ -59,6 +60,55 @@ async function openWorkspace(user: ReturnType<typeof userEvent.setup>, teamServi
 }
 
 describe("TeamsScreen — signed in", () => {
+  it("lets an athlete control the Team's prospective Exercise recording permission", async () => {
+    const user = userEvent.setup();
+    const { teamService, teamId, profileId } = await setUpAdminWithTeam();
+    const setMyTeamExerciseRecordingPermission = vi.fn(async () => "updated" as const);
+    const refreshTeamExerciseEligibility = vi.fn(async () => true);
+    const exerciseSync: SportingCloudSyncContextValue = {
+      ready: true,
+      truth: "synced",
+      pendingCount: 0,
+      teamBlockedCount: 0,
+      teamSessions: [],
+      activeTeamExerciseDraft: null,
+      teamEligibilitySnapshots: [{
+        teamId,
+        teamName: "The Curlers",
+        cachedAt: "2026-08-28T10:00:00Z",
+        participants: [{
+          profileId,
+          displayName: "Alex",
+          participationAsPlayer: true,
+          functions: ["team_admin"],
+          recordingPermissionGranted: false,
+        }],
+      }],
+      retry: vi.fn(),
+      enqueueCompletedTeamExercise: vi.fn(async () => true),
+      saveActiveTeamExerciseDraft: vi.fn(async () => true),
+      finalizeActiveTeamExerciseDraft: vi.fn(async () => true),
+      discardActiveTeamExerciseDraft: vi.fn(async () => true),
+      refreshTeamExerciseEligibility,
+      setMyTeamExerciseRecordingPermission,
+    };
+    render(
+      <TeamsScreen
+        onClose={() => {}}
+        config={CONFIGURED}
+        identitySession={{ ...GATE_SESSION, profileId }}
+        createTeamService={() => teamService}
+        exerciseSync={exerciseSync}
+      />
+    );
+    await user.click(await screen.findByText("The Curlers"));
+    await screen.findByText("Exercise recording permission");
+    expect(refreshTeamExerciseEligibility).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Grant Permission" }));
+    await waitFor(() => expect(setMyTeamExerciseRecordingPermission).toHaveBeenCalledWith(teamId, true));
+    await screen.findByText("Exercise recording permission granted.");
+  });
+
   it("never offers a Team-local Profile bootstrap", async () => {
     const backend = new FakeTeamBackend();
     backend.setAccountEmail("user-1", "a@example.com");
