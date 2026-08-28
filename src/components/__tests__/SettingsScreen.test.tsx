@@ -17,7 +17,7 @@ const baseProps = {
 };
 
 describe("SettingsScreen", () => {
-  it("is reachable and shows Data Management and Data & Privacy", () => {
+  it("is reachable and shows Data Management and Privacy & Terms", () => {
     render(
       <SettingsScreen
         {...baseProps}
@@ -28,7 +28,7 @@ describe("SettingsScreen", () => {
     );
 
     expect(screen.getByText("Data Management")).toBeInTheDocument();
-    expect(screen.getByText("Data & Privacy")).toBeInTheDocument();
+    expect(screen.getByText("Privacy & Terms")).toBeInTheDocument();
   });
 
   it("no longer shows the old About section title", () => {
@@ -62,6 +62,10 @@ describe("SettingsScreen", () => {
     expect(screen.getByRole("link", { name: "Read the Privacy Notice" })).toHaveAttribute(
       "href",
       "/privacy"
+    );
+    expect(screen.getByRole("link", { name: "Read the Terms of Service" })).toHaveAttribute(
+      "href",
+      "/terms"
     );
   });
 

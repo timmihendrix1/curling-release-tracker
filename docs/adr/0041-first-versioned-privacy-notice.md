@@ -55,9 +55,9 @@ unchanged.
   newer notice.
 - Editing this version in place after activation is prohibited. A material correction is
   a new dated route, new version label and separately reviewed atomic database rotation.
-- The snippet does not activate Terms of Service. Onboarding still requires a separately
-  approved current Terms version, so this change alone does not make the test environment
-  release-ready.
+- The snippet does not activate Terms of Service. ADR-0042 supplies the separately
+  versioned first Terms text and its own owner-operated publication step; neither
+  document activates the other.
 - Legal review before a broader or public release remains necessary, especially for
   exact retention periods, subprocessors and hosting regions, account deletion, minors,
   billing, sensors, video, AI and public/community content.

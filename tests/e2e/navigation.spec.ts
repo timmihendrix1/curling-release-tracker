@@ -380,14 +380,14 @@ test.describe("Desktop", () => {
 });
 
 test.describe("Settings", () => {
-  test("Data Management and Data & Privacy are both visible, with export/clear still working", async ({
+  test("Data Management and Privacy & Terms are both visible, with export/clear still working", async ({
     page,
   }) => {
     await freshLoad(page);
     await goToSettings(page);
 
     await expect(page.getByText("Data Management")).toBeVisible();
-    await expect(page.getByText("Data & Privacy")).toBeVisible();
+    await expect(page.getByText("Privacy & Terms")).toBeVisible();
     await expect(page.getByText("About", { exact: true })).toHaveCount(0);
     await expect(
       page.getByText(

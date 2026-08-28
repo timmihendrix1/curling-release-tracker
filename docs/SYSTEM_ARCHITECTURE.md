@@ -2611,8 +2611,9 @@ block returns a named bundle outcome without rolling back accepted bundles. Part
 alone grants no historical read, and the recorder cannot use the upload boundary to read
 or write an athlete's private note. `supabase/tests/team_exercise_cloud.test.sql` has been
 executed against real local Postgres and passes 68/68. C4a's separate post-completion
-suite passes 48/48 after all seventeen migrations are applied from scratch. The seventeenth
-is ADR-0041's documentation-only table-comment update; it publishes no Legal row.
+suite passes 48/48 after all eighteen migrations are applied from scratch. ADR-0041's
+seventeenth migration and ADR-0042's eighteenth migration update repository metadata
+comments only; neither publishes a Legal row.
 
 ADR-0033 connects this boundary without inventing a second sync engine:
 
@@ -3275,6 +3276,18 @@ snippet in `supabase/snippets/publish_privacy_notice_2026_08_28.sql`. Local E2E 
 tests retain their isolated `example.invalid` fixtures. Privacy acknowledgement remains
 informational acknowledgement, not Marketing Consent or another inferred consent.
 
+**First Terms of Service.** ADR-0042 applies the same immutable evidence boundary to
+`terms-2026-08-29`. The public evidence page is
+`src/app/legal/terms/2026-08-29/page.tsx`; `/terms` is the moving human-friendly entry
+point only. The Terms describe the actual no-charge closed beta, account and acceptable-
+use obligations, Team recording, user-content permission, restricted source material,
+training safety, beta availability and mandatory-rights-preserving liability/law
+boundaries. They create no billing, SLA, community publishing or guardian workflow.
+After deployment and review, an owner separately runs
+`supabase/snippets/publish_terms_of_service_2026_08_29.sql`; no migration publishes or
+rotates either Legal document. Terms acceptance remains distinct from Privacy
+acknowledgement and both ids still come from the same validated server snapshot.
+
 **Local records are trust hints, not a security boundary.** A person able to alter browser storage can
 forge a trusted-device record, a barrier, an attempt or a resolution. B0.3 ensures the mounted sporting
 workspace is the namespace named by that local Profile record, rather than one shared workspace; it
@@ -3518,6 +3531,7 @@ local component state.
 | `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |
 | `identity/IdentityPendingTeamIntent.tsx` | Replays one durable invitation/Admin-Request intent only after gate readiness |
 | `legal/PrivacyNotice.tsx` | The immutable first closed-beta Privacy Notice content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/privacy` entry point (ADR-0041) |
+| `legal/TermsOfService.tsx` | The immutable first no-charge closed-beta Terms content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/terms` entry point (ADR-0042) |
 
 ### Domain and logic modules (`src/lib/`)
 

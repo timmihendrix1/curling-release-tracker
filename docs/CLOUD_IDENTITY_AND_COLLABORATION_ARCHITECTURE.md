@@ -418,8 +418,8 @@ Accountless use is withdrawn as a valid product path.** The canonical decision s
 3. After successful authentication, exactly one personal `Profile` is created or
    resolved.
 4. Before first application access the user must provide a **display name**, **accept the
-   current Terms of Service**, and **accept or acknowledge the current Privacy Policy** as
-   legally appropriate. Legal acceptance must be versionable and auditable; its schema is
+   current Terms of Service**, and **acknowledge the current Privacy Notice**. The two
+   actions remain separate. Legal evidence must be versionable and auditable; its schema is
    not designed here. **Marketing consent is separate, optional and off by default**, and
    is never bundled into required legal acceptance.
 5. Completed onboarding grants the Profile **Athlete capability** and the **default Free

@@ -1556,8 +1556,9 @@ same-origin route after active membership in the configured Team is proven throu
 caller's own RLS scope. The browser resolver is asynchronous and fail-closed, and the two
 embedded German labels are covered by data-driven English overlays without an
 Exercise-specific renderer branch. This implementation does not widen Swiss Curling's
-permission scope and does not by itself open the external test environment; the initial
-Privacy Notice and deployment configuration remain separate release-readiness work.
+permission scope and does not by itself open the external test environment; ADR-0041/0042
+now provide the initial Privacy Notice and Terms, while deployment, explicit Legal
+metadata publication and environment configuration remain separate release operations.
 
 - add the remaining four approved initial-test Exercises from Section 5.6;
 - validate every instruction, source diagram and attribution inside the restricted

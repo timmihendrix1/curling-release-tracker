@@ -1,6 +1,6 @@
 # Database tests
 
-This directory holds five pgTAP suites over the seventeen migrations in
+This directory holds five pgTAP suites over the eighteen migrations in
 `supabase/migrations/`. All five have been executed against a real local Supabase
 Postgres applied from scratch, and all five are green.
 
@@ -15,7 +15,7 @@ Postgres applied from scratch, and all five are green.
 Run them from scratch, in this order:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all seventeen migrations
+supabase db reset --local --no-seed --yes            # applies all eighteen migrations
 supabase test db --local supabase/tests/identity_onboarding.test.sql
 supabase test db --local supabase/tests/team_foundation.test.sql
 supabase db reset --local --no-seed --yes
@@ -58,7 +58,7 @@ conflicts, terminal whole-result void, original/current recipient intersection,
 actor/former/non-participant exclusion, entitlement re-evaluation, metadata-only
 payloads, notification/audit cardinality, RLS, direct-write and anonymous denial,
 append-only trigger defence, grants and pinned function search paths. The existing
-68-assertion Team Exercise cloud suite remains green after all seventeen migrations.
+68-assertion Team Exercise cloud suite remains green after all eighteen migrations.
 
 ---
 
@@ -250,7 +250,7 @@ surface, which this stage does not implement.
 ## What this stage does and does not establish
 
 **Established:** the SQL foundation and the mounted B0.2 application integration are
-implemented. All seventeen migrations apply from scratch; `complete_personal_onboarding`
+implemented. All eighteen migrations apply from scratch; `complete_personal_onboarding`
 is the only browser-reachable writer of the onboarding consequence set.
 
 **Not established, and not claimed:**
@@ -286,7 +286,7 @@ through canonical personal onboarding and proves that the forward retirement mig
 denies browser execution of the former bootstrap route:
 
 ```sh
-supabase db reset --local --no-seed --yes            # applies all seventeen migrations
+supabase db reset --local --no-seed --yes            # applies all eighteen migrations
 supabase test db --local supabase/tests/team_foundation.test.sql
 ```
 

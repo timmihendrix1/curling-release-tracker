@@ -176,26 +176,36 @@ export default function SettingsScreen({
           </p>
         )}
 
-        {/* Data & Privacy is a footnote to Data Management, not a
+        {/* Privacy & Terms is a footnote to Data Management, not a
             competing section — same trust question, same surface
             (compositional redesign). */}
         <div className="mt-5 border-t border-slate-100 pt-4">
           <h2 className="text-sm font-semibold text-slate-500">
-            Data &amp; Privacy
+            Privacy &amp; Terms
           </h2>
           <p className="mt-1 text-sm text-slate-600">
             Completed training sessions and Assessment results are saved on this
             device and synced to your private cloud account when online. In-progress
             training and Assessment drafts stay on this device.
           </p>
-          <a
-            href="/privacy"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="mt-2 inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
-          >
-            Read the Privacy Notice
-          </a>
+          <div className="mt-2 flex flex-wrap gap-x-4">
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+            >
+              Read the Privacy Notice
+            </a>
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+            >
+              Read the Terms of Service
+            </a>
+          </div>
         </div>
       </div>
 

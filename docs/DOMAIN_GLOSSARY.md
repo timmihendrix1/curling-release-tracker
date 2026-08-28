@@ -183,6 +183,30 @@ basic restore as cross-device continuation (see **Sync Status**).
 
 ---
 
+## Terms of Service
+
+**[First closed-beta version implemented — ADR-0042.]** The contractual rules an
+onboarding Profile explicitly **accepts** before receiving Athlete capability and the
+default Free entitlement. The current repository version is `terms-2026-08-29`, with an
+immutable evidence route at `/legal/terms/2026-08-29`; `/terms` is only the
+human-friendly pointer to the current in-repository version. Server activation is a
+separate owner-operated publication step after deployment review.
+
+Terms acceptance is not Privacy acknowledgement, Marketing Consent, an entitlement or
+a Team permission. The accepted Legal-document id is pinned as onboarding evidence.
+
+---
+
+## Privacy Notice
+
+**[First closed-beta version implemented — ADR-0041.]** The transparency document a
+Profile **acknowledges** separately from accepting the Terms. Its current repository
+version is `privacy-2026-08-28`, with immutable evidence route
+`/legal/privacy/2026-08-28`; `/privacy` is the human-friendly current pointer. The
+acknowledgement is not consent and server activation remains owner-operated.
+
+---
+
 ## Identity Gate
 
 **[Implemented — Stage B0.2,
