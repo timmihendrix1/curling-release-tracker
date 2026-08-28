@@ -1,6 +1,7 @@
 // The ONE infrastructure helper permitted to read the provider session's
 // access token (ADR-0025 Decision 20). The token is read here, put into the
-// `Authorization` header of an already-validated same-origin request, and
+// `Authorization` header of an already-validated same-origin Team or restricted-
+// Exercise request, and
 // nowhere else: it is never returned, logged, snapshotted, serialized, stored,
 // or handed to a caller. `teamServiceFactory.ts` is the only production module
 // that value-imports this file — enforced by
@@ -16,6 +17,8 @@ import type {
   AuthorizedTeamRequest,
   TeamApiRoute,
 } from "./authorizedTeamRequest";
+import type { RestrictedAssetResolver } from "../exercises/restrictedAssets";
+import { isClosedBetaExerciseAssetId } from "../exercises/restrictedAssetCatalog";
 
 /** Every authorized request is confined to this prefix on this app's own
  * origin. Validated after construction, not merely assumed from the hard-coded
@@ -77,7 +80,11 @@ function resolveRoutePath(route: TeamApiRoute): string | null {
  * encoding surprise changed the path, the built URL no longer equals the
  * intended literal and the request is denied instead of sent somewhere else.
  */
-function buildConfinedUrl(path: string, origin: string): URL | null {
+function buildConfinedUrl(
+  path: string,
+  origin: string,
+  requiredPrefix: string = TEAM_API_PREFIX
+): URL | null {
   let expectedOrigin: URL;
   try {
     expectedOrigin = new URL(origin);
@@ -91,7 +98,7 @@ function buildConfinedUrl(path: string, origin: string): URL | null {
     return null;
   }
   if (url.origin !== expectedOrigin.origin) return null;
-  if (!url.pathname.startsWith(TEAM_API_PREFIX)) return null;
+  if (!url.pathname.startsWith(requiredPrefix)) return null;
   if (url.pathname !== path) return null;
   if (url.search !== "" || url.hash !== "") return null;
   return url;
@@ -101,6 +108,18 @@ function resolveDefaultOrigin(): string | null {
   if (typeof window === "undefined") return null;
   const origin = window.location.origin;
   return typeof origin === "string" && origin.length > 0 && origin !== "null" ? origin : null;
+}
+
+async function readAccessToken(client: SupabaseClient): Promise<string | null> {
+  try {
+    const { data } = await client.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    return typeof accessToken === "string" && accessToken.length > 0
+      ? accessToken
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -140,17 +159,7 @@ export function createAuthorizedTeamRequest(
     }
 
     // The one and only place the access token is read.
-    let token: string | null = null;
-    try {
-      const { data } = await client.auth.getSession();
-      const accessToken = data?.session?.access_token;
-      token = typeof accessToken === "string" && accessToken.length > 0 ? accessToken : null;
-    } catch {
-      // A session-lookup failure is treated exactly like "not signed in":
-      // authorization cannot be proven, so the request is not made. The raw
-      // failure is not surfaced, logged, or distinguishable from absence.
-      return { kind: "forbidden" };
-    }
+    const token = await readAccessToken(client);
     if (token === null) return { kind: "forbidden" };
 
     const doFetch = fetchImpl ?? fetch;
@@ -169,5 +178,82 @@ export function createAuthorizedTeamRequest(
     } catch {
       return { kind: "network_error" };
     }
+  };
+}
+
+const RESTRICTED_DIAGRAM_API_PREFIX =
+  "/api/exercises/restricted-diagrams/";
+const MAX_RESTRICTED_DIAGRAM_BYTES = 2_000_000;
+
+function blobAsDataUrl(blob: Blob): Promise<string | null> {
+  if (blob.size <= 0 || blob.size > MAX_RESTRICTED_DIAGRAM_BYTES) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = () =>
+      resolve(
+        typeof reader.result === "string" &&
+          reader.result.startsWith("data:image/png;base64,")
+          ? reader.result
+          : null
+      );
+    try {
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * Builds the browser-side half of ADR-0023's resolver. The opaque id is
+ * accepted only from the closed catalogue, the request is same-origin and
+ * exact-path checked before the token is read, and image bytes are returned
+ * only after the authenticated route authorizes the configured Team.
+ */
+export function createAuthorizedRestrictedAssetResolver(
+  client: SupabaseClient,
+  overrides: AuthorizedFetchOverrides = {}
+): RestrictedAssetResolver {
+  return {
+    async resolveRestrictedAsset(reference, distribution) {
+      if (
+        distribution.scope !== "restricted-closed-beta" ||
+        distribution.publicDeliveryPermitted !== false ||
+        !isClosedBetaExerciseAssetId(reference.assetId)
+      ) {
+        return null;
+      }
+
+      const path = `${RESTRICTED_DIAGRAM_API_PREFIX}${reference.assetId}`;
+      const origin = overrides.origin ?? resolveDefaultOrigin();
+      if (origin === null) return null;
+
+      const url = buildConfinedUrl(
+        path,
+        origin,
+        RESTRICTED_DIAGRAM_API_PREFIX
+      );
+      if (url === null) return null;
+
+      const token = await readAccessToken(client);
+      if (token === null) return null;
+
+      try {
+        const response = await (overrides.fetchImpl ?? fetch)(url.toString(), {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!response.ok) return null;
+        if (response.headers.get("content-type") !== "image/png") return null;
+        const src = await blobAsDataUrl(await response.blob());
+        return src === null ? null : { src };
+      } catch {
+        return null;
+      }
+    },
   };
 }

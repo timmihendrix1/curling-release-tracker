@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import type { ResolvedMeasurementProtocol } from "../lib/exercises/lookup";
+import {
+  resolvedMeasurementRunnerKind,
+  type ResolvedMeasurementProtocol,
+} from "../lib/exercises/lookup";
 import {
   EXERCISE_DETAIL_BACK_LABEL,
   exerciseDifficultyLabel,
@@ -128,6 +131,11 @@ export default function ExerciseDetail({
   teamStartDisabled = false,
   restrictedAssetResolver,
 }: ExerciseDetailProps) {
+  const measuredRunnerKind = version.primaryFocus === "measured"
+    ? resolvedMeasurementRunnerKind(measurementProtocols)
+    : null;
+  const usesReleaseTimingRunner = measuredRunnerKind === "release-timing";
+  const runnerUnsupported = measuredRunnerKind === "unsupported";
   const { guidance, participation, sweeping, source } = version;
 
   const hasCompletionGuidance =
@@ -397,19 +405,23 @@ export default function ExerciseDetail({
           {version.primaryFocus === "technique" &&
             "Practise Solo with a private note, or set up a shared Team observation. The app records no technique score."}
           {version.primaryFocus === "shotmaking" &&
-            "Practise Solo or with a Team, with no planned stone limit. Record the actual handle, optional Rotation Count and a 0–4 outcome for each stone."}
-          {version.primaryFocus === "measured" &&
+            "Practise Solo or with a Team, with no planned stone limit. Record the actual handle, any enabled optional Measurement and a 0–4 outcome for each stone."}
+          {version.primaryFocus === "measured" && usesReleaseTimingRunner &&
             "Continue with the existing Fixed, Variable and Blind Weight setup. No second measurement runner is created."}
+          {version.primaryFocus === "measured" && measuredRunnerKind === "exercise-execution" &&
+            "Start an open-ended measured exercise. Record each observed value, then complete the exercise when you are finished."}
+          {version.primaryFocus === "measured" && runnerUnsupported &&
+            "This Measurement combination does not yet have a supported execution runner."}
         </p>
         <button
           type="button"
           onClick={onStart}
-          disabled={startDisabled}
+          disabled={startDisabled || runnerUnsupported}
           className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {version.primaryFocus === "measured" ? "Continue to Timing Setup" : "Start Exercise"}
+          {usesReleaseTimingRunner ? "Continue to Timing Setup" : "Start Exercise"}
         </button>
-        {onStartTeam && version.primaryFocus !== "measured" && version.participation.supportedModes.includes("team") && (
+        {onStartTeam && !runnerUnsupported && !usesReleaseTimingRunner && version.participation.supportedModes.includes("team") && (
           <button
             type="button"
             onClick={onStartTeam}

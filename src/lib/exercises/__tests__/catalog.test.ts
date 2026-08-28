@@ -8,8 +8,17 @@ import {
   EIGHT_GUARDS_EXERCISE_ID,
   EIGHT_GUARDS_V1_VERSION_ID,
   EIGHT_GUARDS_VERSION_ID,
+  EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+  COME_AROUND_EXERCISE_ID,
+  COME_AROUND_VERSION_ID,
+  SOFT_TAKEOUT_EXERCISE_ID,
+  SOFT_TAKEOUT_VERSION_ID,
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
+  RELEASE_GATES_EXERCISE_ID,
+  RELEASE_GATES_VERSION_ID,
+  ROTATION_COUNT_EXERCISE_ID,
+  ROTATION_COUNT_VERSION_ID,
   RELEASE_TIME_EXERCISE_ID,
   RELEASE_TIME_VERSION_ID,
 } from "../content";
@@ -20,7 +29,9 @@ import {
   listCurrentExerciseVersions,
   listExerciseVersions,
   findMeasurementProtocol,
+  exerciseRunnerKind,
   resolveCurrentExerciseVersion,
+  resolvedMeasurementRunnerKind,
   resolveMeasurementProtocols,
 } from "../lookup";
 import {
@@ -47,13 +58,17 @@ describe("production Exercise catalog", () => {
     expect(EXERCISE_CATALOG.contentLanguage).toBe("en");
   });
 
-  it("contains exactly the three approved Stage A Exercises", () => {
+  it("contains the seven approved initial-test Exercises", () => {
     expect(EXERCISE_CATALOG.exercises.map((exercise) => exercise.id)).toEqual([
       RELEASE_POINT_EXERCISE_ID,
       EIGHT_GUARDS_EXERCISE_ID,
       RELEASE_TIME_EXERCISE_ID,
+      RELEASE_GATES_EXERCISE_ID,
+      ROTATION_COUNT_EXERCISE_ID,
+      COME_AROUND_EXERCISE_ID,
+      SOFT_TAKEOUT_EXERCISE_ID,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(4);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(9);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -74,6 +89,41 @@ describe("production Exercise catalog", () => {
   it("builds deterministically across independent calls", () => {
     expect(buildExerciseCatalogPackage()).toEqual(buildExerciseCatalogPackage());
     expect(buildEightGuardsDiagram()).toEqual(buildEightGuardsDiagram());
+  });
+});
+
+describe("Exercise runner classification", () => {
+  it("routes Release Time and Rotation Count by protocol semantics", () => {
+    const releaseTime = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID);
+    const rotationCount = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!releaseTime || !rotationCount) throw new Error("Missing measured Exercise fixture");
+
+    expect(exerciseRunnerKind(EXERCISE_CATALOG, releaseTime)).toBe("release-timing");
+    expect(exerciseRunnerKind(EXERCISE_CATALOG, rotationCount)).toBe("exercise-execution");
+  });
+
+  it("fails closed for absent, mixed or multiple standalone protocols", () => {
+    const releaseTime = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID);
+    const rotationCount = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!releaseTime || !rotationCount) throw new Error("Missing measured Exercise fixture");
+    const releaseProtocols = resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      releaseTime.compatibleMeasurementProtocols
+    );
+    const rotationProtocols = resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      rotationCount.compatibleMeasurementProtocols
+    );
+
+    expect(resolvedMeasurementRunnerKind([])).toBe("unsupported");
+    expect(resolvedMeasurementRunnerKind([
+      rotationProtocols[0],
+      rotationProtocols[0],
+    ])).toBe("unsupported");
+    expect(resolvedMeasurementRunnerKind([
+      releaseProtocols[0],
+      rotationProtocols[0],
+    ])).toBe("unsupported");
   });
 });
 
@@ -130,7 +180,7 @@ describe("runtime immutability", () => {
 describe("deterministic lookup", () => {
   it("resolves by stable Exercise id", () => {
     expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(
-      EIGHT_GUARDS_VERSION_ID
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID
     );
     expect(findExercise(EXERCISE_CATALOG, "not-a-real-exercise")).toBeUndefined();
   });
@@ -154,8 +204,12 @@ describe("deterministic lookup", () => {
   it("lists current versions in catalog order, one per Exercise", () => {
     expect(listCurrentExerciseVersions(EXERCISE_CATALOG).map((version) => version.id)).toEqual([
       RELEASE_POINT_VERSION_ID,
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       RELEASE_TIME_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
   });
 
@@ -165,7 +219,7 @@ describe("deterministic lookup", () => {
     ).toEqual([1]);
     expect(
       listExerciseVersions(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID).map((v) => v.version)
-    ).toEqual([1, 2]);
+    ).toEqual([1, 2, 3]);
     expect(listExerciseVersions(EXERCISE_CATALOG, "not-a-real-exercise")).toEqual([]);
   });
 });
@@ -270,12 +324,27 @@ describe("curated Stage A content", () => {
     }]);
   });
 
-  it("keeps Eight Guards version 1 unchanged while version 2 adds Rotation Count", () => {
+  it("keeps Eight Guards versions 1 and 2 while version 3 adds the restricted source diagram", () => {
     const v1 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_V1_VERSION_ID);
     const v2 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
+    const v3 = findExerciseVersion(
+      EXERCISE_CATALOG,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID
+    );
     expect(v1).toMatchObject({ version: 1, compatibleMeasurementProtocols: [] });
     expect(v2).toMatchObject({ version: 2 });
-    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v2?.id);
+    expect(v2?.diagram?.kind).toBe("structured-platform-diagram");
+    expect(v3).toMatchObject({ version: 3 });
+    expect(v3?.diagram?.kind).toBe("attributed-source-image");
+    if (v3?.diagram?.kind === "attributed-source-image") {
+      expect(v3.diagram.localizedTextOverlays).toEqual([
+        expect.objectContaining({
+          id: "move-stone-aside",
+          text: "After each stone stops, move it aside as a marker.",
+        }),
+      ]);
+    }
+    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v3?.id);
   });
 
   it("Eight Guards carries visible English Swiss Curling attribution and an independently drawn diagram", () => {
@@ -304,9 +373,93 @@ describe("curated Stage A content", () => {
     expect(version.compatibleMeasurementProtocols).toHaveLength(2);
   });
 
-  it("no Exercise uses a restricted attributed source image", () => {
-    for (const version of EXERCISE_CATALOG.versions) {
-      expect(version.diagram?.kind).not.toBe("attributed-source-image");
+  it("Release Gates is an unscored Technique Exercise with a schematic two-gate diagram", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, RELEASE_GATES_VERSION_ID);
+    expect(version).toMatchObject({
+      primaryFocus: "technique",
+      primaryTrainingPurpose: "line-control",
+    });
+    expect(version?.difficulty).toBeUndefined();
+    expect(version?.guidance.kind).toBe("observation");
+    expect(version?.diagram?.kind).toBe("structured-platform-diagram");
+    expect(version?.source.nonDisplayedSourceMetadata?.originalTitles).toEqual(["Törli"]);
+  });
+
+  it("Rotation Count is a target-free standalone Measured Exercise with one required protocol", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    expect(version).toMatchObject({
+      primaryFocus: "measured",
+      primaryTrainingPurpose: "rotation-control",
+      compatibleMeasurementProtocols: [{
+        protocolId: ROTATION_COUNT_PROTOCOL_ID,
+        protocolVersion: 1,
+        requirement: "required",
+      }],
+    });
+    expect(version?.guidance.kind).toBe("observation");
+    expect(version?.participation.supportedModes).toEqual(["solo", "team"]);
+  });
+
+  it("publishes the two remaining Swiss Curling Shotmaking Exercises with generic Team scoring only", () => {
+    for (const [versionId, expected] of [
+      [
+        COME_AROUND_VERSION_ID,
+        { family: "draw", level: 3, page: 25, reference: "6 of 8" },
+      ],
+      [
+        SOFT_TAKEOUT_VERSION_ID,
+        { family: "soft-take-out", level: 4, page: 37, reference: "3 of 4" },
+      ],
+    ] as const) {
+      const version = findExerciseVersion(EXERCISE_CATALOG, versionId);
+      expect(version).toMatchObject({
+        primaryFocus: "shotmaking",
+        shotFamily: expected.family,
+        difficulty: { kind: "level", level: expected.level },
+        sweeping: { policy: "forbidden", allowedSweeperCounts: [0] },
+        source: {
+          kind: "external-collection",
+          organization: "Swiss Curling",
+          sourcePage: expected.page,
+        },
+      });
+      expect(version?.guidance.kind).toBe("generic-shotmaking-score");
+      if (version?.guidance.kind !== "generic-shotmaking-score") continue;
+      expect(version.guidance.scale.map((entry) => entry.score)).toEqual([0, 1, 2, 3, 4]);
+      expect(version.guidance.evaluationBasis).toBe("team-defined-unstructured");
+      expect(version.sourceReferenceGoal).toMatchObject({ evaluated: false });
+      expect(version.sourceReferenceGoal?.text).toContain(expected.reference);
+      expect(version.compatibleMeasurementProtocols).toEqual([{
+        protocolId: ROTATION_COUNT_PROTOCOL_ID,
+        protocolVersion: 1,
+        requirement: "optional",
+      }]);
+      expect(version.diagram?.kind).toBe("attributed-source-image");
+      if (version.diagram?.kind !== "attributed-source-image") continue;
+      expect(version.diagram.distribution).toMatchObject({
+        scope: "restricted-closed-beta",
+        publicDeliveryPermitted: false,
+      });
+    }
+  });
+
+  it("uses restricted source images for exactly the three closed-beta Shotmaking Exercises", () => {
+    const sourceImages = EXERCISE_CATALOG.versions.filter(
+      (version) => version.diagram?.kind === "attributed-source-image"
+    );
+    expect(sourceImages.map((version) => version.id)).toEqual([
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
+    ]);
+    for (const version of sourceImages) {
+      expect(version.source.kind).toBe("external-collection");
+      expect(version.source.organization).toBe("Swiss Curling");
+      if (version.diagram?.kind !== "attributed-source-image") continue;
+      expect(version.diagram.distribution.publicDeliveryPermitted).toBe(false);
+      for (const overlay of version.diagram.localizedTextOverlays ?? []) {
+        expect(overlay.text).not.toMatch(/Übung|Stein|Zielzone/);
+      }
     }
   });
 
@@ -331,6 +484,9 @@ describe("curated Stage A content", () => {
         ...version.equipment.map((item) => `${item.label} ${item.note ?? ""}`),
         ...version.participation.roles.map((role) => role.note ?? ""),
         version.diagram ? `${version.diagram.caption} ${version.diagram.accessibleSummary}` : "",
+        ...(version.diagram?.kind === "attributed-source-image"
+          ? (version.diagram.localizedTextOverlays ?? []).map((overlay) => overlay.text)
+          : []),
       ].join(" ");
 
       expect(displayed).not.toMatch(germanPattern);

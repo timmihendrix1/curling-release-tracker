@@ -33,10 +33,9 @@ It complements, and must not contradict:
   `docs/COACHING_PRINCIPLES.md` for mobile use, explanations and honest performance
   communication.
 
-The existing `docs/TRAINING_SYSTEM_AND_PLANS.md` remains authoritative for the current,
-implemented Release Timing Training Plan Version 1. This document defines its intended
-generalisation to curated Exercises; it does not claim that generalisation is already
-implemented.
+The existing `docs/TRAINING_SYSTEM_AND_PLANS.md` remains authoritative for Training
+Plans. ADR-0040 implements its Profile-owned generalisation to curated Exercises while
+preserving the existing Release Timing runner; Team-plan execution remains deferred.
 
 Assessments remain a separate domain governed by
 `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md`. A standardised Measured Exercise
@@ -1436,9 +1435,10 @@ terminal. ADR-0030 adds the generic Solo start/record/complete UI. Technique rem
 unscored; Shotmaking captures actual handle, 0-4 or an exclusion, private note and the
 basic factual result without asking for planned volume. Release Time opens the unchanged
 Fixed/Variable/Blind Block-and-Shot runner and stores only an exact Library provenance
-snapshot on the Session, never a parallel Measured execution. The three currently curated
-Exercises therefore satisfy the Solo vertical slice; Team execution and further content
-remain later stages.
+snapshot on the Session, never a parallel Measured execution. Those three Stage-A
+Exercises satisfied the first Solo vertical slice; Stages C-E subsequently add Team
+execution, mixed plans and the remaining closed-beta content without changing that
+boundary.
 
 - execute one Technique, one Shotmaking and one Measured Exercise;
 - capture the athlete's private note, handles, 0–4 scores and supported Measurements;
@@ -1546,6 +1546,18 @@ Independent review must verify that plan edits and newer Exercise Versions never
 started or completed history.
 
 ## Stage E — Initial-test content expansion and release hardening
+
+**Implementation status (2026-08-28): Implemented for the configured one-Team closed
+beta.** The catalogue now contains all seven approved Exercises. Release Gates and the
+historical Eight Guards Version 2 use generic structured diagrams; current Eight Guards
+Version 3, Draw Exercise 6 and Softshot Exercise 5 use the approved Swiss Curling source
+diagrams. The three PNGs live outside `public/` and are delivered only by an authenticated
+same-origin route after active membership in the configured Team is proven through the
+caller's own RLS scope. The browser resolver is asynchronous and fail-closed, and the two
+embedded German labels are covered by data-driven English overlays without an
+Exercise-specific renderer branch. This implementation does not widen Swiss Curling's
+permission scope and does not by itself open the external test environment; the initial
+Privacy Notice and deployment configuration remain separate release-readiness work.
 
 - add the remaining four approved initial-test Exercises from Section 5.6;
 - validate every instruction, source diagram and attribution inside the restricted

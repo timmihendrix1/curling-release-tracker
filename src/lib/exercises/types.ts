@@ -2,11 +2,11 @@
 //
 // The authoritative product/domain source is
 // docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md. Stage A implements only the
-// content side of that specification: a stable Exercise identity, immutable
+// content foundation of that specification: a stable Exercise identity, immutable
 // Exercise Versions, reusable Measurement Protocols, the two Diagram variants, and
-// the versioned curated catalog package they are delivered in. Stage B1's
-// separate executionTypes.ts builds on these content contracts; Team sessions,
-// persistence and execution UI remain absent — see that document's section 21.
+// the versioned curated catalog package they are delivered in. Later Stage B-E
+// modules build execution, persistence, plans and closed-beta delivery on these
+// contracts without folding those concerns into the content types.
 //
 // These types live in their own module rather than in `src/types/index.ts`,
 // following `src/lib/assessment/types.ts`: nothing in `src/types/index.ts`
@@ -22,7 +22,7 @@ import type { MeasurementMode, TimingProviderType } from "../../types";
 // ---------------------------------------------------------------------------
 
 /**
- * Every Stage A user-facing string is English. This is a declared content
+ * Every curated user-facing string is English. This is a declared content
  * property, not a localisation framework — spec section 3.6 explicitly rules
  * out introducing one for the curated Version 1 records. Original German
  * source titles survive only as non-displayed source metadata (see
@@ -502,17 +502,30 @@ export type ExerciseDiagram =
       elements: readonly ExerciseDiagramElement[];
     }
   | {
-      /**
-       * The attributed-source-image variant (spec 6.3). Kept prepared and
-       * validated in Stage A; no Stage A catalog Exercise uses it, and no
-       * source image is bundled with the application.
-       */
+      /** The attributed-source-image variant (spec 6.3 / ADR-0023). */
       kind: "attributed-source-image";
       id: string;
       /** English caption. */
       caption: string;
       /** English alt text. */
       accessibleSummary: string;
+      /**
+       * Optional data-driven English overlays for labels embedded in a source
+       * image in another language. Coordinates and font size are normalized to
+       * the image width/height; the generic renderer never branches on an
+       * Exercise or asset id.
+       */
+      localizedTextOverlays?: readonly {
+        id: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        text: string;
+        backgroundColor: string;
+        textColor: string;
+        fontSize: number;
+      }[];
       assetReference: RestrictedAssetReference;
       /** English, always displayed with the diagram. */
       attribution: string;

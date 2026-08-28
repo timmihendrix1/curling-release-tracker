@@ -4,7 +4,11 @@ import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
 import { RELEASE_TIME_EXERCISE_ID } from "../lib/exercises/content";
-import { listCurrentExerciseVersions, resolveCurrentExerciseVersion } from "../lib/exercises/lookup";
+import {
+  exerciseRunnerKind,
+  listCurrentExerciseVersions,
+  resolveCurrentExerciseVersion,
+} from "../lib/exercises/lookup";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import type { Handle, HandleStrategy, TrainingPlanStep } from "../types";
 import { isReleaseTimingPlanStep } from "../lib/trainingPlans/steps";
@@ -41,8 +45,8 @@ function initialStartingHandle(strategy?: HandleStrategy): Handle {
 }
 
 /**
- * Configures one member of the mixed TrainingPlanStep union. Curated Technique and
- * Shotmaking steps select an exact immutable Exercise Version without planned volume.
+ * Configures one member of the mixed TrainingPlanStep union. Curated Exercises on
+ * the generic runner select an exact immutable Exercise Version without planned volume.
  * Release Time reuses TrainingSetup.tsx unmodified for its block-scoped fields and
  * adds Number of Stones plus Handle Strategy. The persisted step union is never
  * type-derived from a component form-value export (ADR-0012/ADR-0040).
@@ -64,7 +68,7 @@ export default function TrainingPlanStepEditor({
   );
   const currentExerciseVersions = listCurrentExerciseVersions(EXERCISE_CATALOG);
   const currentCuratedExerciseVersions = currentExerciseVersions.filter(
-    (version) => version.primaryFocus !== "measured" &&
+    (version) => exerciseRunnerKind(EXERCISE_CATALOG, version) === "exercise-execution" &&
       version.participation.supportedModes.includes("solo")
   );
   const initialCuratedVersion = initialStep?.type === "curated-exercise"
@@ -187,7 +191,7 @@ export default function TrainingPlanStepEditor({
               onClick={() => setStepKind("curated-exercise")}
               className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-left font-medium text-slate-800 hover:bg-slate-200"
             >
-              Technique or Shotmaking Exercise
+              Technique, Shotmaking or Measured Exercise
             </button>
             <button
               type="button"
@@ -220,15 +224,16 @@ export default function TrainingPlanStepEditor({
                   <option key={version.id} value={version.id}>
                     {version.title} — {version.primaryFocus === "technique"
                       ? "Technique"
-                      : "Shotmaking"} · Exercise version {version.version}
+                      : version.primaryFocus === "shotmaking"
+                        ? "Shotmaking"
+                        : "Measured"} · Exercise version {version.version}
                   </option>
                 ))}
               </select>
             </label>
             <p className="mt-3 text-xs text-slate-500">
-              The selected immutable Exercise Version is saved with the plan. Technique
-              and Shotmaking steps finish when you choose Complete Exercise; no planned
-              volume is imposed.
+              The selected immutable Exercise Version is saved with the plan. This step
+              finishes when you choose Complete Exercise; no planned volume is imposed.
             </p>
             <div className="mt-5 flex gap-2">
               <button

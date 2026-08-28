@@ -1,5 +1,6 @@
-// Constructs the one production TeamService, reusing the exact same cached, per-config
-// Supabase client `identityRuntime`/`createSupabaseAuthService` already use
+// Composition seam for the production TeamService and restricted Exercise-asset
+// resolver, reusing the exact same cached, per-config Supabase client that
+// `identityRuntime`/`createSupabaseAuthService` already use
 // (docs/adr/0022 Decision 1/requirement 115: exactly one client instance per signed-in
 // session) — never a second, independently-constructed client.
 //
@@ -11,10 +12,14 @@
 // helper that reads it.
 import { getSupabaseBrowserClient } from "./supabaseClient";
 import type { ConfiguredCloudConfig } from "./config";
-import { createAuthorizedTeamRequest } from "./authorizedFetch";
+import {
+  createAuthorizedRestrictedAssetResolver,
+  createAuthorizedTeamRequest,
+} from "./authorizedFetch";
 import { SupabaseTeamService } from "./supabaseTeamService";
 import type { TeamService } from "../team/teamService";
 import { withNeverThrows } from "../team/withNeverThrows";
+import type { RestrictedAssetResolver } from "../exercises/restrictedAssets";
 
 /** `withNeverThrows` centralizes the "never rejects" contract (docs/adr/0022
  * §TeamService Never-Throws Contract) — every UI call site can rely on it without
@@ -26,4 +31,12 @@ export function createSupabaseTeamService(config: ConfiguredCloudConfig): TeamSe
   const client = getSupabaseBrowserClient(config);
   // No test overrides: the real document origin and the real global `fetch`.
   return withNeverThrows(new SupabaseTeamService(client, createAuthorizedTeamRequest(client)));
+}
+
+/** Shares the one cached browser client and the one token-reading boundary. */
+export function createSupabaseRestrictedAssetResolver(
+  config: ConfiguredCloudConfig
+): RestrictedAssetResolver {
+  const client = getSupabaseBrowserClient(config);
+  return createAuthorizedRestrictedAssetResolver(client);
 }

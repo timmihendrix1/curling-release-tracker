@@ -45,8 +45,9 @@ deliberately narrows this:
   - **Profile-owned mixed Training Plans are implemented**, per
     `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
     Plans" section.
-  - **The Exercise Library and Solo Stage B are implemented** for three curated Standard
-    Exercises, including the structured Ice Sheet diagram renderer. Technique and
+  - **The Exercise Library and Solo Stage B are implemented** for seven curated Standard
+    Exercises, including structured Ice Sheet diagrams and authenticated private
+    delivery of the three approved Swiss Curling source diagrams. Technique and
     Shotmaking use Profile-owned Solo execution; measured Release Time reuses the
     existing Quick Start runner. One-device Team Exercise execution is implemented;
     Team-plan orchestration remains planned. See

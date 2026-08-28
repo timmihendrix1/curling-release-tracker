@@ -101,6 +101,32 @@ describe("TrackerApp Solo Exercise execution", () => {
     });
   });
 
+  it("runs a non-timing Measured Exercise through the generic execution aggregate", async () => {
+    await openExercise("Rotation Count");
+    fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+
+    fireEvent.change(await screen.findByLabelText(/Rotation Count/), {
+      target: { value: "2.5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record Measurement" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Exercise" }));
+
+    await waitFor(() => {
+      const session = persistedSession();
+      expect(session.releaseTimingExerciseVersionSnapshot).toBeUndefined();
+      expect(session.exerciseExecutions[0]).toMatchObject({
+        status: "completed",
+        exerciseVersionSnapshot: { title: "Rotation Count", primaryFocus: "measured" },
+        athleteResults: [{
+          attempts: [{
+            kind: "measurement",
+            measurements: [{ value: 2.5, source: "manual" }],
+          }],
+        }],
+      });
+    });
+  });
+
   it("keeps direct Quick Start free of Library provenance", async () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));

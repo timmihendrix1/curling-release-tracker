@@ -163,7 +163,7 @@ technique directly" in the Coaching Principles.
   Framework" section (which also documents one known Phase C limitation: returning from
   the Result Screen to Assess remounts `AssessScreen`, losing an in-flight Completion
   Summary in favor of Landing — the archived run itself is unaffected).
-- **The Exercise Library has curated content and an athlete-usable Solo vertical slice.**
+- **The Exercise Library has its seven-Exercise closed-beta catalogue and executable Solo/Team foundations.**
   `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product
   and domain source; read it before any Exercise-related work. **Stage A is
   implemented** in `src/lib/exercises/` (stable `Exercise` identity vs. immutable
@@ -212,15 +212,19 @@ technique directly" in the Coaching Principles.
   whole-result void confirmation, append-only audit presentation and the metadata-only
   Team inbox card. ADR-0040 implements profile-owned mixed Training Plans through exact
   Exercise Version snapshots and typed lazy runtime references; Team-plan execution is
-  deliberately deferred. Still **Planned**, per that specification's section 21: the
-  remaining four initial-test catalogue Exercises and release hardening. Build on the existing
+  deliberately deferred. Stage E adds Release Gates, standalone Rotation Count and the
+  remaining two Swiss Curling Shotmaking Exercises, advances Eight Guards to immutable
+  Version 3, and delivers all three approved source diagrams through private server assets,
+  an allowlisted authenticated Route Handler, active-membership RLS and an asynchronous
+  fail-closed resolver. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never
   on an Exercise id or title), and read
   `docs/adr/0023-restricted-source-asset-delivery-boundary.md` before touching anything
-  to do with a restricted source image: no Swiss Curling asset exists in this repository,
-  and a restricted asset may only ever be reached through an opaque reference plus an
-  explicitly authorized resolver that fails closed.
+  to do with a restricted source image. The three closed-beta assets live outside
+  `public/` and may only ever be reached through an opaque allowlisted reference plus an
+  explicitly authorized resolver that fails closed. Swiss Curling permission remains an
+  external gate before access expands beyond the configured Elite Team.
 - **Identity and Profile-scoped local persistence are mandatory and implemented.** Before any work touching authentication, onboarding,
   identity scope, local-persistence scope, cloud persistence, entitlements, sync status,
   or account deletion, read

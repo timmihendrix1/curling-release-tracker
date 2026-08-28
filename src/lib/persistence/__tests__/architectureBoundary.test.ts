@@ -340,7 +340,7 @@ describe("persistence architecture boundary — supabase client", () => {
   });
 });
 
-describe("authorized Team-request boundary — the access token crosses exactly one seam", () => {
+describe("authorized request boundary — the access token crosses exactly one seam", () => {
   // See src/lib/supabase/authorizedFetch.ts and ADR-0025 Decision 20. The
   // bearer token is read in ONE infrastructure helper and passed ONLY into a
   // validated same-origin request. Confining the import of that helper to one
@@ -428,6 +428,10 @@ describe("authorized Team-request boundary — the access token crosses exactly 
     // Exactly one call, whose only argument is the shared cached client — no
     // `fetchImpl` and no `origin` may be supplied in production.
     expect(calls).toEqual(["client"]);
+    const restrictedCalls = [
+      ...code.matchAll(/createAuthorizedRestrictedAssetResolver\s*\(([^)]*)\)/g),
+    ].map((m) => m[1].trim());
+    expect(restrictedCalls).toEqual(["client"]);
     expect(code).not.toContain("fetchImpl");
     expect(code).not.toContain("origin");
   });

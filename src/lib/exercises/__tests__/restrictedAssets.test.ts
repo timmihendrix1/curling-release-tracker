@@ -27,37 +27,37 @@ function authorizedResolver(src = "blob:test-authorized-asset"): RestrictedAsset
 }
 
 describe("resolveRestrictedAssetAccess", () => {
-  it("fails closed when no resolver is supplied — the production default today", () => {
-    expect(resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION)).toEqual({
+  it("fails closed when no resolver is supplied", async () => {
+    expect(await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION)).toEqual({
       authorized: false,
       reason: "no-resolver",
     });
   });
 
-  it("fails closed when a resolver declines the reference", () => {
+  it("fails closed when a resolver declines the reference", async () => {
     expect(
-      resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+      await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
         resolveRestrictedAsset: () => null,
       })
     ).toEqual({ authorized: false, reason: "not-authorized" });
   });
 
-  it("fails closed when the resolver returns an unusable source", () => {
+  it("fails closed when the resolver returns an unusable source", async () => {
     for (const bad of ["", "   ", undefined as unknown as string, 42 as unknown as string]) {
       expect(
-        resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+        await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
           resolveRestrictedAsset: () => ({ src: bad }),
         })
       ).toEqual({ authorized: false, reason: "invalid-resolution" });
     }
   });
 
-  it("fails closed, without consulting the resolver, when the distribution is not restricted", () => {
+  it("fails closed, without consulting the resolver, when the distribution is not restricted", async () => {
     const resolver = {
       resolveRestrictedAsset: vi.fn(() => ({ src: "blob:should-never-be-used" })),
     };
     expect(
-      resolveRestrictedAssetAccess(
+      await resolveRestrictedAssetAccess(
         REFERENCE,
         {
           scope: "restricted-closed-beta",
@@ -70,9 +70,9 @@ describe("resolveRestrictedAssetAccess", () => {
     expect(resolver.resolveRestrictedAsset).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the resolver throws an Error, without exposing it", () => {
+  it("fails closed when the resolver throws an Error, without exposing it", async () => {
     const thrown = new Error(`boom while fetching /private/${REFERENCE.assetId}.png`);
-    const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
       resolveRestrictedAsset: () => {
         throw thrown;
       },
@@ -86,7 +86,7 @@ describe("resolveRestrictedAssetAccess", () => {
     expect(serialized).not.toMatch(/\.png|\/private/);
   });
 
-  it("fails closed when the resolver throws a non-Error value", () => {
+  it("fails closed when the resolver throws a non-Error value", async () => {
     for (const thrown of [
       "https://cdn.example.com/leak.png",
       42,
@@ -95,7 +95,7 @@ describe("resolveRestrictedAssetAccess", () => {
       { assetPath: "/private/leak.png" },
       Symbol("leak"),
     ]) {
-      const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+      const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
         resolveRestrictedAsset: () => {
           throw thrown;
         },
@@ -106,10 +106,10 @@ describe("resolveRestrictedAssetAccess", () => {
     }
   });
 
-  it("fails closed when the returned resolution's src getter throws", () => {
+  it("fails closed when the returned resolution's src getter throws", async () => {
     // The call succeeded; reading the value is what fails. Inspecting the
     // resolution outside the boundary would still crash the render.
-    const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
       resolveRestrictedAsset: () =>
         ({
           get src(): string {
@@ -124,8 +124,8 @@ describe("resolveRestrictedAssetAccess", () => {
     expect(serialized).not.toContain("getter leak");
   });
 
-  it("fails closed when the resolution is a Proxy whose get trap throws", () => {
-    const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+  it("fails closed when the resolution is a Proxy whose get trap throws", async () => {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
       resolveRestrictedAsset: () =>
         new Proxy({} as RestrictedAssetResolution, {
           get() {
@@ -138,9 +138,9 @@ describe("resolveRestrictedAssetAccess", () => {
     expect(JSON.stringify(access)).not.toContain("trap leak");
   });
 
-  it("reads the resolution's src exactly once, so a getter cannot switch it after validation", () => {
+  it("reads the resolution's src exactly once, so a getter cannot switch it after validation", async () => {
     let reads = 0;
-    const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
       resolveRestrictedAsset: () =>
         ({
           get src(): string {
@@ -156,36 +156,46 @@ describe("resolveRestrictedAssetAccess", () => {
     expect(access).toEqual({ authorized: true, src: "blob:validated" });
   });
 
-  it("does not let a throwing resolver escape the boundary", () => {
-    expect(() =>
+  it("does not let a throwing resolver escape the boundary", async () => {
+    await expect(
       resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
         resolveRestrictedAsset: () => {
           throw new Error("resolver exploded");
         },
       })
-    ).not.toThrow();
+    ).resolves.toEqual({ authorized: false, reason: "resolver-error" });
   });
 
-  it("never derives a source from the opaque asset id", () => {
-    const access = resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION);
+  it("never derives a source from the opaque asset id", async () => {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION);
     expect(JSON.stringify(access)).not.toContain(REFERENCE.assetId);
   });
 
-  it("returns the resolver's own source when authorized, and passes the reference through unchanged", () => {
+  it("returns the resolver's own source when authorized, and passes the reference through unchanged", async () => {
     const resolver = {
       resolveRestrictedAsset: vi.fn(() => ({ src: "blob:test-authorized-asset" })),
     };
-    expect(resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, resolver)).toEqual({
+    expect(await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, resolver)).toEqual({
       authorized: true,
       src: "blob:test-authorized-asset",
     });
     expect(resolver.resolveRestrictedAsset).toHaveBeenCalledWith(REFERENCE, DISTRIBUTION);
   });
 
-  it("accepts an authorized resolver built by the shared test helper", () => {
-    expect(resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, authorizedResolver())).toEqual({
+  it("accepts an authorized resolver built by the shared test helper", async () => {
+    expect(await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, authorizedResolver())).toEqual({
       authorized: true,
       src: "blob:test-authorized-asset",
     });
+  });
+
+  it("fails closed when an asynchronous resolver rejects", async () => {
+    const access = await resolveRestrictedAssetAccess(REFERENCE, DISTRIBUTION, {
+      resolveRestrictedAsset: async () => {
+        throw new Error(`rejected https://example.invalid/${REFERENCE.assetId}.png`);
+      },
+    });
+    expect(access).toEqual({ authorized: false, reason: "resolver-error" });
+    expect(JSON.stringify(access)).not.toContain(REFERENCE.assetId);
   });
 });

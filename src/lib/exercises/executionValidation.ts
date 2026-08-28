@@ -1,6 +1,6 @@
 import type { Handle, TimingProviderType } from "../../types";
 import { isCanonicalUuid } from "../uuid";
-import { findExerciseVersion } from "./lookup";
+import { exerciseRunnerKind, findExerciseVersion } from "./lookup";
 import type {
   ExerciseAttempt,
   ExerciseActiveAttemptCorrection,
@@ -193,8 +193,8 @@ export function validateExerciseExecution(
       )) {
         add("teamContext.participantRoster", "Training-athlete count or Team mode does not satisfy the snapshotted Exercise Version.");
       }
-      if (version?.primaryFocus === "measured") {
-        add("exerciseVersionSnapshot.primaryFocus", "Team Release Time must extend the existing timing runner rather than persist a parallel Measured execution.");
+      if (version && exerciseRunnerKind(catalog, version) !== "exercise-execution") {
+        add("exerciseVersionSnapshot.primaryFocus", "This Team Exercise does not use the generic Exercise Execution runner; Release Timing remains on its existing path.");
       }
       if (!isRecord(context.rotation) || !ROTATION_KINDS.includes(context.rotation.kind as never)) {
         add("teamContext.rotation", "Rotation configuration is invalid.");

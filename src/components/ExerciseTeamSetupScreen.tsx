@@ -170,11 +170,18 @@ export default function ExerciseTeamSetupScreen({
       ...(coachIds.length > 0 ? { coachProfileIds: coachIds } : {}),
       sweepingUsed,
     };
-    const enabledMeasurementProtocols = version.primaryFocus === "shotmaking"
-      ? resolveMeasurementProtocols(EXERCISE_CATALOG, version.compatibleMeasurementProtocols)
+    const enabledMeasurementProtocols = version.primaryFocus === "technique"
+      ? []
+      : resolveMeasurementProtocols(
+          EXERCISE_CATALOG,
+          version.compatibleMeasurementProtocols
+        )
           .map(({ protocol }) => protocol)
-          .filter((protocol) => protocol.metricType === "rotation-count")
-      : [];
+          .filter(
+            (protocol) =>
+              version.primaryFocus === "measured" ||
+              protocol.metricType === "rotation-count"
+          );
     const outcome = createTeamExerciseExecution(version, {
       trainingSessionId: crypto.randomUUID(),
       teamId: snapshot.teamId,

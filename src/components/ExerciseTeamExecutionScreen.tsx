@@ -3,7 +3,10 @@
 import { useState } from "react";
 import type { Handle } from "../types";
 import type { TeamExerciseEligibilitySnapshot } from "../lib/cloudSporting/syncStateRepository";
-import { computeShotmakingResult } from "../lib/exercises/executionResult";
+import {
+  computeMeasurementSummaries,
+  computeShotmakingResult,
+} from "../lib/exercises/executionResult";
 import type {
   ExerciseExecution,
   ExerciseMeasurement,
@@ -11,6 +14,7 @@ import type {
 } from "../lib/exercises/executionTypes";
 import {
   addTeamShotmakingAttempt,
+  addTeamMeasurementAttempt,
   annulTeamShotmakingAttempt,
   changeTeamRoleAssignment,
   completeTeamExerciseExecution,
@@ -24,6 +28,7 @@ import ConfirmModal from "./ConfirmModal";
 import ExerciseTeamAttemptCorrectionEditor from "./ExerciseTeamAttemptCorrectionEditor";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
+import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
 
 type Props = {
   execution: ExerciseExecution;
@@ -31,6 +36,7 @@ type Props = {
   onSave(execution: ExerciseExecution): Promise<boolean>;
   onComplete(execution: ExerciseExecution): Promise<boolean>;
   onDiscard(executionId: string): Promise<boolean>;
+  restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
 const EXCLUSION_OPTIONS: readonly { value: ShotmakingExclusionReason; label: string }[] = [
@@ -51,6 +57,7 @@ export default function ExerciseTeamExecutionScreen({
   onSave,
   onComplete,
   onDiscard,
+  restrictedAssetResolver,
 }: Props) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
@@ -75,6 +82,7 @@ export default function ExerciseTeamExecutionScreen({
   const confirmedTeamContext = teamContext;
   const confirmedActiveSegment = activeSegment;
   const shotmaking = version.primaryFocus === "shotmaking";
+  const measured = version.primaryFocus === "measured";
   const rotationProtocol = execution.configuration.enabledMeasurementProtocols.find(
     (protocol) => protocol.metricType === "rotation-count"
   );
@@ -147,6 +155,28 @@ export default function ExerciseTeamExecutionScreen({
       setShowExclusion(false);
       setExclusionReason("");
       setExclusionExplanation("");
+    }
+  }
+
+  async function recordMeasured() {
+    const measurements = rotationMeasurement();
+    if (measurements === null || measurements.length === 0) {
+      setError("Enter the observed Rotation Count before recording.");
+      return;
+    }
+    const outcome = addTeamMeasurementAttempt(execution, {
+      recorderProfileId: confirmedTeamContext.recorderProfileId,
+      athleteProfileId: confirmedActiveSegment.deliveringAthleteProfileId,
+      ...(actualHandle ? { actualHandle } : {}),
+      measurements,
+    });
+    if (!outcome.ok) {
+      setError(outcome.error.message);
+      return;
+    }
+    if (await save(outcome.value)) {
+      setActualHandle(null);
+      setRotationCount("");
     }
   }
 
@@ -305,7 +335,10 @@ export default function ExerciseTeamExecutionScreen({
       {version.diagram && (
         <section className={surfaceClass("primary")}>
           <h3 className="mb-3 text-lg font-semibold text-slate-900">Exercise diagram</h3>
-          <ExerciseDiagramView diagram={version.diagram} />
+          <ExerciseDiagramView
+            diagram={version.diagram}
+            restrictedAssetResolver={restrictedAssetResolver}
+          />
         </section>
       )}
 
@@ -382,6 +415,76 @@ export default function ExerciseTeamExecutionScreen({
         </section>
       )}
 
+      {measured && rotationProtocol && (
+        <section className={surfaceClass("hero")}>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            {label(activeSegment.deliveringAthleteProfileId)} · Observation {(execution.athleteResults.find((result) => result.athleteProfileId === activeSegment.deliveringAthleteProfileId)?.attempts.length ?? 0) + 1}
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            Record measurement
+          </h3>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-medium text-slate-700">
+              Rotation Count
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                inputMode="decimal"
+                value={rotationCount}
+                onChange={(event) => setRotationCount(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                placeholder="e.g. 2.5"
+              />
+            </label>
+            <label className="text-sm font-medium text-slate-700">
+              Counted by
+              <select
+                value={rotationObserverId}
+                onChange={(event) => setRotationObserverId(event.target.value)}
+                className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                {teamContext.participantRoster.map((participant) => (
+                  <option key={participant.profileId} value={participant.profileId}>
+                    {label(participant.profileId)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <fieldset className="mt-4">
+            <legend className="text-sm font-medium text-slate-700">
+              Actual handle <span className="font-normal text-slate-500">(optional)</span>
+            </legend>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {(["in", "out"] as const).map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  aria-pressed={actualHandle === handle}
+                  onClick={() => setActualHandle(actualHandle === handle ? null : handle)}
+                  className={`min-h-11 rounded-xl px-4 py-3 text-sm font-semibold ${
+                    actualHandle === handle
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-700"
+                  }`}
+                >
+                  {handle === "in" ? "Inhandle" : "Outhandle"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <button
+            type="button"
+            disabled={busy || rotationCount.trim().length === 0}
+            onClick={() => void recordMeasured()}
+            className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Record Measurement
+          </button>
+        </section>
+      )}
+
       {shotmaking && (
         <section className={surfaceClass("secondary")}>
           <h3 className="text-lg font-semibold text-slate-900">Live athlete results</h3>
@@ -433,9 +536,64 @@ export default function ExerciseTeamExecutionScreen({
         </section>
       )}
 
+      {measured && (
+        <section className={surfaceClass("secondary")}>
+          <h3 className="text-lg font-semibold text-slate-900">
+            Live athlete measurements
+          </h3>
+          <div className="mt-3 space-y-3">
+            {execution.athleteResults.map((result) => {
+              const summaries = computeMeasurementSummaries(result);
+              return (
+                <div key={result.id} className="rounded-xl bg-slate-100 p-3">
+                  <p className="font-medium text-slate-800">
+                    {label(result.athleteProfileId)}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {summaries.length === 0
+                      ? "No measurements"
+                      : summaries.map((summary) =>
+                          `${summary.count} recorded · mean ${measurementLabel(
+                            summary.protocolId,
+                            summary.protocolVersion,
+                            Number(summary.mean.toFixed(2))
+                          )}`
+                        ).join(" · ")}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          {attempts.length > 0 && (
+            <ol className="mt-4 space-y-2 border-t border-slate-200 pt-4 text-sm text-slate-600">
+              {attempts.map((attempt, index) => (
+                <li key={attempt.id} className="rounded-lg bg-slate-100 px-3 py-2">
+                  <span className="font-medium text-slate-800">
+                    Observation {index + 1} · {label(attempt.athleteProfileId)}
+                  </span>
+                  {attempt.actualHandle && (
+                    <span>{` · ${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"}`}</span>
+                  )}
+                  {attempt.measurements.map((measurement) => (
+                    <span key={measurement.id}>{` · ${measurementLabel(
+                      measurement.protocolId,
+                      measurement.protocolVersion,
+                      measurement.value
+                    )}`}</span>
+                  ))}
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            Factual values only — no target, score or pass/fail result is applied.
+          </p>
+        </section>
+      )}
+
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 
-      <button type="button" disabled={busy || (shotmaking && attempts.length === 0)} onClick={() => void complete()} className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+      <button type="button" disabled={busy || ((shotmaking || measured) && attempts.length === 0)} onClick={() => void complete()} className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
         Complete Team Exercise
       </button>
       <button type="button" disabled={busy} onClick={() => setConfirmDiscard(true)} className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-red-700 underline disabled:opacity-50">

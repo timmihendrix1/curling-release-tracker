@@ -2452,7 +2452,7 @@ a dedicated plan-editor-navigation-loss guard, or any History/Analyze surface be
 single "Started from: {plan name}" label on the session summary — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Training Plans" section.
 
-## Exercise Library and execution (Stage A + Solo Stage B + Team Stages C1-C4c + profile-owned Stage D implemented)
+## Exercise Library and execution (Stages A-E implemented for the closed beta)
 
 `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product and
 domain source; this section is an architecture snapshot of Stage A, Solo Stages B1-B3,
@@ -2460,10 +2460,11 @@ Team domain Stage C1, server-authority Stage C2a, client persistence/upload Stag
 offline eligibility/permission UI Stage C2c, active-draft persistence Stage C3a and
 one-device setup/capture UI Stage C3b, athlete-owned restore/private-note UI Stage C3c,
 active-attempt correction Stage C3d, post-completion server authority Stage C4a,
-strict client projection/cache Stage C4b and athlete mutation/inbox UI Stage C4c.
-Generalised Training Plans and content
-expansion are **not implemented** — see
-`docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library and multi-athlete execution".
+strict client projection/cache Stage C4b, athlete mutation/inbox UI Stage C4c,
+profile-owned mixed Training Plans in Stage D and the seven-Exercise closed-beta content
+plus restricted diagram delivery in Stage E. Team-plan execution, authoring and advanced
+analytics remain Planned — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library
+and multi-athlete execution".
 
 ### Current state
 
@@ -2495,9 +2496,12 @@ expansion are **not implemented** — see
   the existing Profile cache to schema 6 with original/current result and void state.
   C4c adds online, acknowledgement-first athlete correction and terminal void controls,
   visible append-only revision history and metadata-only result-change cards in the
-  existing unread Team inbox.
-- **Not implemented (Planned):** Exercise Training Plan steps,
-  Exercise authoring and Exercise analytics.
+  existing unread Team inbox. ADR-0040 adds Profile-owned mixed Exercise Training Plans.
+  Stage E completes the seven-Exercise closed-beta catalogue, standalone Rotation Count,
+  Release Time semantic reuse and private authenticated delivery for all three approved
+  Swiss Curling source diagrams.
+- **Not implemented (Planned):** Team Training Plan execution, Exercise authoring and
+  Exercise analytics.
 - There is no Exercise `localStorage` key, repository or cloud record kind. Optional
   `Session.exerciseExecutions`, `activeExerciseExecutionId` and the measured-entry
   `releaseTimingExerciseVersionSnapshot` provenance field reuse the two
@@ -2663,13 +2667,19 @@ names and renders strictly validated metadata-only cards in the existing Team in
 - `ExerciseTeamSetupScreen.tsx` / `ExerciseTeamExecutionScreen.tsx` — ADR-0036's generic
   cache-bounded Team setup and durable one-device Technique/Shotmaking capture. Both use
   declared focus/guidance/protocol semantics rather than catalog identity.
-- `content.ts` — the three approved Stage A Exercises (Release Point, Eight Guards
-  Progressively Longer, Release Time). Release Point and Release Time remain at Version
-  1; immutable Eight Guards Version 1 is retained and current Version 2 adds optional
-  Rotation Count. All user-facing strings are English. Original German source titles exist only under
+- `content.ts` — all seven approved closed-beta Exercises: Release Point, Release Gates,
+  Eight Guards Progressively Longer, Come-around from Outside to Inside before the
+  T-line, Soft Take-out on the Centre Line at the T-line, Release Time and Rotation
+  Count. Release Point, Release Gates, both newer Shotmaking Exercises and both Measured
+  Exercises are Version 1; immutable Eight Guards Versions 1 and 2 are retained, while
+  current Version 3 adds the approved Swiss Curling source diagram. All user-facing
+  strings are English. Original German source titles exist only under
   `source.nonDisplayedSourceMetadata`, which no component renders (it feeds attribution
   traceability and Library search only).
-- `diagrams.ts` — the independently authored structured diagram for Eight Guards.
+- `diagrams.ts` — independently authored structured diagrams for historical Eight Guards
+  Version 2 and Release Gates, plus one generic builder for attributed Swiss Curling
+  source diagrams. Optional normalized text overlays cover embedded source-language
+  labels with English without branching on an Exercise or asset id.
 - `catalog.ts` — assembles the package, **recursively `deepFreeze`s** it (runtime
   immutability, not merely a `readonly` type — the same local helper as
   `src/lib/assessment/templates.ts`), and calls
@@ -2729,6 +2739,23 @@ names and renders strictly validated metadata-only cards in the existing Team in
   both happen inside that boundary, because a resolver may hand back an object or `Proxy`
   whose `src` getter throws; `src` is read exactly once, so a getter cannot pass
   validation and then substitute a different value. See **ADR-0023**.
+- `restrictedAssetCatalog.ts` — the exact three opaque closed-beta asset ids. Both the
+  browser resolver and server route refuse every id outside this shared allowlist.
+- `src/app/api/_lib/userScopedSupabaseContext.ts` — the domain-neutral server auth seam:
+  it creates one fresh client bound to the request's bearer token, never a service-role
+  credential. Team email routes and restricted Exercise delivery reuse it while keeping
+  separate public error contracts.
+- `src/app/api/exercises/restricted-diagrams/[assetId]/route.ts` — authenticated private
+  PNG delivery. It requires a canonical configured Team id and an active membership
+  visible through the caller's own RLS scope, resolves the asset through a fixed map,
+  never joins request input into a path and responds with private/no-store headers.
+  The three PNGs live under `restricted-assets/exercises/`, never `public/`, and are
+  included in the server output trace by `next.config.ts`.
+- `authorizedFetch.ts` / `teamServiceFactory.ts` — the browser resolver shares the one
+  cached Supabase client and the one token-reading composition seam. It confines requests
+  to the exact same-origin Exercise route, validates PNG type and bounded size, then
+  supplies a data URL only after an authorised response; any refusal or transport error
+  becomes the normal unavailable state.
 
 ### Diagrams
 
@@ -2746,8 +2773,9 @@ domain semantics and never on which Exercise it is drawing:
   there is no pixel geometry anywhere. This is the seam a future sensor-derived position
   would arrive through; Stage A implements no editor, animation, dragging, actual
   positions or coordinate-based scoring.
-- **`attributed-source-image`** — prepared and validated, used by no Stage A Exercise.
-  ADR-0023 governs it.
+- **`attributed-source-image`** — used by the current versions of the three Swiss Curling
+  Shotmaking Exercises. ADR-0023 governs the opaque reference, private delivery,
+  attribution, English overlay and fail-closed unavailable state.
 
 Accessibility and honest failure, both variants: a semantic `<figure>`/`<figcaption>`,
 `role="img"` with the caption and an English textual summary as the accessible name, and
@@ -3467,7 +3495,7 @@ local component state.
 | `ExercisePostCompletionCorrectionEditor.tsx` | Stone-specific own-result correction for actual handle, evaluation/exclusion, supported manual Measurements and effective role/Sweeper context; immutable athlete attribution, bounded reason and stable exact retry after uncertain acknowledgement |
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |
 | `ExerciseStructuredDiagram.tsx` | Generic responsive SVG renderer for `normalized-ice-sheet-v1` structured diagrams — data-driven elements, one `viewBox`, no pixel geometry, visible notice for an unsupported element |
-| `ExerciseRestrictedSourceImage.tsx` | Renders an attributed restricted source image only via an explicitly authorized resolver; otherwise a clear unavailable state that never emits or infers an asset URL (ADR-0023) |
+| `ExerciseRestrictedSourceImage.tsx` | Resolves an attributed source image asynchronously only through the authorized resolver, suppresses stale prior resolutions, renders generic normalized English text overlays where declared, and otherwise shows the fail-closed unavailable state without exposing the opaque reference (ADR-0023) |
 | `TrainingPlansLibrary.tsx` | Profile-owned plan list — mixed-focus/timing-volume summary, Start/Edit/Duplicate/Delete, empty state; Start disabled with an inline note for an unexecutable plan |
 | `TrainingPlanEditor.tsx` | Create/edit a plan — name, optional description, ordered step list with Move Up/Down/Duplicate/Delete, "Add Step" |
 | `TrainingPlanStepEditor.tsx` | Chooses a curated Technique/Shotmaking Exercise or Release Time; snapshots the exact Exercise Version, while only Release Time wraps `TrainingSetup.tsx` and adds Number of Stones plus Handle Strategy |
@@ -3533,11 +3561,12 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 
 ### Exercise Library domain modules (`src/lib/exercises/`)
 
-Stage A content, Solo Stage B execution and Team Stages C1-C4c. Solo Technique and
+Stages A-E content/execution, including Stage D Profile-owned plans and Stage E's
+closed-beta catalogue/delivery. Solo Technique and
 Shotmaking executions are embedded in `Session`, so `src/types/index.ts` has one
 type-only reference back to this folder without a runtime cycle. The standalone C1 Team
 aggregate is deliberately rejected by that Solo persistence boundary. See "Exercise
-Library" above and ADR-0023/0028-0039.
+Library" above and ADR-0023/0028-0040.
 
 | Module | Responsibility |
 |---|---|
@@ -3545,13 +3574,14 @@ Library" above and ADR-0023/0028-0039.
 | `errors.ts` | `ExerciseCatalogIssueCode`/`ExerciseCatalogIssue`/`ExerciseCatalogValidationResult` — the same discriminated-result convention as `assessment/templateValidation.ts` |
 | `validation.ts` | `validateExerciseCatalogPackage` — every package, identity, versioning, content, classification, participation/sweeping, protocol-reference and diagram invariant, checked at runtime against untrusted data and reported in full |
 | `measurementProtocols.ts` | Two reusable versioned release-time protocols plus manual Rotation Count; release-time reuses existing `MeasurementMode`/`measurementModeLabel`, Rotation Count uses rotations without a timing mode, every protocol is target-free and currently manual-only |
-| `diagrams.ts` | The independently authored `normalized-ice-sheet-v1` structured diagram for Eight Guards — hand-authored literals, no source-document geometry |
-| `content.ts` | Three curated Exercises; immutable Eight Guards v1 plus current v2, Release Point/Release Time v1; English only, with German source titles confined to `nonDisplayedSourceMetadata` |
+| `diagrams.ts` | Independently authored `normalized-ice-sheet-v1` structured diagrams for historical Eight Guards v2 and Release Gates, plus the generic restricted Swiss Curling source-image builder |
+| `content.ts` | Seven curated Exercises and nine immutable Versions; Eight Guards v1/v2 retained and current v3 source-image version; English content with German source titles confined to `nonDisplayedSourceMetadata` and generic English overlays covering two embedded labels |
 | `catalog.ts` | Builds, recursively deep-freezes and import-time-validates `EXERCISE_CATALOG`; `assertValidExerciseCatalogPackage` throws one actionable message rather than rendering broken content |
 | `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
 | `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |
 | `presentation.ts` | Every English label for a domain value, the Library's shared UI copy, and its `FeatureExplanation` for the existing `InfoButton` |
 | `restrictedAssets.ts` | `resolveRestrictedAssetAccess` — the only path from an opaque restricted reference to a renderable source, fail-closed with a named reason (ADR-0023) |
+| `restrictedAssetCatalog.ts` | The exact three opaque closed-beta asset ids shared by content, browser resolver and server allowlist |
 | `executionTypes.ts` | Exercise execution lifecycle, configuration, attempts, measurements, athlete results, Team participant/rotation context, actual role segments and append-only active-attempt correction contracts |
 | `execution.ts` | Stage B Solo creation, attempt, note, completion and abandonment transitions |
 | `teamExecution.ts` | Standalone Team creation, Shotmaking capture, role changes, rotation recommendations, audited active correction/annulment, completion/abandonment and rink-order derivation |

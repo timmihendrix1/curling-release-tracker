@@ -4,11 +4,15 @@ import { useState } from "react";
 import type { Handle } from "../types";
 import {
   abandonExerciseExecution,
+  addMeasurementAttempt,
   addShotmakingAttempt,
   completeExerciseExecution,
   updatePrivateAthleteNote,
 } from "../lib/exercises/execution";
-import { computeShotmakingResult } from "../lib/exercises/executionResult";
+import {
+  computeMeasurementSummaries,
+  computeShotmakingResult,
+} from "../lib/exercises/executionResult";
 import type {
   ExerciseExecution,
   ShotmakingExclusionReason,
@@ -17,6 +21,7 @@ import { exerciseFocusLabel, measurementUnitLabel } from "../lib/exercises/prese
 import ConfirmModal from "./ConfirmModal";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
+import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
 
 type ExerciseSoloExecutionScreenProps = {
   execution: ExerciseExecution;
@@ -25,6 +30,7 @@ type ExerciseSoloExecutionScreenProps = {
   onBackToLibrary: () => void;
   onStartNewSession: () => void;
   withinTrainingPlan?: boolean;
+  restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
 const EXCLUSION_OPTIONS: readonly {
@@ -49,10 +55,12 @@ export default function ExerciseSoloExecutionScreen({
   onBackToLibrary,
   onStartNewSession,
   withinTrainingPlan = false,
+  restrictedAssetResolver,
 }: ExerciseSoloExecutionScreenProps) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
   const [rotationCount, setRotationCount] = useState("");
+  const [measurementValue, setMeasurementValue] = useState("");
   const [showExclusion, setShowExclusion] = useState(false);
   const [exclusionReason, setExclusionReason] =
     useState<ShotmakingExclusionReason | "">("");
@@ -64,10 +72,15 @@ export default function ExerciseSoloExecutionScreen({
   const result = execution.athleteResults[0];
   const active = execution.status === "in-progress";
   const shotmaking = version.primaryFocus === "shotmaking";
+  const measured = version.primaryFocus === "measured";
   const rotationProtocol = execution.configuration.enabledMeasurementProtocols.find(
     (protocol) => protocol.metricType === "rotation-count"
   );
   const shotSummary = shotmaking ? computeShotmakingResult(result) : null;
+  const measurementSummaries = measured ? computeMeasurementSummaries(result) : [];
+  const standaloneProtocol = measured
+    ? execution.configuration.enabledMeasurementProtocols[0]
+    : undefined;
 
   function measurementLabel(protocolId: string, protocolVersion: number, value: number): string {
     const protocol = execution.configuration.enabledMeasurementProtocols.find(
@@ -103,6 +116,44 @@ export default function ExerciseSoloExecutionScreen({
       setActualHandle(null);
       setScore(null);
       setRotationCount("");
+    }
+  }
+
+  function recordMeasurement() {
+    if (!standaloneProtocol) return;
+    const value = Number(measurementValue);
+    if (
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      (standaloneProtocol.metricType === "rotation-count" &&
+        !Number.isInteger(value * 2))
+    ) {
+      setError(
+        standaloneProtocol.metricType === "rotation-count"
+          ? `${standaloneProtocol.name} must be a positive whole or half rotation, for example 2 or 2.5.`
+          : "Enter a positive measured value."
+      );
+      return;
+    }
+    const outcome = addMeasurementAttempt(execution, {
+      athleteProfileId: result.athleteProfileId,
+      ...(actualHandle ? { actualHandle } : {}),
+      measurements: [{
+        id: crypto.randomUUID(),
+        protocolId: standaloneProtocol.id,
+        protocolVersion: standaloneProtocol.version,
+        value,
+        source: "manual",
+        recordedAt: new Date().toISOString(),
+      }],
+    });
+    if (!outcome.ok) {
+      setError(outcome.error.message);
+      return;
+    }
+    if (replace(outcome.value)) {
+      setMeasurementValue("");
+      setActualHandle(null);
     }
   }
 
@@ -143,7 +194,7 @@ export default function ExerciseSoloExecutionScreen({
     if (rotationCount.trim() === "") return [];
     const value = Number(rotationCount);
     if (!rotationProtocol || !Number.isFinite(value) || value <= 0 || !Number.isInteger(value * 2)) {
-      setError("Rotation Count must be a positive whole or half rotation, for example 2 or 2.5.");
+      setError("The value must be a positive whole or half rotation, for example 2 or 2.5.");
       return null;
     }
     return [{
@@ -239,7 +290,10 @@ export default function ExerciseSoloExecutionScreen({
       {active && version.diagram && (
         <section className={surfaceClass("primary")}>
           <h3 className="mb-3 text-lg font-semibold text-slate-900">Exercise diagram</h3>
-          <ExerciseDiagramView diagram={version.diagram} />
+          <ExerciseDiagramView
+            diagram={version.diagram}
+            restrictedAssetResolver={restrictedAssetResolver}
+          />
         </section>
       )}
 
@@ -273,7 +327,7 @@ export default function ExerciseSoloExecutionScreen({
 
           {rotationProtocol && (
             <label className="mt-4 block text-sm font-medium text-slate-700">
-              Rotation Count <span className="font-normal text-slate-500">(optional)</span>
+              {rotationProtocol.name} <span className="font-normal text-slate-500">(optional)</span>
               <input
                 type="number"
                 min="0.5"
@@ -381,6 +435,65 @@ export default function ExerciseSoloExecutionScreen({
         </section>
       )}
 
+      {active && measured && standaloneProtocol && (
+        <section className={surfaceClass("hero")}>
+          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Observation {result.attempts.length + 1}
+          </p>
+          <h3 className="mt-1 text-lg font-semibold text-slate-900">
+            Record measurement
+          </h3>
+          <label className="mt-4 block text-sm font-medium text-slate-700">
+            {standaloneProtocol.name}
+            <span className="ml-1 font-normal text-slate-500">
+              ({measurementUnitLabel(standaloneProtocol.unit)})
+            </span>
+            <input
+              type="number"
+              min={standaloneProtocol.metricType === "rotation-count" ? "0.5" : "0.01"}
+              step={standaloneProtocol.metricType === "rotation-count" ? "0.5" : "0.01"}
+              inputMode="decimal"
+              value={measurementValue}
+              onChange={(event) => setMeasurementValue(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder={standaloneProtocol.metricType === "rotation-count" ? "e.g. 2.5" : undefined}
+            />
+          </label>
+          <fieldset className="mt-4">
+            <legend className="text-sm font-medium text-slate-700">
+              Actual handle <span className="font-normal text-slate-500">(optional)</span>
+            </legend>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {(["in", "out"] as const).map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  aria-pressed={actualHandle === handle}
+                  onClick={() => setActualHandle(
+                    actualHandle === handle ? null : handle
+                  )}
+                  className={`min-h-11 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                    actualHandle === handle
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  }`}
+                >
+                  {handle === "in" ? "Inhandle" : "Outhandle"}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <button
+            type="button"
+            onClick={recordMeasurement}
+            disabled={!writable || measurementValue.trim().length === 0}
+            className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Record Measurement
+          </button>
+        </section>
+      )}
+
       {shotSummary && (
         <section className={surfaceClass(active ? "secondary" : "hero")}>
           <h3 className="text-lg font-semibold text-slate-900">
@@ -476,7 +589,65 @@ export default function ExerciseSoloExecutionScreen({
         </section>
       )}
 
-      {!active && !shotmaking && (
+      {measured && (
+        <section className={surfaceClass(active ? "secondary" : "hero")}>
+          <h3 className="text-lg font-semibold text-slate-900">
+            {active ? "Live measurements" : "Exercise result"}
+          </h3>
+          {measurementSummaries.length === 0 ? (
+            <p className="mt-2 text-sm text-slate-500">No measurements yet.</p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {measurementSummaries.map((summary) => (
+                <div
+                  key={`${summary.protocolId}@${summary.protocolVersion}`}
+                  className="rounded-xl bg-slate-100 p-3"
+                >
+                  <p className="text-xs text-slate-500">
+                    {summary.count} {summary.count === 1 ? "measurement" : "measurements"}
+                  </p>
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
+                    Mean {measurementLabel(
+                      summary.protocolId,
+                      summary.protocolVersion,
+                      summary.mean
+                    )}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Range {summary.minimum}–{summary.maximum}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          {result.attempts.length > 0 && (
+            <ol className="mt-4 space-y-2 border-t border-slate-200 pt-4 text-sm text-slate-600">
+              {result.attempts.map((attempt) => (
+                <li key={attempt.id} className="rounded-lg bg-slate-100 px-3 py-2">
+                  <span className="font-medium text-slate-800">
+                    Observation {attempt.sequenceNumber}
+                  </span>
+                  {attempt.actualHandle && (
+                    <span>{` · ${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"}`}</span>
+                  )}
+                  {attempt.measurements.map((measurement) => (
+                    <span key={measurement.id}>{` · ${measurementLabel(
+                      measurement.protocolId,
+                      measurement.protocolVersion,
+                      measurement.value
+                    )}`}</span>
+                  ))}
+                </li>
+              ))}
+            </ol>
+          )}
+          <p className="mt-3 text-xs text-slate-500">
+            These are factual values only. No target, score or pass/fail result is applied.
+          </p>
+        </section>
+      )}
+
+      {!active && !shotmaking && !measured && (
         <section className={surfaceClass("hero")}>
           <h3 className="text-lg font-semibold text-slate-900">Exercise result</h3>
           <p className="mt-2 text-sm text-slate-600">
@@ -514,7 +685,10 @@ export default function ExerciseSoloExecutionScreen({
           <button
             type="button"
             onClick={complete}
-            disabled={!writable || (shotmaking && result.attempts.length === 0)}
+            disabled={
+              !writable ||
+              ((shotmaking || measured) && result.attempts.length === 0)
+            }
             className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             Complete Exercise

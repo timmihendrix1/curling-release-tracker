@@ -1,5 +1,7 @@
+import { useEffect, useState } from "react";
 import {
   resolveRestrictedAssetAccess,
+  type RestrictedAssetAccess,
   type RestrictedAssetResolver,
 } from "../lib/exercises/restrictedAssets";
 import {
@@ -12,12 +14,7 @@ type SourceImageDiagram = Extract<ExerciseDiagram, { kind: "attributed-source-im
 
 type ExerciseRestrictedSourceImageProps = {
   diagram: SourceImageDiagram;
-  /**
-   * Required for the image to render at all. There is no default resolver in
-   * this application, so the unavailable state below is what production shows
-   * — a restricted asset can never appear merely because a UI condition was
-   * satisfied.
-   */
+  /** Required for the image to render; absence always fails closed. */
   restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
@@ -40,11 +37,42 @@ export default function ExerciseRestrictedSourceImage({
   diagram,
   restrictedAssetResolver,
 }: ExerciseRestrictedSourceImageProps) {
-  const access = resolveRestrictedAssetAccess(
-    diagram.assetReference,
-    diagram.distribution,
-    restrictedAssetResolver
-  );
+  const unavailable: RestrictedAssetAccess = {
+    authorized: false,
+    reason: restrictedAssetResolver ? "not-authorized" : "no-resolver",
+  };
+  const [resolved, setResolved] = useState<{
+    diagram: SourceImageDiagram;
+    resolver: RestrictedAssetResolver | undefined;
+    access: RestrictedAssetAccess;
+  }>(() => ({
+    diagram,
+    resolver: restrictedAssetResolver,
+    access: unavailable,
+  }));
+
+  useEffect(() => {
+    let current = true;
+    void resolveRestrictedAssetAccess(
+      diagram.assetReference,
+      diagram.distribution,
+      restrictedAssetResolver
+    ).then((access) => {
+      if (current) {
+        setResolved({ diagram, resolver: restrictedAssetResolver, access });
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [diagram, restrictedAssetResolver]);
+
+  // Never show a resolution belonging to a previous diagram or resolver while
+  // a new asynchronous authorization check is in flight.
+  const access =
+    resolved.diagram === diagram && resolved.resolver === restrictedAssetResolver
+      ? resolved.access
+      : unavailable;
 
   // Built once and rendered once, so no branch can omit a required value. Every
   // field here is validated as non-empty at the catalog boundary, and none of
@@ -64,12 +92,32 @@ export default function ExerciseRestrictedSourceImage({
         // context (typically a blob or object URL), so it cannot be routed
         // through next/image's build-time optimizer, and it must never become
         // a public asset path.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={access.src}
-          alt={diagram.accessibleSummary}
-          className="h-auto w-full rounded-xl"
-        />
+        <div className="relative w-full overflow-hidden rounded-xl [container-type:inline-size]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={access.src}
+            alt={diagram.accessibleSummary}
+            className="h-auto w-full"
+          />
+          {diagram.localizedTextOverlays?.map((overlay) => (
+            <span
+              key={overlay.id}
+              aria-hidden="true"
+              className="absolute flex items-center justify-center px-[0.4cqw] text-center font-normal leading-[1.08]"
+              style={{
+                left: `${overlay.x * 100}%`,
+                top: `${overlay.y * 100}%`,
+                width: `${overlay.width * 100}%`,
+                height: `${overlay.height * 100}%`,
+                backgroundColor: overlay.backgroundColor,
+                color: overlay.textColor,
+                fontSize: `${overlay.fontSize * 100}cqw`,
+              }}
+            >
+              {overlay.text}
+            </span>
+          ))}
+        </div>
       ) : (
         <div
           className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4"

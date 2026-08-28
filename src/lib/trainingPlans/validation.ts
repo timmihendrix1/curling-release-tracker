@@ -14,6 +14,8 @@ import {
   isCatalogExerciseVersionSnapshot,
   isCuratedExercisePlanStep,
 } from "./steps";
+import { EXERCISE_CATALOG } from "../exercises/catalog";
+import { exerciseRunnerKind } from "../exercises/lookup";
 
 function effectiveTargetMode(configuration: ReleaseTimingBlockConfiguration) {
   if (configuration.mode === "variable") return configuration.variableTargetMode;
@@ -31,13 +33,21 @@ export function isStepExecutable(step: TrainingPlanStep): boolean {
 
   if (isCuratedExercisePlanStep(step)) {
     return step.completion.type === "exercise-completion" &&
-      step.exerciseVersionSnapshot.primaryFocus !== "measured" &&
+      exerciseRunnerKind(
+        EXERCISE_CATALOG,
+        step.exerciseVersionSnapshot
+      ) === "exercise-execution" &&
       step.exerciseVersionSnapshot.participation.supportedModes.includes("solo");
   }
 
   const { configuration, completion } = step;
 
-  if (step.exerciseVersionSnapshot.primaryFocus !== "measured") return false;
+  if (
+    exerciseRunnerKind(
+      EXERCISE_CATALOG,
+      step.exerciseVersionSnapshot
+    ) !== "release-timing"
+  ) return false;
 
   if (!Number.isInteger(completion.value) || completion.value <= 0) return false;
 

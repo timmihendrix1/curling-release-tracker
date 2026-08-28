@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 //
-// The restricted source-asset boundary (spec 5.4 / 6.3). Stage A ships no
-// restricted asset, so these tests use an in-memory, test-only diagram
-// fixture — the real Swiss Curling image is deliberately not in this
-// repository.
+// The restricted source-asset boundary (spec 5.4 / 6.3). Component tests use an
+// in-memory fixture so no private Stage-E source image enters the test DOM or
+// snapshot; route/client tests cover the real delivery seams separately.
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -200,7 +199,7 @@ describe("ExerciseRestrictedSourceImage — unauthorized", () => {
 });
 
 describe("ExerciseRestrictedSourceImage — authorized", () => {
-  it("renders the resolver's own source with the diagram's English alt text", () => {
+  it("renders the resolver's own source with the diagram's English alt text", async () => {
     render(
       <ExerciseRestrictedSourceImage
         diagram={DIAGRAM}
@@ -210,9 +209,45 @@ describe("ExerciseRestrictedSourceImage — authorized", () => {
       />
     );
 
-    const image = screen.getByRole("img", { name: DIAGRAM.accessibleSummary });
+    const image = await screen.findByRole("img", {
+      name: DIAGRAM.accessibleSummary,
+    });
     expect(image).toHaveAttribute("src", "blob:authorized-test-asset");
     expect(screen.queryByText(RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE)).toBeNull();
+  });
+
+  it("covers embedded source-language labels with data-driven English text", async () => {
+    const localizedDiagram: SourceImageDiagram = {
+      ...DIAGRAM,
+      localizedTextOverlays: [{
+        id: "target-zone",
+        x: 0.7,
+        y: 0.1,
+        width: 0.25,
+        height: 0.04,
+        text: "Target zone",
+        backgroundColor: "#b7e3f4",
+        textColor: "#000000",
+        fontSize: 0.035,
+      }],
+    };
+    render(
+      <ExerciseRestrictedSourceImage
+        diagram={localizedDiagram}
+        restrictedAssetResolver={{
+          resolveRestrictedAsset: () => ({ src: "blob:localized-test-asset" }),
+        }}
+      />
+    );
+
+    await screen.findByRole("img", { name: localizedDiagram.accessibleSummary });
+    const label = screen.getByText("Target zone");
+    expect(label).toHaveAttribute("aria-hidden", "true");
+    expect(label).toHaveStyle({
+      left: "70%",
+      top: "10%",
+      backgroundColor: "#b7e3f4",
+    });
   });
 
   it("renders all five required provenance values alongside the image", () => {
@@ -228,7 +263,7 @@ describe("ExerciseRestrictedSourceImage — authorized", () => {
     expectAllProvenanceVisible();
   });
 
-  it("still never writes the opaque asset id into the DOM", () => {
+  it("still never writes the opaque asset id into the DOM", async () => {
     const { container } = render(
       <ExerciseRestrictedSourceImage
         diagram={DIAGRAM}
@@ -240,11 +275,32 @@ describe("ExerciseRestrictedSourceImage — authorized", () => {
 
     // The authorized branch legitimately carries the resolver's own src, but the
     // reference it was resolved from must still be absent.
+    const image = await screen.findByRole("img", {
+      name: DIAGRAM.accessibleSummary,
+    });
     expect(container.innerHTML).not.toContain(DIAGRAM.assetReference.assetId);
-    expect(container.querySelector("img")).toHaveAttribute(
+    expect(image).toHaveAttribute(
       "src",
       "blob:authorized-test-asset"
     );
+  });
+
+  it("fails closed when an asynchronous resolver rejects", async () => {
+    const { container } = render(
+      <ExerciseRestrictedSourceImage
+        diagram={DIAGRAM}
+        restrictedAssetResolver={{
+          resolveRestrictedAsset: async () => {
+            throw new Error(`async leak ${DIAGRAM.assetReference.assetId}.png`);
+          },
+        }}
+      />
+    );
+
+    expect(
+      await screen.findByText(RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE)
+    ).toBeInTheDocument();
+    expectNoAssetAddressLeak(container);
   });
 });
 

@@ -3,6 +3,9 @@ import { migrateTrainingPlans } from "../migration";
 import { isStepExecutable } from "../validation";
 import { isReleaseTimingPlanStep } from "../steps";
 import { buildExerciseStep, buildPlan } from "./testHelpers";
+import { EXERCISE_CATALOG } from "../../exercises/catalog";
+import { ROTATION_COUNT_VERSION_ID } from "../../exercises/content";
+import { findExerciseVersion } from "../../exercises/lookup";
 
 describe("migrateTrainingPlans", () => {
   it("returns an empty state for undefined/absent data (first load)", () => {
@@ -64,6 +67,26 @@ describe("migrateTrainingPlans", () => {
     const plan = buildPlan({ steps: [buildExerciseStep()] });
     const migrated = migrateTrainingPlans({ schemaVersion: 2, plans: [plan] });
     expect(migrated).toEqual({ schemaVersion: 2, plans: [plan] });
+  });
+
+  it("round-trips Rotation Count only as a curated generic-runner step", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!version) throw new Error("Missing Rotation Count fixture");
+    const plan = buildPlan({
+      steps: [buildExerciseStep({ exerciseVersionSnapshot: version })],
+    });
+    expect(migrateTrainingPlans({ schemaVersion: 2, plans: [plan] })).toEqual({
+      schemaVersion: 2,
+      plans: [plan],
+    });
+  });
+
+  it("drops a schema-2 Release Timing step carrying a Rotation Count snapshot", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!version) throw new Error("Missing Rotation Count fixture");
+    const plan = buildPlan();
+    plan.steps[0].exerciseVersionSnapshot = version;
+    expect(migrateTrainingPlans({ schemaVersion: 2, plans: [plan] }).plans).toEqual([]);
   });
 
   it("drops a schema-2 plan whose Exercise snapshot was tampered with", () => {

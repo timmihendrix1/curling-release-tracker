@@ -1337,6 +1337,51 @@ describe("restricted attributed source images", () => {
       "invalid_restricted_source_image"
     );
   });
+
+  it("accepts complete localized text overlays and rejects malformed ones", () => {
+    const validOverlay = {
+      id: "english-label",
+      x: 0.1,
+      y: 0.2,
+      width: 0.3,
+      height: 0.1,
+      text: "Target zone",
+      backgroundColor: "#ffffff",
+      textColor: "#000000",
+      fontSize: 0.03,
+    } as const;
+    expect(
+      validateExerciseCatalogPackage(
+        buildTestPackage({
+          versions: [
+            buildTestVersion({
+              diagram: buildTestSourceImageDiagram({
+                localizedTextOverlays: [validOverlay],
+              }),
+            }),
+          ],
+        })
+      )
+    ).toEqual({ valid: true });
+
+    for (const localizedTextOverlays of [
+      [{ ...validOverlay, text: "" }],
+      [{ ...validOverlay, x: 0.9, width: 0.2 }],
+      [{ ...validOverlay, backgroundColor: "white" }],
+      [validOverlay, validOverlay],
+    ]) {
+      expectRejected(
+        buildTestPackage({
+          versions: [
+            buildTestVersion({
+              diagram: buildTestSourceImageDiagram({ localizedTextOverlays }),
+            }),
+          ],
+        }),
+        "invalid_restricted_source_image"
+      );
+    }
+  });
 });
 
 describe("present-but-blank optional renderable fields", () => {

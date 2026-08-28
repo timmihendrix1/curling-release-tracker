@@ -1054,7 +1054,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
-| **Exercise Stages A-D** | Curated Library, Solo execution, Team capture/restore/correction and profile-owned mixed Training Plans — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3, Team C1-C4c and profile-owned Stage D implemented.** Initial-test content and release hardening remain planned. |
+| **Exercise Stages A-E** | Curated Library, Solo execution, Team capture/restore/correction, profile-owned mixed Training Plans and closed-beta content/delivery — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3, Team C1-C4c, profile-owned Stage D and closed-beta Stage E implemented.** Team-plan execution, authoring and advanced analytics remain planned. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
 `docs/MANDATORY_IDENTITY_AND_FREE_CLOUD_FOUNDATION_SPECIFICATION.md` §11.1). They stay two
@@ -1267,8 +1267,8 @@ global state infrastructure beyond this feature's reviewed scope.
 ## Exercise Library and multi-athlete execution
 
 **Stage A, Solo Stage B (B1-B3), Team Stages C1-C4c and profile-owned Stage D are
-implemented. Stage C is complete; initial-test content/release hardening Stage E remains
-planned.** The canonical product and domain boundary
+implemented. Stage C is complete; profile-owned Stage D and closed-beta content/release
+hardening Stage E are implemented.** The canonical product and domain boundary
 is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
 The narrowed initial-test catalogue contains three Swiss Curling Shotmaking Exercises,
 two unscored Technique Exercises and two standalone Measured Exercises. Rotation and
@@ -1286,13 +1286,13 @@ repository, no migration, no `Session`/`TrainingBlock`/`Shot` change.
 
 Known delivery boundaries, deliberate rather than defects:
 
-- **Solo execution is implemented for the three current items.** Technique is unscored,
+- **Solo execution is implemented for all seven current items.** Technique is unscored,
   Shotmaking records actual handle plus 0-4/exclusion and a private note, and Release Time
   links to the existing Fixed/Variable/Blind runner without a duplicate outcome record.
-- **Four of the seven initial-test Exercises are not authored yet** (Release Gates, the
-  Draw and Soft Take-out Shotmaking Exercises, Rotation Count). They expand
-  the same schemas and renderers; none may require a named, exercise-specific UI branch.
-  This is Stage E. Rotation and Laser are intentionally outside the initial test.
+- **All seven initial-test Exercises are authored.** Stage E adds Release Gates, the Draw
+  and Soft Take-out Shotmaking Exercises and standalone Rotation Count through the same
+  schemas and generic renderers; no Exercise requires a named UI branch. Laser and the
+  separate Rotation Technique Exercise remain intentionally outside the initial test.
 - **Release Time references both release-time Measurement Protocols as `optional`.** The
   requirement is "choose one and keep it for the whole execution", which the Exercise
   states as a setup instruction. Nothing in the approved content makes either mode the
@@ -1302,8 +1302,9 @@ Known delivery boundaries, deliberate rather than defects:
   a valid choice.
 - **Rotation Count is available where capture needs it.** C3b adds a manual, target-free
   versioned protocol in rotations and validates positive 0.5 increments. Eight Guards
-  Version 1 remains immutable; current Version 2 adds the optional reference. A separate
-  standalone Rotation Count Exercise remains part of Stage E.
+  Versions 1 and 2 remain immutable; current Version 3 retains the optional reference
+  and adds its approved source diagram. Standalone Rotation Count is implemented as a
+  Measured Exercise.
 - **Search does not match a referenced protocol's name.** `exerciseSearchableText`
   operates on one Exercise Version without the catalog, so "hog" does not find Release
   Time via its protocol names. Widen it if discovery feedback asks for it.
@@ -1320,7 +1321,8 @@ ADR-0039 implements C4a's executed append-only Postgres authority and metadata-o
 notification emission; C4b adds provider-neutral mutation mapping, strict owner-only
 revision projection and schema-6 offline cache; C4c adds the athlete correction/void
 workflow, audit presentation and metadata-only Team inbox. ADR-0040 implements
-profile-owned mixed Stage D; Stage E remains planned.** B2 embeds
+profile-owned mixed Stage D; Stage E completes the seven-item closed-beta catalogue and
+restricted source-diagram delivery.** B2 embeds
 Technique and Shotmaking executions in the existing Profile-owned Session, local
 repository/archive transition and Free-cloud `training_session` record, with strict
 terminal-history validation and no extra storage silo. It deliberately leaves Measured
@@ -1380,14 +1382,16 @@ alone are not sufficient.
 **Restricted source diagrams.** The supplied Swiss Curling diagrams may be shown only to
 the named one-Team closed beta with visible attribution and genuinely restricted
 delivery. Their inclusion in a public asset bundle does not satisfy that boundary. Stage
-A therefore bundles **no** restricted asset at all: the PDF and its diagrams are not in
-this repository, `Eight Guards, Progressively Longer` uses an independently authored
-structured platform diagram, and the attributed-source-image variant is modelled,
-validated and gated behind ADR-0023's opaque-reference-plus-authorized-resolver boundary
-with no resolver implemented. Actually showing a restricted diagram is therefore a new
-capability to build, not a flag to flip. Before any larger pilot or release, the product
-owner must still record Swiss Curling's permission scope — a safe delivery mechanism is
-not permission to deliver.
+A deliberately shipped no source asset. Stage E now stores exactly three approved PNGs
+under private `restricted-assets/exercises/`, references them by an exact opaque
+allowlist and serves them only through an authenticated same-origin route after a
+user-scoped RLS query proves active membership in the configured closed-beta Team. No
+asset is placed in `public/`, no service-role credential is used, every response is
+private/no-store and the asynchronous resolver fails closed. The original source images
+remain intact; data-driven English overlays cover the two embedded German labels in the
+app without Exercise-specific renderer logic. Before any larger pilot or release, the
+product owner must still record Swiss Curling's permission scope — a safe delivery
+mechanism is not permission to deliver.
 
 ---
 

@@ -246,7 +246,8 @@ export type ReleaseTimingPlanStep = {
 };
 
 /**
- * A curated Technique or Shotmaking step. Its content snapshot is the complete
+ * A curated Exercise-Execution step. This includes Technique, Shotmaking and
+ * standalone Measured Exercises that do not use the Release Timing runner. Its content snapshot is the complete
  * plan-time instruction/configuration reference; the resulting Exercise Execution
  * records the actual variation, Measurements and execution context separately.
  * Open-ended completion is deliberate: these Exercises finish through the existing

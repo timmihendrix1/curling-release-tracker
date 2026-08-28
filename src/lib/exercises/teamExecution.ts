@@ -14,6 +14,7 @@ import type {
   ExerciseExecutionDeviation,
   ExerciseExecutionVolume,
   ExerciseMeasurement,
+  MeasurementExerciseAttempt,
   ExerciseRoleAssignmentSegment,
   ExerciseRoleTransitionReason,
   ExerciseRotationConfiguration,
@@ -23,7 +24,7 @@ import type {
   ShotmakingExerciseAttempt,
 } from "./executionTypes";
 import { EXERCISE_EXECUTION_SCHEMA_VERSION } from "./executionTypes";
-import { findExerciseVersion } from "./lookup";
+import { exerciseRunnerKind, findExerciseVersion } from "./lookup";
 import type { ExerciseVersion, MeasurementProtocol } from "./types";
 
 type ExecutionClock = {
@@ -224,8 +225,8 @@ export function createTeamExerciseExecution(
   if (!catalogVersion || !sameJsonValue(version, catalogVersion)) {
     return exerciseExecutionError("invalid-input", "Team execution can start only from an immutable curated catalog Exercise Version.");
   }
-  if (version.primaryFocus === "measured") {
-    return exerciseExecutionError("unsupported-focus", "Team Release Time must extend the existing timing runner; it cannot create a parallel Measured execution.");
+  if (exerciseRunnerKind(EXERCISE_CATALOG, version) !== "exercise-execution") {
+    return exerciseExecutionError("unsupported-focus", "This Exercise does not use the generic Team Exercise Execution runner.");
   }
   if (!version.participation.supportedModes.includes("team")) {
     return exerciseExecutionError("unsupported-focus", "This Exercise Version does not support Team execution.");
@@ -643,6 +644,118 @@ export function addTeamShotmakingAttempt(
   });
 }
 
+export type AddTeamMeasurementAttemptInput = {
+  recorderProfileId: string;
+  athleteProfileId: string;
+  actualHandle?: Handle;
+  measurements: ExerciseMeasurement[];
+  clock?: ExecutionClock;
+};
+
+/** Records one factual Measured-Exercise observation for the active deliverer. */
+export function addTeamMeasurementAttempt(
+  execution: ExerciseExecution,
+  input: AddTeamMeasurementAttemptInput
+): ExerciseExecutionOutcome<ExerciseExecution> {
+  if (execution.exerciseVersionSnapshot.primaryFocus !== "measured") {
+    return exerciseExecutionError(
+      "unsupported-focus",
+      "Only a Measured Exercise can receive a Measurement attempt."
+    );
+  }
+  const context = activeTeamContext(execution);
+  if (!context.ok) return context;
+  if (
+    !execution.teamContext ||
+    input.recorderProfileId !== execution.teamContext.recorderProfileId
+  ) {
+    return exerciseExecutionError(
+      "wrong-recorder",
+      "Only the authenticated active recorder may add a Team attempt."
+    );
+  }
+  if (
+    input.athleteProfileId !==
+    context.value.activeSegment.deliveringAthleteProfileId
+  ) {
+    return exerciseExecutionError(
+      "wrong-athlete",
+      "The attempt must belong to the athlete delivering in the active role segment."
+    );
+  }
+  if (
+    input.actualHandle !== undefined &&
+    !HANDLES.includes(input.actualHandle)
+  ) {
+    return exerciseExecutionError(
+      "invalid-attempt",
+      "Attempt handle must be In- or Outhandle."
+    );
+  }
+  if (input.measurements.length === 0) {
+    return exerciseExecutionError(
+      "invalid-attempt",
+      "A Measurement attempt needs at least one Measurement."
+    );
+  }
+  const resultIndex = execution.athleteResults.findIndex(
+    (result) => result.athleteProfileId === input.athleteProfileId
+  );
+  if (resultIndex < 0) {
+    return exerciseExecutionError(
+      "wrong-athlete",
+      "The delivering athlete has no Athlete Exercise Result."
+    );
+  }
+  const clock = input.clock ?? defaultClock;
+  const id = clock.id();
+  const createdAt = clock.now();
+  const reservedIds = aggregateIds(execution);
+  if (
+    !isCanonicalUuid(id) ||
+    reservedIds.has(id) ||
+    !validTimestamp(createdAt) ||
+    Date.parse(createdAt) < Date.parse(context.value.activeSegment.startedAt)
+  ) {
+    return exerciseExecutionError(
+      "invalid-input",
+      "The attempt clock returned invalid identity or time data."
+    );
+  }
+  reservedIds.add(id);
+  const measurementResult = validateTeamMeasurements(
+    execution,
+    input.measurements,
+    reservedIds,
+    context.value.participantIds
+  );
+  if (!measurementResult.ok) return measurementResult;
+  const athleteResult = execution.athleteResults[resultIndex];
+  const attempt: MeasurementExerciseAttempt = {
+    id,
+    kind: "measurement",
+    athleteProfileId: input.athleteProfileId,
+    roleAssignmentSegmentId: context.value.activeSegment.id,
+    sequenceNumber:
+      athleteResult.attempts.reduce(
+        (maximum, candidate) => Math.max(maximum, candidate.sequenceNumber),
+        0
+      ) + 1,
+    ...(input.actualHandle ? { actualHandle: input.actualHandle } : {}),
+    measurements: measurementResult.value,
+    createdAt,
+    recordedByProfileId: input.recorderProfileId,
+  };
+  return exerciseExecutionOk({
+    ...execution,
+    athleteResults: execution.athleteResults.map((result, index) =>
+      index === resultIndex
+        ? { ...result, attempts: [...result.attempts, attempt], updatedAt: createdAt }
+        : result
+    ),
+  });
+}
+
 export function getTeamAttemptRoleContext(
   execution: ExerciseExecution,
   attempt: ShotmakingExerciseAttempt
@@ -874,8 +987,12 @@ export function completeTeamExerciseExecution(
     return exerciseExecutionError("wrong-recorder", "Only the authenticated active recorder may complete the Team execution.");
   }
   const attempts = execution.athleteResults.flatMap((result) => result.attempts);
-  if (execution.exerciseVersionSnapshot.primaryFocus === "shotmaking" && attempts.length === 0) {
-    return exerciseExecutionError("not-completable", "A Shotmaking execution needs at least one recorded attempt.");
+  if (
+    (execution.exerciseVersionSnapshot.primaryFocus === "shotmaking" ||
+      execution.exerciseVersionSnapshot.primaryFocus === "measured") &&
+    attempts.length === 0
+  ) {
+    return exerciseExecutionError("not-completable", "This execution needs at least one recorded attempt.");
   }
   const latestActivityAt = [
     execution.startedAt,

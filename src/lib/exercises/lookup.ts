@@ -101,3 +101,45 @@ export function resolveMeasurementProtocols(
   }
   return resolved;
 }
+
+export type ExerciseRunnerKind =
+  | "exercise-execution"
+  | "release-timing"
+  | "unsupported";
+
+export function resolvedMeasurementRunnerKind(
+  resolved: readonly ResolvedMeasurementProtocol[]
+): Exclude<ExerciseRunnerKind, "exercise-execution"> | "exercise-execution" {
+  if (resolved.length === 0) return "unsupported";
+  const releaseTimeCount = resolved.filter(
+    ({ protocol }) => protocol.metricType === "release-time"
+  ).length;
+  if (releaseTimeCount === resolved.length) return "release-timing";
+  // The generic Measured UI currently records one declared metric per attempt.
+  // Fail closed for multiple non-release protocols until protocol selection or
+  // multi-value capture has been designed explicitly.
+  if (
+    resolved.length === 1 &&
+    resolved[0].protocol.metricType === "rotation-count"
+  ) return "exercise-execution";
+  return "unsupported";
+}
+
+/**
+ * Chooses an execution boundary from declared Measurement Protocol semantics,
+ * never from an Exercise id or title. Release-time-only Measured Exercises use
+ * the mature Fixed/Variable/Blind runner. Other currently supported Measured
+ * Exercises use the generic Exercise Execution aggregate when they declare
+ * the one currently supported standalone metric. A future mixed or multi-
+ * protocol definition fails visibly until its interaction has been designed.
+ */
+export function exerciseRunnerKind(
+  pkg: ExerciseCatalogPackage,
+  version: ExerciseVersion
+): ExerciseRunnerKind {
+  if (version.primaryFocus !== "measured") return "exercise-execution";
+
+  return resolvedMeasurementRunnerKind(
+    resolveMeasurementProtocols(pkg, version.compatibleMeasurementProtocols)
+  );
+}

@@ -3,7 +3,10 @@ import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EIGHT_GUARDS_VERSION_ID } from "../../lib/exercises/content";
+import {
+  EIGHT_GUARDS_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
+} from "../../lib/exercises/content";
 import { createSoloExerciseExecution } from "../../lib/exercises/execution";
 import {
   createTechniqueExecution,
@@ -20,6 +23,21 @@ afterEach(cleanup);
 function createShotmakingExecution(): ExerciseExecution {
   const version = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
   if (!version) throw new Error("Missing Shotmaking fixture");
+  const outcome = createSoloExerciseExecution(version, {
+    trainingSessionId: FIXTURE_SESSION_ID,
+    athleteProfileId: FIXTURE_ATHLETE_ID,
+    enabledMeasurementProtocols: resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      version.compatibleMeasurementProtocols
+    ).map(({ protocol }) => protocol),
+  });
+  if (!outcome.ok) throw new Error(outcome.error.message);
+  return outcome.value;
+}
+
+function createMeasuredExecution(): ExerciseExecution {
+  const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+  if (!version) throw new Error("Missing Measured fixture");
   const outcome = createSoloExerciseExecution(version, {
     trainingSessionId: FIXTURE_SESSION_ID,
     athleteProfileId: FIXTURE_ATHLETE_ID,
@@ -123,6 +141,25 @@ describe("ExerciseSoloExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("whole or half rotation");
+  });
+
+  it("runs a standalone Measured Exercise without a score or target", () => {
+    render(<Harness initial={createMeasuredExecution()} />);
+
+    expect(screen.queryByRole("button", { name: /points/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Complete Exercise" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), {
+      target: { value: "2.5" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Measurement" }));
+
+    expect(screen.getAllByText(/2.5 rotations/)).toHaveLength(2);
+    expect(screen.getByText(/Factual values only/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Complete Exercise" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Complete Exercise" }));
+    expect(screen.getByRole("heading", { name: "Exercise result" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /points/ })).toBeNull();
   });
 
   it("disables every persisted mutation while the Session domain is not writable", () => {

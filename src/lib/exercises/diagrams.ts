@@ -1,19 +1,17 @@
 // Structured platform Diagram content (spec section 6).
 //
-// The Eight Guards diagram below is **independently authored** for this
+// The Eight Guards structured diagram below is **independently authored** for this
 // application: it is drawn in this project's own `normalized-ice-sheet-v1`
 // coordinate system, uses this project's own composition and English labels,
 // and contains no raster pixels, page layout, branding or German text from any
-// source document. Stage A deliberately bundles no restricted source image at
-// all — the attributed-source-image Diagram variant exists and is validated
-// (see `types.ts`, `validation.ts`, `restrictedAssets.ts`), but no Stage A
-// catalog Exercise uses it, so nothing restricted can leak into a client
-// bundle or a public asset path.
+// source document. Stage E additionally uses the attributed-source-image
+// variant through ADR-0023's authenticated, private delivery boundary.
 import {
   EXERCISE_DIAGRAM_SCHEMA_VERSION,
   type ExerciseDiagram,
   type ExerciseDiagramElement,
 } from "./types";
+import type { ClosedBetaExerciseAssetId } from "./restrictedAssetCatalog";
 
 // --- Geometry (all values in `x` units — a fraction of the depicted length) ---
 //
@@ -147,5 +145,106 @@ export function buildEightGuardsDiagram(): ExerciseDiagram {
     accessibleSummary:
       "A top-down view of the playing end of the sheet, with the direction of travel from left to right. The hog line is on the left, the house and its four rings are on the right, and the centre line runs through the middle. Eight numbered bands between the hog line and the front of the house show one example progression of finishing depths: band 1 sits just past the hog line, and each following band is deeper than the one before it, ending just in front of the house. The row of stones near the lower sideline shows where each stone is moved aside at the same depth once it has stopped, so that it marks the boundary for the next stone. No sweeping is used.",
     elements: buildEightGuardsElements(),
+  };
+}
+
+export const RELEASE_GATES_DIAGRAM_ID = "release-gates-diagram-v1";
+
+/**
+ * A deliberately simple platform-authored view of the two observation gates.
+ * The 30 cm distance is stated by the Exercise instructions; the normalized
+ * drawing is schematic and therefore does not pretend to be a measuring tool.
+ */
+export function buildReleaseGatesDiagram(): ExerciseDiagram {
+  return {
+    kind: "structured-platform-diagram",
+    id: RELEASE_GATES_DIAGRAM_ID,
+    schemaVersion: EXERCISE_DIAGRAM_SCHEMA_VERSION,
+    coordinateSystem: "normalized-ice-sheet-v1",
+    aspectRatio: 2,
+    caption: "Two observation gates on the delivery line — schematic, not to scale.",
+    accessibleSummary:
+      "A top-down schematic of a short section of the sheet. An arrow shows the stone travelling from left to right along the centre delivery line. One narrow gate crosses the line at the agreed release point. A second narrow gate crosses the same line approximately 30 centimetres farther along. The athlete or observer watches how the stone passes both gates after release.",
+    elements: [
+      { kind: "sheet", id: "sheet", from: { x: 0, y: 0 }, to: { x: 1, y: 1 } },
+      {
+        kind: "line",
+        id: "delivery-line",
+        from: { x: 0, y: 0.5 },
+        to: { x: 1, y: 0.5 },
+        style: "dashed",
+      },
+      {
+        kind: "arrow",
+        id: "travel",
+        from: { x: 0.08, y: 0.5 },
+        to: { x: 0.9, y: 0.5 },
+        label: "Direction of travel",
+      },
+      {
+        kind: "line",
+        id: "release-gate",
+        from: { x: 0.42, y: 0.35 },
+        to: { x: 0.42, y: 0.65 },
+        style: "solid",
+      },
+      {
+        kind: "line",
+        id: "second-gate",
+        from: { x: 0.58, y: 0.35 },
+        to: { x: 0.58, y: 0.65 },
+        style: "solid",
+      },
+      {
+        kind: "label",
+        id: "release-gate-label",
+        at: { x: 0.4, y: 0.22 },
+        text: "Release gate",
+        anchor: "end",
+      },
+      {
+        kind: "label",
+        id: "second-gate-label",
+        at: { x: 0.6, y: 0.78 },
+        text: "Second gate (~30 cm)",
+        anchor: "start",
+      },
+    ],
+  };
+}
+
+/**
+ * The shared content shape for a Swiss Curling source diagram. The opaque id
+ * can become image bytes only through ADR-0023's authenticated resolver.
+ */
+export function buildRestrictedSwissCurlingDiagram(input: {
+  id: string;
+  assetId: ClosedBetaExerciseAssetId;
+  caption: string;
+  accessibleSummary: string;
+  sourceExerciseReference: string;
+  localizedTextOverlays?: Extract<
+    ExerciseDiagram,
+    { kind: "attributed-source-image" }
+  >["localizedTextOverlays"];
+}): ExerciseDiagram {
+  return {
+    kind: "attributed-source-image",
+    id: input.id,
+    caption: input.caption,
+    accessibleSummary: input.accessibleSummary,
+    ...(input.localizedTextOverlays
+      ? { localizedTextOverlays: input.localizedTextOverlays }
+      : {}),
+    assetReference: { assetId: input.assetId },
+    attribution: "Diagram reproduced from Swiss Curling.",
+    sourceOrganization: "Swiss Curling",
+    sourceVersion: "Individual On-Ice Training – Exercise Collection, version 2.0",
+    distribution: {
+      scope: "restricted-closed-beta",
+      permittedAudience: "The configured Elite Team closed beta only.",
+      publicDeliveryPermitted: false,
+    },
+    provenanceNote: `${input.sourceExerciseReference}, source diagram reproduced for the approved closed beta; any embedded German label is covered by a faithful English overlay.`,
   };
 }

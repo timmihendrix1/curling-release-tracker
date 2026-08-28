@@ -1217,6 +1217,88 @@ function validateDiagram(diagram: ExerciseDiagram, where: string, add: AddIssue)
       );
     }
 
+    const overlays = diagram.localizedTextOverlays;
+    if (overlays !== undefined) {
+      if (!isArray(overlays)) {
+        add(
+          "invalid_restricted_source_image",
+          `${where} source-image localized text overlays must be an array when present.`
+        );
+      } else {
+        const ids = new Set<string>();
+        overlays.forEach((overlay, index) => {
+          const overlayWhere = `${where} source-image localized text overlay[${index}]`;
+          if (overlay === null || typeof overlay !== "object") {
+            add("invalid_restricted_source_image", `${overlayWhere} must be an object.`);
+            return;
+          }
+          if (!isNonEmptyString(overlay.id) || ids.has(overlay.id)) {
+            add(
+              "invalid_restricted_source_image",
+              `${overlayWhere} must have a unique non-empty id.`
+            );
+          } else {
+            ids.add(overlay.id);
+          }
+          if (!isNonEmptyString(overlay.text)) {
+            add(
+              "invalid_restricted_source_image",
+              `${overlayWhere} must contain non-empty English text.`
+            );
+          }
+          for (const [field, value] of [
+            ["x", overlay.x],
+            ["y", overlay.y],
+            ["width", overlay.width],
+            ["height", overlay.height],
+          ] as const) {
+            if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+              add(
+                "invalid_restricted_source_image",
+                `${overlayWhere} ${field} must be finite and normalized between 0 and 1.`
+              );
+            }
+          }
+          if (
+            typeof overlay.x === "number" &&
+            typeof overlay.width === "number" &&
+            overlay.x + overlay.width > 1
+          ) {
+            add("invalid_restricted_source_image", `${overlayWhere} exceeds the image width.`);
+          }
+          if (
+            typeof overlay.y === "number" &&
+            typeof overlay.height === "number" &&
+            overlay.y + overlay.height > 1
+          ) {
+            add("invalid_restricted_source_image", `${overlayWhere} exceeds the image height.`);
+          }
+          if (
+            (typeof overlay.width === "number" && overlay.width <= 0) ||
+            (typeof overlay.height === "number" && overlay.height <= 0) ||
+            typeof overlay.fontSize !== "number" ||
+            !Number.isFinite(overlay.fontSize) ||
+            overlay.fontSize <= 0 ||
+            overlay.fontSize > 0.2
+          ) {
+            add(
+              "invalid_restricted_source_image",
+              `${overlayWhere} must have positive dimensions and a font size no greater than 0.2.`
+            );
+          }
+          if (
+            !/^#[0-9a-fA-F]{6}$/.test(overlay.backgroundColor) ||
+            !/^#[0-9a-fA-F]{6}$/.test(overlay.textColor)
+          ) {
+            add(
+              "invalid_restricted_source_image",
+              `${overlayWhere} colors must be six-digit hexadecimal values.`
+            );
+          }
+        });
+      }
+    }
+
     const reference = diagram.assetReference;
     if (
       reference === null ||

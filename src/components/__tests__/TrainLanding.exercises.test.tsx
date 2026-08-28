@@ -16,6 +16,15 @@ import { findExerciseVersion } from "../../lib/exercises/lookup";
 afterEach(cleanup);
 
 const QUICK_START_MARKER = "Set Up Training Block (test hero)";
+const CURATED_TITLES = [
+  "Release Point",
+  "Eight Guards, Progressively Longer",
+  "Release Time",
+  "Release Gates",
+  "Rotation Count",
+  "Come-around from Outside to Inside, Before the T-Line",
+  "Soft Take-out on the Centre Line at the T-Line",
+] as const;
 const releaseTimeVersion = findExerciseVersion(EXERCISE_CATALOG, RELEASE_TIME_VERSION_ID)!;
 
 /**
@@ -145,7 +154,7 @@ describe("Train entry paths", () => {
     fireEvent.change(screen.getByLabelText("Search exercises"), {
       target: { value: "guard" },
     });
-    expect(screen.getByText("1 exercise")).toBeInTheDocument();
+    expect(screen.getByText("2 exercises")).toBeInTheDocument();
     openDetail("Eight Guards, Progressively Longer");
     expect(screen.getByRole("button", { name: /Back to Exercises/ })).toBeInTheDocument();
 
@@ -153,7 +162,7 @@ describe("Train entry paths", () => {
     openExercises();
 
     expect(screen.getByLabelText("Search exercises")).toHaveValue("");
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back to Exercises/ })).toBeNull();
   });
 });
@@ -163,25 +172,27 @@ describe("Train entry paths", () => {
 // ---------------------------------------------------------------------------
 
 describe("Exercise Library", () => {
-  it("lists all three curated Exercises with focus, classification, difficulty, participation and Sweeper summary", () => {
+  it("lists all seven curated Exercises with focus, classification, difficulty, participation and Sweeper summary", () => {
     renderTrainLanding();
     openExercises();
 
-    for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
+    for (const title of CURATED_TITLES) {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
 
-    expect(screen.getByText("Technique")).toBeInTheDocument();
-    expect(screen.getByText("Shotmaking")).toBeInTheDocument();
-    expect(screen.getByText("Measured")).toBeInTheDocument();
+    expect(screen.getAllByText("Technique")).toHaveLength(2);
+    expect(screen.getAllByText("Shotmaking")).toHaveLength(3);
+    expect(screen.getAllByText("Measured")).toHaveLength(2);
     expect(screen.getByText("Guard")).toBeInTheDocument();
     expect(screen.getByText("Level 6")).toBeInTheDocument();
-    expect(screen.getAllByText("Not rated")).toHaveLength(2);
-    expect(screen.getAllByText("Solo or Team")).toHaveLength(3);
-    expect(screen.getByText("No sweeping")).toBeInTheDocument();
-    expect(screen.getAllByText("Sweeping optional")).toHaveLength(2);
-    expect(screen.getByText("0 Sweepers")).toBeInTheDocument();
-    expect(screen.getAllByText("0–2 Sweepers")).toHaveLength(2);
+    expect(screen.getByText("Level 3")).toBeInTheDocument();
+    expect(screen.getByText("Level 4")).toBeInTheDocument();
+    expect(screen.getAllByText("Not rated")).toHaveLength(4);
+    expect(screen.getAllByText("Solo or Team")).toHaveLength(7);
+    expect(screen.getAllByText("No sweeping")).toHaveLength(3);
+    expect(screen.getAllByText("Sweeping optional")).toHaveLength(4);
+    expect(screen.getAllByText("0 Sweepers")).toHaveLength(3);
+    expect(screen.getAllByText("0–2 Sweepers")).toHaveLength(4);
   });
 
   it("explains itself through the shared Info affordance rather than a wall of text", () => {
@@ -220,7 +231,7 @@ describe("Exercise Library", () => {
     openFilters();
 
     fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "measured" } });
-    expect(screen.getByText("1 exercise")).toBeInTheDocument();
+    expect(screen.getByText("2 exercises")).toBeInTheDocument();
     expect(screen.getByText("Release Time")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "any" } });
 
@@ -228,11 +239,11 @@ describe("Exercise Library", () => {
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
     expect(screen.queryByText("Release Time")).toBeNull();
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "unrated" } });
-    expect(screen.getByText("2 exercises")).toBeInTheDocument();
+    expect(screen.getByText("4 exercises")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Solo or Team"), { target: { value: "team" } });
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Solo or Team"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Shot Family"), { target: { value: "guard" } });
@@ -240,7 +251,7 @@ describe("Exercise Library", () => {
     fireEvent.change(screen.getByLabelText("Shot Family"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Sweepers"), { target: { value: "forbidden" } });
-    expect(screen.getByText("1 exercise")).toBeInTheDocument();
+    expect(screen.getByText("3 exercises")).toBeInTheDocument();
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
@@ -252,7 +263,13 @@ describe("Exercise Library", () => {
     const difficultyOptions = Array.from(
       screen.getByLabelText<HTMLSelectElement>("Difficulty").options
     ).map((option) => option.textContent);
-    expect(difficultyOptions).toEqual(["Any difficulty", "Level 6", "Not rated"]);
+    expect(difficultyOptions).toEqual([
+      "Any difficulty",
+      "Level 3",
+      "Level 4",
+      "Level 6",
+      "Not rated",
+    ]);
 
     const sweepingOptions = Array.from(
       screen.getByLabelText<HTMLSelectElement>("Sweepers").options
@@ -280,7 +297,7 @@ describe("Exercise Library", () => {
     expect(screen.queryByText("Release Point")).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Reset filters" })[0]);
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
     expect(screen.getByLabelText("Search exercises")).toHaveValue("");
   });
 
@@ -327,7 +344,7 @@ describe("Exercise detail", () => {
     expect(screen.getByText("Instructions")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
@@ -339,7 +356,7 @@ describe("Exercise detail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     expect(screen.getByLabelText("Search exercises")).toHaveValue("guard");
-    expect(screen.getByText("1 exercise")).toBeInTheDocument();
+    expect(screen.getByText("2 exercises")).toBeInTheDocument();
   });
 
   it("offers the generic start action and shows no other Exercise's content", () => {
@@ -519,40 +536,20 @@ describe("Exercise detail", () => {
     expect(
       screen.getAllByText(/Individual On-Ice Training – Exercise Collection/).length
     ).toBeGreaterThan(0);
-    expect(screen.getByText(/Guard Exercise 10/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Guard Exercise 10/).length).toBeGreaterThan(0);
   });
 
-  it("Eight Guards renders an accessible structured diagram with a textual alternative", () => {
+  it("Eight Guards fails closed without an authorized diagram resolver and preserves attribution", () => {
     renderTrainLanding();
     openExercises();
     openDetail("Eight Guards, Progressively Longer");
 
-    const diagram = screen.getByTestId("exercise-structured-diagram");
-    expect(diagram.tagName.toLowerCase()).toBe("svg");
-    expect(diagram).toHaveAttribute("role", "img");
-    expect(diagram).toHaveAttribute("viewBox");
-    expect(diagram.getAttribute("viewBox")).toMatch(/^0 0 100 /);
-
-    expect(diagram).toHaveAccessibleName(
-      expect.stringContaining("A top-down view of the playing end of the sheet") as unknown as string
-    );
     expect(
-      screen.getByText(/eight numbered bands/i)
+      screen.getByTestId("exercise-restricted-diagram-unavailable")
     ).toBeInTheDocument();
-    expect(
-      screen.getAllByText("Eight guards, progressively deeper — one example progression.").length
-    ).toBeGreaterThan(0);
-
-    // Eight numbered target positions are rendered from data, not hard-coded.
-    for (const step of ["1", "2", "3", "4", "5", "6", "7", "8"]) {
-      expect(
-        diagram.querySelector(`[data-element-id="target-zone-${step}"]`)
-      ).not.toBeNull();
-      expect(
-        diagram.querySelector(`[data-element-id="set-aside-stone-${step}"]`)
-      ).not.toBeNull();
-    }
-    expect(diagram.querySelectorAll('[data-element-kind="target-zone"]')).toHaveLength(8);
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText("Diagram reproduced from Swiss Curling.")).toBeInTheDocument();
+    expect(screen.getByText("The configured Elite Team closed beta only.")).toBeInTheDocument();
   });
 
   it("Release Time is a Measured Exercise, distinct from the Assessment, with no prescribed target", () => {
@@ -713,7 +710,7 @@ describe("Train tab ARIA semantics", () => {
 
     openExercises();
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
     expect(screen.getByRole("tabpanel")).toHaveAttribute(
       "aria-labelledby",
       tab("Exercises").id
@@ -792,7 +789,7 @@ describe("Train tab keyboard navigation", () => {
 
     pressOnTablist("ArrowLeft");
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("3 exercises")).toBeInTheDocument();
+    expect(screen.getByText("7 exercises")).toBeInTheDocument();
   });
 
   it("ignores keys that are not tab navigation", () => {
@@ -881,8 +878,10 @@ describe("version, provenance and participant wording", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 2],
+      ["Eight Guards, Progressively Longer", 3],
       ["Release Time", 1],
+      ["Come-around from Outside to Inside, Before the T-Line", 1],
+      ["Soft Take-out on the Centre Line at the T-Line", 1],
     ] as const) {
       openDetail(title);
       expect(screen.getByText(`Exercise version ${version}`)).toBeInTheDocument();
@@ -892,7 +891,7 @@ describe("version, provenance and participant wording", () => {
     // The external collection's own version is labelled separately, and only
     // where a collection exists.
     openDetail("Eight Guards, Progressively Longer");
-    expect(screen.getByText(/Source version:/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Source version:/).length).toBeGreaterThan(0);
     expect(screen.getByText(/^2\.0$/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
 
@@ -942,7 +941,7 @@ describe("athlete-facing copy", () => {
     renderTrainLanding();
     openExercises();
 
-    for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
+    for (const title of CURATED_TITLES) {
       openDetail(title);
       for (const group of screen.queryAllByRole("group")) {
         (group as HTMLDetailsElement).open = true;
@@ -994,7 +993,7 @@ describe("English-only visible content", () => {
     renderTrainLanding();
     openExercises();
 
-    for (const title of ["Release Point", "Eight Guards, Progressively Longer", "Release Time"]) {
+    for (const title of CURATED_TITLES) {
       openDetail(title);
       for (const summary of screen.queryAllByRole("group")) {
         (summary as HTMLDetailsElement).open = true;

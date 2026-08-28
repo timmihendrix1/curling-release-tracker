@@ -141,7 +141,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   async function addCuratedStep(exerciseTitle: string) {
     await page.getByRole("button", { name: "Add Step" }).click();
     await page
-      .getByRole("button", { name: "Technique or Shotmaking Exercise" })
+      .getByRole("button", { name: "Technique, Shotmaking or Measured Exercise" })
       .click();
     await page.getByLabel("Exercise").selectOption({ label: exerciseTitle });
     await page.getByRole("button", { name: "Add Step" }).last().click();
@@ -149,8 +149,9 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
 
   await addCuratedStep("Release Point — Technique · Exercise version 1");
   await addCuratedStep(
-    "Eight Guards, Progressively Longer — Shotmaking · Exercise version 2"
+    "Eight Guards, Progressively Longer — Shotmaking · Exercise version 3"
   );
+  await addCuratedStep("Rotation Count — Measured · Exercise version 1");
 
   await page.getByRole("button", { name: "Add Step" }).click();
   await page.getByRole("button", { name: "Release Time Measurement" }).click();
@@ -159,7 +160,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await page.getByRole("button", { name: "Save Training Plan" }).click();
 
   await expect(page.getByText("Mixed Ice Practice")).toBeVisible();
-  await expect(page.getByText("3 steps · 1 planned timing stone")).toBeVisible();
+  await expect(page.getByText("4 steps · 1 planned timing stone")).toBeVisible();
   await expect(page.getByText("Technique · Shotmaking · Measured")).toBeVisible();
   await page.getByRole("button", { name: "Start" }).click();
   await expect(
@@ -168,7 +169,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await page.getByRole("button", { name: "Start Training" }).click();
 
   await expect(page.getByRole("heading", { name: "Release Point" })).toBeVisible();
-  await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
+  await expect(page.getByText(/Step 1 of 4/)).toBeVisible();
   await page.getByRole("button", { name: "Complete Exercise" }).click();
   await expect(page.getByText("Next: Eight Guards, Progressively Longer")).toBeVisible();
 
@@ -176,14 +177,14 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   // including after a cold UI reload where activeExerciseExecutionId is terminally clear.
   await page.reload();
   await goToTrain(page);
-  await expect(page.getByText(/Step 1 of 3/)).toBeVisible();
+  await expect(page.getByText(/Step 1 of 4/)).toBeVisible();
   await expect(page.getByText("Next: Eight Guards, Progressively Longer")).toBeVisible();
   await page.getByRole("button", { name: "Continue to Next Step" }).click();
 
   await expect(
     page.getByRole("heading", { name: "Eight Guards, Progressively Longer" })
   ).toBeVisible();
-  await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
+  await expect(page.getByText(/Step 2 of 4/)).toBeVisible();
   await page.getByRole("button", { name: "Inhandle" }).click();
   await page.getByLabel("Rotation Count (optional)").fill("2.5");
   await page.getByRole("button", { name: "4 points, 100 percent" }).click();
@@ -195,15 +196,24 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   // as an existing Release Time block.
   await page.reload();
   await goToTrain(page);
-  await expect(page.getByText(/Step 2 of 3/)).toBeVisible();
+  await expect(page.getByText(/Step 2 of 4/)).toBeVisible();
   await expect(page.getByText("Stone 1 · Inhandle · 4\/4 \(100%\) · 2.5 rotations")).toBeVisible();
+  await page.getByRole("button", { name: "Complete Exercise" }).click();
+  await expect(page.getByText("Next: Rotation Count")).toBeVisible();
+  await page.getByRole("button", { name: "Continue to Next Step" }).click();
+
+  await expect(page.getByRole("heading", { name: "Rotation Count" })).toBeVisible();
+  await expect(page.getByText(/Step 3 of 4/)).toBeVisible();
+  await page.getByLabel(/Rotation Count/).fill("2.5");
+  await page.getByRole("button", { name: "Record Measurement" }).click();
+  await expect(page.getByText(/2.5 rotations/)).toHaveCount(2);
   await page.getByRole("button", { name: "Complete Exercise" }).click();
   await expect(page.getByText("Next: Release Time")).toBeVisible();
   await page.getByRole("button", { name: "Continue to Next Step" }).click();
 
-  await expect(page.getByText(/Step 3 of 3/)).toBeVisible();
+  await expect(page.getByText(/Step 4 of 4/)).toBeVisible();
   await expect(page.getByText("Stone 0 of 1")).toBeVisible();
   await addShot(page, "3.75");
   await expect(page.getByText("Plan complete")).toBeVisible();
-  await expect(page.getByText("All 3 steps completed.")).toBeVisible();
+  await expect(page.getByText("All 4 steps completed.")).toBeVisible();
 });

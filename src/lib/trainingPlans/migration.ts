@@ -26,7 +26,7 @@ import type {
 import { resolveAccuracyThresholds } from "../accuracyThresholds";
 import { EXERCISE_CATALOG } from "../exercises/catalog";
 import { RELEASE_TIME_VERSION_ID } from "../exercises/content";
-import { findExerciseVersion } from "../exercises/lookup";
+import { exerciseRunnerKind, findExerciseVersion } from "../exercises/lookup";
 import type { ExerciseVersion } from "../exercises/types";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
 import {
@@ -136,7 +136,8 @@ function migrateStep(raw: unknown, sourceSchemaVersion: number): TrainingPlanSte
     const exerciseVersionSnapshot = resolveSnapshot(source.exerciseVersionSnapshot);
     if (
       !exerciseVersionSnapshot ||
-      exerciseVersionSnapshot.primaryFocus === "measured"
+      exerciseRunnerKind(EXERCISE_CATALOG, exerciseVersionSnapshot) !==
+        "exercise-execution"
     ) return undefined;
 
     return {
@@ -163,7 +164,11 @@ function migrateStep(raw: unknown, sourceSchemaVersion: number): TrainingPlanSte
   const exerciseVersionSnapshot = sourceSchemaVersion === 1
     ? currentReleaseTimeSnapshot()
     : resolveSnapshot(source.exerciseVersionSnapshot);
-  if (!exerciseVersionSnapshot || exerciseVersionSnapshot.primaryFocus !== "measured") {
+  if (
+    !exerciseVersionSnapshot ||
+    exerciseRunnerKind(EXERCISE_CATALOG, exerciseVersionSnapshot) !==
+      "release-timing"
+  ) {
     return undefined;
   }
 

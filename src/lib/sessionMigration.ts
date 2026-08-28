@@ -25,7 +25,7 @@ import { resolveAccuracyThresholds } from "./accuracyThresholds";
 import { sanitizeCaptureSequence } from "./captureSequence";
 import { EXERCISE_CATALOG } from "./exercises/catalog";
 import { RELEASE_TIME_VERSION_ID } from "./exercises/content";
-import { findExerciseVersion } from "./exercises/lookup";
+import { exerciseRunnerKind, findExerciseVersion } from "./exercises/lookup";
 import type { ExerciseVersion } from "./exercises/types";
 import { validateSessionExerciseState } from "./exercises/sessionIntegration";
 import { getEffectiveTargetMode } from "./trainingBlocks";
@@ -531,7 +531,7 @@ function isValidReleaseTimingBlockConfiguration(
 function isValidReleaseTimingPlanStep(
   value: unknown
 ): value is ReleaseTimingPlanStep {
-  return (
+  if (!(
     isRecord(value) &&
     typeof value.id === "string" &&
     value.type === "release-timing" &&
@@ -539,7 +539,12 @@ function isValidReleaseTimingPlanStep(
     isValidShotCountCompletion(value.completion) &&
     isValidHandleStrategy(value.handleStrategy) &&
     isValidReleaseTimingBlockConfiguration(value.configuration)
-  );
+  )) return false;
+
+  return exerciseRunnerKind(
+    EXERCISE_CATALOG,
+    value.exerciseVersionSnapshot
+  ) === "release-timing";
 }
 
 function sameJsonValue(left: unknown, right: unknown): boolean {
@@ -566,7 +571,10 @@ function isValidCuratedExercisePlanStep(
     isRecord(value.completion) &&
     value.completion.type === "exercise-completion" &&
     isValidCatalogVersionSnapshot(value.exerciseVersionSnapshot) &&
-    value.exerciseVersionSnapshot.primaryFocus !== "measured";
+    exerciseRunnerKind(
+      EXERCISE_CATALOG,
+      value.exerciseVersionSnapshot
+    ) === "exercise-execution";
 }
 
 function legacyReleaseTimingStep(value: unknown): ReleaseTimingPlanStep | undefined {

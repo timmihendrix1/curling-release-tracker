@@ -73,7 +73,7 @@ describe("TrainingPlanEditor", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
     fireEvent.click(
-      screen.getByRole("button", { name: "Technique or Shotmaking Exercise" })
+      screen.getByRole("button", { name: "Technique, Shotmaking or Measured Exercise" })
     );
     expect(screen.queryByLabelText("Number of Stones")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Exercise"), {
@@ -132,7 +132,7 @@ describe("TrainingPlanEditor", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", {
-        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 2",
+        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 3",
       })
     ).toBeInTheDocument();
   });

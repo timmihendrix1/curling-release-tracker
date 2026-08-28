@@ -1,10 +1,9 @@
 // The access boundary for a restricted, attributed source-image Diagram
 // (spec 5.4 / 6.3).
 //
-// Stage A bundles no restricted asset at all, so nothing here resolves in
-// production today. The boundary exists — and is tested — so that the day a
-// genuinely protected delivery path is built, the only correct way to render a
-// restricted image already runs through an explicit, authorized resolver.
+// Stage A introduced this boundary before an asset existed. Stage E connects it
+// to one authenticated, private closed-beta delivery path; without that explicit
+// resolver capability the same boundary still resolves to unavailable.
 //
 // Two rules this module enforces structurally rather than by convention:
 //
@@ -38,11 +37,14 @@ export type RestrictedAssetResolver = {
   resolveRestrictedAsset(
     reference: RestrictedAssetReference,
     distribution: RestrictedDistribution
-  ): RestrictedAssetResolution | null;
+  ):
+    | RestrictedAssetResolution
+    | null
+    | Promise<RestrictedAssetResolution | null>;
 };
 
 export type RestrictedAssetAccessReason =
-  /** No resolver was supplied — the default in this application today. */
+  /** No resolver was supplied — the required default for an unconfigured composition. */
   | "no-resolver"
   /** A resolver exists but declined this reference. */
   | "not-authorized"
@@ -70,11 +72,11 @@ export type RestrictedAssetAccess =
  * and never returns anything derived from `reference.assetId` or from a thrown
  * value.
  */
-export function resolveRestrictedAssetAccess(
+export async function resolveRestrictedAssetAccess(
   reference: RestrictedAssetReference,
   distribution: RestrictedDistribution,
   resolver?: RestrictedAssetResolver
-): RestrictedAssetAccess {
+): Promise<RestrictedAssetAccess> {
   // Defence in depth: catalog validation already rejects a restricted diagram
   // that permits public delivery, but this boundary re-checks rather than
   // trusting that it ran.
@@ -96,10 +98,8 @@ export function resolveRestrictedAssetAccess(
   // throws or traps, so reading it outside the `try` would still crash the
   // render even though the call itself succeeded.
   try {
-    const resolution: RestrictedAssetResolution | null = resolver.resolveRestrictedAsset(
-      reference,
-      distribution
-    );
+    const resolution: RestrictedAssetResolution | null =
+      await resolver.resolveRestrictedAsset(reference, distribution);
 
     if (resolution === null || resolution === undefined) {
       return { authorized: false, reason: "not-authorized" };

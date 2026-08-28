@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import IdentityAccountControl from "./identity/IdentityAccountControl";
 import IdentityPendingTeamIntent from "./identity/IdentityPendingTeamIntent";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
@@ -65,8 +72,14 @@ import type { AssessmentRun } from "../lib/assessment/types";
 import { createSoloExerciseExecution } from "../lib/exercises/execution";
 import type { ExerciseExecution } from "../lib/exercises/executionTypes";
 import type { ExerciseVersion } from "../lib/exercises/types";
+import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
-import { resolveMeasurementProtocols } from "../lib/exercises/lookup";
+import {
+  exerciseRunnerKind,
+  resolveMeasurementProtocols,
+} from "../lib/exercises/lookup";
+import { resolveCloudConfig } from "../lib/supabase/config";
+import { createSupabaseRestrictedAssetResolver } from "../lib/supabase/teamServiceFactory";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import {
@@ -282,6 +295,12 @@ function snapshotExerciseVersion(version: ExerciseVersion): ExerciseVersion {
 }
 
 export default function TrackerApp() {
+  const restrictedAssetResolver = useMemo<RestrictedAssetResolver | undefined>(() => {
+    const config = resolveCloudConfig();
+    return config.status === "configured"
+      ? createSupabaseRestrictedAssetResolver(config)
+      : undefined;
+  }, []);
   const athleteProfileId = useSportingProfileId();
   const sportingCloudSync = useSportingCloudSync();
   const {
@@ -1698,31 +1717,37 @@ export default function TrackerApp() {
     setPendingReleaseTimingExerciseVersion(null);
   }
 
-  /**
-   * Starts a curated Solo Exercise. Technique and Shotmaking use the B1/B2
-   * Exercise Execution aggregate. A Measured Exercise deliberately redirects
-   * into the existing Release Timing setup instead of creating a parallel
-   * measurement runner or duplicating Shot data.
-   */
+  /** Starts through the runner selected by declared protocol semantics. */
   function handleStartExercise(version: ExerciseVersion): boolean {
     if (sessionHydration !== "ready") return false;
 
-    if (version.primaryFocus === "measured") {
+    const runnerKind = exerciseRunnerKind(EXERCISE_CATALOG, version);
+    if (runnerKind === "release-timing") {
       setPendingReleaseTimingExerciseVersion(snapshotExerciseVersion(version));
       setPreferredTrainEntryPath("quick-start");
       return true;
     }
+    if (runnerKind === "unsupported") {
+      alert("This Exercise combines Measurements that do not yet share one execution runner.");
+      return false;
+    }
 
     const session = sessionRef.current;
     if (!session) return false;
+    const compatibleProtocols = resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      version.compatibleMeasurementProtocols
+    ).map(({ protocol }) => protocol);
     const created = createSoloExerciseExecution(version, {
       trainingSessionId: session.id,
       athleteProfileId,
-      enabledMeasurementProtocols: version.primaryFocus === "shotmaking"
-        ? resolveMeasurementProtocols(EXERCISE_CATALOG, version.compatibleMeasurementProtocols)
-            .map(({ protocol }) => protocol)
-            .filter((protocol) => protocol.metricType === "rotation-count")
-        : [],
+      enabledMeasurementProtocols: version.primaryFocus === "technique"
+        ? []
+        : compatibleProtocols.filter(
+            (protocol) =>
+              version.primaryFocus === "measured" ||
+              protocol.metricType === "rotation-count"
+          ),
     });
     if (!created.ok) {
       alert(created.error.message);
@@ -1826,8 +1851,8 @@ export default function TrackerApp() {
 
   /**
    * Materialises exactly one profile-owned mixed-plan step through its existing
-   * domain boundary. Release Time creates a normal TrainingBlock; Technique and
-   * Shotmaking create and attach a normal Solo Exercise Execution. The returned
+   * domain boundary. Release Time creates a normal TrainingBlock; curated steps on
+   * the generic runner create and attach a normal Solo Exercise Execution. The returned
    * typed runtime reference is the only link the plan orchestrator owns.
    */
   function materializeProfilePlanStep(
@@ -1855,18 +1880,29 @@ export default function TrackerApp() {
       };
     }
 
+    const runnerKind = exerciseRunnerKind(
+      EXERCISE_CATALOG,
+      step.exerciseVersionSnapshot
+    );
+    if (runnerKind !== "exercise-execution") {
+      alert("This plan step does not have a supported Exercise Execution runner.");
+      return null;
+    }
+    const compatibleProtocols = resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      step.exerciseVersionSnapshot.compatibleMeasurementProtocols
+    ).map(({ protocol }) => protocol);
     const created = createSoloExerciseExecution(step.exerciseVersionSnapshot, {
       trainingSessionId: session.id,
       athleteProfileId,
       enabledMeasurementProtocols:
-        step.exerciseVersionSnapshot.primaryFocus === "shotmaking"
-          ? resolveMeasurementProtocols(
-              EXERCISE_CATALOG,
-              step.exerciseVersionSnapshot.compatibleMeasurementProtocols
-            )
-              .map(({ protocol }) => protocol)
-              .filter((protocol) => protocol.metricType === "rotation-count")
-          : [],
+        step.exerciseVersionSnapshot.primaryFocus === "technique"
+          ? []
+          : compatibleProtocols.filter(
+              (protocol) =>
+                step.exerciseVersionSnapshot.primaryFocus === "measured" ||
+                protocol.metricType === "rotation-count"
+            ),
     });
     if (!created.ok) {
       alert(created.error.message);
@@ -2572,6 +2608,7 @@ export default function TrackerApp() {
         <>
           {activeTeamExerciseDraft ? (
             <ExerciseTeamExecutionScreen
+              restrictedAssetResolver={restrictedAssetResolver}
               execution={activeTeamExerciseDraft}
               eligibilitySnapshot={activeTeamEligibilitySnapshot}
               onSave={async (execution) =>
@@ -2645,6 +2682,7 @@ export default function TrackerApp() {
                 />
               )}
               <ExerciseSoloExecutionScreen
+                restrictedAssetResolver={restrictedAssetResolver}
                 execution={displayedExerciseExecution}
                 writable={sessionWritable}
                 onReplace={handleReplaceExerciseExecution}
@@ -2680,6 +2718,7 @@ export default function TrackerApp() {
             // — Training Plans is a second, equally-reachable entry path
             // alongside it, not a replacement (spec section 21/22).
             <TrainLanding
+              restrictedAssetResolver={restrictedAssetResolver}
               quickStartContent={
                 // One Hero setup surface, composed around the actual decision
                 // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's

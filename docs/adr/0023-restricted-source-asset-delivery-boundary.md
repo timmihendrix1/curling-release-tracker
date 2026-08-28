@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted. Implemented for the Exercise Library's content boundary (Stage A). No
-restricted asset exists in this repository, and no authorized resolver is
-implemented — the boundary is deliberately in place *before* the first one arrives.
+Accepted. Stage A implemented the content boundary before any asset existed. Stage E
+implements the closed-beta delivery capability for exactly three approved Swiss Curling
+diagrams without placing them in a public asset surface. The external permission gate
+before any wider audience remains unchanged.
 
 ## Context
 
@@ -42,16 +43,16 @@ option 1 without realising that the restriction was ever load-bearing.
    `resolveRestrictedAssetAccess(reference, distribution, resolver?)`
    (`src/lib/exercises/restrictedAssets.ts`), is the only path from a reference to a
    renderable source. The `resolver` is an injected `RestrictedAssetResolver` supplied by
-   an authorized delivery context. There is no default resolver and no fallback, so the
-   application's production behaviour today is "unavailable" by construction, not by
-   configuration.
+   an authorized delivery context. There is no implicit resolver and no fallback: an
+   unconfigured application or a caller that cannot pass the explicit delivery boundary
+   still receives "unavailable" by construction.
 
 3. **It fails closed on every uncertain path,** with one of exactly five named
    reasons (`RestrictedAssetAccessReason`):
 
    | Reason | Meaning |
    |---|---|
-   | `no-resolver` | No resolver was injected — this application's behaviour today |
+   | `no-resolver` | No resolver was injected — the required fail-closed behaviour in an unconfigured or non-cloud composition |
    | `not-authorized` | A resolver ran and declined this reference |
    | `distribution-not-restricted` | The diagram's own metadata does not describe a restricted asset; re-checked here rather than trusting that catalog validation ran |
    | `invalid-resolution` | The resolver returned an unusable value |
@@ -101,11 +102,44 @@ option 1 without realising that the restriction was ever load-bearing.
    in-memory test fixtures — which is the point: the mechanism exists before the asset
    does, so nobody has to invent it under delivery pressure.
 
+8. **Stage E supplies a fixed private asset catalogue, not a public directory.** Exactly
+   three opaque ids are declared in `restrictedAssetCatalog.ts` and mapped server-side to
+   three PNGs under `restricted-assets/exercises/`. No file is placed under `public/`,
+   and `next.config.ts` includes only those private PNGs in the server output trace. The
+   Route Handler rejects an unknown id before authentication and never joins a request
+   value into a filesystem path.
+
+9. **Delivery requires both authentication and active membership in one configured
+   Team.** `CLOSED_BETA_EXERCISE_ASSET_TEAM_ID` must be a canonical UUID. The browser
+   forwards its ordinary Supabase bearer token only to the exact same-origin,
+   prefix-confined route. A shared server auth seam creates a fresh user-scoped Supabase
+   client from that token — never a service-role client — and the route reads the PNG only
+   after an active `team_memberships` row for the configured Team is visible through that
+   caller's RLS scope. Unknown config, missing authentication, absent membership, provider
+   failure and file failure all return generic private/no-store responses without paths,
+   ids or provider detail.
+
+10. **Browser resolution is asynchronous and validates the response before rendering.**
+    `createAuthorizedRestrictedAssetResolver` accepts only the shared allowlisted id,
+    validates the exact same-origin path before reading the access token, requests with
+    `no-store`, accepts only a non-empty `image/png` body below the fixed size limit and
+    converts it to an in-memory data URL. A thrown synchronous value, rejected Promise,
+    hostile getter/Proxy or invalid response is still one of Decision 3's ordinary
+    fail-closed outcomes. The renderer also refuses to display a prior diagram's resolved
+    bytes while a new asynchronous check is pending.
+
+11. **Source-language labels are localized as content, not by Exercise-specific UI.**
+    The original private source PNGs are retained. Optional normalized overlay metadata
+    on the attributed-image Diagram covers an embedded label with English text, validated
+    for bounds, colors, positive size and unique identity. The generic renderer maps that
+    metadata without inspecting an Exercise id, Version id, title or asset id. The English
+    accessible summary remains the image's alternative text.
+
 ## Consequences
 
-- Showing a real restricted diagram to the closed beta is a *new capability to build*
-  (an authenticated delivery path that implements `RestrictedAssetResolver`), not a flag
-  to flip or a file to drop into `public/`. That is the intended cost.
+- Showing a real restricted diagram to the closed beta now requires the configured Team
+  UUID, a signed-in active member and the Stage-E server route/resolver composition. It is
+  still not a flag that can expose a file from `public/`.
 - Replacing a restricted source image with an independently authored structured diagram
   is a content change and therefore requires a **new Exercise Version**; the old version
   keeps its source-image diagram and stays independently resolvable
@@ -115,7 +149,7 @@ option 1 without realising that the restriction was ever load-bearing.
   and says plainly that the diagram's delivery has not been authorised here. Every
   failure reason lands on that same state; the athlete is never shown which one, and a
   resolver failure is not surfaced as an application error.
-- A resolver implementation is therefore free to throw rather than having to catch
+- A resolver implementation is therefore free to reject/throw rather than having to catch
   everything itself. It must still never return a source it is not authorized to return
   — this boundary makes a *failure* safe, not a mistake.
 - Any future restricted asset class (a licensed video, a partner's illustration) reuses

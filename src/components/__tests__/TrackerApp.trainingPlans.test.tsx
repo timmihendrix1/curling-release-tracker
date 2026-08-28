@@ -7,6 +7,7 @@ import {
   EIGHT_GUARDS_VERSION_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_TIME_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
 } from "../../lib/exercises/content";
 import { findExerciseVersion } from "../../lib/exercises/lookup";
 import TrackerApp from "../TrackerApp";
@@ -113,6 +114,12 @@ function seedMixedTrainingPlan() {
         completion: { type: "exercise-completion" },
       },
       {
+        id: "rotation-count-step",
+        type: "curated-exercise",
+        exerciseVersionSnapshot: catalogVersion(ROTATION_COUNT_VERSION_ID),
+        completion: { type: "exercise-completion" },
+      },
+      {
         ...releaseTime,
         exerciseVersionSnapshot: catalogVersion(RELEASE_TIME_VERSION_ID),
       },
@@ -139,13 +146,13 @@ describe("TrackerApp — Training Plans execution", () => {
     screen.getByRole("button", { name: "Start Training" }).click();
 
     await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
-    expect(screen.getByText(/Step 1 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 1 of 4/)).toBeInTheDocument();
     screen.getByRole("button", { name: "Complete Exercise" }).click();
     await waitFor(() => screen.getByText("Next: Eight Guards, Progressively Longer"));
     screen.getByRole("button", { name: "Continue to Next Step" }).click();
 
     await waitFor(() => screen.getByRole("heading", { name: "Eight Guards, Progressively Longer" }));
-    expect(screen.getByText(/Step 2 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 2 of 4/)).toBeInTheDocument();
     screen.getByRole("button", { name: "Inhandle" }).click();
     screen.getByRole("button", { name: "4 points, 100 percent" }).click();
     const recordStone = screen.getByRole("button", { name: "Record Stone" });
@@ -153,14 +160,25 @@ describe("TrackerApp — Training Plans execution", () => {
     recordStone.click();
     await waitFor(() => screen.getByText("1 stone recorded"));
     screen.getByRole("button", { name: "Complete Exercise" }).click();
+    await waitFor(() => screen.getByText("Next: Rotation Count"));
+    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+
+    await waitFor(() => screen.getByRole("heading", { name: "Rotation Count" }));
+    expect(screen.getByText(/Step 3 of 4/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), {
+      target: { value: "2.5" },
+    });
+    screen.getByRole("button", { name: "Record Measurement" }).click();
+    await waitFor(() => screen.getAllByText(/2.5 rotations/));
+    screen.getByRole("button", { name: "Complete Exercise" }).click();
     await waitFor(() => screen.getByText("Next: Release Time"));
     screen.getByRole("button", { name: "Continue to Next Step" }).click();
 
     await waitFor(() => screen.getByText("Active Training Block"));
-    expect(screen.getByText(/Step 3 of 3/)).toBeInTheDocument();
+    expect(screen.getByText(/Step 4 of 4/)).toBeInTheDocument();
     addShot("3.75");
     await waitFor(() => screen.getByText("Plan complete"));
-    expect(screen.getByText("All 3 steps completed.")).toBeInTheDocument();
+    expect(screen.getByText("All 4 steps completed.")).toBeInTheDocument();
   });
 
   it("drives a full plan through both steps to completion, then archives it via Finish Training", async () => {

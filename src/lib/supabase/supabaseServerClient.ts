@@ -4,11 +4,11 @@
 // src/lib/persistence/__tests__/architectureBoundary.test.ts, updated alongside this
 // file (requirement 156).
 //
-// SERVER-ONLY. Used exclusively by the Next.js Route Handlers under
-// src/app/api/team/ for the small set of Team Foundation mutations that must also
-// send an email (requirements 131, 139-147) — every other mutation goes straight
-// from the browser to a Postgres RPC via supabaseTeamService.ts, which never needs
-// this file.
+// SERVER-ONLY. Used through src/app/api/_lib/userScopedSupabaseContext.ts by the
+// small set of Next.js Route Handlers that must act as the calling user: Team
+// Foundation mutations that also send email, and authenticated delivery of
+// closed-beta Exercise diagrams. Every ordinary Team mutation still goes straight
+// from the browser to a Postgres RPC via supabaseTeamService.ts.
 //
 // This constructs a FRESH client per request, scoped to the calling user's own
 // forwarded access token (never the service-role key) — `auth.uid()` inside every

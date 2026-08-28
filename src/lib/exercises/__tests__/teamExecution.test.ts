@@ -7,6 +7,7 @@ import {
   EIGHT_GUARDS_VERSION_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_TIME_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
 } from "../content";
 import { updatePrivateAthleteNote } from "../execution";
 import { validateExerciseExecution } from "../executionValidation";
@@ -15,6 +16,7 @@ import { attachSoloExerciseExecution } from "../sessionIntegration";
 import {
   abandonTeamExerciseExecution,
   addTeamShotmakingAttempt,
+  addTeamMeasurementAttempt,
   annulTeamShotmakingAttempt,
   changeTeamRoleAssignment,
   completeTeamExerciseExecution,
@@ -188,6 +190,58 @@ describe("Stage C1 Team Exercise Execution domain", () => {
     });
 
     expect(outcome).toMatchObject({ ok: false, error: { code: "unsupported-focus" } });
+  });
+
+  it("records a standalone Team Measurement for the active delivering athlete", () => {
+    const measuredVersion = version(ROTATION_COUNT_VERSION_ID);
+    const protocols = resolveMeasurementProtocols(
+      EXERCISE_CATALOG,
+      measuredVersion.compatibleMeasurementProtocols
+    ).map(({ protocol }) => protocol);
+    const execution = createTeam(
+      { enabledMeasurementProtocols: protocols },
+      ROTATION_COUNT_VERSION_ID
+    );
+    const outcome = addTeamMeasurementAttempt(execution, {
+      recorderProfileId: RECORDER,
+      athleteProfileId: ATHLETE_A,
+      actualHandle: "out",
+      measurements: [{
+        id: "80000000-0000-4000-8000-000000000008",
+        protocolId: protocols[0].id,
+        protocolVersion: protocols[0].version,
+        value: 2.5,
+        source: "manual",
+        recordedAt: "2026-08-28T10:20:00.000Z",
+        observerProfileId: RECORDER,
+      }],
+      clock: clock(20, 20),
+    });
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      value: {
+        athleteResults: [
+          {
+            athleteProfileId: ATHLETE_A,
+            attempts: [{
+              kind: "measurement",
+              actualHandle: "out",
+              recordedByProfileId: RECORDER,
+              measurements: [{ value: 2.5, observerProfileId: RECORDER }],
+            }],
+          },
+          { athleteProfileId: ATHLETE_B, attempts: [] },
+        ],
+      },
+    });
+    if (outcome.ok) {
+      expect(validateExerciseExecution(outcome.value, EXERCISE_CATALOG)).toEqual({
+        valid: true,
+        value: outcome.value,
+        issues: [],
+      });
+    }
   });
 
   it("rejects incomplete athlete orders and invalid stone-count rotation", () => {

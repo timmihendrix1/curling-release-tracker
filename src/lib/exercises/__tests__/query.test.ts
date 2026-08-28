@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { EXERCISE_CATALOG } from "../catalog";
 import {
-  EIGHT_GUARDS_VERSION_ID,
+  EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+  COME_AROUND_VERSION_ID,
+  SOFT_TAKEOUT_VERSION_ID,
+  RELEASE_GATES_VERSION_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_TIME_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
 } from "../content";
 import { listCurrentExerciseVersions } from "../lookup";
 import {
@@ -35,8 +39,12 @@ describe("default filters", () => {
   it("return every current Exercise Version, in catalog order", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters()))).toEqual([
       RELEASE_POINT_VERSION_ID,
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       RELEASE_TIME_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
   });
 
@@ -58,29 +66,39 @@ describe("classification filters", () => {
   it("filters by Primary Exercise Focus", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "technique" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "shotmaking" })))).toEqual([
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "measured" })))).toEqual([
       RELEASE_TIME_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
     ]);
   });
 
   it("filters by Shot Family, excluding Exercises that declare none", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "guard" })))).toEqual([
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
     ]);
-    expect(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" }))).toEqual([]);
+    expect(ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" })))).toEqual([
+      COME_AROUND_VERSION_ID,
+    ]);
   });
 
   it("filters by Sweeper requirement", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ sweeping: "forbidden" })))).toEqual([
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ sweeping: "optional" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
       RELEASE_TIME_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
     ]);
     expect(filterExerciseVersions(CURRENT, filters({ sweeping: "required" }))).toEqual([]);
   });
@@ -88,8 +106,12 @@ describe("classification filters", () => {
   it("filters by Solo/Team suitability", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ participationMode: "solo" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       RELEASE_TIME_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
 
     const teamOnly = buildTestVersion({
@@ -110,13 +132,18 @@ describe("classification filters", () => {
   it("filters by difficulty level and by unrated", () => {
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 6 } })))
-    ).toEqual([EIGHT_GUARDS_VERSION_ID]);
+    ).toEqual([EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID]);
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "unrated" } })))
-    ).toEqual([RELEASE_POINT_VERSION_ID, RELEASE_TIME_VERSION_ID]);
+    ).toEqual([
+      RELEASE_POINT_VERSION_ID,
+      RELEASE_TIME_VERSION_ID,
+      RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
+    ]);
     expect(
-      filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 3 } }))
-    ).toEqual([]);
+      ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 3 } })))
+    ).toEqual([COME_AROUND_VERSION_ID]);
   });
 
   it("matches a level inside a bounded difficulty range", () => {
@@ -151,25 +178,29 @@ describe("classification filters", () => {
           filters({ focus: "shotmaking", sweeping: "forbidden", participationMode: "team" })
         )
       )
-    ).toEqual([EIGHT_GUARDS_VERSION_ID]);
+    ).toEqual([
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
+    ]);
   });
 });
 
 describe("text search", () => {
   it("matches on title, goal and instruction text", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "guards" })))).toEqual([
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "hog line" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
     ]);
   });
 
   it("is case-insensitive and ignores surrounding whitespace", () => {
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "  RELEASE LOCATION " })))
-    ).toEqual([RELEASE_POINT_VERSION_ID]);
+    ).toEqual([RELEASE_POINT_VERSION_ID, RELEASE_GATES_VERSION_ID]);
   });
 
   it("requires every term to match", () => {
@@ -180,16 +211,23 @@ describe("text search", () => {
   });
 
   it("matches a non-displayed source alias, including without its diacritics", () => {
-    for (const term of ["Übung", "ubung", "8 Steine"]) {
+    for (const term of ["Übung", "ubung"]) {
       expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: term })))).toEqual([
-        EIGHT_GUARDS_VERSION_ID,
+        EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+        COME_AROUND_VERSION_ID,
+        SOFT_TAKEOUT_VERSION_ID,
       ]);
     }
+    expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "8 Steine" })))).toEqual([
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    ]);
   });
 
   it("matches on visible source attribution", () => {
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "swiss curling" })))).toEqual([
-      EIGHT_GUARDS_VERSION_ID,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      COME_AROUND_VERSION_ID,
+      SOFT_TAKEOUT_VERSION_ID,
     ]);
   });
 
@@ -250,13 +288,19 @@ describe("active advanced-filter description", () => {
 describe("available filter options are derived from the catalog", () => {
   it("lists only the focuses, families, modes and policies actually present", () => {
     expect(availableExerciseFocuses(CURRENT)).toEqual(["technique", "shotmaking", "measured"]);
-    expect(availableExerciseShotFamilies(CURRENT)).toEqual(["guard"]);
+    expect(availableExerciseShotFamilies(CURRENT)).toEqual([
+      "guard",
+      "draw",
+      "soft-take-out",
+    ]);
     expect(availableExerciseParticipationModes(CURRENT)).toEqual(["solo", "team"]);
     expect(availableExerciseSweepingPolicies(CURRENT)).toEqual(["optional", "forbidden"]);
   });
 
   it("lists the difficulty levels present plus an unrated option", () => {
     expect(availableExerciseDifficultyFilters(CURRENT)).toEqual([
+      { kind: "level", level: 3 },
+      { kind: "level", level: 4 },
       { kind: "level", level: 6 },
       { kind: "unrated" },
     ]);

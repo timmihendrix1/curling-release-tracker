@@ -1568,7 +1568,7 @@ A stable Library identity for one deliberate-practice activity (`{ id, currentVe
 instructions, diagrams, defaults and provenance live in an immutable **Exercise
 Version**. Version 1 exposes only platform-curated Standard Exercises. Athlete-, Team-
 and Community-authored Exercises are deferred.
-**[Implemented — identity and lookup; three curated Exercises. ADR-0028/0029 add the
+**[Implemented — identity and lookup; seven curated closed-beta Exercises. ADR-0028/0029 add the
 Solo execution and Session-persistence foundations; ADR-0030 adds athlete-facing Solo
 start and recording. See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section.]**
 
@@ -1617,8 +1617,9 @@ platform diagram in normalised Ice Sheet coordinates. It is not captured positio
 and does not itself perform automatic scoring.
 **[Implemented — both variants are modelled and validated; the structured variant has a
 generic responsive SVG renderer (`normalized-ice-sheet-v1`), and unsupported content
-fails visibly rather than disappearing. No editor, animation, actual positions or
-sensor overlay exists (Planned). No restricted source asset is bundled — see ADR-0023.]**
+fails visibly rather than disappearing. The three approved Swiss Curling Shotmaking
+diagrams use the restricted variant with English localized-text overlays where needed.
+No editor, animation, actual positions or sensor overlay exists (Planned). See ADR-0023.]**
 
 ## Restricted Source Asset
 
@@ -1627,8 +1628,11 @@ named by an **opaque asset reference** — never a URL or public path — and is
 only through an explicitly injected authorized resolver. Every uncertain path fails
 closed, including a resolver that throws, and attribution/provenance stay visible either
 way.
-**[Implemented — boundary only. No restricted asset and no authorized resolver exist in
-this repository. See `docs/adr/0023-restricted-source-asset-delivery-boundary.md`.]**
+**[Implemented — boundary and closed-beta delivery. Exactly three private Swiss Curling
+PNG assets are allowlisted outside `public/`; an authenticated same-origin route uses the
+caller's bearer token and active-Team-membership RLS, and the asynchronous browser
+resolver fails closed. The permission gate before a wider pilot remains external. See
+`docs/adr/0023-restricted-source-asset-delivery-boundary.md`.]**
 
 ## Measurement Protocol
 
@@ -1640,7 +1644,7 @@ is not duplicated inside every Exercise definition.
 Mode semantics, and one manual Rotation Count protocol uses the rotations unit with no
 release-time mode. None prescribes a target or tolerance or claims hardware capture.
 Rotation Count accepts positive full or half rotations and is optionally referenced by
-Eight Guards Version 2. Solo and Team Shotmaking can snapshot and retain it; Library
+Eight Guards Versions 2 and 3. Solo and Team Shotmaking can snapshot and retain it; Library
 Release Time still opens the existing Block/Shot runner and retains only its exact
 Exercise Version as Session provenance.]**
 

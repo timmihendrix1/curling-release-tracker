@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isPlanExecutable, isStepExecutable, validatePlan, validatePlanStep } from "../validation";
 import { buildExerciseStep, buildPlan, buildStep } from "./testHelpers";
+import { EXERCISE_CATALOG } from "../../exercises/catalog";
+import { ROTATION_COUNT_VERSION_ID } from "../../exercises/content";
+import { findExerciseVersion } from "../../exercises/lookup";
 
 describe("isStepExecutable", () => {
   it("fails closed instead of throwing when legacy input reaches the boundary without a snapshot", () => {
@@ -16,6 +19,18 @@ describe("isStepExecutable", () => {
 
   it("accepts a curated Solo Technique or Shotmaking step", () => {
     expect(isStepExecutable(buildExerciseStep())).toBe(true);
+  });
+
+  it("accepts a standalone Measured Exercise assigned to the generic runner", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!version) throw new Error("Missing Rotation Count fixture");
+    expect(isStepExecutable(buildExerciseStep({ exerciseVersionSnapshot: version }))).toBe(true);
+  });
+
+  it("rejects Rotation Count when it is mislabeled as a Release Timing step", () => {
+    const version = findExerciseVersion(EXERCISE_CATALOG, ROTATION_COUNT_VERSION_ID);
+    if (!version) throw new Error("Missing Rotation Count fixture");
+    expect(isStepExecutable(buildStep({ exerciseVersionSnapshot: version }))).toBe(false);
   });
 
   it("rejects a tampered Exercise Version snapshot", () => {

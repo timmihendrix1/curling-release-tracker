@@ -5,6 +5,7 @@ import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableT
 import {
   createCompletedTechniqueExecution,
   createMeasuredExecution,
+  createRotationCountExecution,
   createTechniqueExecution,
   FIXTURE_SESSION_ID,
 } from "../exercises/__tests__/executionFixtures";
@@ -1467,5 +1468,38 @@ describe("migrateSession — planExecution (Training Plans)", () => {
       },
     };
     expect(migrateSession(mismatched).planExecution).toBeUndefined();
+  });
+
+  it("preserves a generic Measured Exercise runtime without treating it as Release Timing", () => {
+    const execution = createRotationCountExecution();
+    const raw = {
+      id: FIXTURE_SESSION_ID,
+      blocks: [],
+      activeBlockId: "",
+      shots: [],
+      exerciseExecutions: [execution],
+      activeExerciseExecutionId: execution.id,
+      planExecution: {
+        sourcePlanId: "measured-plan",
+        sourcePlanName: "Measured Practice",
+        activeStepIndex: 0,
+        steps: [{
+          step: {
+            id: "rotation-step",
+            type: "curated-exercise",
+            exerciseVersionSnapshot: execution.exerciseVersionSnapshot,
+            completion: { type: "exercise-completion" },
+          },
+          runtime: { kind: "exercise-execution", exerciseExecutionId: execution.id },
+        }],
+      },
+    };
+
+    const migrated = migrateSession(raw);
+    expect(migrated.planExecution?.steps[0].runtime).toEqual({
+      kind: "exercise-execution",
+      exerciseExecutionId: execution.id,
+    });
+    expect(migrateSession(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
   });
 });

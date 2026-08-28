@@ -4,7 +4,11 @@ import { useState } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
-import { EIGHT_GUARDS_VERSION_ID, RELEASE_POINT_VERSION_ID } from "../../lib/exercises/content";
+import {
+  EIGHT_GUARDS_VERSION_ID,
+  RELEASE_POINT_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
+} from "../../lib/exercises/content";
 import type { ExerciseExecution } from "../../lib/exercises/executionTypes";
 import { findExerciseVersion, resolveMeasurementProtocols } from "../../lib/exercises/lookup";
 import { createTeamExerciseExecution } from "../../lib/exercises/teamExecution";
@@ -106,6 +110,26 @@ describe("ExerciseTeamExecutionScreen", () => {
 
     expect(screen.getByText("Observe and discuss")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /points/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Complete Team Exercise" })).toBeEnabled();
+  });
+
+  it("records standalone Team Measurements for the active athlete and counter", async () => {
+    render(<Harness initial={execution(ROTATION_COUNT_VERSION_ID)} />);
+
+    expect(screen.getByText("Athlete A · Observation 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Complete Team Exercise" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Rotation Count"), {
+      target: { value: "3.5" },
+    });
+    fireEvent.change(screen.getByLabelText("Counted by"), {
+      target: { value: RECORDER },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Outhandle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Measurement" }));
+
+    expect(await screen.findAllByText(/3.5 rotations/)).toHaveLength(2);
+    expect(screen.getByText(/1 recorded · mean 3.5 rotations/)).toBeInTheDocument();
+    expect(screen.getByText(/Observation 1 · Athlete A/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Complete Team Exercise" })).toBeEnabled();
   });
 

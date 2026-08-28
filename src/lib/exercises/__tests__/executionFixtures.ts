@@ -3,6 +3,7 @@ import {
   EIGHT_GUARDS_VERSION_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_TIME_VERSION_ID,
+  ROTATION_COUNT_VERSION_ID,
 } from "../content";
 import {
   addShotmakingAttempt,
@@ -89,6 +90,28 @@ export function createMeasuredExecution(
   );
   if (!protocol) throw new Error("Missing release-time protocol fixture");
   const outcome = createSoloExerciseExecution(version(RELEASE_TIME_VERSION_ID), {
+    trainingSessionId: sessionId,
+    athleteProfileId: FIXTURE_ATHLETE_ID,
+    enabledMeasurementProtocols: [protocol],
+    clock: clock(seed),
+  });
+  if (!outcome.ok) throw new Error(outcome.error.message);
+  return outcome.value;
+}
+
+export function createRotationCountExecution(
+  sessionId = FIXTURE_SESSION_ID,
+  seed = 60
+): ExerciseExecution {
+  const rotationVersion = version(ROTATION_COUNT_VERSION_ID);
+  const protocolReference = rotationVersion.compatibleMeasurementProtocols[0];
+  const protocol = protocolReference && EXERCISE_CATALOG.measurementProtocols.find(
+    (candidate) =>
+      candidate.id === protocolReference.protocolId &&
+      candidate.version === protocolReference.protocolVersion
+  );
+  if (!protocol) throw new Error("Missing rotation-count protocol fixture");
+  const outcome = createSoloExerciseExecution(rotationVersion, {
     trainingSessionId: sessionId,
     athleteProfileId: FIXTURE_ATHLETE_ID,
     enabledMeasurementProtocols: [protocol],

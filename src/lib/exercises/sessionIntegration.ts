@@ -3,7 +3,7 @@ import { EXERCISE_CATALOG } from "./catalog";
 import { abandonExerciseExecution } from "./execution";
 import type { ExerciseExecution } from "./executionTypes";
 import { validateExerciseExecution } from "./executionValidation";
-import { findExerciseVersion } from "./lookup";
+import { exerciseRunnerKind, findExerciseVersion } from "./lookup";
 
 export type SessionExerciseValidationIssue = {
   path: string;
@@ -194,10 +194,15 @@ export function validateSessionExerciseState(
         message: "Exercise Execution must belong to its containing Training Session.",
       });
     }
-    if (validation.value.exerciseVersionSnapshot.primaryFocus === "measured") {
+    if (
+      exerciseRunnerKind(
+        EXERCISE_CATALOG,
+        validation.value.exerciseVersionSnapshot
+      ) !== "exercise-execution"
+    ) {
       issues.push({
         path: `exerciseExecutions[${index}].exerciseVersionSnapshot.primaryFocus`,
-        message: "B2 does not persist Measured execution beside the existing Release Timing runner.",
+        message: "Only Exercises assigned to the generic Exercise Execution runner may be embedded; Release Timing remains on its existing Block and Shot path.",
       });
     }
     if (validation.value.teamContext !== undefined) {

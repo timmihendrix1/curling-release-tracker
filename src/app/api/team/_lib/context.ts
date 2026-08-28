@@ -9,11 +9,7 @@
 // src/lib/supabase/supabaseServerClient.ts's own header and the architecture-boundary
 // test (src/lib/persistence/__tests__/architectureBoundary.test.ts).
 import { NextResponse } from "next/server";
-import {
-  createUserScopedServerClient,
-  extractBearerToken,
-} from "../../../../lib/supabase/supabaseServerClient";
-import { resolveCloudConfig } from "../../../../lib/supabase/config";
+import { resolveUserScopedSupabaseContext } from "../../_lib/userScopedSupabaseContext";
 import type { SupabaseClient } from "../../../../lib/supabase/supabaseClient";
 import { parsePostgresErrorMessage } from "../../../../lib/team/postgresErrorMapping";
 import type { TeamErrorKind } from "../../../../lib/team/errors";
@@ -178,15 +174,14 @@ export function rpcErrorJson(rawMessage: string | null | undefined): NextRespons
  * request body.
  */
 export function resolveRouteContext(request: Request): RouteContextResult {
-  const token = extractBearerToken(request);
-  if (!token) {
+  const context = resolveUserScopedSupabaseContext(request);
+  if (!context.ok && context.reason === "unauthenticated") {
     return { ok: false, response: errorJson("forbidden", "You must be signed in.", 401) };
   }
-  const config = resolveCloudConfig();
-  if (config.status !== "configured") {
+  if (!context.ok) {
     return { ok: false, response: errorJson("unexpected_error", "Cloud is not configured.", 500) };
   }
-  return { ok: true, value: { client: createUserScopedServerClient(config, token) } };
+  return { ok: true, value: { client: context.client } };
 }
 
 function logBestEffortFailure(label: string, err: unknown): void {
