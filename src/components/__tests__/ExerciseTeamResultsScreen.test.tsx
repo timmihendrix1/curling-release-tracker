@@ -10,7 +10,9 @@ import { findExerciseVersion } from "../../lib/exercises/lookup";
 import {
   addTeamShotmakingAttempt,
   completeTeamExerciseExecution,
+  correctTeamShotmakingAttempt,
   createTeamExerciseExecution,
+  getTeamAttemptRoleContext,
 } from "../../lib/exercises/teamExecution";
 import { serializeCompletedTeamExercise, deserializeOwnedTeamExerciseResult } from "../../lib/cloudSporting/teamExerciseRecords";
 import { sha256Hex } from "../../lib/cloudSporting/records";
@@ -23,7 +25,7 @@ const RECORDER = "50000000-0000-4000-8000-000000000005";
 
 afterEach(cleanup);
 
-async function resultRecord(withNote = true) {
+async function resultRecord(withNote = true, withCorrection = false) {
   let id = 10;
   let minute = 0;
   const clock = {
@@ -58,7 +60,26 @@ async function resultRecord(withNote = true) {
     clock,
   });
   if (!attempted.ok) throw new Error(attempted.error.message);
-  const completed = completeTeamExerciseExecution(attempted.value, RECORDER, "2026-08-28T11:00:00Z");
+  let active = attempted.value;
+  if (withCorrection) {
+    const attempt = active.athleteResults[0].attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing attempt fixture");
+    const role = getTeamAttemptRoleContext(active, attempt);
+    if (!role) throw new Error("Missing role fixture");
+    const corrected = correctTeamShotmakingAttempt(active, {
+      recorderProfileId: RECORDER,
+      attemptId: attempt.id,
+      athleteProfileId: ATHLETE,
+      actualHandle: "out",
+      evaluation: { status: "scored", score: 4 },
+      measurements: [],
+      roleContext: { ...role, sweeperProfileIds: [OTHER_ATHLETE], sweepingUsed: true },
+      clock,
+    });
+    if (!corrected.ok) throw new Error(corrected.error.message);
+    active = corrected.value;
+  }
+  const completed = completeTeamExerciseExecution(active, RECORDER, "2026-08-28T11:00:00Z");
   if (!completed.ok) throw new Error(completed.error.message);
   const upload = serializeCompletedTeamExercise(completed.value)!;
   const bundle = upload.bundles[0];
@@ -92,6 +113,7 @@ describe("ExerciseTeamResultsScreen", () => {
     expect(screen.getByText("75%")).toBeInTheDocument();
     expect(screen.getByText("3/4")).toBeInTheDocument();
     expect(screen.getByText("Inhandle · 3/4 (75%)")).toBeInTheDocument();
+    expect(screen.getByText(/Context: 0 Sweepers · no sweeping/)).toBeInTheDocument();
     expect(screen.getByDisplayValue("Only I can read this")).toBeInTheDocument();
     expect(screen.getByText("3", { selector: "dd" })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain(OTHER_ATHLETE);
@@ -147,5 +169,18 @@ describe("ExerciseTeamResultsScreen", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("too long to save");
     expect(screen.getByRole("button", { name: "Save Private Note" })).toBeDisabled();
     expect(onSetPrivateNote).not.toHaveBeenCalled();
+  });
+
+  it("shows only the athlete's active-session correction history without raw identities", async () => {
+    const user = userEvent.setup();
+    render(<ExerciseTeamResultsScreen results={[await resultRecord(false, true)]} readStatus="refreshed" onRefresh={vi.fn()} onSetPrivateNote={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: /Eight Guards, Progressively Longer/ }));
+    expect(screen.getByRole("heading", { name: "Correction history" })).toBeInTheDocument();
+    expect(screen.getByText(/Inhandle · 3\/4 → Outhandle · 4\/4/)).toBeInTheDocument();
+    expect(screen.getByText(/Role or Sweeper context changed/)).toBeInTheDocument();
+    expect(screen.getByText(/Context: 1 Sweeper · sweeping used/)).toBeInTheDocument();
+    expect(screen.getByText(/Active recorder/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(RECORDER);
+    expect(document.body.textContent).not.toContain(OTHER_ATHLETE);
   });
 });

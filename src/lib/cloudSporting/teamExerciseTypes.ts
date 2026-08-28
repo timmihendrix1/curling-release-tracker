@@ -1,4 +1,5 @@
-export const TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION = 1;
+export const TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION = 2;
+export const SUPPORTED_TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSIONS = [1, 2] as const;
 
 export type TeamExerciseSessionUpload = {
   sessionId: string;

@@ -1667,7 +1667,8 @@ ADR-0035 adds one reload-safe Profile-bound active Team draft and atomic complet
 handoff as Stage C3a. ADR-0036 adds cache-bounded Team setup and durable one-device
 Technique/Shotmaking capture as Stage C3b. ADR-0037 adds athlete-owned result restore,
 verified offline caching, factual Analyze detail/raw export and own private-note UI as
-Stage C3c. Measured Release Time intentionally uses the existing Block/Shot runner
+Stage C3c. ADR-0038 adds append-only active-attempt correction/annulment, durable rink
+UI and affected-athlete-only correction restore as Stage C3d. Measured Release Time intentionally uses the existing Block/Shot runner
 with immutable Library provenance rather than a parallel `ExerciseExecution`.]**
 
 ## Exercise Role Assignment Segment
@@ -1678,6 +1679,25 @@ use, active recorder and the transition reason. Attempts reference the segment a
 when recorded. Planned rotation is never substituted for this historical truth.
 **[Implemented in the Stage C1 Team domain, persisted as part of ADR-0035's active Team
 draft and shown/changed by ADR-0036's Team capture UI.]**
+
+## Active Team Attempt Correction
+
+An append-only correction made by the authenticated active recorder before Team Session
+completion. It retains the exact Shotmaking attempt before and after, actor and time;
+the current Athlete Result uses the latest non-annulled value. Athlete, handle,
+evaluation, supported Measurement and the stone's effective role/Sweeper context may be
+corrected without rewriting the original role segment. No typed reason or participant
+notification is required while the Session is active. **[Implemented by ADR-0038 under
+Exercise Execution schema 2. After completion, only affected athletes receive this
+history through their owned bundle.]**
+
+## Recorded-by-Mistake Annulment
+
+The active-capture correction for a stone that was entered but did not belong in the
+current result. It removes that attempt from calculations and completion eligibility
+without erasing its original facts or provenance. It is distinct from post-completion
+ordinary voiding and from legal/privacy erasure. **[Implemented by ADR-0038; confirmed
+in the rink UI and retained in the affected athlete's audit.]**
 
 ## Exercise Rotation Configuration
 
@@ -1734,7 +1754,9 @@ Its private notes are stored separately and writable only by the authenticated a
 partial rejection, concrete-Session approval and private-note RLS. The TypeScript upload
 service and durable local queue integration are implemented by ADR-0033, including
 independently retained pending, synced, blocked and issue outcomes. ADR-0037 adds the
-athlete-authenticated read projection and own private-note surface.]**
+athlete-authenticated read projection and own private-note surface. ADR-0038's cloud
+payload schema 2 additionally carries only correction events affecting that bundle's
+athlete; schema 1 remains readable.]**
 
 ## Owned Team Exercise Result Projection
 
@@ -1743,8 +1765,10 @@ combines immutable shared Session/execution context with exactly that athlete's 
 and optional private note; it never contains a sibling Athlete Result collection. The
 projection is rebuilt from owner-result-gated relational manifests plus hash-verified
 opaque payloads, cached only in the same immutable Profile namespace and exported from
-that same bounded shape. **[Implemented by ADR-0037 in
-`teamExerciseRecords.ts`, schema 5 of the sporting sync record and Analyze → Exercises.]**
+that same bounded shape. Its active-session correction history is likewise filtered to
+events whose before or after owner is the mounted athlete. **[Implemented by ADR-0037
+and extended by ADR-0038 in `teamExerciseRecords.ts`, schema 5 of the sporting sync
+record and Analyze → Exercises.]**
 
 ## Shotmaking Evaluation Basis
 

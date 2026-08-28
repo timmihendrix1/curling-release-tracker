@@ -1,6 +1,7 @@
 import { EXERCISE_CATALOG } from "../exercises/catalog";
 import type {
   AthleteExerciseResult,
+  ExerciseActiveAttemptCorrection,
   ExerciseAttempt,
   ExerciseExecution,
   ExerciseRoleAssignmentSegment,
@@ -9,6 +10,7 @@ import { validateExerciseExecution } from "../exercises/executionValidation";
 import { isCanonicalUuid } from "../uuid";
 import {
   TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+  SUPPORTED_TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSIONS,
   type TeamExerciseCloudReadRecord,
   type TeamExerciseUploadPackage,
 } from "./teamExerciseTypes";
@@ -17,21 +19,23 @@ import { sha256Hex } from "./records";
 type BundleIdFactory = (result: AthleteExerciseResult) => string;
 
 type TeamCoordinationPayload = {
-  schemaVersion: 1;
-  execution: Omit<ExerciseExecution, "athleteResults" | "teamContext"> & {
+  schemaVersion: 1 | 2;
+  execution: Omit<ExerciseExecution, "athleteResults" | "teamContext" | "activeAttemptCorrections"> & {
     athleteResults?: never;
+    activeAttemptCorrections?: never;
     teamContext: Omit<NonNullable<ExerciseExecution["teamContext"]>, "recorderProfileId">;
     roleAssignmentSegments: Array<Omit<ExerciseRoleAssignmentSegment, "recordedByProfileId">>;
   };
 };
 
 type TeamAthleteResultPayload = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   exerciseExecutionId: string;
   result: Omit<AthleteExerciseResult, "privateNote" | "attempts"> & {
     privateNote?: never;
     attempts: Array<Omit<ExerciseAttempt, "recordedByProfileId">>;
   };
+  activeAttemptCorrections?: Array<Omit<ExerciseActiveAttemptCorrection, "correctedByProfileId">>;
 };
 
 export type OwnedTeamExerciseResultRecord = {
@@ -40,8 +44,9 @@ export type OwnedTeamExerciseResultRecord = {
   teamId: string;
   athleteProfileId: string;
   recordedByProfileId: string;
-  sharedExecution: Omit<ExerciseExecution, "athleteResults">;
+  sharedExecution: Omit<ExerciseExecution, "athleteResults" | "activeAttemptCorrections">;
   result: AthleteExerciseResult;
+  activeAttemptCorrections: ExerciseActiveAttemptCorrection[];
   privateNote: { note: string; updatedAt: string } | null;
   cloudCreatedAt: string;
 };
@@ -80,7 +85,7 @@ function strictAttempt(value: unknown, includesRecorder: boolean): boolean {
   const base = [
     "id", "athleteProfileId", "roleAssignmentSegmentId", "sequenceNumber",
     "createdAt", "kind", "intendedHandle", "actualHandle", "evaluation",
-    "measurements",
+    "measurements", "teamRoleContextOverride",
   ];
   if (includesRecorder) base.push("recordedByProfileId");
   if (value.kind === "measurement") {
@@ -93,7 +98,25 @@ function strictAttempt(value: unknown, includesRecorder: boolean): boolean {
       if (!hasOnlyKeys(value.evaluation, ["status", "reason", "explanation"])) return false;
     } else return false;
   } else return false;
+  if (value.teamRoleContextOverride !== undefined && (
+    !isRecord(value.teamRoleContextOverride) ||
+    !hasOnlyKeys(value.teamRoleContextOverride, [
+      "deliveringAthleteProfileId", "sweeperProfileIds", "skipProfileId",
+      "observerProfileId", "coachProfileIds", "timekeeperProfileId", "sweepingUsed",
+    ])
+  )) return false;
   return Array.isArray(value.measurements) && value.measurements.every(strictMeasurement);
+}
+
+function strictCorrection(value: unknown, includesRecorder: boolean): boolean {
+  if (!isRecord(value) || !hasOnlyKeys(value, [
+    "id", "kind", "attemptId", "correctedAt", "before", "after",
+    ...(includesRecorder ? ["correctedByProfileId"] : []),
+  ]) || (value.kind !== "updated" && value.kind !== "annulled") ||
+      !strictAttempt(value.before, includesRecorder)) return false;
+  return value.kind === "updated"
+    ? strictAttempt(value.after, includesRecorder)
+    : value.after === undefined;
 }
 
 /**
@@ -108,7 +131,7 @@ function hasStrictOwnedPayloadShape(
   if (!hasOnlyKeys(shared, [
     "id", "trainingSessionId", "exerciseVersionSnapshot", "evaluationBasis",
     "configuration", "status", "startedAt", "completedAt", "abandonedAt",
-    "roleAssignmentSegments", "teamContext", "schemaVersion",
+    "roleAssignmentSegments", "teamContext", "schemaVersion", "activeAttemptCorrections",
   ]) || !isRecord(shared.configuration) || !hasOnlyKeys(shared.configuration, [
     "selectedVariationId", "plannedVolume", "sweeperCount", "sweepingUsed",
     "enabledMeasurementProtocols", "deviations",
@@ -134,7 +157,10 @@ function hasStrictOwnedPayloadShape(
           "timekeeperProfileId", "sweepingUsed", "transitionReason",
           ...(includesRecorder ? ["recordedByProfileId"] : []),
         ])
-      )) return false;
+      ) || (shared.activeAttemptCorrections !== undefined && (
+        !Array.isArray(shared.activeAttemptCorrections) ||
+        !shared.activeAttemptCorrections.every((correction) => strictCorrection(correction, includesRecorder))
+      ))) return false;
 
   return hasOnlyKeys(result, [
     "id", "athleteProfileId", "attempts", "createdAt", "updatedAt",
@@ -160,8 +186,8 @@ export async function deserializeOwnedTeamExerciseResult(
     record.bundle.athleteProfileId !== authenticatedProfileId ||
     record.bundle.sessionId !== record.session.sessionId ||
     record.bundle.recordedByProfileId !== record.session.recordedByProfileId ||
-    record.bundle.schemaVersion !== TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION ||
-    record.session.schemaVersion !== TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION ||
+    !SUPPORTED_TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSIONS.includes(record.bundle.schemaVersion as 1 | 2) ||
+    record.session.schemaVersion !== record.bundle.schemaVersion ||
     !validTimestamp(record.session.createdAt) ||
     !validTimestamp(record.bundle.createdAt) ||
     await sha256Hex(record.session.coordinationPayload) !== record.session.contentSha256 ||
@@ -179,13 +205,20 @@ export async function deserializeOwnedTeamExerciseResult(
   if (
     !isRecord(coordinationValue) ||
     !hasOnlyKeys(coordinationValue, ["schemaVersion", "execution"]) ||
-    coordinationValue.schemaVersion !== TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION ||
+    coordinationValue.schemaVersion !== record.session.schemaVersion ||
     !isRecord(coordinationValue.execution) ||
     "athleteResults" in coordinationValue.execution ||
+    "activeAttemptCorrections" in coordinationValue.execution ||
     !isRecord(resultValue) ||
-    !hasOnlyKeys(resultValue, ["schemaVersion", "exerciseExecutionId", "result"]) ||
-    resultValue.schemaVersion !== TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION ||
+    !hasOnlyKeys(resultValue, record.bundle.schemaVersion === 1
+      ? ["schemaVersion", "exerciseExecutionId", "result"]
+      : ["schemaVersion", "exerciseExecutionId", "result", "activeAttemptCorrections"]) ||
+    resultValue.schemaVersion !== record.bundle.schemaVersion ||
     !isRecord(resultValue.result) ||
+    (record.bundle.schemaVersion === 2 && (
+      !Array.isArray(resultValue.activeAttemptCorrections) ||
+      !resultValue.activeAttemptCorrections.every((correction) => strictCorrection(correction, false))
+    )) ||
     !hasStrictOwnedPayloadShape(coordinationValue.execution, resultValue.result)
   ) return null;
 
@@ -221,6 +254,27 @@ export async function deserializeOwnedTeamExerciseResult(
         recordedByProfileId: record.bundle.recordedByProfileId,
       })),
     }],
+    ...(record.bundle.schemaVersion === 2
+      ? {
+          activeAttemptCorrections: (resultValue.activeAttemptCorrections as Array<Record<string, unknown>>)
+            .map((correction) => ({
+              ...correction,
+              correctedByProfileId: record.session.recordedByProfileId,
+              before: {
+                ...(correction.before as Record<string, unknown>),
+                recordedByProfileId: record.session.recordedByProfileId,
+              },
+              ...(correction.after
+                ? {
+                    after: {
+                      ...(correction.after as Record<string, unknown>),
+                      recordedByProfileId: record.session.recordedByProfileId,
+                    },
+                  }
+                : {}),
+            })),
+        }
+      : {}),
   };
   const validation = validateExerciseExecution(reconstructed, EXERCISE_CATALOG, {
     ownedTeamResultProfileId: authenticatedProfileId,
@@ -262,7 +316,7 @@ export async function deserializeOwnedTeamExerciseResult(
     !validTimestamp(record.privateNote.updatedAt)
   )) return null;
 
-  const sharedExecution = omitProperties(execution, ["athleteResults"]);
+  const sharedExecution = omitProperties(execution, ["athleteResults", "activeAttemptCorrections"]);
   return {
     bundleId: record.bundle.bundleId,
     sessionId: record.session.sessionId,
@@ -271,6 +325,7 @@ export async function deserializeOwnedTeamExerciseResult(
     recordedByProfileId: record.session.recordedByProfileId,
     sharedExecution,
     result,
+    activeAttemptCorrections: execution.activeAttemptCorrections ?? [],
     privateNote: record.privateNote
       ? { note: record.privateNote.note, updatedAt: record.privateNote.updatedAt }
       : null,
@@ -284,12 +339,17 @@ export function validateOwnedTeamExerciseResultRecord(
 ): OwnedTeamExerciseResultRecord | null {
   if (!isRecord(value) || !hasOnlyKeys(value, [
     "bundleId", "sessionId", "teamId", "athleteProfileId", "recordedByProfileId",
-    "sharedExecution", "result", "privateNote", "cloudCreatedAt",
+    "sharedExecution", "result", "activeAttemptCorrections", "privateNote", "cloudCreatedAt",
   ]) || !isCanonicalUuid(value.bundleId) || !isCanonicalUuid(value.sessionId) ||
       !isCanonicalUuid(value.teamId) || !isCanonicalUuid(value.athleteProfileId) ||
       !isCanonicalUuid(value.recordedByProfileId) || !validTimestamp(value.cloudCreatedAt) ||
       !isRecord(value.sharedExecution) || "athleteResults" in value.sharedExecution ||
-      !isRecord(value.result)) return null;
+      "activeAttemptCorrections" in value.sharedExecution ||
+      ((value.sharedExecution as Record<string, unknown>).schemaVersion === 2 && value.activeAttemptCorrections === undefined) ||
+      !isRecord(value.result) || (value.activeAttemptCorrections !== undefined && (
+        !Array.isArray(value.activeAttemptCorrections) ||
+        !value.activeAttemptCorrections.every((correction) => strictCorrection(correction, true))
+      ))) return null;
   if (!hasStrictOwnedPayloadShape(value.sharedExecution, value.result, true)) return null;
   if (value.privateNote !== null && (
     !isRecord(value.privateNote) ||
@@ -299,9 +359,13 @@ export function validateOwnedTeamExerciseResultRecord(
     byteLength(value.privateNote.note) > 65_536 ||
     !validTimestamp(value.privateNote.updatedAt)
   )) return null;
+  const activeAttemptCorrections = (value.activeAttemptCorrections ?? []) as ExerciseActiveAttemptCorrection[];
   const candidate = {
     ...value.sharedExecution,
     athleteResults: [value.result],
+    ...((value.sharedExecution as Record<string, unknown>).schemaVersion === 2
+      ? { activeAttemptCorrections }
+      : {}),
   };
   const validation = validateExerciseExecution(candidate, EXERCISE_CATALOG, {
     ownedTeamResultProfileId: value.athleteProfileId,
@@ -315,7 +379,7 @@ export function validateOwnedTeamExerciseResultRecord(
     execution.athleteResults[0]?.id !== value.result.id ||
     execution.athleteResults[0]?.athleteProfileId !== value.athleteProfileId
   ) return null;
-  return value as OwnedTeamExerciseResultRecord;
+  return { ...value, activeAttemptCorrections } as OwnedTeamExerciseResultRecord;
 }
 
 function omitProperties<T extends object, K extends keyof T>(value: T, keys: readonly K[]): Omit<T, K> {
@@ -330,6 +394,19 @@ function withoutRecorder(segment: ExerciseRoleAssignmentSegment): Omit<ExerciseR
 
 function attemptWithoutRecorder(attempt: ExerciseAttempt): Omit<ExerciseAttempt, "recordedByProfileId"> {
   return omitProperties(attempt, ["recordedByProfileId"]);
+}
+
+function correctionWithoutRecorder(
+  correction: ExerciseActiveAttemptCorrection
+): Omit<ExerciseActiveAttemptCorrection, "correctedByProfileId"> {
+  const withoutActor = omitProperties(correction, ["correctedByProfileId"]);
+  return {
+    ...withoutActor,
+    before: attemptWithoutRecorder(correction.before) as typeof correction.before,
+    ...(correction.after
+      ? { after: attemptWithoutRecorder(correction.after) as typeof correction.after }
+      : {}),
+  };
 }
 
 /**
@@ -348,10 +425,15 @@ export function serializeCompletedTeamExercise(
   }
 
   const teamContext = execution.teamContext;
-  const executionWithoutOwnedResults = omitProperties(execution, ["athleteResults", "teamContext"]);
+  const payloadSchemaVersion = execution.schemaVersion === 1
+    ? 1
+    : TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION;
+  const executionWithoutOwnedResults = omitProperties(execution, [
+    "athleteResults", "teamContext", "activeAttemptCorrections",
+  ]);
   const teamContextWithoutRecorder = omitProperties(teamContext, ["recorderProfileId"]);
   const coordination: TeamCoordinationPayload = {
-    schemaVersion: TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+    schemaVersion: payloadSchemaVersion,
     execution: {
       ...executionWithoutOwnedResults,
       roleAssignmentSegments: execution.roleAssignmentSegments.map(withoutRecorder),
@@ -369,18 +451,28 @@ export function serializeCompletedTeamExercise(
       const attempts = result.attempts;
       const resultWithoutPrivateNote = omitProperties(result, ["privateNote", "attempts"]);
       const payload: TeamAthleteResultPayload = {
-        schemaVersion: TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+        schemaVersion: payloadSchemaVersion,
         exerciseExecutionId: execution.id,
         result: {
           ...resultWithoutPrivateNote,
           attempts: attempts.map(attemptWithoutRecorder),
         },
+        ...(payloadSchemaVersion === 2
+          ? {
+              activeAttemptCorrections: (execution.activeAttemptCorrections ?? [])
+                .filter((correction) =>
+                  correction.before.athleteProfileId === result.athleteProfileId ||
+                  correction.after?.athleteProfileId === result.athleteProfileId
+                )
+                .map(correctionWithoutRecorder),
+            }
+          : {}),
       };
       return {
         bundleId: bundleIds[index],
         sessionId: execution.trainingSessionId,
         athleteProfileId: result.athleteProfileId,
-        schemaVersion: TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+        schemaVersion: payloadSchemaVersion,
         resultPayload: JSON.stringify(payload),
         recordedAt: result.updatedAt,
         resultIds: [result.id],
@@ -392,7 +484,7 @@ export function serializeCompletedTeamExercise(
       session: {
         sessionId: execution.trainingSessionId,
         teamId: teamContext.teamId,
-        schemaVersion: TEAM_EXERCISE_CLOUD_PAYLOAD_SCHEMA_VERSION,
+        schemaVersion: payloadSchemaVersion,
         coordinationPayload,
         startedAt: execution.startedAt,
         completedAt: execution.completedAt,

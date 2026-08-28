@@ -3,11 +3,13 @@ import { isCanonicalUuid } from "../uuid";
 import { findExerciseVersion } from "./lookup";
 import type {
   ExerciseAttempt,
+  ExerciseActiveAttemptCorrection,
   ExerciseExecution,
   ExerciseMeasurement,
+  ShotmakingExerciseAttempt,
   ShotmakingEvaluation,
 } from "./executionTypes";
-import { EXERCISE_EXECUTION_SCHEMA_VERSION } from "./executionTypes";
+import { SUPPORTED_EXERCISE_EXECUTION_SCHEMA_VERSIONS } from "./executionTypes";
 import type { ExerciseCatalogPackage, ExerciseVersion, MeasurementProtocol } from "./types";
 
 export type ExerciseExecutionValidationIssue = { path: string; message: string };
@@ -107,7 +109,7 @@ export function validateExerciseExecution(
     return true;
   };
 
-  if (value.schemaVersion !== EXERCISE_EXECUTION_SCHEMA_VERSION) {
+  if (!SUPPORTED_EXERCISE_EXECUTION_SCHEMA_VERSIONS.includes(value.schemaVersion as 1 | 2)) {
     add("schemaVersion", "Unsupported Exercise Execution schema version.");
   }
   registerEntityId(value.id, "id", "Execution id");
@@ -448,6 +450,7 @@ export function validateExerciseExecution(
         add(`${path}.attempts`, "Attempts must be an array.");
         return;
       }
+      const resultSequenceNumbers = new Set<number>();
       allAttempts = [...allAttempts, ...(candidate.attempts as ExerciseAttempt[])];
       candidate.attempts.forEach((attempt, attemptIndex) => {
         const attemptPath = `${path}.attempts[${attemptIndex}]`;
@@ -462,11 +465,24 @@ export function validateExerciseExecution(
         const segment = typeof attempt.roleAssignmentSegmentId === "string"
           ? roleSegments.get(attempt.roleAssignmentSegmentId)
           : undefined;
-        if (!segment || segment.deliveringAthleteProfileId !== candidate.athleteProfileId) {
+        const roleOverride = isRecord(attempt.teamRoleContextOverride)
+          ? attempt.teamRoleContextOverride
+          : undefined;
+        if (attempt.teamRoleContextOverride !== undefined && !roleOverride) {
+          add(`${attemptPath}.teamRoleContextOverride`, "Corrected Team role context must be an object.");
+        }
+        const effectiveDeliverer = roleOverride?.deliveringAthleteProfileId ?? segment?.deliveringAthleteProfileId;
+        if (!segment || effectiveDeliverer !== candidate.athleteProfileId) {
           add(`${attemptPath}.roleAssignmentSegmentId`, "Attempt must reference a role segment in which this athlete delivered.");
         }
-        if (attempt.sequenceNumber !== attemptIndex + 1) {
-          add(`${attemptPath}.sequenceNumber`, "Attempt sequence must be contiguous and one-based per athlete.");
+        if (!Number.isInteger(attempt.sequenceNumber) || (attempt.sequenceNumber as number) <= 0 ||
+            (isTeam && resultSequenceNumbers.has(attempt.sequenceNumber as number)) ||
+            (!isTeam && attempt.sequenceNumber !== attemptIndex + 1)) {
+          add(`${attemptPath}.sequenceNumber`, isTeam
+            ? "Team attempt sequence must be a unique positive integer per athlete."
+            : "Attempt sequence must be contiguous and one-based per athlete.");
+        } else {
+          resultSequenceNumbers.add(attempt.sequenceNumber as number);
         }
         if (!validTimestamp(attempt.createdAt)) add(`${attemptPath}.createdAt`, "Attempt timestamp is invalid.");
         if (validTimestamp(attempt.createdAt) && segment && validTimestamp(segment.startedAt) &&
@@ -484,8 +500,19 @@ export function validateExerciseExecution(
           if (attempt.recordedByProfileId !== recorderProfileId) {
             add(`${attemptPath}.recordedByProfileId`, "Team attempt must be attributed to the authenticated active recorder.");
           }
+          if (roleOverride && !validateAttemptRoleContext(
+            roleOverride,
+            participantIds,
+            athleteIds,
+            `${attemptPath}.teamRoleContextOverride`,
+            add
+          )) {
+            // The helper accumulates every role-context issue.
+          }
         } else if (attempt.recordedByProfileId !== undefined || attempt.roleAssignmentSegmentId !== soloRoleSegmentId) {
           add(attemptPath, "Solo attempt cannot carry Team recorder context and must reference its sole role segment.");
+        } else if (attempt.teamRoleContextOverride !== undefined) {
+          add(`${attemptPath}.teamRoleContextOverride`, "Solo attempts cannot override Team role context.");
         }
         if (attempt.kind === "shotmaking") {
           if (version?.primaryFocus !== "shotmaking") add(`${attemptPath}.kind`, "Shotmaking attempt does not match Exercise focus.");
@@ -502,6 +529,9 @@ export function validateExerciseExecution(
           if (!Array.isArray(attempt.measurements) || attempt.measurements.length === 0) {
             add(`${attemptPath}.measurements`, "Measurement attempt needs at least one Measurement.");
           }
+          if (attempt.teamRoleContextOverride !== undefined) {
+            add(`${attemptPath}.teamRoleContextOverride`, "Only Team Shotmaking attempts may override captured role context.");
+          }
         } else add(`${attemptPath}.kind`, "Attempt kind is unsupported.");
         validateMeasurements(attempt.measurements, attemptPath, enabledProtocols, entityIds, participantIds, isTeam, add);
       });
@@ -517,6 +547,152 @@ export function validateExerciseExecution(
       }
     } else if (isTeam && (resultAthletes.size !== athleteIds.length || athleteIds.some((id) => !resultAthletes.has(id)))) {
       add("athleteResults", "Team execution needs exactly one Athlete Result for every selected training athlete.");
+    }
+  }
+
+  const currentAttemptsById = new Map(
+    allAttempts.filter((attempt): attempt is ExerciseAttempt => isRecord(attempt) && typeof attempt.id === "string")
+      .map((attempt) => [attempt.id, attempt])
+  );
+  const correctionChains = new Map<string, ExerciseActiveAttemptCorrection>();
+  let previousCorrectionAt: string | undefined;
+  if (isTeam && value.schemaVersion === 2 && value.activeAttemptCorrections === undefined) {
+    add("activeAttemptCorrections", "Team Exercise Execution schema version 2 requires an active correction array.");
+  }
+  if (value.activeAttemptCorrections !== undefined) {
+    if (!isTeam || !Array.isArray(value.activeAttemptCorrections)) {
+      add("activeAttemptCorrections", "Active attempt corrections are supported only as a Team array.");
+    } else if (value.schemaVersion !== 2) {
+      add("activeAttemptCorrections", "Active attempt corrections require Exercise Execution schema version 2.");
+    } else {
+      const activeAttemptCorrections = value.activeAttemptCorrections;
+      activeAttemptCorrections.forEach((candidate, index) => {
+        const path = `activeAttemptCorrections[${index}]`;
+        if (!isRecord(candidate)) {
+          add(path, "Active correction must be an object.");
+          return;
+        }
+        const correctionKeys = new Set([
+          "id", "kind", "attemptId", "correctedByProfileId", "correctedAt", "before", "after",
+        ]);
+        if (Object.keys(candidate).some((key) => !correctionKeys.has(key))) {
+          add(path, "Active correction contains an unsupported field.");
+        }
+        registerEntityId(candidate.id, `${path}.id`, "Correction id");
+        if (candidate.kind !== "updated" && candidate.kind !== "annulled") {
+          add(`${path}.kind`, "Correction kind must be updated or annulled.");
+        }
+        if (!isCanonicalUuid(candidate.attemptId)) add(`${path}.attemptId`, "Correction target must be a canonical attempt UUID.");
+        if (candidate.correctedByProfileId !== recorderProfileId) {
+          add(`${path}.correctedByProfileId`, "Correction must be attributed to the authenticated active recorder.");
+        }
+        if (!validTimestamp(candidate.correctedAt) ||
+            (previousCorrectionAt !== undefined && validTimestamp(candidate.correctedAt) &&
+              Date.parse(candidate.correctedAt) <= Date.parse(previousCorrectionAt))) {
+          add(`${path}.correctedAt`, "Correction time must be valid and strictly chronological.");
+        }
+        if (validTimestamp(candidate.correctedAt)) previousCorrectionAt = candidate.correctedAt;
+        const before = validateCorrectionAttemptSnapshot(
+          candidate.before,
+          `${path}.before`,
+          candidate.attemptId,
+          recorderProfileId,
+          roleSegments,
+          participantIds,
+          athleteIds,
+          enabledProtocols,
+          add
+        );
+        const after = candidate.kind === "updated"
+          ? validateCorrectionAttemptSnapshot(
+              candidate.after,
+              `${path}.after`,
+              candidate.attemptId,
+              recorderProfileId,
+              roleSegments,
+              participantIds,
+              athleteIds,
+              enabledProtocols,
+              add
+            )
+          : null;
+        if (candidate.kind === "annulled" && candidate.after !== undefined) {
+          add(`${path}.after`, "An annulled attempt cannot have a resulting value.");
+        }
+        if (before && validTimestamp(candidate.correctedAt) && Date.parse(candidate.correctedAt) < Date.parse(before.createdAt)) {
+          add(`${path}.correctedAt`, "Correction cannot predate the captured attempt.");
+        }
+        if (validTimestamp(candidate.correctedAt) && [before, after].filter(
+          (snapshot): snapshot is ShotmakingExerciseAttempt => snapshot !== null
+        ).some((snapshot) => snapshot.measurements.some((measurement) =>
+          validTimestamp(measurement.recordedAt) && Date.parse(measurement.recordedAt) > Date.parse(candidate.correctedAt as string)
+        ))) {
+          add(`${path}.correctedAt`, "Correction cannot predate a Measurement retained in its attempt snapshot.");
+        }
+        const previous = typeof candidate.attemptId === "string"
+          ? correctionChains.get(candidate.attemptId)
+          : undefined;
+        if (before && after && sameJsonValue(before, after)) {
+          add(`${path}.after`, "An update correction must change at least one captured fact.");
+        }
+        if (before && after && (
+          before.createdAt !== after.createdAt ||
+          before.recordedByProfileId !== after.recordedByProfileId ||
+          before.roleAssignmentSegmentId !== after.roleAssignmentSegmentId ||
+          before.intendedHandle !== after.intendedHandle ||
+          (before.athleteProfileId === after.athleteProfileId &&
+            before.sequenceNumber !== after.sequenceNumber)
+        )) {
+          add(
+            `${path}.after`,
+            "A correction cannot rewrite the original capture time, recorder, role segment, intended handle or unchanged-athlete sequence."
+          );
+        }
+        if (ownedTeamResultProfileId === undefined) {
+          if (previous?.kind === "annulled") {
+            add(path, "An annulled attempt cannot be corrected again.");
+          } else if (previous?.after && before && !sameJsonValue(previous.after, before)) {
+            add(`${path}.before`, "Correction history must continue from the preceding resulting value.");
+          }
+          if (typeof candidate.attemptId === "string") {
+            correctionChains.set(candidate.attemptId, candidate as unknown as ExerciseActiveAttemptCorrection);
+          }
+        } else if (before && after &&
+            before.athleteProfileId !== ownedTeamResultProfileId &&
+            after.athleteProfileId !== ownedTeamResultProfileId) {
+          add(path, "Owned correction projection may contain only changes affecting the authenticated athlete.");
+        } else if (before && !after && before.athleteProfileId !== ownedTeamResultProfileId) {
+          add(path, "Owned annulment projection may contain only the authenticated athlete's attempt.");
+        }
+      });
+      if (ownedTeamResultProfileId === undefined) {
+        for (const [attemptId, finalCorrection] of correctionChains) {
+          const current = currentAttemptsById.get(attemptId);
+          if (finalCorrection.kind === "annulled") {
+            if (current) add("athleteResults", "An annulled attempt must be absent from current Athlete Results.");
+          } else if (!current || !finalCorrection.after || !sameJsonValue(current, finalCorrection.after)) {
+            add("athleteResults", "The current attempt must equal its latest audited correction result.");
+          }
+        }
+      }
+      if (Array.isArray(value.athleteResults)) {
+        value.athleteResults.forEach((result, resultIndex) => {
+          if (!isRecord(result) || typeof result.athleteProfileId !== "string" || !validTimestamp(result.updatedAt)) return;
+          const latestRelevant = activeAttemptCorrections
+            .filter((correction): correction is Record<string, unknown> => isRecord(correction))
+            .filter((correction) => {
+              const before = isRecord(correction.before) ? correction.before : null;
+              const after = isRecord(correction.after) ? correction.after : null;
+              return before?.athleteProfileId === result.athleteProfileId || after?.athleteProfileId === result.athleteProfileId;
+            })
+            .map((correction) => correction.correctedAt)
+            .filter(validTimestamp)
+            .at(-1);
+          if (latestRelevant && Date.parse(result.updatedAt) < Date.parse(latestRelevant)) {
+            add(`athleteResults[${resultIndex}].updatedAt`, "Athlete Result update time cannot predate an affecting correction.");
+          }
+        });
+      }
     }
   }
 
@@ -537,6 +713,9 @@ export function validateExerciseExecution(
         ? value.roleAssignmentSegments.filter(isRecord).map((segment) => segment.startedAt)
         : []),
       ...allAttempts.filter(isRecord).map((attempt) => attempt.createdAt),
+      ...(Array.isArray(value.activeAttemptCorrections)
+        ? value.activeAttemptCorrections.filter(isRecord).map((correction) => correction.correctedAt)
+        : []),
     ].filter(validTimestamp);
     if (activityTimes.some((activityAt) => Date.parse(activityAt) > Date.parse(terminalAt))) {
       add(value.status === "completed" ? "completedAt" : "abandonedAt", "Terminal time cannot predate recorded execution activity.");
@@ -571,6 +750,103 @@ export function validateExerciseExecution(
   return issues.length > 0
     ? { valid: false, issues }
     : { valid: true, value: value as ExerciseExecution, issues: [] };
+}
+
+function validateAttemptRoleContext(
+  value: Record<string, unknown>,
+  participantIds: Set<string>,
+  athleteIds: string[],
+  path: string,
+  add: (path: string, message: string) => void
+): boolean {
+  let valid = true;
+  const fail = (field: string, message: string) => {
+    valid = false;
+    add(`${path}.${field}`, message);
+  };
+  const allowed = new Set([
+    "deliveringAthleteProfileId", "sweeperProfileIds", "skipProfileId",
+    "observerProfileId", "coachProfileIds", "timekeeperProfileId", "sweepingUsed",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    valid = false;
+    add(path, "Corrected role context contains an unsupported field.");
+  }
+  if (!isCanonicalUuid(value.deliveringAthleteProfileId) || !athleteIds.includes(value.deliveringAthleteProfileId)) {
+    fail("deliveringAthleteProfileId", "Corrected delivering athlete must be a selected training athlete.");
+  }
+  if (!Array.isArray(value.sweeperProfileIds) || value.sweeperProfileIds.length > 2 ||
+      new Set(value.sweeperProfileIds).size !== value.sweeperProfileIds.length ||
+      value.sweeperProfileIds.some((profileId) => typeof profileId !== "string" || !participantIds.has(profileId))) {
+    fail("sweeperProfileIds", "Corrected Sweepers must be zero to two distinct confirmed participants.");
+  }
+  if (typeof value.sweepingUsed !== "boolean" ||
+      (value.sweepingUsed && Array.isArray(value.sweeperProfileIds) && value.sweeperProfileIds.length === 0)) {
+    fail("sweepingUsed", "Corrected sweeping use needs an assigned Sweeper when used.");
+  }
+  for (const field of ["skipProfileId", "observerProfileId", "timekeeperProfileId"] as const) {
+    if (value[field] !== undefined && (typeof value[field] !== "string" || !participantIds.has(value[field] as string))) {
+      fail(field, "Corrected role must belong to a confirmed participant.");
+    }
+  }
+  const coaches = value.coachProfileIds ?? [];
+  if (!Array.isArray(coaches) || new Set(coaches).size !== coaches.length ||
+      coaches.some((profileId) => typeof profileId !== "string" || !participantIds.has(profileId))) {
+    fail("coachProfileIds", "Corrected Coaches must be distinct confirmed participants.");
+  }
+  return valid;
+}
+
+function validateCorrectionAttemptSnapshot(
+  value: unknown,
+  path: string,
+  attemptId: unknown,
+  recorderProfileId: string | undefined,
+  roleSegments: Map<string, Record<string, unknown>>,
+  participantIds: Set<string>,
+  athleteIds: string[],
+  protocols: Map<string, MeasurementProtocol>,
+  add: (path: string, message: string) => void
+): ShotmakingExerciseAttempt | null {
+  if (!isRecord(value)) {
+    add(path, "Correction snapshot must contain a Shotmaking attempt.");
+    return null;
+  }
+  const snapshotKeys = new Set([
+    "id", "kind", "athleteProfileId", "roleAssignmentSegmentId", "sequenceNumber",
+    "createdAt", "recordedByProfileId", "intendedHandle", "actualHandle", "evaluation",
+    "measurements", "teamRoleContextOverride",
+  ]);
+  if (Object.keys(value).some((key) => !snapshotKeys.has(key))) {
+    add(path, "Correction attempt snapshot contains an unsupported field.");
+  }
+  if (value.id !== attemptId || value.kind !== "shotmaking" ||
+      !isCanonicalUuid(value.athleteProfileId) || !athleteIds.includes(value.athleteProfileId) ||
+      !Number.isInteger(value.sequenceNumber) || (value.sequenceNumber as number) <= 0 ||
+      !validTimestamp(value.createdAt) || value.recordedByProfileId !== recorderProfileId ||
+      !roleSegments.has(String(value.roleAssignmentSegmentId)) ||
+      !HANDLES.includes(value.actualHandle as Handle) ||
+      (value.intendedHandle !== undefined && !HANDLES.includes(value.intendedHandle as Handle))) {
+    add(path, "Correction snapshot has invalid immutable identity, ownership, sequence, time, recorder, role reference or handle facts.");
+    return null;
+  }
+  validateEvaluation(value.evaluation, `${path}.evaluation`, add);
+  const segment = roleSegments.get(String(value.roleAssignmentSegmentId));
+  const roleOverride = isRecord(value.teamRoleContextOverride)
+    ? value.teamRoleContextOverride
+    : undefined;
+  if (value.teamRoleContextOverride !== undefined && !roleOverride) {
+    add(`${path}.teamRoleContextOverride`, "Corrected role context must be an object.");
+  }
+  if (roleOverride) {
+    validateAttemptRoleContext(roleOverride, participantIds, athleteIds, `${path}.teamRoleContextOverride`, add);
+  }
+  const effectiveDeliverer = roleOverride?.deliveringAthleteProfileId ?? segment?.deliveringAthleteProfileId;
+  if (effectiveDeliverer !== value.athleteProfileId) {
+    add(`${path}.athleteProfileId`, "Correction snapshot owner must match its effective delivering athlete.");
+  }
+  validateMeasurements(value.measurements, path, protocols, new Set<string>(), participantIds, true, add);
+  return value as unknown as ShotmakingExerciseAttempt;
 }
 
 function segmentFillsRole(segment: Record<string, unknown>, role: string): boolean {

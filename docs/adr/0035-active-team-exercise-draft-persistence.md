@@ -2,8 +2,8 @@
 
 **Status:** Accepted and implemented as Exercise Stage C3a (2026-08-28). ADR-0036 now
 uses this boundary for Team setup and one-device capture; ADR-0037 now implements
-result/private-note reads. Revisions, voiding and notifications remain later Stage C
-work.
+result/private-note reads; ADR-0038 now persists active corrections through the same
+draft. Post-completion revisions, voiding and notifications remain later Stage C work.
 
 ## Context
 
@@ -36,9 +36,9 @@ Version 1 refuses a second execution id while one is active. Discard removes onl
 matching recorder-owned draft through an explicit boundary; the future UI must obtain
 confirmation before calling it.
 
-This persistence boundary validates aggregate truth but does not invent the active-edit
-audit policy. Capture UI must use the domain transitions from ADR-0031; audited active
-corrections remain a separate Stage C decision.
+This persistence boundary validates aggregate truth but does not invent an edit policy.
+Capture UI uses the domain transitions from ADR-0031; ADR-0038 now supplies the audited
+active-correction transitions without adding another key or draft repository.
 
 ## Decision 3 — atomic draft-to-outbox finalisation
 

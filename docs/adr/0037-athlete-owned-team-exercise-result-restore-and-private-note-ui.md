@@ -1,8 +1,8 @@
 # ADR-0037 — Athlete-owned Team Exercise result restore and private-note UI
 
-**Status:** Accepted and implemented as Exercise Stage C3c (2026-08-28). Audited
-correction, post-completion revision, voiding and participant notifications remain later
-Stage C work.
+**Status:** Accepted and implemented as Exercise Stage C3c (2026-08-28). ADR-0038 now
+adds active correction history to this owned projection. Post-completion revision,
+voiding and participant notifications remain later Stage C work.
 
 ## Context
 
@@ -92,8 +92,9 @@ shared performance result.
   sibling-result read, shared note or Exercise-specific UI branch.
 - The read contract is pull-based and refreshes the current result set; pagination can
   be added when real volume requires it.
-- Active correction audit, post-completion revision, voiding, result-change
-  notifications, Team summaries and coaching grants remain separate later work.
+- Since implemented by ADR-0038: affected-athlete active correction audit. Post-completion
+  revision, voiding, result-change notifications, Team summaries and coaching grants
+  remain separate later work.
 
 ## Verification
 

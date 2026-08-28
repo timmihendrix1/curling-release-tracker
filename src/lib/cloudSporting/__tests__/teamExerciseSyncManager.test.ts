@@ -12,7 +12,9 @@ import { findExerciseVersion } from "../../exercises/lookup";
 import {
   addTeamShotmakingAttempt,
   completeTeamExerciseExecution,
+  correctTeamShotmakingAttempt,
   createTeamExerciseExecution,
+  getTeamAttemptRoleContext,
 } from "../../exercises/teamExecution";
 import { SportingCloudSyncManager } from "../syncManager";
 import {
@@ -359,6 +361,44 @@ describe("Team Exercise entries in the Profile-scoped sporting outbox", () => {
     const otherProfile = harness(PROFILE_B, () => false, teamService());
     await otherProfile.manager.initialize();
     expect(otherProfile.manager.getSnapshot().activeTeamExerciseDraft).toBeNull();
+  });
+
+  it("persists an audited active correction through reload and exact completion handoff", async () => {
+    const first = harness(PROFILE_A, () => false, teamService());
+    await first.manager.initialize();
+    const active = activeTeamExecution();
+    const attempt = active.athleteResults[0].attempts[0];
+    if (attempt.kind !== "shotmaking") throw new Error("Missing attempt fixture");
+    const role = getTeamAttemptRoleContext(active, attempt);
+    if (!role) throw new Error("Missing role fixture");
+    const corrected = correctTeamShotmakingAttempt(active, {
+      recorderProfileId: PROFILE_A,
+      attemptId: attempt.id,
+      athleteProfileId: ATHLETE_A,
+      actualHandle: "in",
+      evaluation: { status: "scored", score: 2 },
+      measurements: [],
+      roleContext: role,
+      clock: {
+        id: () => "80000000-0000-4000-8000-000000000008",
+        now: () => "2026-08-28T10:30:00.000Z",
+      },
+    });
+    if (!corrected.ok) throw new Error(corrected.error.message);
+    expect(await first.manager.saveActiveTeamExerciseDraft(corrected.value, PROFILE_A)).toBe(true);
+
+    const reloaded = harness(PROFILE_A, () => false, teamService());
+    await reloaded.manager.initialize();
+    const restored = reloaded.manager.getSnapshot().activeTeamExerciseDraft!;
+    expect(restored.activeAttemptCorrections).toEqual(corrected.value.activeAttemptCorrections);
+    const completed = completeTeamExerciseExecution(restored, PROFILE_A, "2026-08-28T11:00:00.000Z");
+    if (!completed.ok) throw new Error(completed.error.message);
+    expect(await reloaded.manager.finalizeActiveTeamExerciseDraft(completed.value, PROFILE_A)).toBe(true);
+    const loaded = await reloaded.syncRepo.load();
+    if (loaded.status !== "value") throw new Error("Missing saved state");
+    const bundle = loaded.value.teamEntries.find((entry) => entry.entryKind === "team_exercise_bundle" && entry.athleteProfileId === ATHLETE_A);
+    if (!bundle || bundle.entryKind !== "team_exercise_bundle") throw new Error("Missing athlete bundle");
+    expect(JSON.parse(bundle.resultPayload).activeAttemptCorrections).toHaveLength(1);
   });
 
   it("fails closed when the mounted Profile finds a draft owned by another recorder", async () => {

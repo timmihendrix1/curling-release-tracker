@@ -398,7 +398,9 @@ ADR-0033 implements that Stage C2b gate by upgrading ADR-0027's same Profile-sco
 outbox record to schema 2. ADR-0034 advances it to schema 3 for the bounded offline
 Team-start eligibility cache, and ADR-0035 advances it to schema 4 with one in-progress
 Team draft. ADR-0037 advances it to schema 5 with a verified athlete-owned result read
-cache. Existing personal entries remain under `entries`; immutable Team Session
+cache. ADR-0038 keeps that root schema and key: Exercise Execution schema 2 stores the
+append-only active correction audit inside the same draft, and Team cloud payload schema
+2 carries only each athlete's filtered correction history. Existing personal entries remain under `entries`; immutable Team Session
 envelopes and independently acknowledged athlete bundles live under `teamEntries`;
 roster/permission observations live under `teamEligibilitySnapshots`; and
 `activeTeamExerciseDraft` holds either `null` or one strictly validated recorder-owned
@@ -417,7 +419,9 @@ uses only the exact atomic handoff. C3c reuses this same Profile key for last-ve
 offline reads: a cloud response replaces the cache only after all owned projections
 validate, unavailable or invalid refresh never overwrites cached truth, and own note
 updates reach the cloud before the cache changes. It adds no key or parallel persistence
-path.
+path. C3d likewise uses the existing durable-first draft write and exact completion
+handoff; schemas 1 of both the Exercise Execution and immutable Team cloud payload remain
+readable, while current corrected aggregates/payloads write schema 2.
 
 **Write-guard note (new in this revision):** the "Write path" column above now records
 whether each domain's current save effect already guards against writing its React

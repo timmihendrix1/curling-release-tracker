@@ -8,6 +8,7 @@ import {
 } from "./executionErrors";
 import type {
   ExerciseAttempt,
+  ExerciseActiveAttemptCorrection,
   ExerciseExecution,
   ExerciseExecutionConfiguration,
   ExerciseExecutionDeviation,
@@ -17,6 +18,7 @@ import type {
   ExerciseRoleTransitionReason,
   ExerciseRotationConfiguration,
   ExerciseTeamParticipant,
+  ExerciseTeamAttemptRoleContext,
   ShotmakingEvaluation,
   ShotmakingExerciseAttempt,
 } from "./executionTypes";
@@ -88,6 +90,7 @@ function aggregateIds(execution: ExerciseExecution): Set<string> {
         ...attempt.measurements.map((measurement) => measurement.id),
       ]),
     ]),
+    ...(execution.activeAttemptCorrections ?? []).map((correction) => correction.id),
   ]);
 }
 
@@ -120,15 +123,7 @@ function validateRotation(
   return null;
 }
 
-export type TeamRoleAssignmentInput = {
-  deliveringAthleteProfileId: string;
-  sweeperProfileIds: string[];
-  skipProfileId?: string;
-  observerProfileId?: string;
-  coachProfileIds?: string[];
-  timekeeperProfileId?: string;
-  sweepingUsed: boolean;
-};
+export type TeamRoleAssignmentInput = ExerciseTeamAttemptRoleContext;
 
 function validateRoleAssignment(
   assignment: TeamRoleAssignmentInput,
@@ -374,6 +369,7 @@ export function createTeamExerciseExecution(
       createdAt: startedAt,
       updatedAt: startedAt,
     })),
+    activeAttemptCorrections: [],
     teamContext: {
       kind: "team",
       teamId: options.teamId,
@@ -626,7 +622,10 @@ export function addTeamShotmakingAttempt(
     kind: "shotmaking",
     athleteProfileId: input.athleteProfileId,
     roleAssignmentSegmentId: context.value.activeSegment.id,
-    sequenceNumber: athleteResult.attempts.length + 1,
+    sequenceNumber: athleteResult.attempts.reduce(
+      (maximum, candidate) => Math.max(maximum, candidate.sequenceNumber),
+      0
+    ) + 1,
     ...(input.intendedHandle ? { intendedHandle: input.intendedHandle } : {}),
     actualHandle: input.actualHandle,
     evaluation: clone(input.evaluation),
@@ -641,6 +640,226 @@ export function addTeamShotmakingAttempt(
         ? { ...result, attempts: [...result.attempts, attempt], updatedAt: createdAt }
         : result
     ),
+  });
+}
+
+export function getTeamAttemptRoleContext(
+  execution: ExerciseExecution,
+  attempt: ShotmakingExerciseAttempt
+): ExerciseTeamAttemptRoleContext | null {
+  if (attempt.teamRoleContextOverride) return clone(attempt.teamRoleContextOverride);
+  const segment = execution.roleAssignmentSegments.find(
+    (candidate) => candidate.id === attempt.roleAssignmentSegmentId
+  );
+  if (!segment || segment.sweepingUsed === undefined) return null;
+  return {
+    deliveringAthleteProfileId: segment.deliveringAthleteProfileId,
+    sweeperProfileIds: [...segment.sweeperProfileIds],
+    ...(segment.skipProfileId ? { skipProfileId: segment.skipProfileId } : {}),
+    ...(segment.observerProfileId ? { observerProfileId: segment.observerProfileId } : {}),
+    ...(segment.coachProfileIds?.length ? { coachProfileIds: [...segment.coachProfileIds] } : {}),
+    ...(segment.timekeeperProfileId ? { timekeeperProfileId: segment.timekeeperProfileId } : {}),
+    sweepingUsed: segment.sweepingUsed,
+  };
+}
+
+function withoutRoleOverrideWhenCaptured(
+  execution: ExerciseExecution,
+  attempt: ShotmakingExerciseAttempt,
+  roleContext: ExerciseTeamAttemptRoleContext
+): ShotmakingExerciseAttempt {
+  const segment = execution.roleAssignmentSegments.find(
+    (candidate) => candidate.id === attempt.roleAssignmentSegmentId
+  );
+  const captured = segment && segment.sweepingUsed !== undefined
+    ? {
+        deliveringAthleteProfileId: segment.deliveringAthleteProfileId,
+        sweeperProfileIds: segment.sweeperProfileIds,
+        skipProfileId: segment.skipProfileId,
+        observerProfileId: segment.observerProfileId,
+        coachProfileIds: segment.coachProfileIds,
+        timekeeperProfileId: segment.timekeeperProfileId,
+        sweepingUsed: segment.sweepingUsed,
+      }
+    : null;
+  if (captured && sameJsonValue(captured, roleContext)) {
+    const rest = { ...attempt };
+    delete rest.teamRoleContextOverride;
+    return rest;
+  }
+  return { ...attempt, teamRoleContextOverride: clone(roleContext) };
+}
+
+export type CorrectTeamShotmakingAttemptInput = {
+  recorderProfileId: string;
+  attemptId: string;
+  athleteProfileId: string;
+  actualHandle: Handle;
+  evaluation: ShotmakingEvaluation;
+  measurements: ExerciseMeasurement[];
+  roleContext: ExerciseTeamAttemptRoleContext;
+  clock?: ExecutionClock;
+};
+
+function findTeamShotmakingAttempt(execution: ExerciseExecution, attemptId: string): {
+  resultIndex: number;
+  attemptIndex: number;
+  attempt: ShotmakingExerciseAttempt;
+} | null {
+  for (let resultIndex = 0; resultIndex < execution.athleteResults.length; resultIndex += 1) {
+    const attemptIndex = execution.athleteResults[resultIndex].attempts.findIndex(
+      (candidate) => candidate.id === attemptId
+    );
+    if (attemptIndex < 0) continue;
+    const attempt = execution.athleteResults[resultIndex].attempts[attemptIndex];
+    return attempt.kind === "shotmaking" ? { resultIndex, attemptIndex, attempt } : null;
+  }
+  return null;
+}
+
+function correctionClock(
+  execution: ExerciseExecution,
+  attempt: ShotmakingExerciseAttempt,
+  clock: ExecutionClock
+): ExerciseExecutionOutcome<{ id: string; at: string }> {
+  const id = clock.id();
+  const at = clock.now();
+  const latestCorrectionAt = (execution.activeAttemptCorrections ?? []).at(-1)?.correctedAt;
+  const latestActivityAt = [
+    execution.startedAt,
+    ...execution.roleAssignmentSegments.map((segment) => segment.startedAt),
+    ...execution.athleteResults.flatMap((result) => result.attempts.map((candidate) => candidate.createdAt)),
+  ].reduce((latest, candidate) => Date.parse(candidate) > Date.parse(latest) ? candidate : latest);
+  if (
+    !isCanonicalUuid(id) ||
+    aggregateIds(execution).has(id) ||
+    (execution.activeAttemptCorrections ?? []).some((correction) => correction.id === id) ||
+    !validTimestamp(at) ||
+    Date.parse(at) < Date.parse(latestActivityAt) ||
+    (latestCorrectionAt !== undefined && Date.parse(at) <= Date.parse(latestCorrectionAt))
+  ) {
+    return exerciseExecutionError("invalid-input", "The correction clock returned invalid or non-monotonic data.");
+  }
+  return exerciseExecutionOk({ id, at });
+}
+
+/** Corrects current facts while retaining the exact before/after attempt in an append-only audit. */
+export function correctTeamShotmakingAttempt(
+  execution: ExerciseExecution,
+  input: CorrectTeamShotmakingAttemptInput
+): ExerciseExecutionOutcome<ExerciseExecution> {
+  const context = activeTeamContext(execution);
+  if (!context.ok) return context;
+  if (!execution.teamContext || input.recorderProfileId !== execution.teamContext.recorderProfileId) {
+    return exerciseExecutionError("wrong-recorder", "Only the authenticated active recorder may correct a Team attempt.");
+  }
+  const found = findTeamShotmakingAttempt(execution, input.attemptId);
+  if (!found) return exerciseExecutionError("invalid-attempt", "The active Team attempt was not found.");
+  if (input.roleContext.deliveringAthleteProfileId !== input.athleteProfileId) {
+    return exerciseExecutionError("invalid-role-assignment", "The corrected delivering athlete and attempt owner must match.");
+  }
+  const roleIssue = validateRoleAssignment(input.roleContext, execution.teamContext.participantRoster);
+  if (roleIssue) return exerciseExecutionError("invalid-role-assignment", roleIssue);
+  if (!HANDLES.includes(input.actualHandle) || (
+    input.evaluation.status === "scored"
+      ? !Number.isInteger(input.evaluation.score) || input.evaluation.score < 0 || input.evaluation.score > 4
+      : !EXCLUSION_REASONS.includes(input.evaluation.reason) ||
+        (input.evaluation.reason === "other" && !input.evaluation.explanation?.trim())
+  )) return exerciseExecutionError("invalid-attempt", "The corrected Shotmaking facts are invalid.");
+  const targetResultIndex = execution.athleteResults.findIndex(
+    (result) => result.athleteProfileId === input.athleteProfileId
+  );
+  if (targetResultIndex < 0) return exerciseExecutionError("wrong-athlete", "The corrected athlete has no Athlete Exercise Result.");
+  const measurementResult = validateTeamMeasurements(
+    execution,
+    input.measurements,
+    new Set([...aggregateIds(execution)].filter((id) => !found.attempt.measurements.some((measurement) => measurement.id === id))),
+    context.value.participantIds
+  );
+  if (!measurementResult.ok) return measurementResult;
+
+  const targetSequence = found.resultIndex === targetResultIndex
+    ? found.attempt.sequenceNumber
+    : execution.athleteResults[targetResultIndex].attempts.reduce(
+        (maximum, candidate) => Math.max(maximum, candidate.sequenceNumber),
+        0
+      ) + 1;
+  const candidate = withoutRoleOverrideWhenCaptured(execution, {
+    ...found.attempt,
+    athleteProfileId: input.athleteProfileId,
+    sequenceNumber: targetSequence,
+    actualHandle: input.actualHandle,
+    evaluation: clone(input.evaluation),
+    measurements: measurementResult.value,
+  }, input.roleContext);
+  if (sameJsonValue(found.attempt, candidate)) {
+    return exerciseExecutionError("invalid-attempt", "A correction must change at least one captured fact.");
+  }
+  const clockResult = correctionClock(execution, found.attempt, input.clock ?? defaultClock);
+  if (!clockResult.ok) return clockResult;
+  if (measurementResult.value.some((measurement) =>
+    Date.parse(measurement.recordedAt) > Date.parse(clockResult.value.at)
+  )) {
+    return exerciseExecutionError("invalid-attempt", "A corrected Measurement cannot be recorded after the correction time.");
+  }
+  const correction: ExerciseActiveAttemptCorrection = {
+    id: clockResult.value.id,
+    kind: "updated",
+    attemptId: found.attempt.id,
+    correctedByProfileId: input.recorderProfileId,
+    correctedAt: clockResult.value.at,
+    before: clone(found.attempt),
+    after: clone(candidate),
+  };
+  const resultsWithoutAttempt = execution.athleteResults.map((result) => ({
+    ...result,
+    attempts: result.attempts.filter((attempt) => attempt.id !== found.attempt.id),
+  }));
+  return exerciseExecutionOk({
+    ...execution,
+    schemaVersion: EXERCISE_EXECUTION_SCHEMA_VERSION,
+    athleteResults: resultsWithoutAttempt.map((result, index) => index === targetResultIndex
+      ? { ...result, attempts: [...result.attempts, candidate].sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)), updatedAt: clockResult.value.at }
+      : index === found.resultIndex ? { ...result, updatedAt: clockResult.value.at } : result),
+    activeAttemptCorrections: [...(execution.activeAttemptCorrections ?? []), correction],
+  });
+}
+
+/** Excludes an accidentally recorded attempt from current results without erasing its provenance. */
+export function annulTeamShotmakingAttempt(
+  execution: ExerciseExecution,
+  recorderProfileId: string,
+  attemptId: string,
+  clock: ExecutionClock = defaultClock
+): ExerciseExecutionOutcome<ExerciseExecution> {
+  const context = activeTeamContext(execution);
+  if (!context.ok) return context;
+  if (!execution.teamContext || recorderProfileId !== execution.teamContext.recorderProfileId) {
+    return exerciseExecutionError("wrong-recorder", "Only the authenticated active recorder may annul a Team attempt.");
+  }
+  const found = findTeamShotmakingAttempt(execution, attemptId);
+  if (!found) return exerciseExecutionError("invalid-attempt", "The active Team attempt was not found.");
+  const clockResult = correctionClock(execution, found.attempt, clock);
+  if (!clockResult.ok) return clockResult;
+  const correction: ExerciseActiveAttemptCorrection = {
+    id: clockResult.value.id,
+    kind: "annulled",
+    attemptId: found.attempt.id,
+    correctedByProfileId: recorderProfileId,
+    correctedAt: clockResult.value.at,
+    before: clone(found.attempt),
+  };
+  return exerciseExecutionOk({
+    ...execution,
+    schemaVersion: EXERCISE_EXECUTION_SCHEMA_VERSION,
+    athleteResults: execution.athleteResults.map((result, index) => index === found.resultIndex
+      ? {
+          ...result,
+          attempts: result.attempts.filter((attempt) => attempt.id !== found.attempt.id),
+          updatedAt: clockResult.value.at,
+        }
+      : result),
+    activeAttemptCorrections: [...(execution.activeAttemptCorrections ?? []), correction],
   });
 }
 

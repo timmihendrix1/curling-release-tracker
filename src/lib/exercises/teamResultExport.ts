@@ -1,6 +1,6 @@
 import type { OwnedTeamExerciseResultRecord } from "../cloudSporting/teamExerciseRecords";
 
-export const TEAM_EXERCISE_RESULT_EXPORT_SCHEMA_VERSION = 1;
+export const TEAM_EXERCISE_RESULT_EXPORT_SCHEMA_VERSION = 2;
 
 /** Athlete-owned raw export; it contains no sibling athlete result or note. */
 export function serializeOwnedTeamExerciseResultExport(
@@ -15,6 +15,7 @@ export function serializeOwnedTeamExerciseResultExport(
       execution: record.sharedExecution,
     },
     athleteResult: record.result,
+    activeAttemptCorrections: record.activeAttemptCorrections,
     privateAthleteNote: record.privateNote,
   }, null, 2);
 }

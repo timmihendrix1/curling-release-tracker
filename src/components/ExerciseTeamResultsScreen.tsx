@@ -4,7 +4,12 @@ import { useState } from "react";
 import type { OwnedTeamExerciseResultRecord } from "../lib/cloudSporting/teamExerciseRecords";
 import type { TeamExercisePrivateNoteUpdateOutcome } from "../lib/cloudSporting/syncManager";
 import { computeShotmakingResult } from "../lib/exercises/executionResult";
-import type { ShotmakingExclusionReason } from "../lib/exercises/executionTypes";
+import { getTeamAttemptRoleContext } from "../lib/exercises/teamExecution";
+import type {
+  ExerciseActiveAttemptCorrection,
+  ShotmakingExclusionReason,
+  ShotmakingExerciseAttempt,
+} from "../lib/exercises/executionTypes";
 import { measurementUnitLabel } from "../lib/exercises/presentation";
 import { serializeOwnedTeamExerciseResultExport } from "../lib/exercises/teamResultExport";
 import { surfaceClass } from "./Surface";
@@ -55,6 +60,33 @@ function downloadResult(record: OwnedTeamExerciseResultRecord): void {
   URL.revokeObjectURL(url);
 }
 
+function attemptSummary(attempt: ShotmakingExerciseAttempt): string {
+  return `${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"} · ${
+    attempt.evaluation.status === "scored"
+      ? `${attempt.evaluation.score}/4`
+      : `Excluded: ${EXCLUSION_LABELS[attempt.evaluation.reason]}`
+  }`;
+}
+
+function correctionDescription(correction: ExerciseActiveAttemptCorrection): string {
+  if (correction.kind === "annulled") return `Recorded by mistake · Previously ${attemptSummary(correction.before)}`;
+  const changes = [
+    correction.before.athleteProfileId !== correction.after?.athleteProfileId
+      ? "Athlete attribution changed"
+      : null,
+    correction.after && attemptSummary(correction.before) !== attemptSummary(correction.after)
+      ? `${attemptSummary(correction.before)} → ${attemptSummary(correction.after)}`
+      : null,
+    correction.after && JSON.stringify(correction.before.measurements) !== JSON.stringify(correction.after.measurements)
+      ? "Measurements changed"
+      : null,
+    correction.after && JSON.stringify(correction.before.teamRoleContextOverride) !== JSON.stringify(correction.after.teamRoleContextOverride)
+      ? "Role or Sweeper context changed"
+      : null,
+  ].filter((value): value is string => value !== null);
+  return changes.join(" · ") || "Captured facts corrected";
+}
+
 function ResultDetail({
   record,
   onBack,
@@ -101,6 +133,21 @@ function ResultDetail({
         <p className="mt-1 text-sm text-slate-600">Exercise version {version.version}</p>
       </section>
 
+      {record.activeAttemptCorrections.length > 0 && (
+        <section className={surfaceClass("primary")}>
+          <h3 className="text-lg font-semibold text-slate-900">Correction history</h3>
+          <p className="mt-1 text-xs text-slate-500">Only active-session changes affecting your own data are shown.</p>
+          <ol className="mt-3 space-y-2">
+            {record.activeAttemptCorrections.map((correction) => (
+              <li key={correction.id} className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-medium">{correctionDescription(correction)}</p>
+                <p className="mt-1 text-xs text-amber-800">Active recorder · {formatDate(correction.correctedAt)}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       <section className={surfaceClass("primary")}>
         <h3 className="text-lg font-semibold text-slate-900">Your result</h3>
         {summary ? (
@@ -133,6 +180,11 @@ function ResultDetail({
                   );
                   return <p key={measurement.id} className="mt-1 text-slate-600">{protocol?.name ?? "Measurement"}: {measurement.value} {protocol ? measurementUnitLabel(protocol.unit) : ""}</p>;
                 })}
+                {attempt.kind === "shotmaking" && (() => {
+                  const role = getTeamAttemptRoleContext({ ...execution, athleteResults: [record.result] }, attempt);
+                  if (!role) return null;
+                  return <p className="mt-1 text-xs text-slate-500">Context: {role.sweeperProfileIds.length} Sweeper{role.sweeperProfileIds.length === 1 ? "" : "s"} · {role.sweepingUsed ? "sweeping used" : "no sweeping"}{role.skipProfileId ? " · Skip assigned" : ""}</p>;
+                })()}
               </li>
             ))}
           </ol>

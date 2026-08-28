@@ -109,6 +109,43 @@ describe("ExerciseTeamExecutionScreen", () => {
     expect(screen.getByRole("button", { name: "Complete Team Exercise" })).toBeEnabled();
   });
 
+  it("corrects an earlier stone across athlete, outcome and role context without a typed reason", async () => {
+    render(<Harness initial={execution()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
+    fireEvent.click(screen.getByRole("button", { name: "2 points, 50 percent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
+    await screen.findByText(/50% average/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Correct Stone" }));
+    expect(screen.getByText(/previous and resulting values/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/reason/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Delivering athlete"), { target: { value: ATHLETE_B } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Outhandle" }).at(-1)!);
+    fireEvent.change(screen.getByLabelText("Score"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Correction" }));
+
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Correct recorded stone" })).not.toBeInTheDocument());
+    expect(screen.getByText(/No scored stones/)).toBeInTheDocument();
+    expect(screen.getByText(/100% average · 4\/4 points/)).toBeInTheDocument();
+    expect(screen.getByText(/Stone 1 · Athlete B/)).toBeInTheDocument();
+    expect(screen.getByText(/1 Sweeper · Sweeping used/)).toBeInTheDocument();
+  });
+
+  it("annuls a mistakenly recorded stone only after confirmation and removes it from live calculations", async () => {
+    render(<Harness initial={execution()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 points, 75 percent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
+    await screen.findByText(/75% average/);
+
+    fireEvent.click(screen.getByRole("button", { name: "Recorded by Mistake" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("stop counting");
+    fireEvent.click(screen.getByRole("button", { name: "Annul Recorded Stone" }));
+    await waitFor(() => expect(screen.queryByText(/Stone 1 · Athlete A/)).not.toBeInTheDocument());
+    expect(screen.getAllByText(/No scored stones/)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Complete Team Exercise" })).toBeDisabled();
+  });
+
   it("passes an exact terminal completion to the atomic persistence boundary", async () => {
     const onComplete = vi.fn<(execution: ExerciseExecution) => Promise<boolean>>(async () => true);
     render(<Harness initial={execution(RELEASE_POINT_VERSION_ID)} onComplete={onComplete} />);

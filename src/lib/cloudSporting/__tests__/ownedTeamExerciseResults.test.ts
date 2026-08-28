@@ -4,8 +4,11 @@ import { EIGHT_GUARDS_VERSION_ID } from "../../exercises/content";
 import { findExerciseVersion } from "../../exercises/lookup";
 import {
   addTeamShotmakingAttempt,
+  annulTeamShotmakingAttempt,
   completeTeamExerciseExecution,
+  correctTeamShotmakingAttempt,
   createTeamExerciseExecution,
+  getTeamAttemptRoleContext,
 } from "../../exercises/teamExecution";
 import { sha256Hex } from "../records";
 import {
@@ -22,7 +25,7 @@ const ATHLETE_A = "30000000-0000-4000-8000-000000000003";
 const ATHLETE_B = "40000000-0000-4000-8000-000000000004";
 const RECORDER = "50000000-0000-4000-8000-000000000005";
 
-function completedExecution() {
+function completedExecution(correction?: "move" | "annul") {
   let id = 10;
   let minute = 0;
   const clock = {
@@ -57,7 +60,39 @@ function completedExecution() {
     clock,
   });
   if (!attempted.ok) throw new Error(attempted.error.message);
-  const completed = completeTeamExerciseExecution(attempted.value, RECORDER, "2026-08-28T11:00:00.000Z");
+  let active = attempted.value;
+  const attempt = active.athleteResults[0].attempts[0];
+  if (correction === "move") {
+    if (attempt.kind !== "shotmaking") throw new Error("Missing attempt fixture");
+    const role = getTeamAttemptRoleContext(active, attempt);
+    if (!role) throw new Error("Missing role fixture");
+    const corrected = correctTeamShotmakingAttempt(active, {
+      recorderProfileId: RECORDER,
+      attemptId: attempt.id,
+      athleteProfileId: ATHLETE_B,
+      actualHandle: "out",
+      evaluation: { status: "scored", score: 4 },
+      measurements: [],
+      roleContext: { ...role, deliveringAthleteProfileId: ATHLETE_B },
+      clock,
+    });
+    if (!corrected.ok) throw new Error(corrected.error.message);
+    active = corrected.value;
+  } else if (correction === "annul") {
+    const annulled = annulTeamShotmakingAttempt(active, RECORDER, attempt.id, clock);
+    if (!annulled.ok) throw new Error(annulled.error.message);
+    active = annulled.value;
+    const replacement = addTeamShotmakingAttempt(active, {
+      recorderProfileId: RECORDER,
+      athleteProfileId: ATHLETE_A,
+      actualHandle: "out",
+      evaluation: { status: "scored", score: 2 },
+      clock,
+    });
+    if (!replacement.ok) throw new Error(replacement.error.message);
+    active = replacement.value;
+  }
+  const completed = completeTeamExerciseExecution(active, RECORDER, "2026-08-28T11:00:00.000Z");
   if (!completed.ok) throw new Error(completed.error.message);
   return completed.value;
 }
@@ -103,6 +138,36 @@ describe("athlete-owned Team Exercise read model", () => {
   it("accepts an owned zero-attempt projection when another athlete made the Team attempt", async () => {
     const parsed = await deserializeOwnedTeamExerciseResult(await cloudRecord(ATHLETE_B), ATHLETE_B);
     expect(parsed?.result.attempts).toEqual([]);
+  });
+
+  it("continues to restore immutable cloud payload schema 1 history", async () => {
+    const current = await cloudRecord();
+    const coordination = JSON.parse(current.session.coordinationPayload);
+    coordination.schemaVersion = 1;
+    coordination.execution.schemaVersion = 1;
+    const result = JSON.parse(current.bundle.resultPayload);
+    result.schemaVersion = 1;
+    delete result.activeAttemptCorrections;
+    const coordinationPayload = JSON.stringify(coordination);
+    const resultPayload = JSON.stringify(result);
+    const legacy: TeamExerciseCloudReadRecord = {
+      ...current,
+      session: {
+        ...current.session,
+        schemaVersion: 1,
+        coordinationPayload,
+        contentSha256: (await sha256Hex(coordinationPayload))!,
+      },
+      bundle: {
+        ...current.bundle,
+        schemaVersion: 1,
+        resultPayload,
+        contentSha256: (await sha256Hex(resultPayload))!,
+      },
+    };
+    const parsed = await deserializeOwnedTeamExerciseResult(legacy, ATHLETE_A);
+    expect(parsed?.result.attempts).toHaveLength(1);
+    expect(parsed?.activeAttemptCorrections).toEqual([]);
   });
 
   it("rejects a foreign owner, mismatched manifests, hash changes and payload note leakage", async () => {
@@ -178,5 +243,80 @@ describe("athlete-owned Team Exercise read model", () => {
     expect(exported.athleteResult.athleteProfileId).toBe(ATHLETE_A);
     expect(exported.privateAthleteNote.note).toBe("My own observation");
     expect(exported.session.execution.athleteResults).toBeUndefined();
+  });
+
+  it("splits active corrections into every affected athlete bundle without trusting recorder claims", async () => {
+    const execution = completedExecution("move");
+    const upload = serializeCompletedTeamExercise(execution)!;
+    const athleteABundle = upload.bundles.find((bundle) => bundle.athleteProfileId === ATHLETE_A)!;
+    const athleteBBundle = upload.bundles.find((bundle) => bundle.athleteProfileId === ATHLETE_B)!;
+    const payloadA = JSON.parse(athleteABundle.resultPayload);
+    const payloadB = JSON.parse(athleteBBundle.resultPayload);
+    expect(payloadA.activeAttemptCorrections).toHaveLength(1);
+    expect(payloadB.activeAttemptCorrections).toHaveLength(1);
+    expect(payloadA.activeAttemptCorrections[0].correctedByProfileId).toBeUndefined();
+    expect(payloadA.activeAttemptCorrections[0].before.recordedByProfileId).toBeUndefined();
+    expect(JSON.parse(upload.session.coordinationPayload).execution.activeAttemptCorrections).toBeUndefined();
+
+    const record = await cloudRecord(ATHLETE_B);
+    const correctedUpload = upload.bundles.find((bundle) => bundle.athleteProfileId === ATHLETE_B)!;
+    const correctedRecord: TeamExerciseCloudReadRecord = {
+      session: {
+        ...upload.session,
+        recordedByProfileId: RECORDER,
+        contentSha256: (await sha256Hex(upload.session.coordinationPayload))!,
+        createdAt: record.session.createdAt,
+      },
+      bundle: {
+        ...correctedUpload,
+        recordedByProfileId: RECORDER,
+        contentSha256: (await sha256Hex(correctedUpload.resultPayload))!,
+        createdAt: record.bundle.createdAt,
+      },
+      privateNote: null,
+    };
+    const parsed = await deserializeOwnedTeamExerciseResult(correctedRecord, ATHLETE_B);
+    expect(parsed?.activeAttemptCorrections).toHaveLength(1);
+    expect(parsed?.activeAttemptCorrections[0].correctedByProfileId).toBe(RECORDER);
+    expect(parsed?.activeAttemptCorrections[0].before.recordedByProfileId).toBe(RECORDER);
+    expect(parsed?.result.attempts[0].athleteProfileId).toBe(ATHLETE_B);
+
+    const rewrittenAudit = JSON.parse(correctedUpload.resultPayload);
+    rewrittenAudit.activeAttemptCorrections[0].after.createdAt = "2026-08-28T09:59:59.000Z";
+    const rewrittenPayload = JSON.stringify(rewrittenAudit);
+    expect(await deserializeOwnedTeamExerciseResult({
+      ...correctedRecord,
+      bundle: {
+        ...correctedRecord.bundle,
+        resultPayload: rewrittenPayload,
+        contentSha256: (await sha256Hex(rewrittenPayload))!,
+      },
+    }, ATHLETE_B)).toBeNull();
+  });
+
+  it("retains an annulled attempt only in the affected athlete's audit and raw export", async () => {
+    const execution = completedExecution("annul");
+    const upload = serializeCompletedTeamExercise(execution)!;
+    const bundle = upload.bundles.find((candidate) => candidate.athleteProfileId === ATHLETE_A)!;
+    const record: TeamExerciseCloudReadRecord = {
+      session: {
+        ...upload.session,
+        recordedByProfileId: RECORDER,
+        contentSha256: (await sha256Hex(upload.session.coordinationPayload))!,
+        createdAt: "2026-08-28T11:01:00.000Z",
+      },
+      bundle: {
+        ...bundle,
+        recordedByProfileId: RECORDER,
+        contentSha256: (await sha256Hex(bundle.resultPayload))!,
+        createdAt: "2026-08-28T11:01:01.000Z",
+      },
+      privateNote: null,
+    };
+    const parsed = await deserializeOwnedTeamExerciseResult(record, ATHLETE_A);
+    expect(parsed?.result.attempts).toHaveLength(1);
+    expect(parsed?.activeAttemptCorrections[0]).toMatchObject({ kind: "annulled" });
+    const exported = JSON.parse(serializeOwnedTeamExerciseResultExport(parsed!));
+    expect(exported.activeAttemptCorrections[0].before.evaluation.score).toBe(3);
   });
 });

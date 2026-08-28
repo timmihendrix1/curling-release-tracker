@@ -200,8 +200,11 @@ technique directly" in the Coaching Principles.
   correlated and hash/manifest-validated into exactly one mounted-Profile projection,
   schema 5 of the same Profile-scoped sync record supplies verified offline reads, and
   Analyze exposes factual detail, owned raw export and acknowledgement-first online
-  private-note save/clear. No sibling result or note becomes readable. Still **Planned**,
-  per that specification's section 21: revision/void/notification work, Training Plan
+  private-note save/clear. No sibling result or note becomes readable. ADR-0038 adds
+  C3d's durable correction of any active Shotmaking stone, exact before/after audit,
+  recorded-by-mistake annulment and affected-athlete-only history under backwards-readable
+  Team cloud payload schema 2. Still **Planned**, per that specification's section 21:
+  post-completion revision/void/notification work, Training Plan
   integration, and the remaining six approved catalogue Exercises. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never

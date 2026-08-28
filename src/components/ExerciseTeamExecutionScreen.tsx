@@ -11,14 +11,17 @@ import type {
 } from "../lib/exercises/executionTypes";
 import {
   addTeamShotmakingAttempt,
+  annulTeamShotmakingAttempt,
   changeTeamRoleAssignment,
   completeTeamExerciseExecution,
   getTeamRotationRecommendation,
+  getTeamAttemptRoleContext,
   listTeamAttemptsInRecordingOrder,
   type TeamRoleAssignmentInput,
 } from "../lib/exercises/teamExecution";
 import { measurementUnitLabel } from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
+import ExerciseTeamAttemptCorrectionEditor from "./ExerciseTeamAttemptCorrectionEditor";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
 
@@ -62,6 +65,8 @@ export default function ExerciseTeamExecutionScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [editingAttemptId, setEditingAttemptId] = useState<string | null>(null);
+  const [annulAttemptId, setAnnulAttemptId] = useState<string | null>(null);
 
   const version = execution.exerciseVersionSnapshot;
   const teamContext = execution.teamContext;
@@ -207,6 +212,24 @@ export default function ExerciseTeamExecutionScreen({
     setBusy(false);
     setConfirmDiscard(false);
     setError(discarded ? null : "The active Team draft could not be discarded.");
+  }
+
+  async function annulAttempt() {
+    if (!annulAttemptId) return;
+    const outcome = annulTeamShotmakingAttempt(
+      execution,
+      confirmedTeamContext.recorderProfileId,
+      annulAttemptId
+    );
+    if (!outcome.ok) {
+      setError(outcome.error.message);
+      setAnnulAttemptId(null);
+      return;
+    }
+    if (await save(outcome.value)) {
+      setAnnulAttemptId(null);
+      if (editingAttemptId === annulAttemptId) setEditingAttemptId(null);
+    }
   }
 
   return (
@@ -385,6 +408,24 @@ export default function ExerciseTeamExecutionScreen({
                     <span>{` · ${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"}${attempt.evaluation.status === "scored" ? ` · ${attempt.evaluation.score}/4` : ` · Excluded: ${exclusionLabel(attempt.evaluation.reason)}`}`}</span>
                   )}
                   {attempt.measurements.map((measurement) => <span key={measurement.id}>{` · ${measurementLabel(measurement.protocolId, measurement.protocolVersion, measurement.value)}`}</span>)}
+                  {attempt.kind === "shotmaking" && (() => {
+                    const role = getTeamAttemptRoleContext(execution, attempt);
+                    if (!role) return null;
+                    return <span>{` · ${role.sweeperProfileIds.length} Sweeper${role.sweeperProfileIds.length === 1 ? "" : "s"}${role.sweepingUsed ? " · Sweeping used" : " · No sweeping"}${role.skipProfileId ? " · Skip" : ""}`}</span>;
+                  })()}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <button type="button" disabled={busy} onClick={() => setEditingAttemptId((current) => current === attempt.id ? null : attempt.id)} className="min-h-11 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50">{editingAttemptId === attempt.id ? "Close Correction" : "Correct Stone"}</button>
+                    <button type="button" disabled={busy} onClick={() => setAnnulAttemptId(attempt.id)} className="min-h-11 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-red-700 disabled:opacity-50">Recorded by Mistake</button>
+                  </div>
+                  {attempt.kind === "shotmaking" && editingAttemptId === attempt.id && (
+                    <ExerciseTeamAttemptCorrectionEditor
+                      execution={execution}
+                      attempt={attempt}
+                      eligibilitySnapshot={eligibilitySnapshot}
+                      onSave={save}
+                      onCancel={() => setEditingAttemptId(null)}
+                    />
+                  )}
                 </li>
               ))}
             </ol>
@@ -409,6 +450,16 @@ export default function ExerciseTeamExecutionScreen({
           isDanger
           onConfirm={() => void discard()}
           onCancel={() => setConfirmDiscard(false)}
+        />
+      )}
+      {annulAttemptId && (
+        <ConfirmModal
+          title="Mark Stone as Recorded by Mistake?"
+          message="The stone will stop counting toward current results. Its original values, recorder and annulment time remain in the athlete's correction history."
+          confirmLabel="Annul Recorded Stone"
+          isDanger
+          onConfirm={() => void annulAttempt()}
+          onCancel={() => setAnnulAttemptId(null)}
         />
       )}
     </div>

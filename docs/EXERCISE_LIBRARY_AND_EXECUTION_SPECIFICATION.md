@@ -1127,6 +1127,19 @@ These rink-side corrections do not generate participant notifications. They rema
 visible in the audit history so completion cannot turn an untraceable overwrite into
 the historical record.
 
+The active recorder may correct **any** already recorded Shotmaking stone, not only the
+latest. Version 1 correction covers delivering athlete, actual handle, evaluation or
+exclusion, manual Rotation Count and observer, and the stone's Sweeper/sweeping, Skip,
+observer, Coach and timekeeper context. No typed reason is required before completion;
+the system retains exact before/after values, recorder and time automatically.
+
+A stone entered accidentally may be marked `Recorded by Mistake`. It is excluded from
+the current attempt count, result calculations and completion eligibility but remains in
+the active correction audit with its original facts. This is neither hard deletion nor
+post-completion ordinary voiding. After completion, the audit is visible only through
+the affected athlete-owned result projection; it does not create lasting recorder or
+participant access.
+
 ## 16.5 Post-completion revisions and ordinary voiding
 
 After Session completion, only the affected athlete may revise or void their own
@@ -1426,7 +1439,7 @@ retained with the result.
 
 ## Stage C — Team execution on one device
 
-**Implementation status (2026-08-28): Stages C1-C3c are implemented; Stage C is not
+**Implementation status (2026-08-28): Stages C1-C3d are implemented; Stage C is not
 complete.** ADR-0031 adds the standalone Team aggregate: confirmed Profile
 participants, several athlete-owned result slots, the authenticated active-recorder
 snapshot, all five approved simple rotation configurations, actual role-assignment
@@ -1453,8 +1466,10 @@ per-athlete results, optional manual half-step Rotation Count and honest complet
 truth. ADR-0037 restores the authenticated athlete's accepted bundle and shared context
 through the existing RLS boundary, verifies payload hashes/manifests, caches only the
 strict Profile-owned projection for offline read, and exposes factual result detail, raw
-export and own private-note save/clear in Analyze. Revisions, voiding and participant
-notifications remain unimplemented.
+export and own private-note save/clear in Analyze. ADR-0038 adds durable, append-only
+active-session attempt corrections, including athlete/role changes and audited
+recorded-by-mistake annulment. Post-completion revisions, ordinary voiding and
+participant notifications remain unimplemented.
 
 - select several training athletes and supporting participants;
 - enforce the athlete's explicit Team recording permission;
@@ -1479,8 +1494,8 @@ notifications remain unimplemented.
 The server authority and client persistence/upload portions have real database and
 application-service verification. Permission control, bounded offline Team capture,
 honest completion sync receipts and athlete-owned restore/private notes are exposed in
-UI by C2c/C3b/C3c. The remaining stage must add the active/post-completion revision,
-voiding and notification workflow.
+UI by C2c/C3b/C3c/C3d. The remaining stage must add the post-completion revision,
+ordinary-voiding and notification workflow.
 TypeScript mocks alone remain insufficient evidence for any new cloud-authority change.
 
 Independent review must additionally verify that completion prevents silent overwrite,

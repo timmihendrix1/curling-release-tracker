@@ -2,7 +2,8 @@
 
 **Status:** Accepted and implemented as Exercise Stage C2b (2026-08-28). ADR-0034-0036
 now add permission cache/UI, active-draft persistence and one-device capture. Athlete
-ADR-0037 now implements restore/read models; revisions, voiding and notifications remain
+ADR-0037 now implements restore/read models and ADR-0038 carries filtered active-correction
+audit through payload schema 2; post-completion revisions, voiding and notifications remain
 later Stage C work.
 
 ## Context

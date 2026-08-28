@@ -1,7 +1,8 @@
 import type { Handle, TimingProviderType } from "../../types";
 import type { ExerciseVersion, MeasurementProtocol } from "./types";
 
-export const EXERCISE_EXECUTION_SCHEMA_VERSION = 1;
+export const EXERCISE_EXECUTION_SCHEMA_VERSION = 2;
+export const SUPPORTED_EXERCISE_EXECUTION_SCHEMA_VERSIONS = [1, 2] as const;
 
 export type ExerciseExecutionStatus = "in-progress" | "completed" | "abandoned";
 export type ExerciseEvaluationBasis = "not-applicable" | "team-defined-unstructured";
@@ -45,6 +46,20 @@ export type ExerciseRoleAssignmentSegment = {
   recordedByProfileId?: string;
   /** Required on Team segments so planned rotation never replaces actual history. */
   transitionReason?: ExerciseRoleTransitionReason;
+};
+
+/**
+ * The role facts that apply to one Team attempt after any rink-side correction.
+ * Absence on an attempt means the referenced immutable role segment remains effective.
+ */
+export type ExerciseTeamAttemptRoleContext = {
+  deliveringAthleteProfileId: string;
+  sweeperProfileIds: string[];
+  skipProfileId?: string;
+  observerProfileId?: string;
+  coachProfileIds?: string[];
+  timekeeperProfileId?: string;
+  sweepingUsed: boolean;
 };
 
 export type ExerciseRoleTransitionReason =
@@ -123,6 +138,8 @@ export type ShotmakingExerciseAttempt = ExerciseAttemptBase & {
   actualHandle: Handle;
   evaluation: ShotmakingEvaluation;
   measurements: ExerciseMeasurement[];
+  /** Present only when an audited active-session correction overrides the captured role segment. */
+  teamRoleContextOverride?: ExerciseTeamAttemptRoleContext;
 };
 
 export type MeasurementExerciseAttempt = ExerciseAttemptBase & {
@@ -142,6 +159,16 @@ export type AthleteExerciseResult = {
   updatedAt: string;
 };
 
+export type ExerciseActiveAttemptCorrection = {
+  id: string;
+  kind: "updated" | "annulled";
+  attemptId: string;
+  correctedByProfileId: string;
+  correctedAt: string;
+  before: ShotmakingExerciseAttempt;
+  after?: ShotmakingExerciseAttempt;
+};
+
 /**
  * One actual performance of one immutable Exercise Version. Stage B1 keeps this
  * aggregate independent of the existing release-timing Session until the next
@@ -159,6 +186,8 @@ export type ExerciseExecution = {
   abandonedAt?: string;
   roleAssignmentSegments: ExerciseRoleAssignmentSegment[];
   athleteResults: AthleteExerciseResult[];
+  /** Append-only audit of corrections made before Team Session completion. */
+  activeAttemptCorrections?: ExerciseActiveAttemptCorrection[];
   /** Absence is the backwards-compatible Stage B Solo execution shape. */
   teamContext?: ExerciseTeamContext;
   schemaVersion: number;

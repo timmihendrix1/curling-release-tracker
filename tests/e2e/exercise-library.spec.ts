@@ -440,7 +440,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByText("3 exercises")).toBeVisible();
   });
 
-  test("persists one-device Team Shotmaking, rotations and role changes across reload", async ({ page, context }) => {
+  test("persists one-device Team Shotmaking, corrections, rotations and role changes across reload", async ({ page, context }) => {
     await freshLoad(page);
     await seedTeamExerciseEligibility(page);
     await goToTrain(page);
@@ -471,6 +471,16 @@ test.describe("Exercise Library and Solo execution", () => {
     await goToTrain(page);
     await expect(page.getByText(/2.5 rotations/)).toBeVisible();
     await expectNoHorizontalOverflow(page);
+
+    await page.getByRole("button", { name: "Correct Stone" }).click();
+    await page.getByLabel("Score").selectOption("3");
+    await page.getByRole("button", { name: "Save Correction" }).click();
+    await expect(page.getByText(/75% average/)).toBeVisible();
+    await page.reload();
+    await goToTrain(page);
+    await expect(page.getByText(/75% average/)).toBeVisible();
+    await expect(page.getByText(/2.5 rotations/)).toBeVisible();
+
     await page.getByRole("button", { name: "Apply Planned Rotation" }).click();
     await expect(page.getByText("Athlete B · Stone 1")).toBeVisible();
 
