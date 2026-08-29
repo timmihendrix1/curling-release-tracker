@@ -36,7 +36,7 @@ async function addShot(
 async function startNewSession(page: import("@playwright/test").Page) {
   await page.getByRole("button", { name: "Start New Session" }).click();
   await page.getByRole("button", { name: "Start", exact: true }).click();
-  await page.waitForSelector("text=Set Up Training Block");
+  await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 }
 
 test("Sticky filters update all History analytics together", async ({ page }) => {

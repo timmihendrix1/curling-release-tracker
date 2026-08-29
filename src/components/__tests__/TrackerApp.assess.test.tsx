@@ -99,7 +99,7 @@ describe("TrackerApp — Assess integration", () => {
     );
     // Training remains fully usable alongside the notice.
     fireEvent.click(navButton("Train"));
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   });
 
   it("blocks starting an assessment while a Training Auto Capture sequence is active, without losing anything", async () => {
@@ -107,6 +107,9 @@ describe("TrackerApp — Assess integration", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
 
     fireEvent.click(navButton("Train"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
     await waitFor(() => screen.getByText("Set Up Training Block"));
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
     await waitFor(() => screen.getByText("Active Training Block"));

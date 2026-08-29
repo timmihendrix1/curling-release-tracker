@@ -146,7 +146,7 @@ describe("TrackerApp — History Filters readiness gating", () => {
     // Unrelated ready domain (Session/Home) is fully usable while History
     // Filters is still loading.
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     navButton("Analyze").click();
     await waitFor(() => screen.getByText(/Loading filters/));
@@ -194,7 +194,7 @@ describe("TrackerApp — History Filters readiness gating", () => {
 });
 
 describe("TrackerApp — Training Plans readiness gating", () => {
-  it("disables the Training Plans tab while loading, leaves ad-hoc Quick Start usable, and enables the tab only once the stored library is applied", async () => {
+  it("disables Training Plans while loading, leaves Exercises usable, and enables Plans only once its library is applied", async () => {
     stubSessionReady();
     stubAssessmentReady();
     vi.spyOn(historyFiltersRepository, "load").mockResolvedValue(loadedAbsent());
@@ -208,24 +208,17 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     const plansTab = screen.getByRole("tab", { name: "Training Plans" });
     expect(plansTab).toBeDisabled();
 
-    // Unrelated: ad-hoc Quick Start (doesn't read/mutate the Training Plans
-    // collection at all) remains fully usable while the library is loading.
-    expect(screen.getByRole("button", { name: "Start Training" })).toBeEnabled();
-
-    // Also unrelated: the Exercises pillar renders compiled curated content and
+    // The Exercises pillar renders compiled curated content and
     // touches no persisted domain at all, so it stays reachable and usable
     // while the Training Plans library is still loading.
     const exercisesTab = screen.getByRole("tab", { name: "Exercises" });
     expect(exercisesTab).toBeEnabled();
-    fireEvent.click(exercisesTab);
     await waitFor(() => screen.getByText("Eight Guards, Progressively Longer"));
-    fireEvent.click(screen.getByRole("tab", { name: "Quick Start" }));
-    await waitFor(() => screen.getByText("Set Up Training Block"));
 
     fireEvent.click(plansTab);
     // Disabled tab — clicking it must not switch modes.
@@ -252,7 +245,7 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     expect(screen.getByRole("tab", { name: "Training Plans" })).toBeDisabled();
     plansDeferred.resolve(loadedAbsent());
@@ -496,21 +489,17 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     await waitFor(() => screen.getByText("No scheduled session."));
 
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
-    // Training Setup (Quick Start) submit — visibly disabled, not merely a
-    // no-op handler.
-    expect(screen.getByRole("button", { name: "Start Training" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByText("Active Training Block")).toBeNull();
-
-    // Session metadata (name) — visibly disabled.
-    expect(screen.getByPlaceholderText("e.g. Draw Training")).toBeDisabled();
-    fireEvent.change(screen.getByPlaceholderText("e.g. Draw Training"), {
-      target: { value: "Attempted rename" },
-    });
-    expect(screen.getByPlaceholderText("e.g. Draw Training")).toHaveValue("");
+    // Release Timing is now reached only through its Measured Exercise. A
+    // write-protected Session blocks that transition before the setup mounts.
+    fireEvent.click(
+      screen.getByRole("button", { name: "View Details: Release Time" })
+    );
+    expect(
+      screen.getByRole("button", { name: "Continue to Timing Setup" })
+    ).toBeDisabled();
+    expect(screen.queryByText("Set Up Training Block")).toBeNull();
 
     // Manual timing entry / Auto Capture / Timing Simulator are all
     // structurally unreachable, not merely disabled: since block creation
@@ -640,7 +629,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
 
     // Unrelated ready domain.
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   });
 
   it("Training Plans: settles loading, retains the empty fallback, keeps the tab disabled, and never calls savePlans", async () => {
@@ -655,13 +644,13 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     expect(screen.getByRole("tab", { name: "Training Plans" })).toBeDisabled();
     expect(saveSpy).not.toHaveBeenCalled();
 
-    // Unrelated ready domain: Quick Start still works.
-    expect(screen.getByRole("button", { name: "Start Training" })).toBeEnabled();
+    // Unrelated ready domain: the curated Exercise Library still works.
+    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
   it("Accuracy Tolerance Profiles: settles loading, retains the empty fallback, keeps Manage disabled, and never calls saveState", async () => {

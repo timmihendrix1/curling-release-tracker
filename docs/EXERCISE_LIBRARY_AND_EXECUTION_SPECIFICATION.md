@@ -976,13 +976,18 @@ sharing require separate models with explicit authorship, ownership and visibili
 The Exercise Library lives within **Train**. It does not create a new top-level
 navigation destination.
 
-Quick Start is an entry mechanism, not a synonym for Release Time. It may later repeat
-a recent execution or start a recognised default, but the Library information
-architecture must not hard-code Release Time as the meaning of Quick Start.
+Train exposes the Exercise Library and Training Plans. There is no separate Quick Start
+entry. Release Time is a normal Measured Exercise in the Library; choosing its action
+opens the existing Fixed Weight, Variable Weight and Blind Weight setup and runner as a
+nested Exercise flow. This preserves one functional timing implementation without
+making Release Time a privileged top-level shortcut.
 
 ## 14.2 Version 1 discovery
 
 Version 1 discovery includes:
+
+- stable top-level grouping in the order **Technique**, **Shotmaking**, **Measured
+  Exercises**;
 
 - text search;
 - Primary Exercise Focus;

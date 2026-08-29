@@ -62,25 +62,29 @@ async function seedTeamExerciseEligibility(page: import("@playwright/test").Page
 }
 
 test.describe("Exercise Library and Solo execution", () => {
-  test("Train exposes Quick Start, Exercises and Training Plans, all reachable and unclipped at 390 px", async ({
+  test("Train exposes Exercises and Training Plans, with the Library selected and unclipped at 390 px", async ({
     page,
   }) => {
     await freshLoad(page);
     await goToTrain(page);
 
     const tabs = page.getByRole("tab");
-    await expect(tabs).toHaveCount(3);
-    await expect(tabs.nth(0)).toHaveText("Quick Start");
-    await expect(tabs.nth(1)).toHaveText("Exercises");
-    await expect(tabs.nth(2)).toHaveText("Training Plans");
+    await expect(tabs).toHaveCount(2);
+    await expect(tabs.nth(0)).toHaveText("Exercises");
+    await expect(tabs.nth(1)).toHaveText("Training Plans");
 
-    // Quick Start stays the default, with the existing setup hero.
+    // The grouped Exercise Library is the default; timing setup is not a
+    // separate top-level shortcut.
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
+    await expect(page.getByText("Set Up Training Block")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Technique", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Shotmaking", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Measured Exercises", exact: true })).toBeVisible();
 
     // No tab label is truncated inside its own button, and the page does not
     // scroll sideways.
-    for (let index = 0; index < 3; index++) {
+    for (let index = 0; index < 2; index++) {
       const clipping = await tabs.nth(index).evaluate((element) => ({
         scrollWidth: element.scrollWidth,
         clientWidth: element.clientWidth,
@@ -180,7 +184,7 @@ test.describe("Exercise Library and Solo execution", () => {
     const panelId = await panel.getAttribute("id");
     expect(panelId).toBeTruthy();
 
-    for (let index = 0; index < 3; index++) {
+    for (let index = 0; index < 2; index++) {
       await expect(tabs.nth(index)).toHaveAttribute("aria-controls", panelId!);
     }
     await expect(panel).toHaveAttribute(
@@ -197,22 +201,22 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.keyboard.press("ArrowRight");
     await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(tabs.nth(1)).toBeFocused();
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("No training plans yet")).toBeVisible();
 
     await page.keyboard.press("End");
-    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(page.getByText("No training plans yet")).toBeVisible();
 
     await page.keyboard.press("Home");
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByText("7 exercises")).toBeVisible();
 
     // Wraps backward from the first tab to the last.
     await page.keyboard.press("ArrowLeft");
-    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
     await expect(panel).toHaveAttribute(
       "aria-labelledby",
-      (await tabs.nth(2).getAttribute("id"))!
+      (await tabs.nth(1).getAttribute("id"))!
     );
   });
 
@@ -227,7 +231,6 @@ test.describe("Exercise Library and Solo execution", () => {
     for (const locator of [
       page.getByRole("tab").nth(0),
       page.getByRole("tab").nth(1),
-      page.getByRole("tab").nth(2),
       page.getByRole("button", { name: "Filters", exact: true }),
       page.getByRole("button", { name: "View Details: Release Point" }),
     ]) {
@@ -331,7 +334,7 @@ test.describe("Exercise Library and Solo execution", () => {
     ).toBeVisible();
   });
 
-  test("leaves Training Plans and Quick Start behaving exactly as before", async ({ page }) => {
+  test("keeps Training Plans reachable and starts Release Timing through its Measured Exercise", async ({ page }) => {
     await freshLoad(page);
     await goToTrain(page);
 
@@ -340,11 +343,12 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByText("No training plans yet")).toBeVisible();
     await expect(page.getByRole("button", { name: "Create Training Plan" })).toBeVisible();
 
-    // Visiting Exercises in between changes nothing about Quick Start.
+    // Release Timing is reached from the Library, while its established
+    // Fixed/Variable/Blind setup and runner remain unchanged.
     await openTrainTab(page, "Exercises");
     await expect(page.getByText("7 exercises")).toBeVisible();
-
-    await openTrainTab(page, "Quick Start");
+    await page.getByRole("button", { name: "View Details: Release Time" }).click();
+    await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
     await expect(page.getByText("Set Up Training Block")).toBeVisible();
     await page.getByRole("button", { name: "Start Training" }).click();
     await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();

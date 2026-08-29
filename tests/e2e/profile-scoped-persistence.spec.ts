@@ -70,7 +70,7 @@ test("sign-out and account switching hide the previous Profile workspace and res
   expect(profileB).not.toBe(profileA);
   await goToTrain(page);
   await expect(page.getByText("1 shot total")).not.toBeVisible();
-  await expect(page.getByText("Set Up Training Block")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
 
   const physicalKeys = await page.evaluate(() => Object.keys(localStorage));
   expect(physicalKeys.some((key) => key.includes(`.${profileA}.`))).toBe(true);

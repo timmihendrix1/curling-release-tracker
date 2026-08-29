@@ -20,6 +20,7 @@ import {
   availableExerciseSweepingPolicies,
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   filterExerciseVersions,
+  groupExerciseVersionsByFocus,
   matchesExerciseSearchTerm,
   type ExerciseLibraryFilters,
 } from "../query";
@@ -183,6 +184,35 @@ describe("classification filters", () => {
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
     ]);
+  });
+});
+
+describe("Library focus grouping", () => {
+  it("groups in the stable Technique, Shotmaking, Measured order", () => {
+    const groups = groupExerciseVersionsByFocus(CURRENT);
+
+    expect(groups.map((group) => group.focus)).toEqual([
+      "technique",
+      "shotmaking",
+      "measured",
+    ]);
+    expect(groups.map((group) => ids(group.versions))).toEqual([
+      [RELEASE_POINT_VERSION_ID, RELEASE_GATES_VERSION_ID],
+      [
+        EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+        COME_AROUND_VERSION_ID,
+        SOFT_TAKEOUT_VERSION_ID,
+      ],
+      [RELEASE_TIME_VERSION_ID, ROTATION_COUNT_VERSION_ID],
+    ]);
+  });
+
+  it("omits empty categories without changing the order inside a category", () => {
+    const filtered = filterExerciseVersions(CURRENT, filters({ focus: "shotmaking" }));
+    expect(groupExerciseVersionsByFocus(filtered)).toEqual([
+      { focus: "shotmaking", versions: filtered },
+    ]);
+    expect(groupExerciseVersionsByFocus([])).toEqual([]);
   });
 });
 

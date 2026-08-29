@@ -16,6 +16,10 @@ describe("TrackerApp — active Training live summary", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
 
     screen.getByRole("button", { name: "Start Training" }).click();
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
     await waitFor(() => screen.getByText("Set Up Training Block"));
 
     screen.getByRole("button", { name: "Start Training" }).click();

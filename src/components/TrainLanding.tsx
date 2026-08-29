@@ -24,12 +24,8 @@ import TrainingPlansLibrary from "./TrainingPlansLibrary";
 import TrainingPlanStartReview from "./TrainingPlanStartReview";
 
 type TrainLandingProps = {
-  /**
-   * The existing "Set Up Training Block" hero JSX, passed through unchanged
-   * from TrackerApp — Quick Start's behavior/component tree is untouched, it
-   * simply now sits behind one extra top-level choice (spec section 21).
-   */
-  quickStartContent: ReactNode;
+  /** The existing Release Timing setup, reached through its Measured Exercise. */
+  releaseTimingSetupContent: ReactNode;
   plans: TrainingPlan[];
   /**
    * True while the Training Plans library hasn't finished loading, or is
@@ -37,9 +33,8 @@ type TrainLandingProps = {
    * §7.4) — disables the "Training Plans" tab itself so a user can never
    * reach the library/editor/start-review screens and create, edit,
    * duplicate, or delete a plan against a not-yet-loaded (or unrecoverable)
-   * collection. Quick Start and Exercises are unaffected — neither reads or
-   * mutates this collection at all. Defaults to false so every existing call
-   * site/test keeps today's always-enabled behavior.
+   * collection. Exercises are unaffected — the Library does not read or
+   * mutate this collection. Defaults to false.
    */
   plansTabDisabled?: boolean;
   /**
@@ -62,38 +57,42 @@ type TrainLandingProps = {
   initialEntryPath?: TrainEntryPath;
   onEntryPathChange?: (path: TrainEntryPath) => void;
   onStartExercise: (version: ExerciseVersion) => boolean;
+  onCancelReleaseTimingSetup?: () => void;
   startExerciseDisabled?: boolean;
   onSetUpTeamExercise?: (version: ExerciseVersion) => void;
   teamExerciseStartDisabled?: boolean;
   restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
-export type TrainEntryPath = "quick-start" | "exercises" | "plans";
+export type TrainEntryPath = "exercises" | "plans";
 
 type PlansSubView =
   | { screen: "library" }
   | { screen: "editor"; plan?: TrainingPlan }
   | { screen: "start-review"; plan: TrainingPlan };
 
-type ExercisesSubView = { screen: "library" } | { screen: "detail"; versionId: string };
+type ExercisesSubView =
+  | { screen: "library" }
+  | { screen: "detail"; versionId: string }
+  | { screen: "release-timing-setup"; versionId: string };
 
 /**
  * Where Train falls back to when the active entry path becomes unavailable.
- * Quick Start is the only path that can never be gated: it depends on no
+ * Exercises are always available because the curated Library depends on no
  * persisted collection of its own.
  */
-const FALLBACK_ENTRY_PATH: TrainEntryPath = "quick-start";
+const FALLBACK_ENTRY_PATH: TrainEntryPath = "exercises";
 
 /** Explicitly ordered, so the tab order never depends on object key iteration. */
 const TRAIN_ENTRY_PATHS: readonly { id: TrainEntryPath; label: string }[] = [
-  { id: "quick-start", label: "Quick Start" },
   { id: "exercises", label: "Exercises" },
   { id: "plans", label: "Training Plans" },
 ];
 
 /**
- * The Train "no active block" landing — three entry paths: Quick Start,
- * Exercises and Training Plans, per
+ * The Train "no active block" landing — two entry paths: Exercises and
+ * Training Plans. Release Timing is reached through its Measured Exercise and
+ * reuses the existing Fixed/Variable/Blind runner, per
  * docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md section 14.1 and
  * docs/TRAINING_SYSTEM_AND_PLANS.md sections 21/22. Owns each pillar's
  * sub-navigation entirely locally, the same way AssessScreen.tsx owns its own
@@ -104,7 +103,7 @@ const TRAIN_ENTRY_PATHS: readonly { id: TrainEntryPath; label: string }[] = [
  * Exercise delegates to TrackerApp, which owns Session persistence.
  */
 export default function TrainLanding({
-  quickStartContent,
+  releaseTimingSetupContent,
   plans,
   plansTabDisabled = false,
   startPlanDisabled = false,
@@ -116,9 +115,10 @@ export default function TrainLanding({
   defaultAccuracyToleranceProfileId = null,
   smartRandomProfiles = [],
   defaultSmartRandomProfileId = null,
-  initialEntryPath = "quick-start",
+  initialEntryPath = "exercises",
   onEntryPathChange,
   onStartExercise,
+  onCancelReleaseTimingSetup,
   startExerciseDisabled = false,
   onSetUpTeamExercise,
   teamExerciseStartDisabled = false,
@@ -152,7 +152,8 @@ export default function TrainLanding({
   const currentExerciseVersions = listCurrentExerciseVersions(EXERCISE_CATALOG);
 
   const openExerciseVersion =
-    exercisesSubView.screen === "detail"
+    exercisesSubView.screen === "detail" ||
+    exercisesSubView.screen === "release-timing-setup"
       ? findExerciseVersion(EXERCISE_CATALOG, exercisesSubView.versionId)
       : undefined;
 
@@ -174,8 +175,8 @@ export default function TrainLanding({
   // gated content is never committed to the DOM.
   //
   // This deliberately moves the state rather than deriving around it: when
-  // Training Plans becomes available again, `mode` has genuinely moved to Quick
-  // Start, so the athlete has to choose Training Plans again instead of finding
+  // Training Plans becomes available again, `mode` has genuinely moved to
+  // Exercises, so the athlete has to choose Training Plans again instead of finding
   // it silently reopened where they left it.
   if (isPathDisabled(mode)) {
     setMode(FALLBACK_ENTRY_PATH);
@@ -185,6 +186,9 @@ export default function TrainLanding({
   function selectEntryPath(next: TrainEntryPath) {
     if (isPathDisabled(next)) return;
 
+    if (mode === "exercises" && exercisesSubView.screen === "release-timing-setup") {
+      onCancelReleaseTimingSetup?.();
+    }
     setMode(next);
     onEntryPathChange?.(next);
     if (next === "plans") setPlansSubView({ screen: "library" });
@@ -237,15 +241,12 @@ export default function TrainLanding({
 
   return (
     <div className="space-y-4">
-      {/* Three short labels stay on one row at 390 px by tightening the
-          horizontal padding and type scale below the `sm` breakpoint
-          (DESIGN_SYSTEM.md §13.2) rather than forcing a two-row control. */}
       <div
         ref={tablistRef}
         role="tablist"
         aria-label="Training entry point"
         onKeyDown={handleTabKeyDown}
-        className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+        className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
       >
         {TRAIN_ENTRY_PATHS.map(({ id, label }) => (
           <button
@@ -274,8 +275,6 @@ export default function TrainLanding({
         aria-labelledby={tabId(mode)}
         className="space-y-4"
       >
-        {mode === "quick-start" && quickStartContent}
-
         {mode === "exercises" && exercisesSubView.screen === "library" && (
           <ExerciseLibrary
             versions={currentExerciseVersions}
@@ -301,9 +300,10 @@ export default function TrainLanding({
                 exerciseRunnerKind(EXERCISE_CATALOG, openExerciseVersion) ===
                 "release-timing"
               ) {
-                setExercisesSubView({ screen: "library" });
-                setMode("quick-start");
-                onEntryPathChange?.("quick-start");
+                setExercisesSubView({
+                  screen: "release-timing-setup",
+                  versionId: openExerciseVersion.id,
+                });
               }
             }}
             onStartTeam={onSetUpTeamExercise
@@ -314,6 +314,27 @@ export default function TrainLanding({
             restrictedAssetResolver={restrictedAssetResolver}
           />
         )}
+
+        {mode === "exercises" &&
+          exercisesSubView.screen === "release-timing-setup" &&
+          openExerciseVersion && (
+            <div className="space-y-4">
+              <button
+                type="button"
+                onClick={() => {
+                  onCancelReleaseTimingSetup?.();
+                  setExercisesSubView({
+                    screen: "detail",
+                    versionId: openExerciseVersion.id,
+                  });
+                }}
+                className="-mx-1 inline-flex min-h-11 items-center rounded-lg px-1 text-sm font-medium text-slate-600 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+              >
+                ← Back to {openExerciseVersion.title}
+              </button>
+              {releaseTimingSetupContent}
+            </div>
+          )}
 
         {mode === "plans" && plansSubView.screen === "library" && (
           <TrainingPlansLibrary

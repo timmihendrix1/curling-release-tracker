@@ -76,7 +76,7 @@ test.describe("Navigation", () => {
     );
 
     await goToTrain(page);
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
     await expect(primaryNav(page).getByRole("button", { name: "Train" })).toHaveAttribute(
       "aria-current",
       "page"
@@ -120,12 +120,12 @@ test.describe("Navigation", () => {
 });
 
 test.describe("Start Training", () => {
-  test("Home's Start Training reaches Setup, and a recorded shot survives a Home round trip", async ({
+  test("Home's Start Training reaches the Library, and a recorded shot survives a Home round trip", async ({
     page,
   }) => {
     await freshLoad(page);
     await page.getByRole("button", { name: "Start Training" }).click();
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
 
     await setupFixedBlock(page);
 
@@ -372,7 +372,7 @@ test.describe("Desktop", () => {
     }
 
     await primaryNavDesktop(page).getByRole("button", { name: "Train" }).click();
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
 
     await primaryNavDesktop(page).getByRole("button", { name: "Analyze" }).click();
     await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
@@ -441,7 +441,7 @@ test.describe("Accessibility Smoke Test", () => {
 
     await page.keyboard.press("Enter");
     await expect(trainButton).toHaveAttribute("aria-current", "page");
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
   });
 
   test("Coming next tiles never receive keyboard focus", async ({ page }) => {
@@ -473,7 +473,7 @@ test.describe("Regression", () => {
 
     // Start Training
     await page.getByRole("button", { name: "Start Training" }).click();
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
     await setupFixedBlock(page);
     const shotEntry = page.locator("div", {
       has: page.getByRole("heading", { name: "Add Shot" }),

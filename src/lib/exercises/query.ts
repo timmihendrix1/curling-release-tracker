@@ -225,6 +225,35 @@ export function filterExerciseVersions(
   });
 }
 
+export const EXERCISE_FOCUS_ORDER: readonly ExercisePrimaryFocus[] = [
+  "technique",
+  "shotmaking",
+  "measured",
+];
+
+export type ExerciseFocusGroup = {
+  focus: ExercisePrimaryFocus;
+  versions: ExerciseVersion[];
+};
+
+/**
+ * Groups filtered Library results into the product's three stable top-level
+ * categories. Empty groups are omitted, while both group order and Exercise
+ * order remain deterministic.
+ */
+export function groupExerciseVersionsByFocus(
+  versions: readonly ExerciseVersion[]
+): ExerciseFocusGroup[] {
+  return EXERCISE_FOCUS_ORDER.flatMap((focus) => {
+    const groupedVersions = versions.filter(
+      (version) => version.primaryFocus === focus
+    );
+    return groupedVersions.length > 0
+      ? [{ focus, versions: groupedVersions }]
+      : [];
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Available filter options, derived from the catalog rather than hard-coded —
 // a filter is never offered for a value no Exercise actually has.

@@ -122,7 +122,7 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await page.getByRole("button", { name: "Finish Training" }).click();
   await page.getByRole("button", { name: "Start New Session" }).waitFor();
   await page.getByRole("button", { name: "Start", exact: true }).click();
-  await page.waitForSelector("text=Set Up Training Block");
+  await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 
   await goToAnalyze(page);
   await expect(page.getByText("Blocks and Sessions")).toBeVisible();

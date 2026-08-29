@@ -23,7 +23,7 @@ test("completed training history restores from Free cloud and a clear tombstone 
 
   await page.getByRole("button", { name: "Start New Session" }).click();
   await page.getByRole("button", { name: "Start", exact: true }).click();
-  await page.waitForSelector("text=Set Up Training Block");
+  await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 
   await expect
     .poll(async () => (await readCloudSportingRecords(page)).filter(

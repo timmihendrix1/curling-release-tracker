@@ -24,7 +24,7 @@ type SmartRandomProfileSelectorProps = {
 /**
  * Reusable "pick a saved Smart Random Profile, or enter a one-off Custom
  * range" control — used wherever Smart Random is configured (Variable Weight
- * and Blind Weight Quick Start, New Training Block, Training Plan Step Editor,
+ * and Blind Weight Release Time setup, New Training Block, Training Plan Step Editor,
  * all via TrainingSetup.tsx). Selecting a profile copies its current
  * min/max into the fields the caller already tracks (`minInput`/`maxInput`) —
  * nothing here persists a live reference back to the profile.

@@ -224,33 +224,35 @@ export async function seedProfileScopedSportingValue(
   );
 }
 
-/** Creates the first Training Block of a fresh session using the Setup form's defaults
- * (Fixed Weight, Back-Hog, target 3.75s) and waits for the active-block view. Navigates
- * to Train first if the caller hasn't already (Train's Setup screen is where session
- * setup lives now — see docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md). */
-export async function setupFixedBlock(page: Page) {
+/** Opens the established timing setup through the Release Time Measured Exercise. */
+export async function openReleaseTimingSetup(page: Page) {
   const alreadyOnSetup = await page
     .getByText("Set Up Training Block")
     .isVisible()
     .catch(() => false);
-  if (!alreadyOnSetup) {
-    await goToTrain(page);
-  }
+  if (alreadyOnSetup) return;
+
+  await goToTrain(page);
+  await page
+    .getByRole("button", { name: "View Details: Release Time" })
+    .click();
+  await page
+    .getByRole("button", { name: "Continue to Timing Setup" })
+    .click();
   await page.waitForSelector("text=Set Up Training Block");
+}
+
+/** Creates the first Training Block of a fresh session using Release Time's defaults
+ * (Fixed Weight, Back-Hog, target 3.75s) and waits for the active-block view. */
+export async function setupFixedBlock(page: Page) {
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Start Training" }).click();
   await page.waitForSelector("text=Active Training Block");
 }
 
 /** Creates a Variable Weight / Smart Random block (the Setup form's Variable default). */
 export async function setupVariableSmartRandomBlock(page: Page) {
-  const alreadyOnSetup = await page
-    .getByText("Set Up Training Block")
-    .isVisible()
-    .catch(() => false);
-  if (!alreadyOnSetup) {
-    await goToTrain(page);
-  }
-  await page.waitForSelector("text=Set Up Training Block");
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
   await page.waitForSelector("text=Active Training Block");

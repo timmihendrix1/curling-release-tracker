@@ -314,12 +314,12 @@ export default function TrackerApp() {
   const [activeView, setActiveView] =
     useState<ActiveView>(DEFAULT_ACTIVE_VIEW);
 
-  // Stage B3 keeps the selected Train pillar across the short transitions in
-  // and out of a Solo Exercise runner. Release Timing launched from the
-  // Library reuses Quick Start and carries only this pending catalog snapshot
+  // Keep the selected Train pillar across short transitions in and out of an
+  // Exercise runner. Release Timing launched from the Library reuses the
+  // established timing setup and carries only this pending catalog snapshot
   // until the existing block is actually created.
   const [preferredTrainEntryPath, setPreferredTrainEntryPath] =
-    useState<TrainEntryPath>("quick-start");
+    useState<TrainEntryPath>("exercises");
   const [pendingReleaseTimingExerciseVersion, setPendingReleaseTimingExerciseVersion] =
     useState<ExerciseVersion | null>(null);
   const [viewingExerciseExecutionId, setViewingExerciseExecutionId] =
@@ -1724,7 +1724,7 @@ export default function TrackerApp() {
     const runnerKind = exerciseRunnerKind(EXERCISE_CATALOG, version);
     if (runnerKind === "release-timing") {
       setPendingReleaseTimingExerciseVersion(snapshotExerciseVersion(version));
-      setPreferredTrainEntryPath("quick-start");
+      setPreferredTrainEntryPath("exercises");
       return true;
     }
     if (runnerKind === "unsupported") {
@@ -1949,7 +1949,7 @@ export default function TrackerApp() {
       materialized.viewingExerciseExecutionId ?? null
     );
     setPendingReleaseTimingExerciseVersion(null);
-    setPreferredTrainEntryPath("quick-start");
+    setPreferredTrainEntryPath("exercises");
   }
 
   function handleCreateAccuracyToleranceProfile(
@@ -2169,7 +2169,7 @@ export default function TrackerApp() {
       setBlockFilter(DEFAULT_SHOT_FILTER);
       setViewingExerciseExecutionId(null);
       setPendingReleaseTimingExerciseVersion(null);
-      setPreferredTrainEntryPath("quick-start");
+      setPreferredTrainEntryPath("exercises");
       setActiveView("train");
       return;
     }
@@ -2225,7 +2225,7 @@ export default function TrackerApp() {
     setBlockFilter(DEFAULT_SHOT_FILTER);
     setViewingExerciseExecutionId(null);
     setPendingReleaseTimingExerciseVersion(null);
-    setPreferredTrainEntryPath("quick-start");
+    setPreferredTrainEntryPath("exercises");
     setActiveView("train");
   }
 
@@ -2714,12 +2714,12 @@ export default function TrackerApp() {
                 ))}
             </div>
           ) : !activeBlock || !activeBlockAnalysis ? (
-            // Quick Start (below) preserves the exact existing hero, unchanged
-            // — Training Plans is a second, equally-reachable entry path
-            // alongside it, not a replacement (spec section 21/22).
+            // Release Timing keeps its existing setup/runner, but is reached
+            // through the Release Time Measured Exercise rather than a
+            // top-level Quick Start shortcut.
             <TrainLanding
               restrictedAssetResolver={restrictedAssetResolver}
-              quickStartContent={
+              releaseTimingSetupContent={
                 // One Hero setup surface, composed around the actual decision
                 // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
                 // Train Information Priority — training objective and
@@ -2792,13 +2792,13 @@ export default function TrackerApp() {
               initialEntryPath={preferredTrainEntryPath}
               onEntryPathChange={(path) => {
                 setPreferredTrainEntryPath(path);
-                if (path !== "quick-start") {
-                  setPendingReleaseTimingExerciseVersion(null);
-                }
               }}
               plansTabDisabled={!trainingPlansWritable}
               startPlanDisabled={!sessionWritable}
               onStartExercise={handleStartExercise}
+              onCancelReleaseTimingSetup={() =>
+                setPendingReleaseTimingExerciseVersion(null)
+              }
               startExerciseDisabled={!sessionWritable}
               onSetUpTeamExercise={(version) => {
                 setPendingTeamExerciseVersion(snapshotExerciseVersion(version));

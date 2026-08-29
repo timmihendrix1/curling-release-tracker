@@ -4,12 +4,14 @@ import {
   EXERCISE_LIBRARY_EMPTY_STATE_TITLE,
   EXERCISE_LIBRARY_HEADING,
   EXERCISE_LIBRARY_RESET_FILTERS_LABEL,
+  exerciseFocusGroupLabel,
   exerciseLibraryExplanation,
 } from "../lib/exercises/presentation";
 import {
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   areDefaultExerciseLibraryFilters,
   filterExerciseVersions,
+  groupExerciseVersionsByFocus,
   type ExerciseLibraryFilters,
 } from "../lib/exercises/query";
 import type { ExerciseVersion } from "../lib/exercises/types";
@@ -43,6 +45,7 @@ export default function ExerciseLibrary({
   onOpenExercise,
 }: ExerciseLibraryProps) {
   const matches = filterExerciseVersions(versions, filters);
+  const groups = groupExerciseVersionsByFocus(matches);
 
   return (
     <div className="space-y-4">
@@ -86,17 +89,34 @@ export default function ExerciseLibrary({
           )}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-6">
           <p className="px-1 text-xs text-slate-500">
             {matches.length === 1 ? "1 exercise" : `${matches.length} exercises`}
           </p>
 
-          {matches.map((version) => (
-            <ExerciseSummaryCard
-              key={version.id}
-              version={version}
-              onOpen={onOpenExercise}
-            />
+          {groups.map((group) => (
+            <section
+              key={group.focus}
+              aria-labelledby={`exercise-group-${group.focus}`}
+              className="space-y-3"
+            >
+              <div className="px-1">
+                <h3
+                  id={`exercise-group-${group.focus}`}
+                  className="text-base font-semibold text-slate-900"
+                >
+                  {exerciseFocusGroupLabel(group.focus)}
+                </h3>
+              </div>
+
+              {group.versions.map((version) => (
+                <ExerciseSummaryCard
+                  key={version.id}
+                  version={version}
+                  onOpen={onOpenExercise}
+                />
+              ))}
+            </section>
           ))}
         </div>
       )}

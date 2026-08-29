@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 //
 // Stage A of the Exercise Library (docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md
-// section 21): Train's three entry paths, read-only Exercise discovery and the
-// one generic Exercise detail renderer. Quick Start and Training Plans
-// behaviour must be untouched.
+// section 21): Train's two entry paths, grouped Exercise discovery and the one
+// generic Exercise detail renderer. Release Timing remains one Measured
+// Exercise and reuses the established timing setup.
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +15,7 @@ import { findExerciseVersion } from "../../lib/exercises/lookup";
 
 afterEach(cleanup);
 
-const QUICK_START_MARKER = "Set Up Training Block (test hero)";
+const TIMING_SETUP_MARKER = "Set Up Training Block (test hero)";
 const CURATED_TITLES = [
   "Release Point",
   "Eight Guards, Progressively Longer",
@@ -64,7 +64,7 @@ function buildPlan(): TrainingPlan {
 
 function renderTrainLanding(overrides: Partial<Parameters<typeof TrainLanding>[0]> = {}) {
   const props = {
-    quickStartContent: <div>{QUICK_START_MARKER}</div>,
+    releaseTimingSetupContent: <div>{TIMING_SETUP_MARKER}</div>,
     plans: [] as TrainingPlan[],
     onSavePlan: vi.fn(),
     onDeletePlan: vi.fn(),
@@ -98,29 +98,19 @@ function openDetail(title: string) {
 // ---------------------------------------------------------------------------
 
 describe("Train entry paths", () => {
-  it("offers exactly three entry paths, in order", () => {
+  it("offers exactly two entry paths, in order", () => {
     renderTrainLanding();
     expect(screen.getAllByRole("tab").map((element) => element.textContent)).toEqual([
-      "Quick Start",
       "Exercises",
       "Training Plans",
     ]);
   });
 
-  it("keeps Quick Start selected by default, rendering the existing hero unchanged", () => {
+  it("opens the grouped Exercise Library by default", () => {
     renderTrainLanding();
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
-  });
-
-  it("returns to the unchanged Quick Start hero after visiting Exercises", () => {
-    renderTrainLanding();
-    openExercises();
-    expect(screen.queryByText(QUICK_START_MARKER)).toBeNull();
-
-    fireEvent.click(tab("Quick Start"));
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
+    expect(screen.queryByText(TIMING_SETUP_MARKER)).toBeNull();
   });
 
   it("keeps the Training Plans tab disabled and unreachable when the library is not ready", () => {
@@ -129,7 +119,7 @@ describe("Train entry paths", () => {
 
     fireEvent.click(tab("Training Plans"));
     expect(screen.queryByText("No training plans yet")).toBeNull();
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
   });
 
   it("keeps Exercises available while the Training Plans library is unavailable", () => {
@@ -137,7 +127,9 @@ describe("Train entry paths", () => {
     expect(tab("Exercises")).toBeEnabled();
 
     openExercises();
-    expect(screen.getByRole("heading", { name: /Exercises/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Exercises" })
+    ).toBeInTheDocument();
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
@@ -158,7 +150,7 @@ describe("Train entry paths", () => {
     openDetail("Eight Guards, Progressively Longer");
     expect(screen.getByRole("button", { name: /Back to Exercises/ })).toBeInTheDocument();
 
-    fireEvent.click(tab("Quick Start"));
+    fireEvent.click(tab("Training Plans"));
     openExercises();
 
     expect(screen.getByLabelText("Search exercises")).toHaveValue("");
@@ -180,9 +172,14 @@ describe("Exercise Library", () => {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
 
-    expect(screen.getAllByText("Technique")).toHaveLength(2);
-    expect(screen.getAllByText("Shotmaking")).toHaveLength(3);
+    expect(screen.getAllByText("Technique")).toHaveLength(3);
+    expect(screen.getAllByText("Shotmaking")).toHaveLength(4);
     expect(screen.getAllByText("Measured")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Technique" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Shotmaking" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Measured Exercises" })
+    ).toBeInTheDocument();
     expect(screen.getByText("Guard")).toBeInTheDocument();
     expect(screen.getByText("Level 6")).toBeInTheDocument();
     expect(screen.getByText("Level 3")).toBeInTheDocument();
@@ -427,16 +424,17 @@ describe("Exercise detail", () => {
     expect(screen.getByRole("button", { name: "Set Up Team Exercise" })).toBeDisabled();
   });
 
-  it("moves a successfully linked Measured Exercise to the existing Quick Start panel", () => {
+  it("opens the established timing setup inside the Release Time Exercise flow", () => {
     const onEntryPathChange = vi.fn();
     renderTrainLanding({ onEntryPathChange });
     openExercises();
     openDetail("Release Time");
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
-    expect(onEntryPathChange).toHaveBeenLastCalledWith("quick-start");
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText(TIMING_SETUP_MARKER)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "← Back to Release Time" })).toBeInTheDocument();
+    expect(onEntryPathChange).not.toHaveBeenCalledWith("plans");
   });
 
   it("renders every section of the specification's information order", () => {
@@ -622,7 +620,7 @@ describe("Train tab ARIA semantics", () => {
       expect(element).toHaveAttribute("aria-controls", panelId);
     }
 
-    expect(panel).toHaveAttribute("aria-labelledby", tab("Quick Start").id);
+    expect(panel).toHaveAttribute("aria-labelledby", tab("Exercises").id);
 
     openExercises();
     expect(screen.getByRole("tabpanel")).toHaveAttribute(
@@ -634,16 +632,15 @@ describe("Train tab ARIA semantics", () => {
   it("keeps exactly one tab in the page tab order (roving tabindex)", () => {
     renderTrainLanding();
 
-    expect(tab("Quick Start")).toHaveAttribute("tabindex", "0");
-    expect(tab("Exercises")).toHaveAttribute("tabindex", "-1");
+    expect(tab("Exercises")).toHaveAttribute("tabindex", "0");
     expect(tab("Training Plans")).toHaveAttribute("tabindex", "-1");
 
-    openExercises();
-    expect(tab("Quick Start")).toHaveAttribute("tabindex", "-1");
-    expect(tab("Exercises")).toHaveAttribute("tabindex", "0");
+    fireEvent.click(tab("Training Plans"));
+    expect(tab("Exercises")).toHaveAttribute("tabindex", "-1");
+    expect(tab("Training Plans")).toHaveAttribute("tabindex", "0");
   });
 
-  it("falls back to Quick Start, and unmounts every plan surface, when the active path becomes unavailable", () => {
+  it("falls back to Exercises, and unmounts every plan surface, when the active path becomes unavailable", () => {
     const { rerender, props } = renderTrainLanding({
       plans: [buildPlan()],
     });
@@ -661,14 +658,14 @@ describe("Train tab ARIA semantics", () => {
     expect(tab("Training Plans")).toHaveAttribute("aria-selected", "false");
     expect(tab("Training Plans")).toHaveAttribute("tabindex", "-1");
 
-    // Quick Start takes over as the selected, focusable, panel-labelling tab.
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(tab("Quick Start")).toHaveAttribute("tabindex", "0");
+    // Exercises takes over as the selected, focusable, panel-labelling tab.
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Exercises")).toHaveAttribute("tabindex", "0");
     expect(screen.getByRole("tabpanel")).toHaveAttribute(
       "aria-labelledby",
-      tab("Quick Start").id
+      tab("Exercises").id
     );
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
 
     // Nothing from the gated domain is left mounted or reachable — not the
     // library, not a plan name, not a single plan action.
@@ -686,15 +683,15 @@ describe("Train tab ARIA semantics", () => {
     expect(screen.getByText("Release Consistency")).toBeInTheDocument();
 
     rerender(<TrainLanding {...props} plans={[buildPlan()]} plansTabDisabled />);
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
 
     // Readiness recovers: the tab is usable again, but the athlete stays on
-    // Quick Start until they choose Training Plans themselves.
+    // Exercises until they choose Training Plans themselves.
     rerender(<TrainLanding {...props} plans={[buildPlan()]} plansTabDisabled={false} />);
     expect(tab("Training Plans")).toBeEnabled();
     expect(tab("Training Plans")).toHaveAttribute("aria-selected", "false");
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
     expect(screen.queryByText("Release Consistency")).toBeNull();
 
     // Choosing it explicitly still works, and lands on the library.
@@ -727,7 +724,7 @@ describe("Train tab ARIA semantics", () => {
 
     rerender(<TrainLanding {...props} plans={[buildPlan()]} plansTabDisabled />);
     expect(screen.queryByRole("button", { name: "Start Training" })).toBeNull();
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
 
     rerender(<TrainLanding {...props} plans={[buildPlan()]} plansTabDisabled={false} />);
     fireEvent.click(tab("Training Plans"));
@@ -746,16 +743,13 @@ describe("Train tab keyboard navigation", () => {
     renderTrainLanding();
 
     pressOnTablist("ArrowRight");
-    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    expect(document.activeElement).toBe(tab("Exercises"));
-
-    pressOnTablist("ArrowRight");
     expect(tab("Training Plans")).toHaveAttribute("aria-selected", "true");
     expect(document.activeElement).toBe(tab("Training Plans"));
 
     // Wraps forward.
     pressOnTablist("ArrowRight");
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(tab("Exercises"));
 
     // Wraps backward.
     pressOnTablist("ArrowLeft");
@@ -771,8 +765,8 @@ describe("Train tab keyboard navigation", () => {
     expect(document.activeElement).toBe(tab("Training Plans"));
 
     pressOnTablist("Home");
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(document.activeElement).toBe(tab("Quick Start"));
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(document.activeElement).toBe(tab("Exercises"));
   });
 
   it("skips a disabled tab entirely", () => {
@@ -783,9 +777,9 @@ describe("Train tab keyboard navigation", () => {
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
     expect(tab("Training Plans")).toHaveAttribute("aria-selected", "false");
 
-    // ArrowRight from the last enabled tab wraps past the disabled one.
+    // With only one enabled tab, navigation remains on Exercises.
     pressOnTablist("ArrowRight");
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
 
     pressOnTablist("ArrowLeft");
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
@@ -796,16 +790,16 @@ describe("Train tab keyboard navigation", () => {
     renderTrainLanding();
     pressOnTablist("ArrowDown");
     pressOnTablist("a");
-    expect(tab("Quick Start")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
   });
 
-  it("leaves click behaviour unchanged", () => {
+  it("supports selecting both entry paths by click", () => {
     renderTrainLanding();
+    fireEvent.click(tab("Training Plans"));
+    expect(tab("Training Plans")).toHaveAttribute("aria-selected", "true");
     fireEvent.click(tab("Exercises"));
-    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    fireEvent.click(tab("Quick Start"));
-    expect(screen.getByText(QUICK_START_MARKER)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Exercises" })).toBeInTheDocument();
   });
 });
 

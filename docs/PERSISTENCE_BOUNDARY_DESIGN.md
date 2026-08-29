@@ -1679,8 +1679,8 @@ Applied per domain:
   non-interactive, exactly like every other domain, not merely "interactive but never
   persisted." `onChange` is also routed through a handler-level guard
   (`handleChangeHistoryFilters`) as defence in depth.
-- **Training Plans** — the "Training Plans" tab (not the ad-hoc Quick Start subtree,
-  which neither reads nor mutates this collection) is disabled while
+- **Training Plans** — the "Training Plans" tab (not the Exercise Library or nested
+  Release Timing setup, which neither reads nor mutates this collection) is disabled while
   `trainingPlansHydration !== "ready"`, so the library/editor/start-review screens are
   simply unreachable until the real collection has loaded (or forever, if write-protected).
 - **Accuracy Tolerance Profiles / Smart Random Profiles** — the "Manage Accuracy
@@ -1691,8 +1691,9 @@ Applied per domain:
   be interacted with, before Session's own load resolves). Its `"write_protected"` case
   was not: once write-protected, `currentSession` holds the display-only fallback and is
   non-null, so the full UI would otherwise render normally. Every reachable
-  Session-mutating control is now visibly disabled — the Quick Start "Start Training"
-  submit, the session name/notes fields, the Training Plan "Start Training" review
+  Session-mutating control is now visibly disabled — the Release Time Exercise's
+  "Continue to Timing Setup" action (so setup and session metadata never mount), the
+  Training Plan "Start Training" review
   button, the per-session-history "Delete" button, and "Clear History" — and every
   Session-mutating handler (`handleStartNewSession`, block creation/editing,
   session-history delete/clear, manual shot entry, Auto Capture start, etc.) also guards

@@ -424,7 +424,8 @@ same shots-saved-parity logic as `captureSequence.ts`'s Capture Sequence alterna
 ## Plan Execution
 
 **[Implemented — profile-owned mixed plans]** `Session.planExecution` — attached only to a Session
-started from a Training Plan; absent from every Quick Start session. Holds a deep
+started from a Training Plan; absent from every Session started directly from an Exercise.
+Holds a deep
 copy of each Plan Step taken at start time (`PlanExecutionStepSnapshot`) plus which
 step is active and which typed runtime entities have been created so far. Runtime
 entities are created lazily, one at a time. `release-timing-block` references a real

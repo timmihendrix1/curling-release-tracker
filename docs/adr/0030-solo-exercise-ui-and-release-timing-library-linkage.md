@@ -28,10 +28,14 @@ The generic Exercise detail action branches only on `primaryFocus`.
   `releaseTimingExerciseVersionSnapshot` solely as Library provenance. Blocks and Shots
   remain the only Release Timing execution and outcome records.
 
+> **Navigation update (2026-08-29):** ADR-0043 supersedes the separate Quick Start entry.
+> Release Time still uses the exact runner and provenance model below, now as a nested
+> flow reached only from its Measured Exercise (or from a Training Plan).
+
 The current Session remains the single persistence authority. There is no new key,
 repository, cloud record kind or sync path. The new provenance snapshot and embedded
 executions pass the existing strict migration, current/history and Free-cloud Session
-boundaries. Direct Quick Start creates no Library provenance.
+boundaries.
 
 One active Exercise Execution is shown ahead of any release-timing block. Reloading an
 active Exercise returns directly to its rink screen. Completing or abandoning it clears
@@ -42,7 +46,8 @@ interrupted Exercise.
 ## Consequences
 
 - Stage B is athlete-usable in Solo mode for the three currently curated Exercises.
-- Release Time has one functional implementation even though it has two entry paths.
+- Release Time has one functional implementation shared by Library and Training Plan
+  entry.
 - The actual athlete Profile comes from authenticated application composition; there is
   no recorder or athlete selector in Solo mode.
 - Team participants, role rotation, shared recording and Exercise Training Plan steps

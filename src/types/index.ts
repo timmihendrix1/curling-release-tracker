@@ -296,7 +296,7 @@ export type PlanExecutionStepSnapshot = {
 };
 
 // Attached to a Session when it was started from a Training Plan. Absent for every
-// Quick Start session. `activeStepIndex` always indexes a real entry in `steps`
+// Session started directly from an Exercise. `activeStepIndex` always indexes a real entry in `steps`
 // (0..steps.length-1) — there is no separate "plan complete" index value; plan
 // completion is derived from the final step's own runtime (Release Time shot count or
 // curated Exercise completion status), never stored separately. See

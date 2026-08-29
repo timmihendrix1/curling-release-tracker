@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad, goToSettings, goToTrain } from "./utils";
+import { freshLoad, goToSettings, goToTrain, openReleaseTimingSetup } from "./utils";
 
 async function createProfile(
   page: import("@playwright/test").Page,
@@ -39,10 +39,10 @@ test("creating, defaulting and using a Smart Random Profile end to end", async (
     page.getByText("1 profile saved · Default: Full Weight Range")
   ).toBeVisible();
 
-  // Quick Start, Variable Weight: the default profile's range prefills
+  // Release Time, Variable Weight: the default profile's range prefills
   // Smart Random Settings automatically (Smart Random is Variable Weight's
   // default target source).
-  await goToTrain(page);
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Variable Weight" }).click();
   await expect(
     page.getByText("Full Weight Range: 2.50s–4.50s")
@@ -69,7 +69,7 @@ test("editing or deleting a profile never changes an already-started Training Bl
   await page.getByRole("button", { name: "Set as Default" }).click();
   await page.getByRole("button", { name: "Close Smart Random Profiles" }).click();
 
-  await goToTrain(page);
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Variable Weight" }).click();
   await expect(
     page.getByText("Full Weight Range: 2.50s–4.50s")
@@ -103,7 +103,7 @@ test("Hog – Hog never shows a Smart Random Profile selector, and no profile co
   await page.getByRole("button", { name: "Set as Default" }).click();
   await page.getByRole("button", { name: "Close Smart Random Profiles" }).click();
 
-  await goToTrain(page);
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Variable Weight" }).click();
   await page.getByRole("button", { name: "Hog – Hog" }).click();
   await expect(page.getByText("Smart Random Settings")).toHaveCount(0);

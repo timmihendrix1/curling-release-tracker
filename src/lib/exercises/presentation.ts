@@ -34,6 +34,11 @@ export function exerciseFocusLabel(focus: ExercisePrimaryFocus): string {
   }
 }
 
+/** Library section names. Kept separate from the compact focus-chip labels. */
+export function exerciseFocusGroupLabel(focus: ExercisePrimaryFocus): string {
+  return focus === "measured" ? "Measured Exercises" : exerciseFocusLabel(focus);
+}
+
 export function exerciseShotFamilyLabel(family: ExerciseShotFamily): string {
   switch (family) {
     case "guard":

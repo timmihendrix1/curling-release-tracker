@@ -30,12 +30,19 @@ function navButton(label: string) {
   return screen.getAllByRole("button", { name: label })[0];
 }
 
+async function openReleaseTimingSetup() {
+  await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+  fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
+  fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
+  await waitFor(() => screen.getByText("Set Up Training Block"));
+}
+
 async function startTrainingAndAddOneShot() {
   render(<TrackerApp />);
   await waitFor(() => screen.getByText("No scheduled session."));
 
   screen.getByRole("button", { name: "Start Training" }).click();
-  await waitFor(() => screen.getByText("Set Up Training Block"));
+  await openReleaseTimingSetup();
 
   screen.getByRole("button", { name: "Start Training" }).click();
   await waitFor(() => screen.getByText("Active Training Block"));
@@ -70,7 +77,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     screen.getByRole("button", { name: "Start" }).click();
 
     // handleStartNewSession navigates to Train with a fresh, block-less session.
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     const keysInCallOrder = setItemSpy.mock.calls.map(([key]) => key);
     const sessionHistoryIndex = keysInCallOrder.indexOf(SESSION_HISTORY_KEY);
@@ -93,7 +100,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     screen.getByRole("button", { name: "Start New Session" }).click();
     await waitFor(() => screen.getByText("Start New Session"));
     screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     // Give any further, independently-scheduled render/effect cycle a chance to run —
     // if the ordinary save effects redundantly re-persisted this same transition (in
@@ -118,7 +125,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     screen.getByRole("button", { name: "Start New Session" }).click();
     await waitFor(() => screen.getByText("Start New Session"));
     screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]");
     expect(history).toHaveLength(1);
@@ -130,7 +137,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     await waitFor(() => screen.getByText("No scheduled session."));
 
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
     await waitFor(() => screen.getByText("Active Training Block"));
 
@@ -138,7 +145,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     screen.getByRole("button", { name: "Start New Session" }).click();
     await waitFor(() => screen.getByText("Start New Session"));
     screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     const rawHistory = localStorage.getItem(SESSION_HISTORY_KEY);
     const history = rawHistory ? JSON.parse(rawHistory) : [];
@@ -178,7 +185,7 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     screen.getByRole("button", { name: "Start New Session" }).click();
     await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
     screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]");
     expect(history).toHaveLength(1);

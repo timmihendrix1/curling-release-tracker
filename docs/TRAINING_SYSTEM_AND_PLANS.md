@@ -1120,15 +1120,15 @@ Settings
 
 ```
 
-The Train area should offer two clear entry paths:
+The Train area offers two clear entry paths:
 
 ```text
 
 Train
 
-Quick Start
+Exercises
 
-→ Create an individual training session
+→ Choose a Technique, Shotmaking, or Measured Exercise
 
 Training Plans
 
@@ -1136,15 +1136,11 @@ Training Plans
 
 ```
 
-> **Superseded in part (2026-08-24).** Train now offers a **third** entry path,
-> **Exercises**, added by the Exercise Library — still inside the existing `train`
-> view, still with no new primary navigation tab. The two paths above remain exactly as
-> specified; see `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` section 14.1 for
-> the third, and `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section for what is
-> actually built. This document stays authoritative for the Release Timing Training Plan
-> product itself.
-
-Quick Start preserves the current free setup experience.
+> **Superseded in part (2026-08-29).** The earlier Quick Start entry was removed.
+> Release Timing remains fully available through the Release Time Measured Exercise,
+> which opens the same Fixed/Variable/Blind setup and runner. See ADR-0043 and the
+> Exercise Library specification section 14.1. This document stays authoritative for
+> the Release Timing Training Plan product itself.
 
 Training Plans add reuse without replacing flexible training.
 
@@ -1156,7 +1152,7 @@ A future Train landing screen may contain:
 
 ```text
 
-Quick Start
+Release Time (under Measured Exercises)
 
 Start a custom session using:
 
@@ -2358,7 +2354,8 @@ Create Training Plan
 
 ```
 
-Quick Start remains available.
+Release Timing remains available through its Measured Exercise and through Training
+Plans.
 
 ## Empty plan editor
 
@@ -2608,7 +2605,8 @@ The following invariants are mandatory:
 
 11. Only saved valid Shots count toward shot-count completion.
 
-12. Quick Start remains available without a Training Plan.
+12. Release Timing remains available without a Training Plan through the Release Time
+    Measured Exercise.
 
 13. Training Plans remain accessible offline.
 
@@ -2624,7 +2622,7 @@ Training Plans Version 1 is successful when an athlete can:
 
 1. Open the Train area.
 
-2. See Quick Start and saved Training Plans as distinct options.
+2. See Exercises and saved Training Plans as distinct options.
 
 3. Create a new Training Plan.
 
@@ -2678,7 +2676,8 @@ Training Plans Version 1 is successful when an athlete can:
 
 23. Retain correct Block and Shot data even after the source plan is later edited or deleted.
 
-24. Continue using normal Quick Start sessions without any plan.
+24. Continue using Release Timing sessions without any plan by starting the Release
+    Time Measured Exercise.
 
 ---
 
@@ -2838,7 +2837,8 @@ To keep the first implementation focused:
 
 - Plans live under Train.
 
-- Quick Start remains unchanged.
+- Release Timing continues to reuse the established Fixed/Variable/Blind setup and
+  runner from its Measured Exercise.
 
 - Plans contain ordered Release Timing Plan Steps.
 

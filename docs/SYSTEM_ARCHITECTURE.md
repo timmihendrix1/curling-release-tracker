@@ -1511,7 +1511,8 @@ Profiles" buttons, and the History Filter bar are disabled the same way. Session
 the same treatment for its own `"write_protected"` case specifically (its `"loading"`
 case was already safe, structurally, via the pre-existing `if (!currentSession) return
 null;` render gate): every *reachable* Session-mutating control is now visibly
-disabled — the Quick Start "Start Training" submit, the session name/notes fields, the
+disabled — the Release Time Exercise's "Continue to Timing Setup" action (so its setup
+and session name/notes fields never mount), the
 Training Plan "Start Training" review button, the per-session-history "Delete" button,
 and "Clear History" — and every Session-mutating handler (`handleStartNewSession`, block
 creation/editing, session-history delete/clear, manual shot entry, Auto Capture start,
@@ -2341,9 +2342,10 @@ mixed-Exercise generalisation.
 
 - Training Plans live entirely inside the existing `"train"` `ActiveView` — no new
   navigation item. `TrainLanding.tsx` (mounted only when there is no active block)
-  offers Training Plans as one of Train's three equally-reachable entry paths, alongside
-  Quick Start (the pre-existing hero, unchanged) and Exercises (added by the Exercise
-  Library's Stage A — see that section below).
+  offers Training Plans as one of Train's two entry paths, alongside Exercises (the
+  default, added by the Exercise Library — see that section below). Release Timing is
+  reached from the Release Time Measured Exercise and reuses the established setup and
+  runner.
 - A Training Plan (`TrainingPlan`/the `TrainingPlanStep` union/
   `ReleaseTimingPlanStep`/`CuratedExercisePlanStep`, all in
   `src/types/index.ts` — see ADR-0012 Decision 2 for why they live centrally rather
@@ -2419,7 +2421,7 @@ distinct malformed shapes).
 
 ### UI (`src/components/`)
 
-`TrainLanding.tsx` (Train's Quick Start / Exercises / Training Plans chooser, owning the
+`TrainLanding.tsx` (Train's Exercises / Training Plans chooser, owning the
 Training Plans library/editor/start-review sub-navigation locally — TrackerApp only
 learns about a plan being started/saved/duplicated/deleted), `TrainingPlansLibrary.tsx` (list +
 Start/Edit/Duplicate/Delete + empty state), `TrainingPlanEditor.tsx` (name/description
@@ -2789,15 +2791,11 @@ renderer's notice is the second line of defence.
 
 ### Train integration (`src/components/`)
 
-- `TrainLanding.tsx` now offers **three** entry paths inside the existing `"train"`
-  `ActiveView` — Quick Start (default, the pre-existing hero passed through unchanged),
-  Exercises, and Training Plans. No new `ActiveView`, no route, no
+- `TrainLanding.tsx` offers **two** entry paths inside the existing `"train"`
+  `ActiveView` — Exercises (default) and Training Plans. No new `ActiveView`, no route, no
   `NAVIGATION_ITEMS` entry or route. B3's active Exercise is durable Session work and
   resumes when Train is reopened; starting a new Session uses the existing confirmed,
-  history-first archive transition and abandons an interruption explicitly. Three short
-  labels stay on one row at 390 px by
-  tightening padding and type scale below the `sm` breakpoint rather than forcing a
-  two-row control (DESIGN_SYSTEM.md §13.2).
+  history-first archive transition and abandons an interruption explicitly.
 - **The chooser is a complete ARIA tab interface, not just `role="tab"`.** Each tab has
   a stable id and `aria-controls`; one `role="tabpanel"` element holds whichever entry
   path is active and is `aria-labelledby` the selected tab. That single reused panel is
@@ -2809,7 +2807,7 @@ renderer's notice is the second line of defence.
   only, so a disabled Training Plans tab is simply not a stop. Focus is moved by
   querying the tablist container, not by per-item refs.
 - **The active path is always an enabled path.** If the readiness gate disables Training
-  Plans while it is the active one, `TrainLanding` moves `mode` to Quick Start during
+  Plans while it is the active one, `TrainLanding` moves `mode` to Exercises during
   render — the same "reset state on a prop change" pattern as `ShotEntry.tsx` and
   `HistoryFilterBar.tsx`, so React discards that pass and retries, and the gated library,
   editor or start-review screen is never committed to the DOM. Deriving around the
@@ -2821,7 +2819,9 @@ renderer's notice is the second line of defence.
   semantics. **Exercises depends on no persisted domain at all** — it reads the compiled
   `EXERCISE_CATALOG` directly and takes no props — so it stays reachable while the
   Training Plans library is still loading or write-protected.
-- Entering the Exercises tab resets both its subview and its filters; the filter state
+- The Library groups every filtered result under the stable domain order **Technique**,
+  **Shotmaking**, **Measured Exercises** and omits an empty group. Entering the Exercises
+  tab resets both its subview and its filters; the filter state
   is lifted into `TrainLanding` so returning from a detail lands back on the same
   filtered list.
 - `ExerciseLibrary.tsx` (heading + shared `InfoButton` explanation + filter bar + result
@@ -2868,10 +2868,10 @@ renderer's notice is the second line of defence.
   Exercise UI components contains any catalog Exercise id, Version id or display title.
 - Stage A delivered the read-only Library. ADR-0030 later added the generic Solo/detail
   actions, and ADR-0036 adds an independently gated Team setup action for Technique and
-  Shotmaking. Measured Release Time retains only its existing timing-runner action.
-- Train's page header description now reads "Find an exercise, set up a session, and
-  record release times as you throw." Quick Start remains an entry mechanism, not a
-  synonym for Release Time.
+  Shotmaking. ADR-0043 removes the top-level Quick Start shortcut: Measured Release Time
+  retains only its existing timing-runner action, now nested within its Library detail.
+- Train's page header description reads "Find an exercise, set up a session, and record
+  release times as you throw."
 
 ## Accuracy Tolerance Profiles (Implemented)
 
@@ -2879,8 +2879,8 @@ A small, independent persisted domain (`src/lib/accuracyToleranceProfiles/`) let
 an athlete save reusable, named Accuracy Tolerance values (`AccuracyToleranceProfile:
 { id, name, onTarget, acceptable, createdAt, updatedAt }`) and select one wherever
 Custom Accuracy Tolerance is already configured, instead of retyping the same On
-Target / Acceptable pair for every Training Block, Training Plan Step, or Quick Start
-session. See "Accuracy Tolerance Profile" and "Default Profile" in
+Target / Acceptable pair for every Training Block, Training Plan Step, or Release Time
+Exercise setup. See "Accuracy Tolerance Profile" and "Default Profile" in
 `docs/DOMAIN_GLOSSARY.md`.
 
 **Core principle — a profile helps select, it never becomes a live dependency.**
@@ -2922,8 +2922,8 @@ Training Plan, since this module never reads or writes either of their storage k
 
 **UI integration** — `AccuracyToleranceProfileSelector.tsx` is the one shared "pick a
 saved profile, or enter a one-off Custom value" control, rendered inside
-`TrainingSetup.tsx`'s existing Custom Accuracy Tolerance branch. Because Quick Start
-(`TrackerApp.tsx`), New Training Block (`NewTrainingBlock.tsx`), and the Training Plan
+`TrainingSetup.tsx`'s existing Custom Accuracy Tolerance branch. Because the Release
+Time Exercise setup (`TrackerApp.tsx`), New Training Block (`NewTrainingBlock.tsx`), and the Training Plan
 Step Editor's Release Time branch (`TrainingPlanStepEditor.tsx`) all render
 `TrainingSetup.tsx` unmodified (see "Training Plans" above and ADR-0012), adding the two new
 `accuracyToleranceProfiles`/`defaultAccuracyToleranceProfileId` props to `TrainingSetup`
@@ -3003,10 +3003,10 @@ existing Smart Random range section (renamed "Smart Random Settings"), gated on 
 same pre-existing `showSmartRandomRange` boolean (`effectiveTargetMode ===
 "smart-random" && smartRandomAvailable`) — the selector can therefore never appear for
 Fixed, Manual, or an unsupported Hog-Hog combination without any new visibility logic.
-Because Quick Start, New Training Block, and the Training Plan Step Editor all already
+Because the Release Time Exercise setup, New Training Block, and the Training Plan Step Editor all already
 render `TrainingSetup.tsx` unmodified, adding `smartRandomProfiles`/
 `defaultSmartRandomProfileId` props to `TrainingSetup` and threading them down from
-`TrackerApp` covers Variable Weight and Blind Weight Quick Start, New Training Block,
+`TrackerApp` covers Variable Weight and Blind Weight Release Time setup, New Training Block,
 and the Plan Step Editor without any per-surface logic. The selector additionally
 filters offered profiles to the form's current Measurement Mode, so a profile can never
 be applied in the wrong measurement context even defensively. A default profile only
@@ -3507,8 +3507,8 @@ local component state.
 | `AssessmentTrendChart.tsx` | (Phase C) MAE/Bias/SD/On-Target trend across protocol-compatible completed runs of the same Template+Version, one shared Comparison Threshold |
 | `AssessmentAnalyze.tsx` | (Phase C) Analyze → Assessments landing: Latest Completed Assessment, separate Completed/Incomplete history, empty state, CSV export |
 | `AssessmentHistoryItem.tsx` | (Phase C) One history row (completed or incomplete), with View/Delete actions |
-| `TrainLanding.tsx` | Train's "no active block" landing — the Quick Start (unchanged hero) / Exercises / Training Plans chooser, owning both pillars' sub-navigation locally; a complete ARIA tab interface (ids, `aria-controls`, one `role="tabpanel"`, roving `tabindex`, Arrow/Home/End over enabled tabs only) |
-| `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton` explanation, filter bar, result count, generic cards, one honest shared empty state with a reset action |
+| `TrainLanding.tsx` | Train's "no active block" landing — the Exercises / Training Plans chooser, with Release Timing setup nested under its Measured Exercise; owns both pillars' sub-navigation locally and provides a complete ARIA tab interface (ids, `aria-controls`, one `role="tabpanel"`, roving `tabindex`, Arrow/Home/End over enabled tabs only) |
+| `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton` explanation, filter bar, result count, fixed Technique / Shotmaking / Measured Exercises grouping, generic cards, one honest shared empty state with a reset action |
 | `ExerciseLibraryFilterBar.tsx` | Search (always visible) plus focus/difficulty/Solo-Team/Shot Family/Sweeper filters behind one "Filters" toggle; every option list derived from the catalog; a compact active-selection summary once the panel collapses |
 | `ExerciseSummaryCard.tsx` | One generic Library row from Exercise Version data — title, goal, focus/classification/difficulty/participation/Sweeper badges, `View Details` |
 | `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version and focus-semantic start action; branches only on declared domain semantics, never on an Exercise id or title |

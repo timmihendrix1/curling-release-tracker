@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { freshLoad, goToSettings, goToTrain } from "./utils";
+import { freshLoad, goToSettings, goToTrain, openReleaseTimingSetup } from "./utils";
 
 async function createProfile(
   page: import("@playwright/test").Page,
@@ -38,10 +38,9 @@ test("creating, defaulting and using an Accuracy Tolerance Profile end to end", 
   await goToSettings(page);
   await expect(page.getByText("1 profile saved · Default: Elite")).toBeVisible();
 
-  // Quick Start: Custom preselects the default profile's values, without
+  // Release Time setup: Custom preselects the default profile's values, without
   // forcing the athlete out of the Standard preset first.
-  await goToTrain(page);
-  await expect(page.getByText("Set Up Training Block")).toBeVisible();
+  await openReleaseTimingSetup(page);
   await expect(page.getByRole("button", { name: "Standard" })).toHaveClass(/bg-slate-900/);
 
   await page.getByRole("button", { name: "Custom", exact: true }).click();
@@ -66,7 +65,7 @@ test("editing or deleting a profile never changes an already-started Training Bl
   await page.getByRole("button", { name: "Set as Default" }).click();
   await page.getByRole("button", { name: "Close Accuracy Tolerances" }).click();
 
-  await goToTrain(page);
+  await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Custom", exact: true }).click();
   await expect(page.getByText("Elite: On Target ±0.05s · Acceptable ±0.10s")).toBeVisible();
   await page.getByRole("button", { name: "Start Training" }).click();

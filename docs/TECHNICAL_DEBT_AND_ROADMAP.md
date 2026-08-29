@@ -977,7 +977,7 @@ Tolerance Profile"/"Default Profile" entries for the domain concepts.
 - **No lightweight "manage profiles" shortcut from inside the selector itself.** The
   product spec allowed this "if it fits the existing navigation pattern" — it doesn't
   cleanly fit, since `TrainingSetup.tsx` is always reached from a modal or an in-progress
-  Quick Start flow, and navigating to Settings from there would abandon that in-progress
+  Release Time setup flow, and navigating to Settings from there would abandon that in-progress
   setup. Settings > Accuracy Tolerances remains the only management location.
 - **No profile provenance metadata** (`sourceProfileId`/`sourceProfileName`) stored on a
   `TrainingBlock`/`ReleaseTimingBlockConfiguration`. The product spec allowed this as
@@ -1024,7 +1024,7 @@ feature after the fact.
   existing `onCreate` handler — no new persistence or validation logic needed.
 - **No lightweight "manage profiles" shortcut from inside the selector itself** — same
   reasoning as Accuracy Tolerance Profiles: `TrainingSetup.tsx` is always reached from a
-  modal or an in-progress Quick Start flow. Settings > Smart Random Profiles remains the
+  modal or an in-progress Release Time setup flow. Settings > Smart Random Profiles remains the
   only management location.
 - **No profile provenance metadata** stored on a `TrainingBlock`/
   `ReleaseTimingBlockConfiguration` — same reasoning as Accuracy Tolerance Profiles.
@@ -1281,8 +1281,9 @@ Laser are deferred until Team feedback. All user-facing content is English.
 sweeping requirements, reusable Measurement Protocols, both Diagram variants, the
 validation boundary, lookup and query), three curated Exercises (Release Point, Eight
 Guards Progressively Longer, standalone Release Time), a generic responsive structured
-Ice Sheet diagram renderer, and read-only discovery/detail as Train's third entry path
-alongside Quick Start and Training Plans. Stage A **stores nothing** — no key, no
+Ice Sheet diagram renderer, and read-only discovery/detail inside Train. Exercises are
+now Train's default entry alongside Training Plans; the retired Quick Start shortcut no
+longer privileges Release Time. Stage A **stores nothing** — no key, no
 repository, no migration, no `Session`/`TrainingBlock`/`Shot` change.
 
 Known delivery boundaries, deliberate rather than defects:

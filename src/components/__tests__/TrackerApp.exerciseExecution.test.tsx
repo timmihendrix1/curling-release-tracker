@@ -17,8 +17,7 @@ async function openExercise(title: string) {
   render(<TrackerApp />);
   await waitFor(() => screen.getByText("No scheduled session."));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Set Up Training Block"));
-  fireEvent.click(screen.getByRole("tab", { name: "Exercises" }));
+  await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
 }
 
@@ -127,16 +126,15 @@ describe("TrackerApp Solo Exercise execution", () => {
     });
   });
 
-  it("keeps direct Quick Start free of Library provenance", async () => {
+  it("does not expose Release Timing as a separate Quick Start path", async () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
-    fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
-    await waitFor(() => screen.getByText("Active Training Block"));
-
-    await waitFor(() => {
-      expect(persistedSession().releaseTimingExerciseVersionSnapshot).toBeUndefined();
-    });
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    expect(screen.queryByRole("tab", { name: "Quick Start" })).toBeNull();
+    expect(screen.queryByText("Set Up Training Block")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "View Details: Release Time" })
+    ).toBeInTheDocument();
   });
 });

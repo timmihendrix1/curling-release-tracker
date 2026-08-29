@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   freshLoad,
-  goToTrain,
+  openReleaseTimingSetup,
   setupFixedBlock,
   setupVariableSmartRandomBlock,
 } from "./utils";
@@ -10,8 +10,7 @@ test("Threshold Setup: presets show their values, Custom validates inline, and t
   page,
 }) => {
   await freshLoad(page);
-  await goToTrain(page);
-  await page.waitForSelector("text=Set Up Training Block");
+  await openReleaseTimingSetup(page);
 
   // Standard is the default preset.
   await expect(page.getByText("On target ±0.10s")).toBeVisible();

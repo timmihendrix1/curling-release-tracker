@@ -137,7 +137,7 @@ describe("TrackerApp — Training Plans execution", () => {
     render(<TrackerApp />);
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
     screen.getByRole("tab", { name: "Training Plans" }).click();
     await waitFor(() => screen.getByText("Complete Mixed Practice"));
     expect(screen.getByText("Technique · Shotmaking · Measured")).toBeInTheDocument();
@@ -187,7 +187,7 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
 
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     screen.getByRole("tab", { name: "Training Plans" }).click();
     await waitFor(() => screen.getByText("Release Consistency"));
@@ -248,7 +248,7 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => screen.getByText("Start New Session"));
     screen.getByRole("button", { name: "Start" }).click();
 
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));
@@ -294,7 +294,7 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
 
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     screen.getByRole("tab", { name: "Training Plans" }).click();
     await waitFor(() => screen.getByText("Broken Plan"));

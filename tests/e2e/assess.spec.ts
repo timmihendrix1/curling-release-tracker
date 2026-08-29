@@ -5,11 +5,11 @@ import {
   fastForwardAssessScoredShots,
   freshLoad,
   goToAssess,
-  goToTrain,
   openReleaseTimeCoreOverview,
   primaryNav,
   primaryNavDesktop,
   recordAssessManualShot,
+  setupFixedBlock,
   startAutoCapture,
 } from "./utils";
 
@@ -296,9 +296,7 @@ test.describe("Capture Regression", () => {
     });
 
     await freshLoad(page);
-    await goToTrain(page);
-    await page.getByRole("button", { name: "Start Training" }).click();
-    await page.waitForSelector("text=Active Training Block");
+    await setupFixedBlock(page);
     await startAutoCapture(page, { count: 2, handleMode: "Fixed In" });
 
     await page.getByRole("button", { name: "3.75s" }).click();
