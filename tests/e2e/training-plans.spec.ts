@@ -149,7 +149,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
 
   await addCuratedStep("Release Point — Technique · Exercise version 1");
   await addCuratedStep(
-    "Eight Guards, Progressively Longer — Shotmaking · Exercise version 3"
+    "Eight Guards, Progressively Longer — Shotmaking · Exercise version 4"
   );
   await addCuratedStep("Rotation Count — Measured · Exercise version 1");
 

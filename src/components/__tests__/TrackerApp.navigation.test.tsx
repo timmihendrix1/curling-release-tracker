@@ -19,6 +19,7 @@ function navButton(label: string) {
 
 async function openReleaseTimingSetup() {
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
   fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
   fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
   await waitFor(() => screen.getByText("Set Up Training Block"));
@@ -44,9 +45,18 @@ describe("TrackerApp — top-level navigation", () => {
       expect(navButton("Train")).toHaveAttribute("aria-current", "page")
     );
     expect(screen.getByRole("heading", { level: 2, name: "Exercises" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Technique" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Shotmaking" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Measured Exercises" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
+    expect(screen.getByRole("button", { name: /^Measured Exercises/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    );
   });
 
   it("Analyze is reachable with keyboard-operable Training, Assessments and Exercises tabs", async () => {

@@ -44,6 +44,7 @@ import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
 import ExerciseSoloExecutionScreen from "./ExerciseSoloExecutionScreen";
+import ExerciseSoloSetupScreen from "./ExerciseSoloSetupScreen";
 import ExerciseTeamExecutionScreen from "./ExerciseTeamExecutionScreen";
 import ExerciseTeamSetupScreen from "./ExerciseTeamSetupScreen";
 import ExerciseTeamResultsScreen from "./ExerciseTeamResultsScreen";
@@ -324,6 +325,8 @@ export default function TrackerApp() {
     useState<ExerciseVersion | null>(null);
   const [viewingExerciseExecutionId, setViewingExerciseExecutionId] =
     useState<string | null>(null);
+  const [pendingSoloExerciseVersion, setPendingSoloExerciseVersion] =
+    useState<ExerciseVersion | null>(null);
   const [pendingTeamExerciseVersion, setPendingTeamExerciseVersion] =
     useState<ExerciseVersion | null>(null);
   const [lastCompletedTeamSessionId, setLastCompletedTeamSessionId] =
@@ -1732,8 +1735,19 @@ export default function TrackerApp() {
       return false;
     }
 
+    // A library start is a two-step action: first confirm the physical setup,
+    // then create the durable execution. Cancelling the setup therefore leaves
+    // no empty or misleading in-progress result behind.
+    setPendingSoloExerciseVersion(snapshotExerciseVersion(version));
+    return true;
+  }
+
+  function handleConfirmSoloExerciseStart(): boolean {
+    if (sessionHydration !== "ready" || !pendingSoloExerciseVersion) return false;
+
     const session = sessionRef.current;
     if (!session) return false;
+    const version = pendingSoloExerciseVersion;
     const compatibleProtocols = resolveMeasurementProtocols(
       EXERCISE_CATALOG,
       version.compatibleMeasurementProtocols
@@ -1760,6 +1774,7 @@ export default function TrackerApp() {
     }
 
     commitSession(attached.value);
+    setPendingSoloExerciseVersion(null);
     setViewingExerciseExecutionId(created.value.id);
     return true;
   }
@@ -1777,6 +1792,7 @@ export default function TrackerApp() {
   }
 
   function handleBackToExerciseLibrary() {
+    setPendingSoloExerciseVersion(null);
     setViewingExerciseExecutionId(null);
     setPreferredTrainEntryPath("exercises");
   }
@@ -2168,6 +2184,7 @@ export default function TrackerApp() {
       commitSession(nextCurrentSession);
       setBlockFilter(DEFAULT_SHOT_FILTER);
       setViewingExerciseExecutionId(null);
+      setPendingSoloExerciseVersion(null);
       setPendingReleaseTimingExerciseVersion(null);
       setPreferredTrainEntryPath("exercises");
       setActiveView("train");
@@ -2224,6 +2241,7 @@ export default function TrackerApp() {
     commitSession(nextCurrentSession);
     setBlockFilter(DEFAULT_SHOT_FILTER);
     setViewingExerciseExecutionId(null);
+    setPendingSoloExerciseVersion(null);
     setPendingReleaseTimingExerciseVersion(null);
     setPreferredTrainEntryPath("exercises");
     setActiveView("train");
@@ -2569,6 +2587,7 @@ export default function TrackerApp() {
           sessionHistory={sessionHistory}
           onStartTraining={() => handleNavigate("train")}
           onOpenAnalyze={() => handleNavigate("analyze")}
+          onManageTeams={() => setShowTeamsScreen(true)}
           hasActiveAssessmentRun={
             !!assessmentState?.currentRun &&
             assessmentState.currentRun.status !== "completed" &&
@@ -2626,6 +2645,7 @@ export default function TrackerApp() {
           ) : pendingTeamExerciseVersion ? (
             <ExerciseTeamSetupScreen
               version={pendingTeamExerciseVersion}
+              restrictedAssetResolver={restrictedAssetResolver}
               recorderProfileId={athleteProfileId}
               eligibilitySnapshots={sportingCloudSync?.teamEligibilitySnapshots ?? []}
               onStart={async (execution) => {
@@ -2636,6 +2656,16 @@ export default function TrackerApp() {
                 return saved;
               }}
               onCancel={() => setPendingTeamExerciseVersion(null)}
+            />
+          ) : pendingSoloExerciseVersion ? (
+            <ExerciseSoloSetupScreen
+              version={pendingSoloExerciseVersion}
+              restrictedAssetResolver={restrictedAssetResolver}
+              disabled={!sessionWritable}
+              onConfirm={() => {
+                handleConfirmSoloExerciseStart();
+              }}
+              onCancel={() => setPendingSoloExerciseVersion(null)}
             />
           ) : lastCompletedTeamSessionId ? (
             <div className="space-y-4">

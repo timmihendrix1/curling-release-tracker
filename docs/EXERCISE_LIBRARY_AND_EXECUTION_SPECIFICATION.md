@@ -987,7 +987,9 @@ making Release Time a privileged top-level shortcut.
 Version 1 discovery includes:
 
 - stable top-level grouping in the order **Technique**, **Shotmaking**, **Measured
-  Exercises**;
+  Exercises**. Each category is independently collapsible and initially collapsed so
+  the Library remains scannable as the catalogue grows. Search or filters automatically
+  reveal the matching categories;
 
 - text search;
 - Primary Exercise Focus;
@@ -1033,6 +1035,15 @@ The Version 1 start flow should require only information that changes execution:
 8. start.
 
 Defaults from the Exercise Version or Training Plan should minimise rink-side input.
+
+For a Library-launched Solo Exercise, the physical setup is shown and explicitly
+confirmed before the durable Exercise Execution is created. Cancelling that review
+creates no empty result. Team setup combines the same physical reference with its
+participant, role and rotation configuration before Start is confirmed. Once execution
+begins, the rink screen is capture-first: Shotmaking evaluation or Measurement entry is
+placed ahead of supporting instructions and diagram. Technique instead places its
+observation prompt and private note first. The full setup, instructions and diagram
+remain available in a collapsed reference below the capture surface.
 
 ---
 

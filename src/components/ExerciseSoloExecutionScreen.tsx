@@ -19,7 +19,7 @@ import type {
 } from "../lib/exercises/executionTypes";
 import { exerciseFocusLabel, measurementUnitLabel } from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
-import ExerciseDiagramView from "./ExerciseDiagramView";
+import ExerciseExecutionReference from "./ExerciseExecutionReference";
 import { surfaceClass } from "./Surface";
 import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
 
@@ -257,43 +257,15 @@ export default function ExerciseSoloExecutionScreen({
         <p className="mt-2 text-sm text-slate-600">{version.goal}</p>
       </div>
 
-      {active && (
+      {active && version.primaryFocus === "technique" && version.guidance.kind === "observation" && (
         <section className={surfaceClass("hero")}>
-          <h3 className="text-lg font-semibold text-slate-900">Current exercise</h3>
-          <h4 className="mt-4 text-sm font-semibold text-slate-800">Setup</h4>
-          <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-            {version.setupInstructions.map((instruction) => (
-              <li key={instruction.id}>{instruction.text}</li>
+          <h3 className="text-lg font-semibold text-slate-900">Observe and discuss</h3>
+          <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-700">
+            {version.guidance.observations.map((observation) => (
+              <li key={observation}>{observation}</li>
             ))}
-          </ol>
-          <h4 className="mt-4 text-sm font-semibold text-slate-800">Perform</h4>
-          <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-            {version.executionInstructions.map((instruction) => (
-              <li key={instruction.id}>{instruction.text}</li>
-            ))}
-          </ol>
-
-          {version.guidance.kind === "observation" && (
-            <div className="mt-4 rounded-xl bg-slate-100 p-4">
-              <p className="text-sm font-semibold text-slate-800">Observe and discuss</p>
-              <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-                {version.guidance.observations.map((observation) => (
-                  <li key={observation}>{observation}</li>
-                ))}
-              </ul>
-              <p className="mt-2 text-xs text-slate-500">{version.guidance.noScoringNote}</p>
-            </div>
-          )}
-        </section>
-      )}
-
-      {active && version.diagram && (
-        <section className={surfaceClass("primary")}>
-          <h3 className="mb-3 text-lg font-semibold text-slate-900">Exercise diagram</h3>
-          <ExerciseDiagramView
-            diagram={version.diagram}
-            restrictedAssetResolver={restrictedAssetResolver}
-          />
+          </ul>
+          <p className="mt-2 text-xs text-slate-500">{version.guidance.noScoringNote}</p>
         </section>
       )}
 
@@ -675,6 +647,13 @@ export default function ExerciseSoloExecutionScreen({
           placeholder="Add your observation…"
         />
       </section>
+
+      {active && (
+        <ExerciseExecutionReference
+          version={version}
+          restrictedAssetResolver={restrictedAssetResolver}
+        />
+      )}
 
       {error && (
         <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>

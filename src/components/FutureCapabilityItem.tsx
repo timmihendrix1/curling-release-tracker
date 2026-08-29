@@ -6,10 +6,10 @@ type FutureCapabilityItemProps = {
 /**
  * One row inside FutureCapabilitiesSection's shared "Coming next" container —
  * a platform capability described in the product vision but not built yet
- * (Schedule, Coach, Team). Never interactive (no button, no link, no click
+ * (currently Schedule and Coach). Never interactive (no button, no link, no click
  * handler) and never focusable, so it can never be mistaken for a working
  * feature. Renders no border or background of its own — the section around
- * it is the one shared container, so three of these never read as three
+ * it is the one shared container, so the future items never read as separate
  * separate cards, even stacked on narrow mobile widths. Title and the
  * "Coming soon" badge sit in a non-wrapping row so the badge never breaks
  * onto its own line. See docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md and

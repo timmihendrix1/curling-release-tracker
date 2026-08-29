@@ -139,13 +139,15 @@ describe("HomeScreen", () => {
     expect(screen.queryByText(/recommend/i)).not.toBeInTheDocument();
   });
 
-  it("groups Schedule, Coach, and Team under Coming next as clearly-marked Coming soon placeholders", () => {
+  it("shows Teams as available and keeps only Schedule and Coach under Coming next", () => {
+    const onManageTeams = vi.fn();
     render(
       <HomeScreen
         currentSession={emptySession()}
         sessionHistory={[]}
         onStartTraining={() => {}}
         onOpenAnalyze={() => {}}
+        onManageTeams={onManageTeams}
       />
     );
 
@@ -155,10 +157,13 @@ describe("HomeScreen", () => {
     expect(screen.getByText("Plan and repeat training sessions.")).toBeInTheDocument();
     expect(screen.getByText("Coach")).toBeInTheDocument();
     expect(screen.getByText("Assigned training and feedback.")).toBeInTheDocument();
-    expect(screen.getByText("Team")).toBeInTheDocument();
-    expect(screen.getByText("Shared training and performance.")).toBeInTheDocument();
+    expect(screen.getByText("Available now")).toBeInTheDocument();
+    expect(screen.getByText("Teams")).toBeInTheDocument();
+    expect(screen.getByText(/invite athletes/)).toBeInTheDocument();
 
-    expect(screen.getAllByText("Coming soon")).toHaveLength(3);
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
+    screen.getByRole("button", { name: "Manage" }).click();
+    expect(onManageTeams).toHaveBeenCalledTimes(1);
   });
 
   it("Coming next tiles are not interactive or focusable", () => {
@@ -190,7 +195,7 @@ describe("HomeScreen", () => {
 
     expect(screen.getByText("Devices")).toBeInTheDocument();
     expect(screen.getByText("Manual Timing")).toBeInTheDocument();
-    expect(screen.getAllByText("Coming soon")).toHaveLength(3);
+    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
   });
 
   it("Devices copy never suggests an external connection already exists", () => {

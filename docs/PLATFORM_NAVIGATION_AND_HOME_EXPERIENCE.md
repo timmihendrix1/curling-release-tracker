@@ -55,10 +55,10 @@ deliberately narrows this:
     `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the
     authoritative product/domain source), `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise
     Library" section, and `docs/adr/0030`.
-- **Coach and Team** appear on Home as visually secondary "Coming soon"
-  placeholders, per this document's own Home structure below.
-- **Schedule** likewise appears as "Coming soon" — no scheduling/calendar data model
-  exists.
+- **Teams is implemented** and appears on Home as an "Available now" capability with a
+  direct Manage action into Team administration. **Coach** and **Schedule** remain
+  visually secondary "Coming soon" placeholders; neither has an implemented coaching
+  or scheduling data model.
 - **Athlete Experience** (Personal / Coach Guided / Team Training) is described below
   as a concept but has no selection UI, persistence, or Home-branching behavior yet.
 - **Home's implemented information hierarchy** (first-review UX pass) narrows this
@@ -74,15 +74,10 @@ deliberately narrows this:
     Last Training / Total Sessions facts, under an honestly-scoped name, since these
     are activity data, not validated performance metrics. "Performance Snapshot" (as a
     visible title) does not appear anywhere in the current implementation.
-  - **Schedule, Coach, and Team** are grouped into one compact "Coming next" section
-    (`FutureCapabilitiesSection` + `FutureCapabilityItem`) rather than three separate
-    full-width "Coming soon" cards — same non-interactive, visually secondary
-    guarantee as before, just less vertical weight. A second, small cleanup pass
-    replaced three individually-boxed tiles with one shared, dashed-border
-    container holding three compact rows (divided by a subtle line on mobile,
-    by columns at the `sm` breakpoint and above) — three separately-bordered
-    boxes read as fragmented even when stacked; one shared container reads as a
-    single, quieter section.
+  - **Teams** is a compact "Available now" surface with a direct Manage action.
+    **Schedule and Coach** share the quieter dashed "Coming next" container
+    (`FutureCapabilitiesSection` + `FutureCapabilityItem`). Implemented functionality
+    is never labelled "Coming soon".
   - **Devices** keeps its own card, positioned between Training Overview and Coming
     next: more prominent than a "Coming soon" placeholder (it's real, current
     behavior), less prominent than Today's Plan. Its supporting copy reads

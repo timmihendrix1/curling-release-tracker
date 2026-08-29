@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import {
   EXERCISE_LIBRARY_DESCRIPTION,
   EXERCISE_LIBRARY_EMPTY_STATE_BODY,
@@ -30,9 +33,9 @@ type ExerciseLibraryProps = {
 
 /**
  * Read-only Exercise discovery. Reads nothing from persistence and owns no
- * state of its own — filters are lifted to `TrainLanding` so leaving a detail
- * screen returns to the same filtered list, while entering the Exercises tab
- * starts clean.
+ * persistence. Filters are lifted to `TrainLanding` so leaving a detail screen
+ * returns to the same filtered list, while the component owns only ephemeral
+ * disclosure state for its initially collapsed focus groups.
  *
  * Every row is produced by one generic card component from catalog data. There
  * is no authoring, favourites, recommendation, popularity, rating or
@@ -44,8 +47,21 @@ export default function ExerciseLibrary({
   onFiltersChange,
   onOpenExercise,
 }: ExerciseLibraryProps) {
+  const [openFocuses, setOpenFocuses] = useState<Set<ExerciseVersion["primaryFocus"]>>(
+    () => new Set()
+  );
   const matches = filterExerciseVersions(versions, filters);
   const groups = groupExerciseVersionsByFocus(matches);
+  const filtersActive = !areDefaultExerciseLibraryFilters(filters);
+
+  function toggleFocus(focus: ExerciseVersion["primaryFocus"]) {
+    setOpenFocuses((current) => {
+      const next = new Set(current);
+      if (next.has(focus)) next.delete(focus);
+      else next.add(focus);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -94,30 +110,44 @@ export default function ExerciseLibrary({
             {matches.length === 1 ? "1 exercise" : `${matches.length} exercises`}
           </p>
 
-          {groups.map((group) => (
-            <section
-              key={group.focus}
-              aria-labelledby={`exercise-group-${group.focus}`}
-              className="space-y-3"
-            >
-              <div className="px-1">
-                <h3
-                  id={`exercise-group-${group.focus}`}
-                  className="text-base font-semibold text-slate-900"
+          {groups.map((group) => {
+            const expanded = filtersActive || openFocuses.has(group.focus);
+            const panelId = `exercise-group-${group.focus}`;
+            return (
+              <section key={group.focus} className="space-y-3">
+                <button
+                  type="button"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  aria-label={`${exerciseFocusGroupLabel(group.focus)}, ${group.versions.length} ${group.versions.length === 1 ? "exercise" : "exercises"}`}
+                  disabled={filtersActive}
+                  onClick={() => toggleFocus(group.focus)}
+                  title={filtersActive ? "Matching categories stay open while search or filters are active." : undefined}
+                  className="flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:opacity-100"
                 >
-                  {exerciseFocusGroupLabel(group.focus)}
-                </h3>
-              </div>
+                  <span className="text-base font-semibold text-slate-900">
+                    {exerciseFocusGroupLabel(group.focus)}
+                  </span>
+                  <span className="flex items-center gap-3 text-xs text-slate-500">
+                    {group.versions.length} in category
+                    <span aria-hidden="true" className="text-base">
+                      {expanded ? "−" : "+"}
+                    </span>
+                  </span>
+                </button>
 
-              {group.versions.map((version) => (
-                <ExerciseSummaryCard
-                  key={version.id}
-                  version={version}
-                  onOpen={onOpenExercise}
-                />
-              ))}
-            </section>
-          ))}
+                <div id={panelId} hidden={!expanded} className="space-y-3">
+                  {group.versions.map((version) => (
+                    <ExerciseSummaryCard
+                      key={version.id}
+                      version={version}
+                      onOpen={onOpenExercise}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       )}
     </div>

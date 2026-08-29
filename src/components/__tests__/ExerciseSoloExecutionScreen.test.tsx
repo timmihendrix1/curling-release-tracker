@@ -71,7 +71,7 @@ describe("ExerciseSoloExecutionScreen", () => {
     render(<Harness initial={createTechniqueExecution()} />);
 
     expect(screen.getByText("Observe and discuss")).toBeInTheDocument();
-    expect(screen.getByText(/awards no score/)).toBeInTheDocument();
+    expect(screen.getAllByText(/awards no score/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("button", { name: /points/ })).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Private athlete note"), {
@@ -90,7 +90,12 @@ describe("ExerciseSoloExecutionScreen", () => {
   it("records scored and excluded Shotmaking stones with factual live and final results", () => {
     render(<Harness initial={createShotmakingExecution()} />);
 
-    expect(screen.getByText("Setup")).toBeInTheDocument();
+    const capture = screen.getByRole("heading", { name: "Record outcome" });
+    const reference = screen.getByText("Exercise setup and reference");
+    expect(capture.compareDocumentPosition(reference) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+    fireEvent.click(reference);
+    expect(screen.getByText("Set up")).toBeInTheDocument();
     expect(screen.getByTestId("exercise-structured-diagram")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));

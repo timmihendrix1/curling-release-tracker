@@ -18,6 +18,30 @@ async function openTrainTab(page: import("@playwright/test").Page, name: string)
   await page.getByRole("tab", { name, exact: true }).click();
 }
 
+function exerciseCategory(title: typeof CURATED_TITLES[number]): string {
+  if (title === "Release Point" || title === "Release Gates") return "Technique";
+  if (title === "Release Time" || title === "Rotation Count") return "Measured Exercises";
+  return "Shotmaking";
+}
+
+async function expandExerciseCategory(
+  page: import("@playwright/test").Page,
+  title: typeof CURATED_TITLES[number]
+) {
+  const category = page.getByRole("button", {
+    name: new RegExp(`^${exerciseCategory(title)}`),
+  });
+  if ((await category.getAttribute("aria-expanded")) === "false") await category.click();
+}
+
+async function openExerciseDetail(
+  page: import("@playwright/test").Page,
+  title: typeof CURATED_TITLES[number]
+) {
+  await expandExerciseCategory(page, title);
+  await page.getByRole("button", { name: `View Details: ${title}` }).click();
+}
+
 /** The page must never scroll sideways, and no visible control may be clipped. */
 async function expectNoHorizontalOverflow(page: import("@playwright/test").Page) {
   const overflow = await page.evaluate(() => ({
@@ -78,9 +102,9 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
     await expect(page.getByText("Set Up Training Block")).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Technique", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Shotmaking", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Measured Exercises", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("button", { name: /^Measured Exercises/ })).toHaveAttribute("aria-expanded", "false");
 
     // No tab label is truncated inside its own button, and the page does not
     // scroll sideways.
@@ -108,7 +132,7 @@ test.describe("Exercise Library and Solo execution", () => {
 
     await expect(page.getByText("7 exercises")).toBeVisible();
     for (const title of CURATED_TITLES) {
-      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeHidden();
     }
     await expectNoHorizontalOverflow(page);
 
@@ -138,7 +162,7 @@ test.describe("Exercise Library and Solo execution", () => {
 
     // Every representative detail opens and returns with one focus-semantic start action.
     for (const title of CURATED_TITLES) {
-      await page.getByRole("button", { name: `View Details: ${title}` }).click();
+      await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
       await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
       await expect(
@@ -157,9 +181,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page
-      .getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" })
-      .click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
 
     const unavailable = page.getByTestId("exercise-restricted-diagram-unavailable");
     await expect(unavailable).toBeVisible();
@@ -226,6 +248,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
+    await expandExerciseCategory(page, "Release Point");
 
     // Every tab, and the Library's own controls.
     for (const locator of [
@@ -239,9 +262,7 @@ test.describe("Exercise Library and Solo execution", () => {
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
 
-    await page
-      .getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" })
-      .click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
 
     const backBox = await page
       .getByRole("button", { name: "← Back to Exercises" })
@@ -293,10 +314,10 @@ test.describe("Exercise Library and Solo execution", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 3],
+      ["Eight Guards, Progressively Longer", 4],
       ["Release Time", 1],
     ] as const) {
-      await page.getByRole("button", { name: `View Details: ${title}` }).click();
+      await openExerciseDetail(page, title);
       await expect(page.getByText(`Exercise version ${version}`)).toBeVisible();
 
       const body = await page.locator("body").textContent();
@@ -320,15 +341,14 @@ test.describe("Exercise Library and Solo execution", () => {
     await expectNoHorizontalOverflow(page);
 
     for (const title of CURATED_TITLES) {
-      await page.getByRole("button", { name: `View Details: ${title}` }).click();
+      await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
       await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       await page.getByRole("button", { name: "← Back to Exercises" }).click();
     }
 
-    const diagramTitle = "View Details: Eight Guards, Progressively Longer";
-    await page.getByRole("button", { name: diagramTitle }).click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
     await expect(
       page.getByTestId("exercise-restricted-diagram-unavailable")
     ).toBeVisible();
@@ -347,7 +367,7 @@ test.describe("Exercise Library and Solo execution", () => {
     // Fixed/Variable/Blind setup and runner remain unchanged.
     await openTrainTab(page, "Exercises");
     await expect(page.getByText("7 exercises")).toBeVisible();
-    await page.getByRole("button", { name: "View Details: Release Time" }).click();
+    await openExerciseDetail(page, "Release Time");
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
     await expect(page.getByText("Set Up Training Block")).toBeVisible();
     await page.getByRole("button", { name: "Start Training" }).click();
@@ -358,8 +378,10 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page.getByRole("button", { name: "View Details: Release Point" }).click();
+    await openExerciseDetail(page, "Release Point");
     await page.getByRole("button", { name: "Start Exercise" }).click();
+    await expect(page.getByText("Prepare the exercise, then confirm when you are ready to record.")).toBeVisible();
+    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
 
     await expect(page.getByRole("heading", { name: "Release Point", exact: true })).toBeVisible();
     await expect(page.getByText("Observe and discuss")).toBeVisible();
@@ -378,14 +400,12 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page
-      .getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" })
-      .click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
     await page.getByRole("button", { name: "Start Exercise" }).click();
-
-    await expect(
-      page.getByTestId("exercise-restricted-diagram-unavailable")
-    ).toBeVisible();
+    await expect(page.getByText("Prepare the exercise, then confirm when you are ready to record.")).toBeVisible();
+    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
+    await expect(page.getByRole("heading", { name: "Record outcome" })).toBeVisible();
+    await expect(page.getByText("Exercise setup and reference")).toBeVisible();
     await page.getByRole("button", { name: "Inhandle" }).click();
     await page.getByRole("button", { name: "0 points, 0 percent" }).click();
     await page.getByRole("button", { name: "Record Stone" }).click();
@@ -409,7 +429,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page.getByRole("button", { name: "View Details: Release Time" }).click();
+    await openExerciseDetail(page, "Release Time");
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
 
     await expect(page.getByRole("status").filter({ hasText: "From Exercise Library" }))
@@ -427,8 +447,9 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page.getByRole("button", { name: "View Details: Rotation Count" }).click();
+    await openExerciseDetail(page, "Rotation Count");
     await page.getByRole("button", { name: "Start Exercise" }).click();
+    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
 
     await expect(page.getByRole("heading", { name: "Rotation Count", exact: true })).toBeVisible();
     await page.getByLabel(/Rotation Count/).fill("2.5");
@@ -453,7 +474,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await freshLoad(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page.getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" }).click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
 
     const teamAction = page.getByRole("button", { name: "Set Up Team Exercise" });
     await expect(teamAction).toBeEnabled();
@@ -471,7 +492,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await seedTeamExerciseEligibility(page);
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
-    await page.getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" }).click();
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
     await page.getByRole("button", { name: "Set Up Team Exercise" }).click();
     await expectNoHorizontalOverflow(page);
 

@@ -132,7 +132,7 @@ describe("TrainingPlanEditor", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", {
-        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 3",
+        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 4",
       })
     ).toBeInTheDocument();
   });

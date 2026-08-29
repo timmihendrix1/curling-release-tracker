@@ -10,6 +10,7 @@ type HomeScreenProps = {
   sessionHistory: Session[];
   onStartTraining: () => void;
   onOpenAnalyze: () => void;
+  onManageTeams?: () => void;
   hasActiveAssessmentRun?: boolean;
   onResumeAssessment?: () => void;
 };
@@ -36,6 +37,7 @@ export default function HomeScreen({
   sessionHistory,
   onStartTraining,
   onOpenAnalyze,
+  onManageTeams = () => {},
   hasActiveAssessmentRun = false,
   onResumeAssessment,
 }: HomeScreenProps) {
@@ -85,7 +87,7 @@ export default function HomeScreen({
         </div>
       </div>
 
-      <FutureCapabilitiesSection />
+      <FutureCapabilitiesSection onManageTeams={onManageTeams} />
     </div>
   );
 }

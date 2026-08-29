@@ -51,17 +51,20 @@ test.describe("First Run", () => {
       page.getByText("External timing systems will appear here when connected.")
     ).toHaveCount(0);
 
-    // Schedule, Coach, and Team are grouped under "Coming next" — visibly
-    // future capabilities, not working features, never three separate
-    // full-width cards.
+    await expect(page.getByText("Available now")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Create a Team, invite athletes and manage shared training access.")
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
+
+    // Only genuinely future capabilities remain under "Coming next".
     await expect(page.getByRole("heading", { name: "Coming next" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
     await expect(page.getByText("Plan and repeat training sessions.")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
     await expect(page.getByText("Assigned training and feedback.")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
-    await expect(page.getByText("Shared training and performance.")).toBeVisible();
-    await expect(page.getByText("Coming soon")).toHaveCount(3);
+    await expect(page.getByText("Coming soon")).toHaveCount(2);
   });
 });
 
@@ -226,12 +229,12 @@ test.describe("Mobile", () => {
       page.getByText("External timing systems will be supported here.")
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Coming next" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Team", exact: true })).toBeVisible();
     await expect(page.getByText("Plan and repeat training sessions.")).toBeVisible();
     await expect(page.getByText("Assigned training and feedback.")).toBeVisible();
-    await expect(page.getByText("Shared training and performance.")).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth
@@ -268,7 +271,7 @@ test.describe("Mobile", () => {
       expect(startTrainingBox.y + startTrainingBox.height).toBeLessThanOrEqual(navBox.y);
     }
 
-    // The page should still scroll all the way to its last content (Team,
+    // The page should still scroll all the way to its last content (Coach,
     // the last Coming next row) without a huge stretch of empty card space
     // from the now-removed sections, and scrolling to the true bottom must
     // leave the last content clear of the fixed bottom nav. Uses an explicit
@@ -276,7 +279,7 @@ test.describe("Mobile", () => {
     // whichever viewport edge is nearest and would falsely fail here even
     // though further, nav-clearing scroll room exists (the page reserves
     // bottom padding for exactly this).
-    const lastContent = page.getByText("Shared training and performance.");
+    const lastContent = page.getByText("Assigned training and feedback.");
     await page.evaluate(() =>
       window.scrollTo(0, document.documentElement.scrollHeight)
     );
@@ -294,7 +297,7 @@ test.describe("Mobile", () => {
 test.describe("Narrow Mobile", () => {
   test.use({ viewport: { width: 320, height: 700 } });
 
-  test("Home is fully readable at 320x700: no overflow, all three Coming next capabilities legible", async ({
+  test("Home is fully readable at 320x700: no overflow, available Teams and future capabilities legible", async ({
     page,
   }) => {
     await freshLoad(page);
@@ -305,9 +308,9 @@ test.describe("Narrow Mobile", () => {
     expect(hasHorizontalOverflow).toBe(false);
 
     for (const [title, description] of [
+      ["Teams", "Create a Team, invite athletes and manage shared training access."],
       ["Schedule", "Plan and repeat training sessions."],
       ["Coach", "Assigned training and feedback."],
-      ["Team", "Shared training and performance."],
     ] as const) {
       const titleHeading = page.getByRole("heading", { name: title, exact: true });
       await titleHeading.scrollIntoViewIfNeeded();
@@ -315,20 +318,20 @@ test.describe("Narrow Mobile", () => {
       await expect(page.getByText(description)).toBeVisible();
     }
 
-    await expect(page.getByText("Coming soon")).toHaveCount(3);
+    await expect(page.getByText("Coming soon")).toHaveCount(2);
 
     // No two capability rows overlap vertically — each is its own readable
     // row within the shared container, never overlapping text.
     const boxes = await Promise.all(
-      (["Schedule", "Coach", "Team"] as const).map((title) =>
+      (["Teams", "Schedule", "Coach"] as const).map((title) =>
         page.getByRole("heading", { name: title, exact: true }).boundingBox()
       )
     );
     expect(boxes.every((box) => box !== null)).toBe(true);
-    const [scheduleBox, coachBox, teamBox] = boxes;
-    if (scheduleBox && coachBox && teamBox) {
+    const [teamsBox, scheduleBox, coachBox] = boxes;
+    if (teamsBox && scheduleBox && coachBox) {
+      expect(teamsBox.y).toBeLessThan(scheduleBox.y);
       expect(scheduleBox.y).toBeLessThan(coachBox.y);
-      expect(coachBox.y).toBeLessThan(teamBox.y);
     }
   });
 });
@@ -352,23 +355,26 @@ test.describe("Desktop", () => {
       page.getByText("External timing systems will be supported here.")
     ).toBeVisible();
 
-    // Coming next's items sit side by side at desktop width — they all
+    // Coming next's two future items sit side by side at desktop width — they
     // remain visible together, and use the available width rather than
     // stacking into an unnecessarily long, mobile-style single column.
     const scheduleTile = page.getByRole("heading", { name: "Schedule", exact: true });
-    const teamTile = page.getByRole("heading", { name: "Team", exact: true });
+    const coachTile = page.getByRole("heading", { name: "Coach", exact: true });
+    const teamsHeading = page.getByRole("heading", { name: "Teams", exact: true });
+    await expect(teamsHeading).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
     await expect(scheduleTile).toBeVisible();
-    await expect(teamTile).toBeVisible();
+    await expect(coachTile).toBeVisible();
 
     const scheduleBox = await scheduleTile.boundingBox();
-    const teamBox = await teamTile.boundingBox();
+    const coachBox = await coachTile.boundingBox();
     expect(scheduleBox).not.toBeNull();
-    expect(teamBox).not.toBeNull();
-    if (scheduleBox && teamBox) {
-      // Same row (roughly equal y) and Team sits to the right of Schedule —
-      // proof of the 3-column grid, not a single stacked list.
-      expect(Math.abs(scheduleBox.y - teamBox.y)).toBeLessThan(8);
-      expect(teamBox.x).toBeGreaterThan(scheduleBox.x);
+    expect(coachBox).not.toBeNull();
+    if (scheduleBox && coachBox) {
+      // Same row (roughly equal y) and Coach sits to the right of Schedule —
+      // proof of the two-column grid, not a single stacked list.
+      expect(Math.abs(scheduleBox.y - coachBox.y)).toBeLessThan(8);
+      expect(coachBox.x).toBeGreaterThan(scheduleBox.x);
     }
 
     await primaryNavDesktop(page).getByRole("button", { name: "Train" }).click();

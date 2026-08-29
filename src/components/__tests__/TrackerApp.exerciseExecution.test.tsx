@@ -18,6 +18,12 @@ async function openExercise(title: string) {
   await waitFor(() => screen.getByText("No scheduled session."));
   navButton("Train").click();
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+  const category = title === "Release Point"
+    ? "Technique"
+    : title === "Eight Guards, Progressively Longer"
+      ? "Shotmaking"
+      : "Measured Exercises";
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${category}`) }));
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
 }
 
@@ -28,9 +34,24 @@ function persistedSession() {
 }
 
 describe("TrackerApp Solo Exercise execution", () => {
+  it("does not create an Exercise result until the athlete confirms the physical setup", async () => {
+    await openExercise("Release Point");
+    fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+
+    expect(
+      screen.getByRole("button", { name: "Setup Complete — Start Exercise" })
+    ).toBeInTheDocument();
+    expect(persistedSession().exerciseExecutions).toBeUndefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "← Back to Exercise Library" }));
+    expect(screen.getByRole("heading", { level: 2, name: "Exercises" })).toBeInTheDocument();
+    expect(persistedSession().exerciseExecutions).toBeUndefined();
+  });
+
   it("starts, notes and completes Technique directly from the Library", async () => {
     await openExercise("Release Point");
     fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    fireEvent.click(screen.getByRole("button", { name: "Setup Complete — Start Exercise" }));
 
     expect(await screen.findByRole("heading", { name: "Release Point" })).toBeInTheDocument();
     expect(screen.getByText("Observe and discuss")).toBeInTheDocument();
@@ -54,6 +75,7 @@ describe("TrackerApp Solo Exercise execution", () => {
   it("records an arbitrary-length Shotmaking result against actual handle and 0-4 score", async () => {
     await openExercise("Eight Guards, Progressively Longer");
     fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    fireEvent.click(screen.getByRole("button", { name: "Setup Complete — Start Exercise" }));
 
     fireEvent.click(await screen.findByRole("button", { name: "Outhandle" }));
     fireEvent.click(screen.getByRole("button", { name: "4 points, 100 percent" }));
@@ -103,6 +125,7 @@ describe("TrackerApp Solo Exercise execution", () => {
   it("runs a non-timing Measured Exercise through the generic execution aggregate", async () => {
     await openExercise("Rotation Count");
     fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
+    fireEvent.click(screen.getByRole("button", { name: "Setup Complete — Start Exercise" }));
 
     fireEvent.change(await screen.findByLabelText(/Rotation Count/), {
       target: { value: "2.5" },
@@ -131,6 +154,7 @@ describe("TrackerApp Solo Exercise execution", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
     expect(screen.queryByRole("tab", { name: "Quick Start" })).toBeNull();
     expect(screen.queryByText("Set Up Training Block")).toBeNull();
     expect(

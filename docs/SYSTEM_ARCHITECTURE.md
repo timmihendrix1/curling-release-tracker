@@ -2128,10 +2128,10 @@ is nothing to migrate).
 ### Home screen composition — `src/components/HomeScreen.tsx` + friends
 
 `HomeScreen` renders, in order: a plain time-of-day greeting (no card), `TodayPlanCard`,
-`TrainingOverview`, `DeviceStatusCard`, and `FutureCapabilitiesSection` (which renders one
-`FutureCapabilityItem` row per Schedule/Coach/Team inside one shared, dashed-border
-container — not three individually-boxed tiles, which read as fragmented even when
-stacked on mobile). All of them receive already-prepared data/callbacks as props — none
+`TrainingOverview`, `DeviceStatusCard`, and `FutureCapabilitiesSection`. The last renders
+Teams as an implemented "Available now" surface whose callback opens Team administration,
+then keeps only Schedule and Coach inside one shared, dashed "Coming next" container.
+All of them receive already-prepared data/callbacks as props — none
 computes analytics or invents scheduling/coaching data;
 `TrainingOverview`'s "Last Training"/"Total Sessions" figures are read directly from
 `sessionHistory`/`currentSession`, not a new analytics function. There is no standalone
@@ -2647,8 +2647,9 @@ uses only cached Teams containing the recorder, derives the recorder from the si
 Profile, confirms present and eligible athletes plus actual initial roles, and requests
 no planned volume. `ExerciseTeamExecutionScreen` persists every C1 attempt or role
 transition before advancing its controls, resumes the active draft when Train is opened after a reload, keeps
-Technique observation-only, records per-athlete Shotmaking outcomes and optional manual
-Rotation Count, and shows the manager's real completion receipt. Athlete cloud
+Technique observation-only, and puts the active Shotmaking/Measurement capture before
+lineup controls and its collapsed supporting reference. It records per-athlete Shotmaking
+outcomes and optional manual Rotation Count, and shows the manager's real completion receipt. Athlete cloud
 restore is separate from the recorder queue: `listMyResults` correlates the existing
 owner-result-gated RLS rows, `deserializeOwnedTeamExerciseResult` verifies both opaque
 payload hashes and every relational manifest before reconstructing shared context plus
@@ -2664,7 +2665,11 @@ reads into the existing offline cache. C4c exposes only refreshed owner results 
 online correction/void, retains stable request identity across an uncertain exact retry,
 shows current-versus-original audit history without raw Profile identifiers or Team
 names and renders strictly validated metadata-only cards in the existing Team inbox.
-- `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic Solo rink screen. It branches on
+- `ExerciseSoloSetupScreen.tsx` creates no result: it shows and confirms the physical
+  setup before `TrackerApp` attaches a durable Solo execution. `ExerciseSetupOverview`
+  and `ExerciseExecutionReference` provide the same generic reference before and during
+  Solo/Team execution.
+- `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic capture-first Solo rink screen. It branches on
   focus/guidance semantics, never catalog identity: observation-only Technique, actual
   handle plus 0-4/exclusion Shotmaking capture, private note, lifecycle actions and
   descriptive current/final results.
@@ -2675,8 +2680,9 @@ names and renders strictly validated metadata-only cards in the existing Team in
   Eight Guards Progressively Longer, Come-around from Outside to Inside before the
   T-line, Soft Take-out on the Centre Line at the T-line, Release Time and Rotation
   Count. Release Point, Release Gates, both newer Shotmaking Exercises and both Measured
-  Exercises are Version 1; immutable Eight Guards Versions 1 and 2 are retained, while
-  current Version 3 adds the approved Swiss Curling source diagram. All user-facing
+  Exercises began at Version 1; immutable Eight Guards Versions 1–3 and Soft Take-out
+  Version 1 are retained, while their current Versions 4 and 2 correct only the
+  normalized English-overlay geometry. All user-facing
   strings are English. Original German source titles exist only under
   `source.nonDisplayedSourceMetadata`, which no component renders (it feeds attribution
   traceability and Library search only).
@@ -2820,7 +2826,9 @@ renderer's notice is the second line of defence.
   `EXERCISE_CATALOG` directly and takes no props — so it stays reachable while the
   Training Plans library is still loading or write-protected.
 - The Library groups every filtered result under the stable domain order **Technique**,
-  **Shotmaking**, **Measured Exercises** and omits an empty group. Entering the Exercises
+  **Shotmaking**, **Measured Exercises** and omits an empty group. Category controls are
+  initially collapsed and independently expandable; active search or filters reveal
+  matching groups automatically. Entering the Exercises
   tab resets both its subview and its filters; the filter state
   is lifted into `TrainLanding` so returning from a detail lands back on the same
   filtered list.
@@ -3472,8 +3480,8 @@ local component state.
 | `HomeScreen.tsx` | Composes the Home screen's sections from already-prepared props — no analytics/scheduling logic of its own |
 | `TodayPlanCard.tsx` | Today's Plan — the "no scheduled session" empty state (no scheduling data model exists yet) with the Start Training primary action, plus (Phase B) a contextual "Resume Assessment" action when an active Assessment Run exists |
 | `TrainingOverview.tsx` | Compact Last Training / Total Sessions glance (an honestly-scoped rename of the former "Performance Snapshot"), or an honest "no training yet" empty state — never a new metric or inferred trend; also hosts the secondary "View Analyze" action |
-| `FutureCapabilitiesSection.tsx` | Groups Schedule/Coach/Team into one shared, dashed-border "Coming next" container (rows stack on mobile, columns at `sm`+) instead of three separate full-width cards |
-| `FutureCapabilityItem.tsx` | One reusable, visually secondary "Coming soon" row/column (used for Schedule, Coach, Team) — never interactive, renders no border/background of its own |
+| `FutureCapabilitiesSection.tsx` | Shows Teams as implemented with a Manage action; groups only Schedule/Coach in the shared dashed "Coming next" container |
+| `FutureCapabilityItem.tsx` | One reusable, visually secondary "Coming soon" row/column (used for Schedule and Coach) — never interactive, renders no border/background of its own |
 | `DeviceStatusCard.tsx` | Honest current device state ("Manual Timing") |
 | `SettingsScreen.tsx` | App-wide Data Management (Export History CSV / Clear History, moved here from the old History view) and Data & Privacy, including the public current-Privacy-Notice link — session-specific settings stay in Train |
 | `AssessScreen.tsx` | Phase B's Assess-domain orchestrator — the Assess-domain counterpart to `TrackerApp`'s Train branch; owns pre-run UI state (threshold draft, setup confirmation, guided-introduction step) and calls `src/lib/assessment/*` directly, never duplicating its logic |
@@ -3508,13 +3516,14 @@ local component state.
 | `AssessmentAnalyze.tsx` | (Phase C) Analyze → Assessments landing: Latest Completed Assessment, separate Completed/Incomplete history, empty state, CSV export |
 | `AssessmentHistoryItem.tsx` | (Phase C) One history row (completed or incomplete), with View/Delete actions |
 | `TrainLanding.tsx` | Train's "no active block" landing — the Exercises / Training Plans chooser, with Release Timing setup nested under its Measured Exercise; owns both pillars' sub-navigation locally and provides a complete ARIA tab interface (ids, `aria-controls`, one `role="tabpanel"`, roving `tabindex`, Arrow/Home/End over enabled tabs only) |
-| `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton` explanation, filter bar, result count, fixed Technique / Shotmaking / Measured Exercises grouping, generic cards, one honest shared empty state with a reset action |
+| `ExerciseLibrary.tsx` | Read-only Exercise discovery — heading + shared `InfoButton`, filter bar, result count, initially-collapsed Technique / Shotmaking / Measured category controls that auto-reveal filtered matches, generic cards and one honest shared empty state |
 | `ExerciseLibraryFilterBar.tsx` | Search (always visible) plus focus/difficulty/Solo-Team/Shot Family/Sweeper filters behind one "Filters" toggle; every option list derived from the catalog; a compact active-selection summary once the panel collapses |
 | `ExerciseSummaryCard.tsx` | One generic Library row from Exercise Version data — title, goal, focus/classification/difficulty/participation/Sweeper badges, `View Details` |
 | `ExerciseDetail.tsx` | The one generic Exercise detail renderer, in the specification's fixed information order across five consolidated surfaces (divider-separated blocks, one grouped progressive-disclosure container); shows the immutable Exercise version and focus-semantic start action; branches only on declared domain semantics, never on an Exercise id or title |
-| `ExerciseSoloExecutionScreen.tsx` | Generic Solo Technique/Shotmaking rink screen: snapshotted instructions and actual context, private Athlete Note, 0-4/exclusion Shotmaking attempt capture, factual live/final result and lifecycle/session actions; no catalog-id conditional |
-| `ExerciseTeamSetupScreen.tsx` | Cache-bounded Team setup: authenticated recorder, present participants, eligible training athletes, actual initial roles/sweeping, variation and five rotation choices; no planned volume or guessed roster |
-| `ExerciseTeamExecutionScreen.tsx` | Durable one-device Team Technique/Shotmaking capture: actual lineup and role transitions, per-athlete 0-4/exclusion attempts, optional manual half-step Rotation Count, live factual results, exact completion/sync truth and confirmed local-draft discard |
+| `ExerciseSoloSetupScreen.tsx` / `ExerciseSetupOverview.tsx` / `ExerciseExecutionReference.tsx` | Generic pre-start physical-setup confirmation and collapsed during-execution reference; cancelling Solo setup creates no execution |
+| `ExerciseSoloExecutionScreen.tsx` | Generic capture-first Solo screen: Technique observation/note or Shotmaking/Measurement input precedes the collapsed setup reference; factual live/final result and lifecycle actions; no catalog-id conditional |
+| `ExerciseTeamSetupScreen.tsx` | Cache-bounded Team setup plus physical Exercise reference: authenticated recorder, present participants, eligible training athletes, actual initial roles/sweeping, variation and five rotation choices; no planned volume or guessed roster |
+| `ExerciseTeamExecutionScreen.tsx` | Durable capture-first one-device Team Technique/Shotmaking screen: per-athlete input precedes lineup controls and the collapsed reference; role transitions, optional manual half-step Rotation Count, factual results, completion/sync truth and confirmed local-draft discard |
 | `ExerciseTeamResultsScreen.tsx` | Analyze → Exercises athlete-owned Team history: factual current/preserved result, post-completion audit, verified cached/unavailable states, own raw JSON export, acknowledgement-first private notes and refreshed-online-only correction/terminal void; no sibling result, note, Team name or raw identifier rendering |
 | `ExercisePostCompletionCorrectionEditor.tsx` | Stone-specific own-result correction for actual handle, evaluation/exclusion, supported manual Measurements and effective role/Sweeper context; immutable athlete attribution, bounded reason and stable exact retry after uncertain acknowledgement |
 | `ExerciseDiagramView.tsx` | Dispatches on the Diagram's declared `kind`; an unrecognised kind is reported visibly rather than rendering nothing |

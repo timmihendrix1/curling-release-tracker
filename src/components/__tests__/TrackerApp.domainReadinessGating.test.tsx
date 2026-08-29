@@ -490,6 +490,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
 
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
 
     // Release Timing is now reached only through its Measured Exercise. A
     // write-protected Session blocks that transition before the setup mounts.

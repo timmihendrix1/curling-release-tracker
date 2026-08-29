@@ -8,10 +8,12 @@ import {
   EIGHT_GUARDS_EXERCISE_ID,
   EIGHT_GUARDS_V1_VERSION_ID,
   EIGHT_GUARDS_VERSION_ID,
+  EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
   COME_AROUND_EXERCISE_ID,
   COME_AROUND_VERSION_ID,
   SOFT_TAKEOUT_EXERCISE_ID,
+  SOFT_TAKEOUT_V1_VERSION_ID,
   SOFT_TAKEOUT_VERSION_ID,
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
@@ -68,7 +70,7 @@ describe("production Exercise catalog", () => {
       COME_AROUND_EXERCISE_ID,
       SOFT_TAKEOUT_EXERCISE_ID,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(9);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(11);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -219,7 +221,7 @@ describe("deterministic lookup", () => {
     ).toEqual([1]);
     expect(
       listExerciseVersions(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID).map((v) => v.version)
-    ).toEqual([1, 2, 3]);
+    ).toEqual([1, 2, 3, 4]);
     expect(listExerciseVersions(EXERCISE_CATALOG, "not-a-real-exercise")).toEqual([]);
   });
 });
@@ -324,10 +326,14 @@ describe("curated Stage A content", () => {
     }]);
   });
 
-  it("keeps Eight Guards versions 1 and 2 while version 3 adds the restricted source diagram", () => {
+  it("retains each Eight Guards version while version 4 corrects only the overlay geometry", () => {
     const v1 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_V1_VERSION_ID);
     const v2 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
     const v3 = findExerciseVersion(
+      EXERCISE_CATALOG,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID
+    );
+    const v4 = findExerciseVersion(
       EXERCISE_CATALOG,
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID
     );
@@ -336,15 +342,20 @@ describe("curated Stage A content", () => {
     expect(v2?.diagram?.kind).toBe("structured-platform-diagram");
     expect(v3).toMatchObject({ version: 3 });
     expect(v3?.diagram?.kind).toBe("attributed-source-image");
-    if (v3?.diagram?.kind === "attributed-source-image") {
-      expect(v3.diagram.localizedTextOverlays).toEqual([
+    expect(v4).toMatchObject({ version: 4 });
+    expect(v4?.diagram?.kind).toBe("attributed-source-image");
+    if (v4?.diagram?.kind === "attributed-source-image") {
+      expect(v4.diagram.localizedTextOverlays).toEqual([
         expect.objectContaining({
           id: "move-stone-aside",
           text: "After each stone stops, move it aside as a marker.",
+          y: 0.748,
         }),
       ]);
     }
-    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v3?.id);
+    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v4?.id);
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V1_VERSION_ID)).toMatchObject({ version: 1 });
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_VERSION_ID)).toMatchObject({ version: 2 });
   });
 
   it("Eight Guards carries visible English Swiss Curling attribution and an independently drawn diagram", () => {
@@ -444,7 +455,7 @@ describe("curated Stage A content", () => {
   });
 
   it("uses restricted source images for exactly the three closed-beta Shotmaking Exercises", () => {
-    const sourceImages = EXERCISE_CATALOG.versions.filter(
+    const sourceImages = listCurrentExerciseVersions(EXERCISE_CATALOG).filter(
       (version) => version.diagram?.kind === "attributed-source-image"
     );
     expect(sourceImages.map((version) => version.id)).toEqual([

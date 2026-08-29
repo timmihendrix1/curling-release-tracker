@@ -26,7 +26,7 @@ import {
 import { measurementUnitLabel } from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
 import ExerciseTeamAttemptCorrectionEditor from "./ExerciseTeamAttemptCorrectionEditor";
-import ExerciseDiagramView from "./ExerciseDiagramView";
+import ExerciseExecutionReference from "./ExerciseExecutionReference";
 import { surfaceClass } from "./Surface";
 import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
 
@@ -262,6 +262,48 @@ export default function ExerciseTeamExecutionScreen({
     }
   }
 
+  const lineupControls = (
+    <section className={surfaceClass("primary")}>
+      <h3 className="text-lg font-semibold text-slate-900">Current lineup</h3>
+      <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+        <div><dt className="text-xs text-slate-500">Delivering</dt><dd className="font-medium text-slate-800">{label(activeSegment.deliveringAthleteProfileId)}</dd></div>
+        <div><dt className="text-xs text-slate-500">Sweepers</dt><dd className="font-medium text-slate-800">{activeSegment.sweeperProfileIds.length === 0 ? "None" : activeSegment.sweeperProfileIds.map(label).join(", ")}</dd></div>
+        <div><dt className="text-xs text-slate-500">Sweeping</dt><dd className="font-medium text-slate-800">{activeSegment.sweepingUsed ? "Used" : "Not used"}</dd></div>
+        <div><dt className="text-xs text-slate-500">Recorded by</dt><dd className="font-medium text-slate-800">{label(teamContext.recorderProfileId)}</dd></div>
+      </dl>
+
+      {recommendation && (
+        <div className="mt-4 rounded-xl bg-amber-50 p-3">
+          <p className="text-sm text-amber-900">Planned rotation: {label(recommendation.nextAthleteProfileId)} delivers next.</p>
+          <button type="button" disabled={busy} onClick={() => void changeDeliverer(recommendation.nextAthleteProfileId, recommendation.reason)} className="mt-2 min-h-11 w-full rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            Apply Planned Rotation
+          </button>
+        </div>
+      )}
+
+      {teamContext.rotation.kind === "after-series" && athleteIds.length > 1 && (
+        <button type="button" disabled={busy} onClick={() => void changeDeliverer(nextPlannedAthlete(), "after-series")} className="mt-4 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
+          Series Complete — Rotate Athlete
+        </button>
+      )}
+
+      {athleteIds.length > 1 && (
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <label className="text-sm font-medium text-slate-700">
+            Manual delivering-athlete change
+            <select value={manualDelivererId} onChange={(event) => setManualDelivererId(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
+              <option value="">Choose another athlete</option>
+              {athleteIds.filter((profileId) => profileId !== activeSegment.deliveringAthleteProfileId).map((profileId) => <option key={profileId} value={profileId}>{label(profileId)}</option>)}
+            </select>
+          </label>
+          <button type="button" disabled={busy || !manualDelivererId} onClick={() => void changeDeliverer(manualDelivererId, "manual")} className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
+            Record Role Change
+          </button>
+        </div>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-4">
       <section className={surfaceClass("hero")}>
@@ -276,69 +318,15 @@ export default function ExerciseTeamExecutionScreen({
         </p>
       </section>
 
-      <section className={surfaceClass("primary")}>
-        <h3 className="text-lg font-semibold text-slate-900">Current lineup</h3>
-        <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
-          <div><dt className="text-xs text-slate-500">Delivering</dt><dd className="font-medium text-slate-800">{label(activeSegment.deliveringAthleteProfileId)}</dd></div>
-          <div><dt className="text-xs text-slate-500">Sweepers</dt><dd className="font-medium text-slate-800">{activeSegment.sweeperProfileIds.length === 0 ? "None" : activeSegment.sweeperProfileIds.map(label).join(", ")}</dd></div>
-          <div><dt className="text-xs text-slate-500">Sweeping</dt><dd className="font-medium text-slate-800">{activeSegment.sweepingUsed ? "Used" : "Not used"}</dd></div>
-          <div><dt className="text-xs text-slate-500">Recorded by</dt><dd className="font-medium text-slate-800">{label(teamContext.recorderProfileId)}</dd></div>
-        </dl>
-
-        {recommendation && (
-          <div className="mt-4 rounded-xl bg-amber-50 p-3">
-            <p className="text-sm text-amber-900">Planned rotation: {label(recommendation.nextAthleteProfileId)} delivers next.</p>
-            <button type="button" disabled={busy} onClick={() => void changeDeliverer(recommendation.nextAthleteProfileId, recommendation.reason)} className="mt-2 min-h-11 w-full rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-              Apply Planned Rotation
-            </button>
-          </div>
-        )}
-
-        {teamContext.rotation.kind === "after-series" && athleteIds.length > 1 && (
-          <button type="button" disabled={busy} onClick={() => void changeDeliverer(nextPlannedAthlete(), "after-series")} className="mt-4 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
-            Series Complete — Rotate Athlete
-          </button>
-        )}
-
-        {athleteIds.length > 1 && (
-          <div className="mt-4 border-t border-slate-200 pt-4">
-            <label className="text-sm font-medium text-slate-700">
-              Manual delivering-athlete change
-              <select value={manualDelivererId} onChange={(event) => setManualDelivererId(event.target.value)} className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option value="">Choose another athlete</option>
-                {athleteIds.filter((profileId) => profileId !== activeSegment.deliveringAthleteProfileId).map((profileId) => <option key={profileId} value={profileId}>{label(profileId)}</option>)}
-              </select>
-            </label>
-            <button type="button" disabled={busy || !manualDelivererId} onClick={() => void changeDeliverer(manualDelivererId, "manual")} className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
-              Record Role Change
-            </button>
-          </div>
-        )}
-      </section>
-
-      <section className={surfaceClass("primary")}>
-        <h3 className="text-lg font-semibold text-slate-900">Instructions</h3>
-        <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-700">
-          {version.executionInstructions.map((instruction) => <li key={instruction.id}>{instruction.text}</li>)}
-        </ol>
-        {version.guidance.kind === "observation" && (
-          <div className="mt-4 rounded-xl bg-slate-100 p-4">
-            <p className="text-sm font-semibold text-slate-800">Observe and discuss</p>
-            <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-              {version.guidance.observations.map((observation) => <li key={observation}>{observation}</li>)}
-            </ul>
-            <p className="mt-2 text-xs text-slate-500">{version.guidance.noScoringNote}</p>
-          </div>
-        )}
-      </section>
-
-      {version.diagram && (
-        <section className={surfaceClass("primary")}>
-          <h3 className="mb-3 text-lg font-semibold text-slate-900">Exercise diagram</h3>
-          <ExerciseDiagramView
-            diagram={version.diagram}
-            restrictedAssetResolver={restrictedAssetResolver}
-          />
+      {version.primaryFocus === "technique" && version.guidance.kind === "observation" && (
+        <section className={surfaceClass("hero")}>
+          <h3 className="text-lg font-semibold text-slate-900">Observe and discuss</h3>
+          <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-700">
+            {version.guidance.observations.map((observation) => (
+              <li key={observation}>{observation}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-slate-500">{version.guidance.noScoringNote}</p>
         </section>
       )}
 
@@ -590,6 +578,13 @@ export default function ExerciseTeamExecutionScreen({
           </p>
         </section>
       )}
+
+      {lineupControls}
+
+      <ExerciseExecutionReference
+        version={version}
+        restrictedAssetResolver={restrictedAssetResolver}
+      />
 
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
 

@@ -12,6 +12,7 @@ import type { TrainingPlan } from "../../types";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
 import { RELEASE_TIME_VERSION_ID } from "../../lib/exercises/content";
 import { findExerciseVersion } from "../../lib/exercises/lookup";
+import { exerciseFocusGroupLabel } from "../../lib/exercises/presentation";
 
 afterEach(cleanup);
 
@@ -90,6 +91,11 @@ function openFilters() {
 }
 
 function openDetail(title: string) {
+  const version = EXERCISE_CATALOG.versions.find((candidate) => candidate.title === title);
+  if (!version) throw new Error(`Missing Exercise fixture: ${title}`);
+  const groupLabel = exerciseFocusGroupLabel(version.primaryFocus);
+  const group = screen.getByRole("button", { name: new RegExp(`^${groupLabel}`) });
+  if (group.getAttribute("aria-expanded") === "false") fireEvent.click(group);
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
 }
 
@@ -175,11 +181,9 @@ describe("Exercise Library", () => {
     expect(screen.getAllByText("Technique")).toHaveLength(3);
     expect(screen.getAllByText("Shotmaking")).toHaveLength(4);
     expect(screen.getAllByText("Measured")).toHaveLength(2);
-    expect(screen.getByRole("heading", { name: "Technique" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Shotmaking" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Measured Exercises" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /^Measured Exercises/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByText("Guard")).toBeInTheDocument();
     expect(screen.getByText("Level 6")).toBeInTheDocument();
     expect(screen.getByText("Level 3")).toBeInTheDocument();
@@ -872,10 +876,10 @@ describe("version, provenance and participant wording", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 3],
+      ["Eight Guards, Progressively Longer", 4],
       ["Release Time", 1],
       ["Come-around from Outside to Inside, Before the T-Line", 1],
-      ["Soft Take-out on the Centre Line at the T-Line", 1],
+      ["Soft Take-out on the Centre Line at the T-Line", 2],
     ] as const) {
       openDetail(title);
       expect(screen.getByText(`Exercise version ${version}`)).toBeInTheDocument();

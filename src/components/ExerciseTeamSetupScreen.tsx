@@ -14,6 +14,8 @@ import {
   type TeamRoleAssignmentInput,
 } from "../lib/exercises/teamExecution";
 import type { ExerciseVersion } from "../lib/exercises/types";
+import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import ExerciseSetupOverview from "./ExerciseSetupOverview";
 import { surfaceClass } from "./Surface";
 
 type Props = {
@@ -22,6 +24,7 @@ type Props = {
   eligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
   onStart(execution: ExerciseExecution): Promise<boolean>;
   onCancel(): void;
+  restrictedAssetResolver?: RestrictedAssetResolver;
 };
 
 type RotationKind = ExerciseRotationConfiguration["kind"];
@@ -48,6 +51,7 @@ export default function ExerciseTeamSetupScreen({
   eligibilitySnapshots,
   onStart,
   onCancel,
+  restrictedAssetResolver,
 }: Props) {
   const id = useId();
   const availableTeams = eligibilitySnapshots.filter((snapshot) =>
@@ -232,6 +236,14 @@ export default function ExerciseTeamSetupScreen({
         <p className="mt-2 text-sm text-slate-600">
           The signed-in participant records on this device. There is no Recorder selector.
         </p>
+      </section>
+
+      <section className={surfaceClass("primary")}>
+        <h3 className="mb-4 text-base font-semibold text-slate-900">Confirm exercise setup</h3>
+        <ExerciseSetupOverview
+          version={version}
+          restrictedAssetResolver={restrictedAssetResolver}
+        />
       </section>
 
       <section className={surfaceClass("primary")}>

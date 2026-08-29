@@ -108,6 +108,7 @@ describe("TrackerApp — Assess integration", () => {
 
     fireEvent.click(navButton("Train"));
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
     fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
     await waitFor(() => screen.getByText("Set Up Training Block"));

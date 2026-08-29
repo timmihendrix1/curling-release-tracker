@@ -44,13 +44,16 @@ export const SOFT_TAKEOUT_EXERCISE_ID = "soft-takeout-centre-line-t-line";
 export const RELEASE_POINT_VERSION_ID = "release-point-v1";
 export const EIGHT_GUARDS_V1_VERSION_ID = "eight-guards-progressively-longer-v1";
 export const EIGHT_GUARDS_VERSION_ID = "eight-guards-progressively-longer-v2";
-export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID =
   "eight-guards-progressively-longer-v3";
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+  "eight-guards-progressively-longer-v4";
 export const RELEASE_TIME_VERSION_ID = "release-time-v1";
 export const RELEASE_GATES_VERSION_ID = "release-gates-v1";
 export const ROTATION_COUNT_VERSION_ID = "rotation-count-v1";
 export const COME_AROUND_VERSION_ID = "come-around-outside-in-before-t-line-v1";
-export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v1";
+export const SOFT_TAKEOUT_V1_VERSION_ID = "soft-takeout-centre-line-t-line-v1";
+export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v2";
 
 /** Curling's familiar 0-4 scale (spec 11.1). Zero is a valid scored result, never missing data. */
 const CURLING_SCORE_SCALE: readonly ExerciseScoreScaleEntry[] = [
@@ -268,7 +271,7 @@ function buildEightGuardsVersion2(): ExerciseVersion {
 function buildEightGuardsVersion3(): ExerciseVersion {
   return {
     ...buildEightGuardsVersion2(),
-    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID,
     version: 3,
     diagram: buildRestrictedSwissCurlingDiagram({
       id: "eight-guards-progressively-longer-source-diagram-v1",
@@ -293,6 +296,34 @@ function buildEightGuardsVersion3(): ExerciseVersion {
       ...buildEightGuardsVersion2().source,
       provenanceNote:
         "English exercise copy and application presentation are platform-authored. The attributed source diagram is reproduced for the configured one-Team closed beta with its embedded German instruction covered by a faithful English overlay.",
+    },
+  };
+}
+
+/** Version 4 corrects the English overlay geometry without rewriting v3. */
+function buildEightGuardsVersion4(): ExerciseVersion {
+  const previous = buildEightGuardsVersion3();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Eight Guards v3 must retain its attributed source diagram.");
+  }
+  return {
+    ...previous,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    version: 4,
+    diagram: {
+      ...previous.diagram,
+      id: "eight-guards-progressively-longer-source-diagram-v2",
+      localizedTextOverlays: [{
+        id: "move-stone-aside",
+        x: 0.047,
+        y: 0.748,
+        width: 0.378,
+        height: 0.114,
+        text: "After each stone stops, move it aside as a marker.",
+        backgroundColor: "#ffffff",
+        textColor: "#000000",
+        fontSize: 0.031,
+      }],
     },
   };
 }
@@ -717,9 +748,9 @@ function buildComeAroundVersion(): ExerciseVersion {
 // 7. Soft Take-out on the Centre Line at the T-Line — Shotmaking
 // ---------------------------------------------------------------------------
 
-function buildSoftTakeoutVersion(): ExerciseVersion {
+function buildSoftTakeoutVersion1(): ExerciseVersion {
   return {
-    id: SOFT_TAKEOUT_VERSION_ID,
+    id: SOFT_TAKEOUT_V1_VERSION_ID,
     exerciseId: SOFT_TAKEOUT_EXERCISE_ID,
     version: 1,
     contentSchemaVersion: EXERCISE_CONTENT_SCHEMA_VERSION,
@@ -844,6 +875,34 @@ function buildSoftTakeoutVersion(): ExerciseVersion {
   };
 }
 
+/** Version 2 aligns the English target-zone overlay with the embedded label. */
+function buildSoftTakeoutVersion2(): ExerciseVersion {
+  const previous = buildSoftTakeoutVersion1();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Soft Take-out v1 must retain its attributed source diagram.");
+  }
+  return {
+    ...previous,
+    id: SOFT_TAKEOUT_VERSION_ID,
+    version: 2,
+    diagram: {
+      ...previous.diagram,
+      id: "soft-takeout-centre-line-t-line-source-diagram-v2",
+      localizedTextOverlays: [{
+        id: "target-zone",
+        x: 0.70,
+        y: 0.142,
+        width: 0.255,
+        height: 0.04,
+        text: "Target zone",
+        backgroundColor: "#b7e3f4",
+        textColor: "#000000",
+        fontSize: 0.035,
+      }],
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Assembly
 // ---------------------------------------------------------------------------
@@ -870,10 +929,12 @@ export function buildCuratedExerciseVersions(): ExerciseVersion[] {
     buildEightGuardsVersion1(),
     buildEightGuardsVersion2(),
     buildEightGuardsVersion3(),
+    buildEightGuardsVersion4(),
     buildReleaseTimeVersion(),
     buildReleaseGatesVersion(),
     buildRotationCountVersion(),
     buildComeAroundVersion(),
-    buildSoftTakeoutVersion(),
+    buildSoftTakeoutVersion1(),
+    buildSoftTakeoutVersion2(),
   ];
 }
