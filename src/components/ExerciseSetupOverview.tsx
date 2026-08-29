@@ -1,10 +1,10 @@
 import type { ExerciseVersion } from "../lib/exercises/types";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 
 type Props = {
   version: ExerciseVersion;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
   includeGoal?: boolean;
 };
 
@@ -14,7 +14,7 @@ type Props = {
  */
 export default function ExerciseSetupOverview({
   version,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
   includeGoal = true,
 }: Props) {
   return (
@@ -57,7 +57,7 @@ export default function ExerciseSetupOverview({
           <h3 className="mb-3 text-sm font-semibold text-slate-900">Exercise diagram</h3>
           <ExerciseDiagramView
             diagram={version.diagram}
-            restrictedAssetResolver={restrictedAssetResolver}
+            exerciseAssetResolver={exerciseAssetResolver}
           />
         </div>
       )}

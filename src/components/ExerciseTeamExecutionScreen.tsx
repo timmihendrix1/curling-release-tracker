@@ -28,7 +28,7 @@ import ConfirmModal from "./ConfirmModal";
 import ExerciseTeamAttemptCorrectionEditor from "./ExerciseTeamAttemptCorrectionEditor";
 import ExerciseExecutionReference from "./ExerciseExecutionReference";
 import { surfaceClass } from "./Surface";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 
 type Props = {
   execution: ExerciseExecution;
@@ -36,7 +36,7 @@ type Props = {
   onSave(execution: ExerciseExecution): Promise<boolean>;
   onComplete(execution: ExerciseExecution): Promise<boolean>;
   onDiscard(executionId: string): Promise<boolean>;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 const EXCLUSION_OPTIONS: readonly { value: ShotmakingExclusionReason; label: string }[] = [
@@ -57,7 +57,7 @@ export default function ExerciseTeamExecutionScreen({
   onSave,
   onComplete,
   onDiscard,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: Props) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
@@ -583,7 +583,7 @@ export default function ExerciseTeamExecutionScreen({
 
       <ExerciseExecutionReference
         version={version}
-        restrictedAssetResolver={restrictedAssetResolver}
+        exerciseAssetResolver={exerciseAssetResolver}
       />
 
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}

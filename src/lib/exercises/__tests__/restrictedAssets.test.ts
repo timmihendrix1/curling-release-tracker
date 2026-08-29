@@ -13,7 +13,8 @@ const REFERENCE: RestrictedAssetReference =
     ? RESTRICTED_DIAGRAM.assetReference
     : { assetId: "unreachable" };
 const DISTRIBUTION: RestrictedDistribution =
-  RESTRICTED_DIAGRAM.kind === "attributed-source-image"
+  RESTRICTED_DIAGRAM.kind === "attributed-source-image" &&
+  RESTRICTED_DIAGRAM.distribution.scope === "restricted-closed-beta"
     ? RESTRICTED_DIAGRAM.distribution
     : {
         scope: "restricted-closed-beta",

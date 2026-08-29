@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { blockModeLabel } from "../lib/trainingBlocks";
 import { TRAINING_PLANS_SCHEMA_VERSION } from "../lib/trainingPlans/persistence";
@@ -24,6 +25,7 @@ type TrainingPlanEditorProps = {
   defaultAccuracyToleranceProfileId?: string | null;
   smartRandomProfiles?: SmartRandomProfile[];
   defaultSmartRandomProfileId?: string | null;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 function handleStrategyLabel(step: TrainingPlanStep): string {
@@ -55,6 +57,7 @@ export default function TrainingPlanEditor({
   defaultAccuracyToleranceProfileId = null,
   smartRandomProfiles = [],
   defaultSmartRandomProfileId = null,
+  exerciseAssetResolver,
 }: TrainingPlanEditorProps) {
   const [name, setName] = useState(initialPlan?.name ?? "");
   const [description, setDescription] = useState(initialPlan?.description ?? "");
@@ -262,6 +265,7 @@ export default function TrainingPlanEditor({
           defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
           smartRandomProfiles={smartRandomProfiles}
           defaultSmartRandomProfileId={defaultSmartRandomProfileId}
+          exerciseAssetResolver={exerciseAssetResolver}
         />
       )}
 

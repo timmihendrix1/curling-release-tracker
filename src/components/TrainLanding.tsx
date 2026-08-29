@@ -16,7 +16,7 @@ import {
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import type { TrainingPlan } from "../types";
 import type { ExerciseVersion } from "../lib/exercises/types";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import ExerciseDetail from "./ExerciseDetail";
 import ExerciseLibrary from "./ExerciseLibrary";
 import TrainingPlanEditor from "./TrainingPlanEditor";
@@ -61,7 +61,7 @@ type TrainLandingProps = {
   startExerciseDisabled?: boolean;
   onSetUpTeamExercise?: (version: ExerciseVersion) => void;
   teamExerciseStartDisabled?: boolean;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 export type TrainEntryPath = "exercises" | "plans";
@@ -122,7 +122,7 @@ export default function TrainLanding({
   startExerciseDisabled = false,
   onSetUpTeamExercise,
   teamExerciseStartDisabled = false,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: TrainLandingProps) {
   const reactId = useId();
   const tabId = (path: TrainEntryPath) => `${reactId}-tab-${path}`;
@@ -311,7 +311,7 @@ export default function TrainLanding({
               : undefined}
             startDisabled={startExerciseDisabled}
             teamStartDisabled={teamExerciseStartDisabled}
-            restrictedAssetResolver={restrictedAssetResolver}
+            exerciseAssetResolver={exerciseAssetResolver}
           />
         )}
 
@@ -359,6 +359,7 @@ export default function TrainLanding({
             defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
             smartRandomProfiles={smartRandomProfiles}
             defaultSmartRandomProfileId={defaultSmartRandomProfileId}
+            exerciseAssetResolver={exerciseAssetResolver}
           />
         )}
 

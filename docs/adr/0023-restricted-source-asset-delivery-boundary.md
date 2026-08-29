@@ -2,10 +2,11 @@
 
 ## Status
 
-Accepted. Stage A implemented the content boundary before any asset existed. Stage E
-implements the closed-beta delivery capability for exactly three approved Swiss Curling
-diagrams without placing them in a public asset surface. The external permission gate
-before any wider audience remains unchanged.
+Accepted for genuinely restricted content. Stage A implemented the boundary and Stage E
+used it for the initial one-Team delivery. **ADR-0044 supersedes that delivery decision
+for the three Swiss Curling diagrams only:** their permission scope is now public and
+their current Exercise Versions use a separate cache-first public resolver. This ADR
+remains the required boundary for any future asset whose audience is actually restricted.
 
 ## Context
 

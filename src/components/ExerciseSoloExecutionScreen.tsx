@@ -21,7 +21,7 @@ import { exerciseFocusLabel, measurementUnitLabel } from "../lib/exercises/prese
 import ConfirmModal from "./ConfirmModal";
 import ExerciseExecutionReference from "./ExerciseExecutionReference";
 import { surfaceClass } from "./Surface";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 
 type ExerciseSoloExecutionScreenProps = {
   execution: ExerciseExecution;
@@ -30,7 +30,7 @@ type ExerciseSoloExecutionScreenProps = {
   onBackToLibrary: () => void;
   onStartNewSession: () => void;
   withinTrainingPlan?: boolean;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 const EXCLUSION_OPTIONS: readonly {
@@ -55,7 +55,7 @@ export default function ExerciseSoloExecutionScreen({
   onBackToLibrary,
   onStartNewSession,
   withinTrainingPlan = false,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: ExerciseSoloExecutionScreenProps) {
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
@@ -651,7 +651,7 @@ export default function ExerciseSoloExecutionScreen({
       {active && (
         <ExerciseExecutionReference
           version={version}
-          restrictedAssetResolver={restrictedAssetResolver}
+          exerciseAssetResolver={exerciseAssetResolver}
         />
       )}
 

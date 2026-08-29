@@ -1,4 +1,4 @@
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import { DIAGRAM_UNSUPPORTED_ELEMENTS_NOTICE } from "../lib/exercises/presentation";
 import type { ExerciseDiagram } from "../lib/exercises/types";
 import ExerciseRestrictedSourceImage from "./ExerciseRestrictedSourceImage";
@@ -6,7 +6,7 @@ import ExerciseStructuredDiagram from "./ExerciseStructuredDiagram";
 
 type ExerciseDiagramViewProps = {
   diagram: ExerciseDiagram;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 /**
@@ -21,7 +21,7 @@ type ExerciseDiagramViewProps = {
  */
 export default function ExerciseDiagramView({
   diagram,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: ExerciseDiagramViewProps) {
   switch (diagram.kind) {
     case "structured-platform-diagram":
@@ -31,7 +31,7 @@ export default function ExerciseDiagramView({
       return (
         <ExerciseRestrictedSourceImage
           diagram={diagram}
-          restrictedAssetResolver={restrictedAssetResolver}
+          exerciseAssetResolver={exerciseAssetResolver}
         />
       );
 

@@ -247,7 +247,7 @@ export const EXERCISE_DETAIL_BACK_LABEL = "Back to Exercises";
 export const RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE = "Diagram not available on this device";
 
 export const RESTRICTED_DIAGRAM_UNAVAILABLE_BODY =
-  "This exercise's diagram comes from a restricted source and can only be shown where its delivery has been authorised. The written setup and instructions below describe the same exercise in full.";
+  "Connect once to download this exercise diagram for offline use. The written setup and instructions below remain available.";
 
 export const DIAGRAM_UNSUPPORTED_ELEMENTS_NOTICE =
   "Part of this diagram cannot be drawn here. The written setup and instructions describe the exercise in full.";

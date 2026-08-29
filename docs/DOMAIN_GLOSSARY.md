@@ -407,6 +407,10 @@ and completes through the existing explicit Exercise transition without an inven
 planned volume. The materialised runtime entity always gets its own identity; a Plan
 Step id is never reused as a Block or Exercise Execution id.
 
+Create and edit select that snapshot through the same searchable Technique /
+Shotmaking / Measured Exercise catalogue. Release Time is therefore selected as a
+Measured Exercise before its timing-specific fields are configured.
+
 ---
 
 ## Handle Strategy
@@ -1637,14 +1641,16 @@ search and using it for recommendations is Planned.]**
 ## Exercise Diagram
 
 Instructional content explaining setup, intended path, target or sequence. The domain
-distinguishes a restricted, attributed source image from a versioned structured
+distinguishes an attributed source image (with a public or restricted distribution)
+from a versioned structured
 platform diagram in normalised Ice Sheet coordinates. It is not captured position data
 and does not itself perform automatic scoring.
 **[Implemented — both variants are modelled and validated; the structured variant has a
 generic responsive SVG renderer (`normalized-ice-sheet-v1`), and unsupported content
 fails visibly rather than disappearing. The three approved Swiss Curling Shotmaking
-diagrams use the restricted variant with English localized-text overlays where needed.
-No editor, animation, actual positions or sensor overlay exists (Planned). See ADR-0023.]**
+diagrams use public attributed-image Versions with English localized-text overlays where
+needed and a cache-first offline copy after initial download. No editor, animation,
+actual positions or sensor overlay exists (Planned). See ADR-0023 and ADR-0044.]**
 
 ## Restricted Source Asset
 
@@ -1653,10 +1659,9 @@ named by an **opaque asset reference** — never a URL or public path — and is
 only through an explicitly injected authorized resolver. Every uncertain path fails
 closed, including a resolver that throws, and attribution/provenance stay visible either
 way.
-**[Implemented — boundary and closed-beta delivery. Exactly three private Swiss Curling
-PNG assets are allowlisted outside `public/`; an authenticated same-origin route uses the
-caller's bearer token and active-Team-membership RLS, and the asynchronous browser
-resolver fails closed. The permission gate before a wider pilot remains external. See
+**[Implemented as a reusable boundary for future restricted material. The three current
+Swiss Curling diagrams are no longer restricted assets: ADR-0044 records their public,
+cache-first delivery. See
 `docs/adr/0023-restricted-source-asset-delivery-boundary.md`.]**
 
 ## Measurement Protocol

@@ -73,14 +73,16 @@ import type { AssessmentRun } from "../lib/assessment/types";
 import { createSoloExerciseExecution } from "../lib/exercises/execution";
 import type { ExerciseExecution } from "../lib/exercises/executionTypes";
 import type { ExerciseVersion } from "../lib/exercises/types";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import {
+  createPublicExerciseAssetResolver,
+  preloadPublicExerciseDiagrams,
+  type ExerciseAssetResolver,
+} from "../lib/exercises/exerciseAssets";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
 import {
   exerciseRunnerKind,
   resolveMeasurementProtocols,
 } from "../lib/exercises/lookup";
-import { resolveCloudConfig } from "../lib/supabase/config";
-import { createSupabaseRestrictedAssetResolver } from "../lib/supabase/teamServiceFactory";
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import {
@@ -296,12 +298,13 @@ function snapshotExerciseVersion(version: ExerciseVersion): ExerciseVersion {
 }
 
 export default function TrackerApp() {
-  const restrictedAssetResolver = useMemo<RestrictedAssetResolver | undefined>(() => {
-    const config = resolveCloudConfig();
-    return config.status === "configured"
-      ? createSupabaseRestrictedAssetResolver(config)
-      : undefined;
-  }, []);
+  const exerciseAssetResolver = useMemo<ExerciseAssetResolver>(
+    () => createPublicExerciseAssetResolver(),
+    []
+  );
+  useEffect(() => {
+    void preloadPublicExerciseDiagrams(exerciseAssetResolver);
+  }, [exerciseAssetResolver]);
   const athleteProfileId = useSportingProfileId();
   const sportingCloudSync = useSportingCloudSync();
   const {
@@ -2627,7 +2630,7 @@ export default function TrackerApp() {
         <>
           {activeTeamExerciseDraft ? (
             <ExerciseTeamExecutionScreen
-              restrictedAssetResolver={restrictedAssetResolver}
+              exerciseAssetResolver={exerciseAssetResolver}
               execution={activeTeamExerciseDraft}
               eligibilitySnapshot={activeTeamEligibilitySnapshot}
               onSave={async (execution) =>
@@ -2645,7 +2648,7 @@ export default function TrackerApp() {
           ) : pendingTeamExerciseVersion ? (
             <ExerciseTeamSetupScreen
               version={pendingTeamExerciseVersion}
-              restrictedAssetResolver={restrictedAssetResolver}
+              exerciseAssetResolver={exerciseAssetResolver}
               recorderProfileId={athleteProfileId}
               eligibilitySnapshots={sportingCloudSync?.teamEligibilitySnapshots ?? []}
               onStart={async (execution) => {
@@ -2660,7 +2663,7 @@ export default function TrackerApp() {
           ) : pendingSoloExerciseVersion ? (
             <ExerciseSoloSetupScreen
               version={pendingSoloExerciseVersion}
-              restrictedAssetResolver={restrictedAssetResolver}
+              exerciseAssetResolver={exerciseAssetResolver}
               disabled={!sessionWritable}
               onConfirm={() => {
                 handleConfirmSoloExerciseStart();
@@ -2712,7 +2715,7 @@ export default function TrackerApp() {
                 />
               )}
               <ExerciseSoloExecutionScreen
-                restrictedAssetResolver={restrictedAssetResolver}
+                exerciseAssetResolver={exerciseAssetResolver}
                 execution={displayedExerciseExecution}
                 writable={sessionWritable}
                 onReplace={handleReplaceExerciseExecution}
@@ -2748,7 +2751,7 @@ export default function TrackerApp() {
             // through the Release Time Measured Exercise rather than a
             // top-level Quick Start shortcut.
             <TrainLanding
-              restrictedAssetResolver={restrictedAssetResolver}
+              exerciseAssetResolver={exerciseAssetResolver}
               releaseTimingSetupContent={
                 // One Hero setup surface, composed around the actual decision
                 // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
@@ -2907,14 +2910,16 @@ export default function TrackerApp() {
                   {/* Secondary action — kept visually subordinate to the
                       block identity beside it and to the primary shot-entry
                       action below (DESIGN_SYSTEM.md §19.1/§12.2). */}
-                  <button
-                    type="button"
-                    onClick={handleOpenNewBlockModal}
-                    disabled={!sessionWritable}
-                    className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    New Training Block
-                  </button>
+                  {!isTrainingPlanActive && (
+                    <button
+                      type="button"
+                      onClick={handleOpenNewBlockModal}
+                      disabled={!sessionWritable}
+                      className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      New Training Block
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2924,29 +2929,6 @@ export default function TrackerApp() {
                   summary={trainingPlanProgressSummary}
                 />
               )}
-
-              {isTrainingPlanActive &&
-                isActivePlanStepComplete &&
-                planExecution &&
-                activePlanStepSnapshot &&
-                (isTrainingPlanComplete ? (
-                  <TrainingPlanStepTransition
-                    kind="plan-complete"
-                    totalSteps={planExecution.steps.length}
-                    onFinish={handleFinishPlannedTraining}
-                  />
-                ) : (
-                  nextPlanStepLabel && (
-                    <TrainingPlanStepTransition
-                      kind="continue"
-                      completedStepLabel={trainingPlanStepTitle(
-                        activePlanStepSnapshot.step
-                      )}
-                      nextStepLabel={nextPlanStepLabel}
-                      onContinue={handleContinueToNextPlanStep}
-                    />
-                  )
-                ))}
 
               {activeBlock.mode === "blind" ? (
                 <>
@@ -3490,14 +3472,54 @@ export default function TrackerApp() {
                 Export Current Session CSV
               </button>
 
-              <button
-                type="button"
-                onClick={handleStartNewSession}
-                disabled={!sessionWritable}
-                className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Start New Session
-              </button>
+              {isTrainingPlanActive &&
+                planExecution &&
+                activePlanStepSnapshot &&
+                (isActivePlanStepComplete ? (
+                  isTrainingPlanComplete ? (
+                    <TrainingPlanStepTransition
+                      kind="plan-complete"
+                      totalSteps={planExecution.steps.length}
+                      onFinish={handleFinishPlannedTraining}
+                    />
+                  ) : (
+                    nextPlanStepLabel && (
+                      <TrainingPlanStepTransition
+                        kind="continue"
+                        completedStepLabel={trainingPlanStepTitle(
+                          activePlanStepSnapshot.step
+                        )}
+                        nextStepLabel={nextPlanStepLabel}
+                        onContinue={handleContinueToNextPlanStep}
+                      />
+                    )
+                  )
+                ) : isReleaseTimingPlanStep(activePlanStepSnapshot.step) ? (
+                  <section className={surfaceClass("primary")}>
+                    <p className="text-sm font-medium text-slate-900">
+                      Complete this Release Time step
+                    </p>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Record {Math.max(
+                        0,
+                        activePlanStepSnapshot.step.completion.value -
+                          activeBlockShots.length
+                      )} more {activePlanStepSnapshot.step.completion.value -
+                          activeBlockShots.length === 1 ? "stone" : "stones"} to continue to the next planned exercise.
+                    </p>
+                  </section>
+                ) : null)}
+
+              {!isTrainingPlanActive && (
+                <button
+                  type="button"
+                  onClick={handleStartNewSession}
+                  disabled={!sessionWritable}
+                  className="w-full rounded-xl bg-red-100 px-4 py-3 font-medium text-red-700 transition hover:bg-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Start New Session
+                </button>
+              )}
             </>
           )}
         </>

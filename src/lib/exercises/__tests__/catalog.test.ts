@@ -9,11 +9,13 @@ import {
   EIGHT_GUARDS_V1_VERSION_ID,
   EIGHT_GUARDS_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID,
+  EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
   COME_AROUND_EXERCISE_ID,
   COME_AROUND_VERSION_ID,
   SOFT_TAKEOUT_EXERCISE_ID,
   SOFT_TAKEOUT_V1_VERSION_ID,
+  SOFT_TAKEOUT_V2_VERSION_ID,
   SOFT_TAKEOUT_VERSION_ID,
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
@@ -70,7 +72,7 @@ describe("production Exercise catalog", () => {
       COME_AROUND_EXERCISE_ID,
       SOFT_TAKEOUT_EXERCISE_ID,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(11);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(14);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -221,7 +223,7 @@ describe("deterministic lookup", () => {
     ).toEqual([1]);
     expect(
       listExerciseVersions(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID).map((v) => v.version)
-    ).toEqual([1, 2, 3, 4]);
+    ).toEqual([1, 2, 3, 4, 5]);
     expect(listExerciseVersions(EXERCISE_CATALOG, "not-a-real-exercise")).toEqual([]);
   });
 });
@@ -326,7 +328,7 @@ describe("curated Stage A content", () => {
     }]);
   });
 
-  it("retains each Eight Guards version while version 4 corrects only the overlay geometry", () => {
+  it("retains each Eight Guards version while v4 fixes the overlay and v5 clears public delivery", () => {
     const v1 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_V1_VERSION_ID);
     const v2 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
     const v3 = findExerciseVersion(
@@ -334,6 +336,10 @@ describe("curated Stage A content", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID
     );
     const v4 = findExerciseVersion(
+      EXERCISE_CATALOG,
+      EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID
+    );
+    const v5 = findExerciseVersion(
       EXERCISE_CATALOG,
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID
     );
@@ -353,9 +359,21 @@ describe("curated Stage A content", () => {
         }),
       ]);
     }
-    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v4?.id);
+    expect(v5).toMatchObject({ version: 5 });
+    expect(v5?.diagram?.kind).toBe("attributed-source-image");
+    if (v5?.diagram?.kind === "attributed-source-image") {
+      expect(v5.diagram.distribution).toMatchObject({
+        scope: "public",
+        publicDeliveryPermitted: true,
+      });
+      expect(v5.diagram.localizedTextOverlays).toEqual(v4?.diagram?.kind === "attributed-source-image"
+        ? v4.diagram.localizedTextOverlays
+        : undefined);
+    }
+    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v5?.id);
     expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V1_VERSION_ID)).toMatchObject({ version: 1 });
-    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_VERSION_ID)).toMatchObject({ version: 2 });
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V2_VERSION_ID)).toMatchObject({ version: 2 });
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_VERSION_ID)).toMatchObject({ version: 3 });
   });
 
   it("Eight Guards carries visible English Swiss Curling attribution and an independently drawn diagram", () => {
@@ -448,13 +466,13 @@ describe("curated Stage A content", () => {
       expect(version.diagram?.kind).toBe("attributed-source-image");
       if (version.diagram?.kind !== "attributed-source-image") continue;
       expect(version.diagram.distribution).toMatchObject({
-        scope: "restricted-closed-beta",
-        publicDeliveryPermitted: false,
+        scope: "public",
+        publicDeliveryPermitted: true,
       });
     }
   });
 
-  it("uses restricted source images for exactly the three closed-beta Shotmaking Exercises", () => {
+  it("uses publicly cleared source images for exactly the three current Shotmaking Exercises", () => {
     const sourceImages = listCurrentExerciseVersions(EXERCISE_CATALOG).filter(
       (version) => version.diagram?.kind === "attributed-source-image"
     );
@@ -467,7 +485,10 @@ describe("curated Stage A content", () => {
       expect(version.source.kind).toBe("external-collection");
       expect(version.source.organization).toBe("Swiss Curling");
       if (version.diagram?.kind !== "attributed-source-image") continue;
-      expect(version.diagram.distribution.publicDeliveryPermitted).toBe(false);
+      expect(version.diagram.distribution).toMatchObject({
+        scope: "public",
+        publicDeliveryPermitted: true,
+      });
       for (const overlay of version.diagram.localizedTextOverlays ?? []) {
         expect(overlay.text).not.toMatch(/Übung|Stein|Zielzone/);
       }

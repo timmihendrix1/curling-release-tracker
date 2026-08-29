@@ -14,7 +14,7 @@ import {
   type TeamRoleAssignmentInput,
 } from "../lib/exercises/teamExecution";
 import type { ExerciseVersion } from "../lib/exercises/types";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import ExerciseSetupOverview from "./ExerciseSetupOverview";
 import { surfaceClass } from "./Surface";
 
@@ -24,7 +24,7 @@ type Props = {
   eligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
   onStart(execution: ExerciseExecution): Promise<boolean>;
   onCancel(): void;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 type RotationKind = ExerciseRotationConfiguration["kind"];
@@ -51,7 +51,7 @@ export default function ExerciseTeamSetupScreen({
   eligibilitySnapshots,
   onStart,
   onCancel,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: Props) {
   const id = useId();
   const availableTeams = eligibilitySnapshots.filter((snapshot) =>
@@ -242,7 +242,7 @@ export default function ExerciseTeamSetupScreen({
         <h3 className="mb-4 text-base font-semibold text-slate-900">Confirm exercise setup</h3>
         <ExerciseSetupOverview
           version={version}
-          restrictedAssetResolver={restrictedAssetResolver}
+          exerciseAssetResolver={exerciseAssetResolver}
         />
       </section>
 

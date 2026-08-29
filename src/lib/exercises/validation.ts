@@ -1316,17 +1316,26 @@ function validateDiagram(diagram: ExerciseDiagram, where: string, add: AddIssue)
     if (
       distribution === null ||
       typeof distribution !== "object" ||
-      !isOneOf(distribution.scope, RESTRICTED_DISTRIBUTION_SCOPES) ||
       !isNonEmptyString(distribution.permittedAudience)
     ) {
       add(
         "invalid_restricted_source_image",
-        `${where} source-image diagram must declare a supported restricted-distribution scope and permitted audience.`
+        `${where} source-image diagram must declare a supported distribution and permitted audience.`
       );
-    } else if (distribution.publicDeliveryPermitted !== false) {
+    } else if (distribution.scope === "public") {
+      if (distribution.publicDeliveryPermitted !== true) {
+        add(
+          "invalid_restricted_source_image",
+          `${where} public source-image distribution must permit public delivery.`
+        );
+      }
+    } else if (
+      !isOneOf(distribution.scope, RESTRICTED_DISTRIBUTION_SCOPES) ||
+      distribution.publicDeliveryPermitted !== false
+    ) {
       add(
         "invalid_restricted_source_image",
-        `${where} source-image diagram must not permit public delivery.`
+        `${where} restricted source-image distribution must use a supported scope and forbid public delivery.`
       );
     }
     return;

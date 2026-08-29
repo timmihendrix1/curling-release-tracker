@@ -126,9 +126,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
       "Synthetic variation.",
       "Synthetic participation summary.",
       "Synthetic sweeping note.",
-      "Synthetic Collection",
       "Synthetic Exercise 42",
-      "Synthetic provenance note.",
     ]) {
       expect(screen.getAllByText(new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).length)
         .toBeGreaterThan(0);
@@ -153,10 +151,9 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
     );
 
     expect(screen.getByText("Exercise version 4")).toBeInTheDocument();
-    expect(screen.getByText(/Exercise version:/)).toBeInTheDocument();
-    // The external collection's own version stays separately labelled.
-    expect(screen.getByText(/Source version:/)).toBeInTheDocument();
-    expect(screen.getByText(/^3\.1$/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: Synthetic attribution.*Synthetic Exercise 42/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/Source version:/)).toBeNull();
   });
 
   it("phrases every participant-count shape in natural English", () => {

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingPlanStepEditor from "../TrainingPlanStepEditor";
 import type { AccuracyToleranceProfile } from "../../lib/accuracyToleranceProfiles/persistence";
@@ -16,6 +16,15 @@ const eliteProfile: AccuracyToleranceProfile = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
+function selectReleaseTime() {
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search exercises" }), {
+    target: { value: "Release Time" },
+  });
+  const card = screen.getByRole("heading", { name: "Release Time" }).closest("section");
+  if (!card) throw new Error("Missing Release Time picker card");
+  fireEvent.click(within(card).getByRole("button", { name: "Select Exercise" }));
+}
+
 describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
   it("passes saved profiles through to the embedded TrainingSetup, reachable under Custom", () => {
     render(
@@ -27,7 +36,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
+    selectReleaseTime();
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(screen.getByLabelText("Accuracy Tolerance Profile")).toBeInTheDocument();
     expect(screen.getByText(/Elite: On Target ±0.05s/)).toBeInTheDocument();
@@ -44,7 +53,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
+    selectReleaseTime();
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
 
@@ -59,7 +68,7 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
 
   it("works with no profiles passed at all (default props)", () => {
     render(<TrainingPlanStepEditor onSave={vi.fn()} onCancel={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
+    selectReleaseTime();
     fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     expect(
       screen.queryByLabelText("Accuracy Tolerance Profile")

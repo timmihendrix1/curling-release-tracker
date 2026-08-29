@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
 import { EIGHT_GUARDS_V1_VERSION_ID } from "../../lib/exercises/content";
@@ -35,7 +35,10 @@ describe("TrainingPlanEditor", () => {
     // Opens the Add Step modal (the editor's own "Add Step" button is the only
     // one in the DOM until the modal mounts).
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
-    fireEvent.click(screen.getByRole("button", { name: "Release Time Measurement" }));
+    fireEvent.click(screen.getByRole("button", { name: /Measured Exercises/ }));
+    const releaseTimeCard = screen.getByRole("heading", { name: "Release Time" }).closest("section");
+    if (!releaseTimeCard) throw new Error("Missing Release Time picker card");
+    fireEvent.click(within(releaseTimeCard).getByRole("button", { name: "Select Exercise" }));
 
     const stonesInput = screen.getByLabelText("Number of Stones");
     fireEvent.change(stonesInput, { target: { value: "12" } });
@@ -72,13 +75,11 @@ describe("TrainingPlanEditor", () => {
       target: { value: "Technique then stones" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Technique, Shotmaking or Measured Exercise" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: /Technique/ }));
+    const releasePointCard = screen.getByRole("heading", { name: "Release Point" }).closest("section");
+    if (!releasePointCard) throw new Error("Missing Release Point picker card");
+    fireEvent.click(within(releasePointCard).getByRole("button", { name: "Select Exercise" }));
     expect(screen.queryByLabelText("Number of Stones")).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Exercise"), {
-      target: { value: "release-point-v1" },
-    });
     const addButtons = screen.getAllByRole("button", { name: "Add Step" });
     fireEvent.click(addButtons[addButtons.length - 1]);
     expect(screen.getByText("Release Point")).toBeInTheDocument();
@@ -95,6 +96,7 @@ describe("TrainingPlanEditor", () => {
   });
 
   it("keeps a saved older Exercise Version selectable when a newer catalog Version is current", () => {
+    const onSave = vi.fn();
     const olderVersion = findExerciseVersion(
       EXERCISE_CATALOG,
       EIGHT_GUARDS_V1_VERSION_ID
@@ -117,23 +119,18 @@ describe("TrainingPlanEditor", () => {
     render(
       <TrainingPlanEditor
         initialPlan={initialPlan}
-        onSave={vi.fn()}
+        onSave={onSave}
         onCancel={vi.fn()}
       />
     );
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("heading", { name: "Eight Guards, Progressively Longer" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change Exercise" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save Step" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Training Plan" }));
 
-    const selector = screen.getByLabelText("Exercise") as HTMLSelectElement;
-    expect(selector.value).toBe(EIGHT_GUARDS_V1_VERSION_ID);
-    expect(
-      screen.getByRole("option", {
-        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 1",
-      })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", {
-        name: "Eight Guards, Progressively Longer — Shotmaking · Exercise version 4",
-      })
-    ).toBeInTheDocument();
+    expect(onSave.mock.calls[0][0].steps[0].exerciseVersionSnapshot.id)
+      .toBe(EIGHT_GUARDS_V1_VERSION_ID);
   });
 });

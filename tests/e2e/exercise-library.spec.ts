@@ -175,7 +175,7 @@ test.describe("Exercise Library and Solo execution", () => {
     }
   });
 
-  test("fails closed for the Guard source diagram without beta authorization", async ({
+  test("keeps the public Guard diagram available from its local cache while offline", async ({
     page,
   }) => {
     await freshLoad(page);
@@ -183,18 +183,28 @@ test.describe("Exercise Library and Solo execution", () => {
     await openTrainTab(page, "Exercises");
     await openExerciseDetail(page, "Eight Guards, Progressively Longer");
 
-    const unavailable = page.getByTestId("exercise-restricted-diagram-unavailable");
-    await expect(unavailable).toBeVisible();
-    await expect(page.locator("img")).toHaveCount(0);
-    await expect(page.getByText("Diagram reproduced from Swiss Curling.")).toBeVisible();
-    await expect(
-      page.getByText("The configured Elite Team closed beta only.")
-    ).toBeVisible();
+    const diagram = page.getByRole("img", {
+      name: /eight numbered guard positions/i,
+    });
+    await expect(diagram).toBeVisible();
+    await expect(diagram).toHaveAttribute("src", /^data:image\/png;base64,/);
+    await expect(page.getByText("Guard Exercise 10 — original Swiss Curling diagram.")).toBeVisible();
+    await expect(page.getByText(/Source: .*Swiss Curling.*Guard Exercise 10/)).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
-    // No German source text and no restricted source image anywhere.
+    // The already loaded application must keep using the locally persisted
+    // data URL when connectivity disappears; no network request is needed.
+    await page.getByRole("button", { name: "← Back to Exercises" }).click();
+    await page.context().setOffline(true);
+    await openExerciseDetail(page, "Eight Guards, Progressively Longer");
+    await expect(diagram).toBeVisible();
+    await expect(diagram).toHaveAttribute("src", /^data:image\/png;base64,/);
+    await expect(page.getByTestId("exercise-restricted-diagram-unavailable")).toHaveCount(0);
+
+    // Embedded German labels stay covered by the data-driven English overlay.
     const body = await page.locator("body").textContent();
     expect(body).not.toMatch(/Übung|Steine|immer länger/);
+    await page.context().setOffline(false);
   });
 
   test("Train tabs are keyboard operable and carry complete tab semantics", async ({ page }) => {
@@ -314,7 +324,7 @@ test.describe("Exercise Library and Solo execution", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 4],
+      ["Eight Guards, Progressively Longer", 5],
       ["Release Time", 1],
     ] as const) {
       await openExerciseDetail(page, title);
@@ -349,9 +359,9 @@ test.describe("Exercise Library and Solo execution", () => {
     }
 
     await openExerciseDetail(page, "Eight Guards, Progressively Longer");
-    await expect(
-      page.getByTestId("exercise-restricted-diagram-unavailable")
-    ).toBeVisible();
+    await expect(page.getByRole("img", {
+      name: /eight numbered guard positions/i,
+    })).toBeVisible();
   });
 
   test("keeps Training Plans reachable and starts Release Timing through its Measured Exercise", async ({ page }) => {

@@ -960,6 +960,19 @@ Avoid storing two competing order representations.
 
 The user should be able to create a plan from the Train area.
 
+The implemented step picker is Library-backed rather than a title-only native select.
+It first offers **Technique**, **Shotmaking** and **Measured Exercises**, supports search
+across all three, and shows each Exercise's goal and classification. The athlete can
+expand the setup and diagram before selecting the exact immutable Exercise Version.
+The same flow is used when editing a step. Release Time lives under Measured Exercises;
+selecting it reveals the established Fixed/Variable/Blind configuration rather than a
+second timing feature.
+
+During execution, a Release Time step completes at its configured shot count. If it is
+between two other Exercises, the active screen shows how many stones remain and then
+offers **Continue to Next Step**. **Start New Session** is hidden while any Training Plan
+is active, so it cannot replace the plan's own progression action.
+
 The creation flow should be simple:
 
 ```text

@@ -459,7 +459,6 @@ describe("Exercise detail", () => {
       "How it is evaluated",
       "Volume and reference goal",
       "Variations",
-      "Source and attribution",
     ]) {
       expect(screen.getByText(heading)).toBeInTheDocument();
     }
@@ -525,23 +524,17 @@ describe("Exercise detail", () => {
     expect(document.body.textContent).not.toMatch(/one point per stone|1 point per stone/i);
   });
 
-  it("Eight Guards shows visible English Swiss Curling attribution", () => {
+  it("Eight Guards shows one compact English Swiss Curling source footer", () => {
     renderTrainLanding();
     openExercises();
     openDetail("Eight Guards, Progressively Longer");
 
-    expect(
-      screen.getAllByText(
-        "Adapted by this application from Swiss Curling's Individual On-Ice Training – Exercise Collection, version 2.0."
-      ).length
-    ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText(/Individual On-Ice Training – Exercise Collection/).length
-    ).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Guard Exercise 10/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Source: Adapted by this application from Swiss Curling.*Guard Exercise 10/))
+      .toBeInTheDocument();
+    expect(screen.queryByText("Source and attribution")).toBeNull();
   });
 
-  it("Eight Guards fails closed without an authorized diagram resolver and preserves attribution", () => {
+  it("Eight Guards has a clear fallback without a diagram resolver and keeps its compact source", () => {
     renderTrainLanding();
     openExercises();
     openDetail("Eight Guards, Progressively Longer");
@@ -550,8 +543,10 @@ describe("Exercise detail", () => {
       screen.getByTestId("exercise-restricted-diagram-unavailable")
     ).toBeInTheDocument();
     expect(screen.queryByRole("img")).toBeNull();
-    expect(screen.getByText("Diagram reproduced from Swiss Curling.")).toBeInTheDocument();
-    expect(screen.getByText("The configured Elite Team closed beta only.")).toBeInTheDocument();
+    expect(screen.getByText("Guard Exercise 10 — original Swiss Curling diagram."))
+      .toBeInTheDocument();
+    expect(screen.getByText(/Source: Adapted by this application from Swiss Curling.*Guard Exercise 10/))
+      .toBeInTheDocument();
   });
 
   it("Release Time is a Measured Exercise, distinct from the Assessment, with no prescribed target", () => {
@@ -876,21 +871,22 @@ describe("version, provenance and participant wording", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 4],
+      ["Eight Guards, Progressively Longer", 5],
       ["Release Time", 1],
-      ["Come-around from Outside to Inside, Before the T-Line", 1],
-      ["Soft Take-out on the Centre Line at the T-Line", 2],
+      ["Come-around from Outside to Inside, Before the T-Line", 2],
+      ["Soft Take-out on the Centre Line at the T-Line", 3],
     ] as const) {
       openDetail(title);
       expect(screen.getByText(`Exercise version ${version}`)).toBeInTheDocument();
       fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     }
 
-    // The external collection's own version is labelled separately, and only
-    // where a collection exists.
+    // Source information is deliberately compact and appears only once at the
+    // bottom of an externally sourced Exercise.
     openDetail("Eight Guards, Progressively Longer");
-    expect(screen.getAllByText(/Source version:/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/^2\.0$/)).toBeInTheDocument();
+    expect(screen.getByText(/Source: Adapted by this application from Swiss Curling.*Guard Exercise 10/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/Source version:/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
 
     openDetail("Release Point");

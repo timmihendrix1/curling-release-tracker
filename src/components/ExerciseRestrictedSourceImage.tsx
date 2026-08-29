@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  resolveRestrictedAssetAccess,
-  type RestrictedAssetAccess,
-  type RestrictedAssetResolver,
-} from "../lib/exercises/restrictedAssets";
+  resolveExerciseAssetAccess,
+  type ExerciseAssetAccess,
+  type ExerciseAssetResolver,
+} from "../lib/exercises/exerciseAssets";
 import {
   RESTRICTED_DIAGRAM_UNAVAILABLE_BODY,
   RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE,
@@ -15,83 +15,59 @@ type SourceImageDiagram = Extract<ExerciseDiagram, { kind: "attributed-source-im
 type ExerciseRestrictedSourceImageProps = {
   diagram: SourceImageDiagram;
   /** Required for the image to render; absence always fails closed. */
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 /**
- * Renders an attributed, restricted source-image Diagram — but only through an
- * explicitly authorized resolver (see
- * `src/lib/exercises/restrictedAssets.ts`). Without one it renders a clear,
- * accessible unavailable state and never emits or infers an asset URL: the
- * opaque `assetReference.assetId` is deliberately not written into the DOM in
- * either branch, so it cannot be read out of the markup and turned into a
- * request.
- *
- * Attribution, source organisation, source version, permitted audience and
- * provenance are rendered from one shared list *outside* the authorized /
- * unavailable branch (ADR-0023 Decision 5) — so the record of where the content
- * came from is structurally identical either way, rather than depending on
- * whether the picture itself could be shown.
+ * Renders an attributed source-image Diagram only through the injected asset
+ * resolver. The resolver may serve a publicly cleared, locally cached asset or
+ * a future restricted asset. The opaque catalog reference is never written to
+ * the DOM and the compact caption is the only source text shown beside the
+ * image; full source attribution lives once at the bottom of the Exercise.
  */
 export default function ExerciseRestrictedSourceImage({
   diagram,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: ExerciseRestrictedSourceImageProps) {
-  const unavailable: RestrictedAssetAccess = {
-    authorized: false,
-    reason: restrictedAssetResolver ? "not-authorized" : "no-resolver",
-  };
+  const unavailable: ExerciseAssetAccess = { available: false };
   const [resolved, setResolved] = useState<{
     diagram: SourceImageDiagram;
-    resolver: RestrictedAssetResolver | undefined;
-    access: RestrictedAssetAccess;
+    resolver: ExerciseAssetResolver | undefined;
+    access: ExerciseAssetAccess;
   }>(() => ({
     diagram,
-    resolver: restrictedAssetResolver,
+    resolver: exerciseAssetResolver,
     access: unavailable,
   }));
 
   useEffect(() => {
     let current = true;
-    void resolveRestrictedAssetAccess(
+    void resolveExerciseAssetAccess(
       diagram.assetReference,
       diagram.distribution,
-      restrictedAssetResolver
+      exerciseAssetResolver
     ).then((access) => {
       if (current) {
-        setResolved({ diagram, resolver: restrictedAssetResolver, access });
+        setResolved({ diagram, resolver: exerciseAssetResolver, access });
       }
     });
     return () => {
       current = false;
     };
-  }, [diagram, restrictedAssetResolver]);
+  }, [diagram, exerciseAssetResolver]);
 
   // Never show a resolution belonging to a previous diagram or resolver while
   // a new asynchronous authorization check is in flight.
   const access =
-    resolved.diagram === diagram && resolved.resolver === restrictedAssetResolver
+    resolved.diagram === diagram && resolved.resolver === exerciseAssetResolver
       ? resolved.access
       : unavailable;
 
-  // Built once and rendered once, so no branch can omit a required value. Every
-  // field here is validated as non-empty at the catalog boundary, and none of
-  // them is derived from the opaque asset reference.
-  const provenance: readonly { label: string; value: string }[] = [
-    { label: "Attribution", value: diagram.attribution },
-    { label: "Source organisation", value: diagram.sourceOrganization },
-    { label: "Source version", value: diagram.sourceVersion },
-    { label: "Permitted audience", value: diagram.distribution.permittedAudience },
-    { label: "Provenance", value: diagram.provenanceNote },
-  ];
-
   return (
     <figure className="w-full">
-      {access.authorized ? (
-        // The source is produced at runtime by an authorized delivery
-        // context (typically a blob or object URL), so it cannot be routed
-        // through next/image's build-time optimizer, and it must never become
-        // a public asset path.
+      {access.available ? (
+        // The source is produced by the resolver (currently a cached Data URL),
+        // so it is intentionally rendered without next/image optimization.
         <div className="relative w-full overflow-hidden rounded-xl [container-type:inline-size]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -134,15 +110,6 @@ export default function ExerciseRestrictedSourceImage({
         <span className="block text-center text-xs font-medium text-slate-600">
           {diagram.caption}
         </span>
-
-        <dl className="space-y-0.5 text-xs text-slate-500">
-          {provenance.map((entry) => (
-            <div key={entry.label}>
-              <dt className="inline font-medium text-slate-600">{entry.label}: </dt>
-              <dd className="inline">{entry.value}</dd>
-            </div>
-          ))}
-        </dl>
       </figcaption>
     </figure>
   );

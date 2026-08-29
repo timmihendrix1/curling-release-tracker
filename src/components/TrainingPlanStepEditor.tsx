@@ -3,15 +3,18 @@
 import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
-import { RELEASE_TIME_EXERCISE_ID } from "../lib/exercises/content";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import {
   exerciseRunnerKind,
   listCurrentExerciseVersions,
-  resolveCurrentExerciseVersion,
 } from "../lib/exercises/lookup";
+import { exerciseFocusGroupLabel } from "../lib/exercises/presentation";
+import type { ExerciseVersion } from "../lib/exercises/types";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import type { Handle, HandleStrategy, TrainingPlanStep } from "../types";
 import { isReleaseTimingPlanStep } from "../lib/trainingPlans/steps";
+import ExerciseSetupOverview from "./ExerciseSetupOverview";
+import TrainingPlanExercisePicker from "./TrainingPlanExercisePicker";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
 
 type TrainingPlanStepEditorProps = {
@@ -22,6 +25,7 @@ type TrainingPlanStepEditorProps = {
   defaultAccuracyToleranceProfileId?: string | null;
   smartRandomProfiles?: SmartRandomProfile[];
   defaultSmartRandomProfileId?: string | null;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 type HandleStrategyType = HandleStrategy["type"];
@@ -59,35 +63,30 @@ export default function TrainingPlanStepEditor({
   defaultAccuracyToleranceProfileId = null,
   smartRandomProfiles = [],
   defaultSmartRandomProfileId = null,
+  exerciseAssetResolver,
 }: TrainingPlanStepEditorProps) {
   const initialReleaseStep = initialStep && isReleaseTimingPlanStep(initialStep)
     ? initialStep
     : undefined;
-  const [stepKind, setStepKind] = useState<TrainingPlanStep["type"] | null>(
-    initialStep?.type ?? null
-  );
   const currentExerciseVersions = listCurrentExerciseVersions(EXERCISE_CATALOG);
-  const currentCuratedExerciseVersions = currentExerciseVersions.filter(
-    (version) => exerciseRunnerKind(EXERCISE_CATALOG, version) === "exercise-execution" &&
+  const currentSelectableExerciseVersions = currentExerciseVersions.filter(
+    (version) => exerciseRunnerKind(EXERCISE_CATALOG, version) !== "unsupported" &&
       version.participation.supportedModes.includes("solo")
   );
-  const initialCuratedVersion = initialStep?.type === "curated-exercise"
-    ? initialStep.exerciseVersionSnapshot
-    : undefined;
+  const initialVersion = initialStep?.exerciseVersionSnapshot;
   // Keep an older, still-catalogued immutable snapshot selectable while editing an
   // existing plan. Publishing a newer current Version must not make the saved step
   // impossible to inspect or save unchanged.
-  const curatedExerciseVersions = initialCuratedVersion &&
-    !currentCuratedExerciseVersions.some(
-      (version) => version.id === initialCuratedVersion.id
+  const selectableExerciseVersions = initialVersion &&
+    !currentSelectableExerciseVersions.some(
+      (version) => version.id === initialVersion.id
     )
-    ? [initialCuratedVersion, ...currentCuratedExerciseVersions]
-    : currentCuratedExerciseVersions;
+    ? [initialVersion, ...currentSelectableExerciseVersions]
+    : currentSelectableExerciseVersions;
   const [selectedExerciseVersionId, setSelectedExerciseVersionId] = useState(
-    initialStep?.type === "curated-exercise"
-      ? initialStep.exerciseVersionSnapshot.id
-      : curatedExerciseVersions[0]?.id ?? ""
+    initialVersion?.id ?? ""
   );
+  const [showPicker, setShowPicker] = useState(initialStep === undefined);
   const [stonesInput, setStonesInput] = useState(
     String(initialReleaseStep?.completion.value ?? 8)
   );
@@ -100,6 +99,13 @@ export default function TrainingPlanStepEditor({
   const [startingHandle, setStartingHandle] = useState<Handle>(
     initialStartingHandle(initialReleaseStep?.handleStrategy)
   );
+
+  const selectedVersion: ExerciseVersion | undefined = selectableExerciseVersions.find(
+    (version) => version.id === selectedExerciseVersionId
+  );
+  const selectedRunner = selectedVersion
+    ? exerciseRunnerKind(EXERCISE_CATALOG, selectedVersion)
+    : "unsupported";
 
   function buildHandleStrategy(): HandleStrategy {
     switch (handleStrategyType) {
@@ -120,11 +126,7 @@ export default function TrainingPlanStepEditor({
       return;
     }
 
-    const releaseTimeVersion = resolveCurrentExerciseVersion(
-      EXERCISE_CATALOG,
-      RELEASE_TIME_EXERCISE_ID
-    );
-    if (!releaseTimeVersion) {
+    if (!selectedVersion || selectedRunner !== "release-timing") {
       alert("The Release Time Exercise is unavailable.");
       return;
     }
@@ -132,7 +134,7 @@ export default function TrainingPlanStepEditor({
     onSave({
       id: initialStep?.id ?? crypto.randomUUID(),
       type: "release-timing",
-      exerciseVersionSnapshot: JSON.parse(JSON.stringify(releaseTimeVersion)),
+      exerciseVersionSnapshot: JSON.parse(JSON.stringify(selectedVersion)),
       completion: { type: "shot-count", value: stones },
       handleStrategy: buildHandleStrategy(),
       configuration: {
@@ -150,14 +152,11 @@ export default function TrainingPlanStepEditor({
   }
 
   function saveCuratedExerciseStep() {
-    const version = curatedExerciseVersions.find(
-      (candidate) => candidate.id === selectedExerciseVersionId
-    );
-    if (!version) return;
+    if (!selectedVersion || selectedRunner !== "exercise-execution") return;
     onSave({
       id: initialStep?.id ?? crypto.randomUUID(),
       type: "curated-exercise",
-      exerciseVersionSnapshot: JSON.parse(JSON.stringify(version)),
+      exerciseVersionSnapshot: JSON.parse(JSON.stringify(selectedVersion)),
       completion: { type: "exercise-completion" },
     });
   }
@@ -183,57 +182,51 @@ export default function TrainingPlanStepEditor({
           {initialStep ? "Edit Step" : "Add Step"}
         </h2>
 
-        {stepKind === null && (
-          <div className="mt-4 space-y-3">
-            <p className="text-sm text-slate-600">Choose what this step trains.</p>
-            <button
-              type="button"
-              onClick={() => setStepKind("curated-exercise")}
-              className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-left font-medium text-slate-800 hover:bg-slate-200"
-            >
-              Technique, Shotmaking or Measured Exercise
-            </button>
-            <button
-              type="button"
-              onClick={() => setStepKind("release-timing")}
-              className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-left font-medium text-slate-800 hover:bg-slate-200"
-            >
-              Release Time Measurement
-            </button>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-slate-600 underline"
-            >
-              Cancel
-            </button>
-          </div>
+        {showPicker && (
+          <TrainingPlanExercisePicker
+            versions={currentSelectableExerciseVersions}
+            initialFocus={initialVersion?.primaryFocus}
+            exerciseAssetResolver={exerciseAssetResolver}
+            onChoose={(version) => {
+              setSelectedExerciseVersionId(version.id);
+              setShowPicker(false);
+            }}
+            onCancel={onCancel}
+          />
         )}
 
-        {stepKind === "curated-exercise" && (
+        {!showPicker && selectedVersion && (
+          <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {exerciseFocusGroupLabel(selectedVersion.primaryFocus)}
+            </p>
+            <h3 className="mt-1 font-semibold text-slate-900">{selectedVersion.title}</h3>
+            <p className="mt-1 text-sm text-slate-600">{selectedVersion.goal}</p>
+            <details className="mt-3 border-t border-slate-200 pt-2">
+              <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-700">
+                View setup and diagram
+              </summary>
+              <div className="pb-2 pt-3">
+                <ExerciseSetupOverview
+                  version={selectedVersion}
+                  exerciseAssetResolver={exerciseAssetResolver}
+                />
+              </div>
+            </details>
+            <button
+              type="button"
+              onClick={() => setShowPicker(true)}
+              className="mt-2 min-h-11 w-full rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              Change Exercise
+            </button>
+          </section>
+        )}
+
+        {!showPicker && selectedRunner === "exercise-execution" && (
           <div className="mt-4">
-            <label className="text-sm font-medium text-slate-700">
-              Exercise
-              <select
-                aria-label="Exercise"
-                value={selectedExerciseVersionId}
-                onChange={(event) => setSelectedExerciseVersionId(event.target.value)}
-                className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-              >
-                {curatedExerciseVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.title} — {version.primaryFocus === "technique"
-                      ? "Technique"
-                      : version.primaryFocus === "shotmaking"
-                        ? "Shotmaking"
-                        : "Measured"} · Exercise version {version.version}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p className="mt-3 text-xs text-slate-500">
-              The selected immutable Exercise Version is saved with the plan. This step
-              finishes when you choose Complete Exercise; no planned volume is imposed.
+            <p className="text-xs text-slate-500">
+              This step finishes when you choose Complete Exercise; no planned volume is imposed.
             </p>
             <div className="mt-5 flex gap-2">
               <button
@@ -246,8 +239,7 @@ export default function TrainingPlanStepEditor({
               <button
                 type="button"
                 onClick={saveCuratedExerciseStep}
-                disabled={!selectedExerciseVersionId}
-                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white disabled:bg-slate-300"
+                className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white"
               >
                 {initialStep ? "Save Step" : "Add Step"}
               </button>
@@ -255,107 +247,105 @@ export default function TrainingPlanStepEditor({
           </div>
         )}
 
-        {stepKind === "release-timing" && (
+        {!showPicker && selectedRunner === "release-timing" && (
           <>
             <div className="mt-4">
-          <label className="text-sm font-medium text-slate-700">
-            Number of Stones
-          </label>
-
-          <input
-            type="text"
-            inputMode="numeric"
-            aria-label="Number of Stones"
-            value={stonesInput}
-            onChange={(event) => {
-              const value = event.target.value;
-              if (/^[0-9]*$/.test(value)) setStonesInput(value);
-            }}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900"
-          />
-        </div>
-
-        <div className="mt-4">
-          <label className="text-sm font-medium text-slate-700">
-            Handle Strategy
-          </label>
-
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {HANDLE_STRATEGY_OPTIONS.map((option) => (
-              <button
-                key={option.type}
-                type="button"
-                onClick={() => setHandleStrategyType(option.type)}
-                className={`min-h-11 rounded-xl px-2 py-3 text-sm font-medium transition ${
-                  handleStrategyType === option.type
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-200 text-slate-700"
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
-
-          {handleStrategyType === "free" && (
-            <p className="mt-2 text-xs text-slate-500">
-              The athlete chooses the handle for every shot.
-            </p>
-          )}
-
-          {handleStrategyType === "fixed" && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {(["in", "out"] as Handle[]).map((handleOption) => (
-                <button
-                  key={handleOption}
-                  type="button"
-                  onClick={() => setFixedHandle(handleOption)}
-                  className={`min-h-11 rounded-xl px-3 py-3 text-sm font-medium capitalize transition ${
-                    fixedHandle === handleOption
-                      ? "bg-slate-900 text-white"
-                      : "bg-slate-200 text-slate-700"
-                  }`}
-                >
-                  {handleOption} Handle
-                </button>
-              ))}
+              <label className="text-sm font-medium text-slate-700">
+                Number of Stones
+              </label>
+              <input
+                type="text"
+                inputMode="numeric"
+                aria-label="Number of Stones"
+                value={stonesInput}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (/^[0-9]*$/.test(value)) setStonesInput(value);
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-lg text-slate-900"
+              />
             </div>
-          )}
 
-          {handleStrategyType === "alternating" && (
-            <>
-              <p className="mt-2 text-xs text-slate-500">Starting handle</p>
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                {(["in", "out"] as Handle[]).map((handleOption) => (
+            <div className="mt-4">
+              <label className="text-sm font-medium text-slate-700">
+                Handle Strategy
+              </label>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {HANDLE_STRATEGY_OPTIONS.map((option) => (
                   <button
-                    key={handleOption}
+                    key={option.type}
                     type="button"
-                    onClick={() => setStartingHandle(handleOption)}
-                    className={`min-h-11 rounded-xl px-3 py-3 text-sm font-medium capitalize transition ${
-                      startingHandle === handleOption
+                    onClick={() => setHandleStrategyType(option.type)}
+                    className={`min-h-11 rounded-xl px-2 py-3 text-sm font-medium transition ${
+                      handleStrategyType === option.type
                         ? "bg-slate-900 text-white"
                         : "bg-slate-200 text-slate-700"
                     }`}
                   >
-                    {handleOption} Handle
+                    {option.label}
                   </button>
                 ))}
               </div>
-            </>
-          )}
-        </div>
 
-        <div className="mt-4 border-t border-slate-200 pt-4">
-          <TrainingSetup
-            initialValue={initialSetupValue}
-            submitLabel={initialStep ? "Save Step" : "Add Step"}
-            onSubmit={handleSubmit}
-            onCancel={onCancel}
-            accuracyToleranceProfiles={accuracyToleranceProfiles}
-            defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
-            smartRandomProfiles={smartRandomProfiles}
-            defaultSmartRandomProfileId={defaultSmartRandomProfileId}
-          />
+              {handleStrategyType === "free" && (
+                <p className="mt-2 text-xs text-slate-500">
+                  The athlete chooses the handle for every shot.
+                </p>
+              )}
+
+              {handleStrategyType === "fixed" && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(["in", "out"] as Handle[]).map((handleOption) => (
+                    <button
+                      key={handleOption}
+                      type="button"
+                      onClick={() => setFixedHandle(handleOption)}
+                      className={`min-h-11 rounded-xl px-3 py-3 text-sm font-medium capitalize transition ${
+                        fixedHandle === handleOption
+                          ? "bg-slate-900 text-white"
+                          : "bg-slate-200 text-slate-700"
+                      }`}
+                    >
+                      {handleOption} Handle
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {handleStrategyType === "alternating" && (
+                <>
+                  <p className="mt-2 text-xs text-slate-500">Starting handle</p>
+                  <div className="mt-1 grid grid-cols-2 gap-2">
+                    {(["in", "out"] as Handle[]).map((handleOption) => (
+                      <button
+                        key={handleOption}
+                        type="button"
+                        onClick={() => setStartingHandle(handleOption)}
+                        className={`min-h-11 rounded-xl px-3 py-3 text-sm font-medium capitalize transition ${
+                          startingHandle === handleOption
+                            ? "bg-slate-900 text-white"
+                            : "bg-slate-200 text-slate-700"
+                        }`}
+                      >
+                        {handleOption} Handle
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <TrainingSetup
+                initialValue={initialSetupValue}
+                submitLabel={initialStep ? "Save Step" : "Add Step"}
+                onSubmit={handleSubmit}
+                onCancel={onCancel}
+                accuracyToleranceProfiles={accuracyToleranceProfiles}
+                defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
+                smartRandomProfiles={smartRandomProfiles}
+                defaultSmartRandomProfileId={defaultSmartRandomProfileId}
+              />
             </div>
           </>
         )}

@@ -1054,7 +1054,7 @@ assumptions that were spread across the cloud, persistence and commercial docume
 | **B0.2 — Identity and Onboarding Gate** | One application-level auth authority; email OTP; **Google sign-in**; Profile bootstrap; versionable, auditable legal acceptance; Athlete capability; default Free entitlement; the **global access gate**; offline identity continuity. No sporting cloud persistence. | **Implemented and verified.** B0.2a-e provide the executed database/RPC foundation, provider mechanics, identity domain/coordinator/runtime, mounted global gate/onboarding UI, durable Team intent replay, and retirement of all transitional auth/Profile-bootstrap routes. **Not independently releasable** — see the release-unit rule below. |
 | **B0.3 — Profile-scoped Local Data** | Profile-isolated local persistence; sign-out/account-switch isolation; the **one-time** retirement of the disposable unscoped test data. | **Implemented and verified.** ADR-0026: immutable per-Profile namespace over all seven repositories, keyed application remount, exact content-blind ten-key retirement with fail-closed retry. B0.4 now adds its separate Profile-scoped queue. |
 | **B0.4 — Free Cloud Data Backbone** | Server schema, ownership, RLS, idempotent upload, durable outbox, restore, retry, honest sync status, conflict behaviour. | **Implemented and verified against real local Supabase.** ADR-0027 covers archived Training Sessions and terminal Assessment Runs; Exercise records extend the same backbone when Exercise execution exists. |
-| **Exercise Stages A-E** | Curated Library, Solo execution, Team capture/restore/correction, profile-owned mixed Training Plans and closed-beta content/delivery — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3, Team C1-C4c, profile-owned Stage D and closed-beta Stage E implemented.** Team-plan execution, authoring and advanced analytics remain planned. |
+| **Exercise Stages A-E** | Curated Library, Solo execution, Team capture/restore/correction, profile-owned mixed Training Plans and initial-test content — see "Exercise Library and multi-athlete execution" below. | **Stage A, Solo B1-B3, Team C1-C4c, profile-owned Stage D and Stage E implemented; ADR-0044 adds the public/offline diagrams and rich plan picker.** Team-plan execution, authoring and advanced analytics remain planned. |
 | **Closed-beta Legal documents** | Plain-language Terms for the implemented no-charge beta plus transparency for its actual personal-data processing, both public before acceptance and pinned through the existing Legal evidence model. | **First versions implemented by ADR-0041/0042.** Deployment and both explicit owner-operated metadata publication steps remain release operations. Professional review and final operator/minor/billing details remain gates for a broader or paid release. |
 
 **B0.2 + B0.3 are one releasable privacy unit** (see
@@ -1304,9 +1304,9 @@ Known delivery boundaries, deliberate rather than defects:
   a valid choice.
 - **Rotation Count is available where capture needs it.** C3b adds a manual, target-free
   versioned protocol in rotations and validates positive 0.5 increments. Eight Guards
-  Versions 1 and 2 remain immutable; current Version 3 retains the optional reference
-  and adds its approved source diagram. Standalone Rotation Count is implemented as a
-  Measured Exercise.
+  Versions 1–4 remain immutable; current Version 5 retains the optional reference and
+  records public delivery of its approved source diagram. Standalone Rotation Count is
+  implemented as a Measured Exercise.
 - **Search does not match a referenced protocol's name.** `exerciseSearchableText`
   operates on one Exercise Version without the catalog, so "hog" does not find Release
   Time via its protocol names. Widen it if discovery feedback asks for it.
@@ -1324,7 +1324,7 @@ notification emission; C4b adds provider-neutral mutation mapping, strict owner-
 revision projection and schema-6 offline cache; C4c adds the athlete correction/void
 workflow, audit presentation and metadata-only Team inbox. ADR-0040 implements
 profile-owned mixed Stage D; Stage E completes the seven-item closed-beta catalogue and
-restricted source-diagram delivery.** B2 embeds
+ADR-0044 adds public/offline source-diagram delivery plus the rich plan picker.** B2 embeds
 Technique and Shotmaking executions in the existing Profile-owned Session, local
 repository/archive transition and Free-cloud `training_session` record, with strict
 terminal-history validation and no extra storage silo. It deliberately leaves Measured
@@ -1381,19 +1381,18 @@ history and validated metadata-only notification inbox, completing Stage C. Any 
 database/RLS/transaction change still requires real database evidence; TypeScript tests
 alone are not sufficient.
 
-**Restricted source diagrams.** The supplied Swiss Curling diagrams may be shown only to
-the named one-Team closed beta with visible attribution and genuinely restricted
-delivery. Their inclusion in a public asset bundle does not satisfy that boundary. Stage
-A deliberately shipped no source asset. Stage E now stores exactly three approved PNGs
-under private `restricted-assets/exercises/`, references them by an exact opaque
-allowlist and serves them only through an authenticated same-origin route after a
-user-scoped RLS query proves active membership in the configured closed-beta Team. No
-asset is placed in `public/`, no service-role credential is used, every response is
-private/no-store and the asynchronous resolver fails closed. The original source images
-remain intact; data-driven English overlays cover the two embedded German labels in the
-app without Exercise-specific renderer logic. Before any larger pilot or release, the
-product owner must still record Swiss Curling's permission scope — a safe delivery
-mechanism is not permission to deliver.
+**Exercise source diagrams (resolved 2026-08-29 for the initial three).** The product
+owner has confirmed that Guard Exercise 10, Draw Exercise 6 and Softshot Exercise 5 may
+be shown to every application user. ADR-0044 therefore gives their current immutable
+Exercise Versions a public distribution and delivers the versioned PNGs from
+`public/exercise-diagrams/`. A cache-first resolver validates and preloads all three,
+then persists one PNG Data URL per asset id through `StorageAdapter` for later offline
+use. Data-driven English overlays still cover the two embedded German labels, and one
+compact source footer remains at the bottom of the Exercise. ADR-0023's private route
+and fail-closed restricted boundary remain available for future content whose rights
+actually require an audience restriction; they are no longer the production path for
+these three diagrams. Permission for any additional Swiss Curling material remains a
+separate product-owner/legal decision.
 
 ---
 

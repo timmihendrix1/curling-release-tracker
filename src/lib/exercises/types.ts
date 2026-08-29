@@ -487,6 +487,18 @@ export type RestrictedDistribution = {
   publicDeliveryPermitted: false;
 };
 
+/** A source image whose rights permit ordinary application delivery. */
+export type PublicExerciseAssetDistribution = {
+  scope: "public";
+  /** English description retained as content metadata, not prominent UI copy. */
+  permittedAudience: string;
+  publicDeliveryPermitted: true;
+};
+
+export type ExerciseAssetDistribution =
+  | RestrictedDistribution
+  | PublicExerciseAssetDistribution;
+
 export type ExerciseDiagram =
   | {
       kind: "structured-platform-diagram";
@@ -531,7 +543,7 @@ export type ExerciseDiagram =
       attribution: string;
       sourceOrganization: string;
       sourceVersion: string;
-      distribution: RestrictedDistribution;
+      distribution: ExerciseAssetDistribution;
       /** English provenance note. */
       provenanceNote: string;
     };

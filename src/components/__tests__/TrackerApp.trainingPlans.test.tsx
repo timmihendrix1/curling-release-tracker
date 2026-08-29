@@ -131,7 +131,78 @@ function seedMixedTrainingPlan() {
   );
 }
 
+function seedReleaseTimeInMiddlePlan() {
+  const plan = {
+    id: "release-in-middle-plan",
+    name: "Shotmaking Timing Technique",
+    createdAt: "2026-08-29T00:00:00.000Z",
+    updatedAt: "2026-08-29T00:00:00.000Z",
+    schemaVersion: 2,
+    steps: [
+      {
+        id: "guard-step",
+        type: "curated-exercise",
+        exerciseVersionSnapshot: catalogVersion(EIGHT_GUARDS_VERSION_ID),
+        completion: { type: "exercise-completion" },
+      },
+      {
+        ...releaseTimingStep({
+          id: "middle-release-time",
+          stones: 1,
+          handleStrategy: { type: "free" },
+        }),
+        exerciseVersionSnapshot: catalogVersion(RELEASE_TIME_VERSION_ID),
+      },
+      {
+        id: "release-point-step",
+        type: "curated-exercise",
+        exerciseVersionSnapshot: catalogVersion(RELEASE_POINT_VERSION_ID),
+        completion: { type: "exercise-completion" },
+      },
+    ],
+  };
+  localStorage.setItem(
+    "curling-release-tracker-training-plans",
+    JSON.stringify({ schemaVersion: 2, plans: [plan] })
+  );
+}
+
 describe("TrackerApp — Training Plans execution", () => {
+  it("continues from a middle Release Time step to the next planned Exercise", async () => {
+    seedReleaseTimeInMiddlePlan();
+    render(<TrackerApp />);
+    await waitFor(() => screen.getByText("No scheduled session."));
+    navButton("Train").click();
+    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    screen.getByRole("tab", { name: "Training Plans" }).click();
+    await waitFor(() => screen.getByText("Shotmaking Timing Technique"));
+    screen.getByRole("button", { name: "Start" }).click();
+    await waitFor(() => screen.getByRole("button", { name: "Start Training" }));
+    screen.getByRole("button", { name: "Start Training" }).click();
+
+    await waitFor(() => screen.getByRole("heading", { name: "Eight Guards, Progressively Longer" }));
+    screen.getByRole("button", { name: "Inhandle" }).click();
+    screen.getByRole("button", { name: "4 points, 100 percent" }).click();
+    const recordStone = screen.getByRole("button", { name: "Record Stone" });
+    await waitFor(() => expect(recordStone).toBeEnabled());
+    recordStone.click();
+    await waitFor(() => screen.getByText("1 stone recorded"));
+    screen.getByRole("button", { name: "Complete Exercise" }).click();
+    await waitFor(() => screen.getByText("Next: Release Time"));
+    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+
+    await waitFor(() => screen.getByText("Complete this Release Time step"));
+    expect(screen.getByText("Record 1 more stone to continue to the next planned exercise."))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start New Session" })).toBeNull();
+    addShot("3.75");
+
+    await waitFor(() => screen.getByText("Next: Release Point"));
+    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
+    expect(screen.getByText(/Step 3 of 3/)).toBeInTheDocument();
+  });
+
   it("executes a profile-owned Technique → Shotmaking → Measured plan through the existing runners", async () => {
     seedMixedTrainingPlan();
     render(<TrackerApp />);

@@ -1,16 +1,16 @@
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseSetupOverview from "./ExerciseSetupOverview";
 
 type Props = {
   version: ExerciseVersion;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 /** Supporting reference stays available during capture without displacing the input. */
 export default function ExerciseExecutionReference({
   version,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: Props) {
   return (
     <details className="rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
@@ -20,7 +20,7 @@ export default function ExerciseExecutionReference({
       <div className="border-t border-slate-100 py-4">
         <ExerciseSetupOverview
           version={version}
-          restrictedAssetResolver={restrictedAssetResolver}
+          exerciseAssetResolver={exerciseAssetResolver}
           includeGoal={false}
         />
       </div>

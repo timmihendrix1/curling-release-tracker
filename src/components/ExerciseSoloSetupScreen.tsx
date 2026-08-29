@@ -1,4 +1,4 @@
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import { exerciseFocusLabel } from "../lib/exercises/presentation";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseSetupOverview from "./ExerciseSetupOverview";
@@ -9,7 +9,7 @@ type Props = {
   disabled?: boolean;
   onConfirm(): void;
   onCancel(): void;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 export default function ExerciseSoloSetupScreen({
@@ -17,7 +17,7 @@ export default function ExerciseSoloSetupScreen({
   disabled = false,
   onConfirm,
   onCancel,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: Props) {
   return (
     <div className="space-y-4">
@@ -42,7 +42,7 @@ export default function ExerciseSoloSetupScreen({
       <section className={surfaceClass("primary")}>
         <ExerciseSetupOverview
           version={version}
-          restrictedAssetResolver={restrictedAssetResolver}
+          exerciseAssetResolver={exerciseAssetResolver}
         />
       </section>
 

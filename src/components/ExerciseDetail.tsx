@@ -20,7 +20,7 @@ import {
   measurementSourceLabel,
   measurementUnitLabel,
 } from "../lib/exercises/presentation";
-import type { RestrictedAssetResolver } from "../lib/exercises/restrictedAssets";
+import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
@@ -34,7 +34,7 @@ type ExerciseDetailProps = {
   onStartTeam?: () => void;
   startDisabled?: boolean;
   teamStartDisabled?: boolean;
-  restrictedAssetResolver?: RestrictedAssetResolver;
+  exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
 function Badge({ children }: { children: string }) {
@@ -129,7 +129,7 @@ export default function ExerciseDetail({
   onStartTeam,
   startDisabled = false,
   teamStartDisabled = false,
-  restrictedAssetResolver,
+  exerciseAssetResolver,
 }: ExerciseDetailProps) {
   const measuredRunnerKind = version.primaryFocus === "measured"
     ? resolvedMeasurementRunnerKind(measurementProtocols)
@@ -166,13 +166,9 @@ export default function ExerciseDetail({
           ))}
         </div>
 
-        <div className="mt-3 space-y-0.5 text-xs text-slate-500">
-          <p>{source.attribution}</p>
-          {/* The Exercise's own version, deliberately worded so it cannot be
-              read as the source collection's version — that one appears under
-              "Source and attribution" as "Source version". */}
-          <p>{exerciseVersionLabel(version.version)}</p>
-        </div>
+        <p className="mt-3 text-xs text-slate-500">
+          {exerciseVersionLabel(version.version)}
+        </p>
       </div>
 
       {/* 2. Goal and why it matters, with 3. the Diagram illustrating it. */}
@@ -186,7 +182,7 @@ export default function ExerciseDetail({
           <Block>
             <ExerciseDiagramView
               diagram={version.diagram}
-              restrictedAssetResolver={restrictedAssetResolver}
+              exerciseAssetResolver={exerciseAssetResolver}
             />
           </Block>
         )}
@@ -315,86 +311,54 @@ export default function ExerciseDetail({
         )}
       </SectionCard>
 
-      {/* 8. Variations, 9. compatible Measurements, and provenance — supporting
-             detail, gathered into one grouped container behind progressive
-             disclosure rather than three more equally elevated cards. */}
-      <section className={surfaceClass("secondary")}>
-        {version.variations.length > 0 && (
-          <DetailDisclosure title="Variations">
-            <ul className="list-disc space-y-1 pl-4">
-              {version.variations.map((variation) => (
-                <li key={variation.id}>
-                  {variation.label}
-                  {variation.description && <span> — {variation.description}</span>}
-                </li>
-              ))}
-            </ul>
-          </DetailDisclosure>
-        )}
+      {/* 8. Variations and 9. compatible Measurements — supporting detail,
+          gathered into one grouped container behind progressive disclosure. */}
+      {(version.variations.length > 0 || measurementProtocols.length > 0) && (
+        <section className={surfaceClass("secondary")}>
+          {version.variations.length > 0 && (
+            <DetailDisclosure title="Variations">
+              <ul className="list-disc space-y-1 pl-4">
+                {version.variations.map((variation) => (
+                  <li key={variation.id}>
+                    {variation.label}
+                    {variation.description && <span> — {variation.description}</span>}
+                  </li>
+                ))}
+              </ul>
+            </DetailDisclosure>
+          )}
 
-        {measurementProtocols.length > 0 && (
-          <DetailDisclosure
-            title="Compatible Measurements"
-            badge={String(measurementProtocols.length)}
-            // A Measured Exercise exists to measure something, so its
-            // protocols open by default. This branches on the declared
-            // Primary Exercise Focus, never on which Exercise it is.
-            defaultOpen={version.primaryFocus === "measured"}
-          >
-            <ul className="space-y-3">
-              {measurementProtocols.map(({ protocol, requirement }) => (
-                <li key={`${protocol.id}-${protocol.version}`}>
-                  <p>
-                    <span className="font-medium text-slate-700">{protocol.name}</span>{" "}
-                    <span className="text-xs text-slate-500">
-                      ({exerciseRequirementLabel(requirement)})
-                    </span>
-                  </p>
-                  <p className="mt-0.5">{protocol.referencePoints}</p>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    Measured in {measurementUnitLabel(protocol.unit)} ·{" "}
-                    {protocol.allowedSources.map(measurementSourceLabel).join(", ")}
-                  </p>
-                  <p className="mt-0.5">{protocol.guidance}</p>
-                </li>
-              ))}
-            </ul>
-          </DetailDisclosure>
-        )}
-
-        {/* Only English fields are rendered: any retained original-language
-            source title is non-displayed search/attribution metadata. */}
-        <DetailDisclosure title="Source and attribution">
-          <div className="space-y-1">
-            <p>{source.attribution}</p>
-            <p>
-              <span className="font-medium text-slate-700">Exercise version: </span>
-              {version.version}
-            </p>
-            {source.collectionName && (
-              <p>
-                <span className="font-medium text-slate-700">Collection: </span>
-                {source.collectionName}
-              </p>
-            )}
-            {source.collectionVersion && (
-              <p>
-                <span className="font-medium text-slate-700">Source version: </span>
-                {source.collectionVersion}
-              </p>
-            )}
-            {source.sourceExerciseReference && (
-              <p>
-                <span className="font-medium text-slate-700">Source exercise: </span>
-                {source.sourceExerciseReference}
-              </p>
-            )}
-            {source.provenanceNote && (
-              <p className="text-xs text-slate-500">{source.provenanceNote}</p>
-            )}
-          </div>
-        </DetailDisclosure>
-      </section>
+          {measurementProtocols.length > 0 && (
+            <DetailDisclosure
+              title="Compatible Measurements"
+              badge={String(measurementProtocols.length)}
+              // A Measured Exercise exists to measure something, so its
+              // protocols open by default. This branches on the declared
+              // Primary Exercise Focus, never on which Exercise it is.
+              defaultOpen={version.primaryFocus === "measured"}
+            >
+              <ul className="space-y-3">
+                {measurementProtocols.map(({ protocol, requirement }) => (
+                  <li key={`${protocol.id}-${protocol.version}`}>
+                    <p>
+                      <span className="font-medium text-slate-700">{protocol.name}</span>{" "}
+                      <span className="text-xs text-slate-500">
+                        ({exerciseRequirementLabel(requirement)})
+                      </span>
+                    </p>
+                    <p className="mt-0.5">{protocol.referencePoints}</p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Measured in {measurementUnitLabel(protocol.unit)} ·{" "}
+                      {protocol.allowedSources.map(measurementSourceLabel).join(", ")}
+                    </p>
+                    <p className="mt-0.5">{protocol.guidance}</p>
+                  </li>
+                ))}
+              </ul>
+            </DetailDisclosure>
+          )}
+        </section>
+      )}
 
       {/* 10. Start action — wording follows focus semantics, never a named Exercise. */}
       <section className={surfaceClass("hero")}>
@@ -432,6 +396,11 @@ export default function ExerciseDetail({
           </button>
         )}
       </section>
+
+      <p className="px-1 text-xs text-slate-500">
+        Source: {source.attribution}
+        {source.sourceExerciseReference ? ` · ${source.sourceExerciseReference}` : ""}
+      </p>
     </div>
   );
 }

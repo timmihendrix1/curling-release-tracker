@@ -1,7 +1,8 @@
 // Curated Stage A + Stage E Exercise content (spec sections 5.6, 10.1-10.3, 11).
 //
-// Seven Exercises with immutable Exercise Versions; Eight Guards retains v1/v2
-// and publishes v3 for the approved restricted source diagram. Every
+// Seven Exercises with immutable Exercise Versions. The three Swiss Curling
+// Shotmaking Exercises retain their historical restricted diagram versions and
+// publish new current versions for the approved public source diagrams. Every
 // user-facing string here is English. Original German source titles appear
 // only inside `nonDisplayedSourceMetadata`, which no component renders — they
 // exist for attribution traceability and Library search (spec 3.6).
@@ -46,14 +47,18 @@ export const EIGHT_GUARDS_V1_VERSION_ID = "eight-guards-progressively-longer-v1"
 export const EIGHT_GUARDS_VERSION_ID = "eight-guards-progressively-longer-v2";
 export const EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID =
   "eight-guards-progressively-longer-v3";
-export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID =
   "eight-guards-progressively-longer-v4";
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+  "eight-guards-progressively-longer-v5";
 export const RELEASE_TIME_VERSION_ID = "release-time-v1";
 export const RELEASE_GATES_VERSION_ID = "release-gates-v1";
 export const ROTATION_COUNT_VERSION_ID = "rotation-count-v1";
-export const COME_AROUND_VERSION_ID = "come-around-outside-in-before-t-line-v1";
+export const COME_AROUND_V1_VERSION_ID = "come-around-outside-in-before-t-line-v1";
+export const COME_AROUND_VERSION_ID = "come-around-outside-in-before-t-line-v2";
 export const SOFT_TAKEOUT_V1_VERSION_ID = "soft-takeout-centre-line-t-line-v1";
-export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v2";
+export const SOFT_TAKEOUT_V2_VERSION_ID = "soft-takeout-centre-line-t-line-v2";
+export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v3";
 
 /** Curling's familiar 0-4 scale (spec 11.1). Zero is a valid scored result, never missing data. */
 const CURLING_SCORE_SCALE: readonly ExerciseScoreScaleEntry[] = [
@@ -308,7 +313,7 @@ function buildEightGuardsVersion4(): ExerciseVersion {
   }
   return {
     ...previous,
-    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID,
     version: 4,
     diagram: {
       ...previous.diagram,
@@ -324,6 +329,34 @@ function buildEightGuardsVersion4(): ExerciseVersion {
         textColor: "#000000",
         fontSize: 0.031,
       }],
+    },
+  };
+}
+
+/** Version 5 records the now-approved public distribution without rewriting v4. */
+function buildEightGuardsVersion5(): ExerciseVersion {
+  const previous = buildEightGuardsVersion4();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Eight Guards v4 must retain its attributed source diagram.");
+  }
+  return {
+    ...previous,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    version: 5,
+    diagram: {
+      ...previous.diagram,
+      distribution: {
+        scope: "public",
+        permittedAudience: "All application users.",
+        publicDeliveryPermitted: true,
+      },
+      provenanceNote:
+        "Guard Exercise 10, page 17. Swiss Curling has cleared the diagram for public application delivery.",
+    },
+    source: {
+      ...previous.source,
+      provenanceNote:
+        "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with its embedded German instruction covered by a faithful English overlay.",
     },
   };
 }
@@ -623,9 +656,9 @@ function buildRotationCountVersion(): ExerciseVersion {
 // 6. Come-around from Outside to Inside, Before the T-Line — Shotmaking
 // ---------------------------------------------------------------------------
 
-function buildComeAroundVersion(): ExerciseVersion {
+function buildComeAroundVersion1(): ExerciseVersion {
   return {
-    id: COME_AROUND_VERSION_ID,
+    id: COME_AROUND_V1_VERSION_ID,
     exerciseId: COME_AROUND_EXERCISE_ID,
     version: 1,
     contentSchemaVersion: EXERCISE_CONTENT_SCHEMA_VERSION,
@@ -740,6 +773,34 @@ function buildComeAroundVersion(): ExerciseVersion {
         ],
         searchAliases: ["Draw Übung 6", "Comearound", "Come-around"],
       },
+    },
+  };
+}
+
+/** Version 2 records public delivery of the attributed Swiss Curling diagram. */
+function buildComeAroundVersion2(): ExerciseVersion {
+  const previous = buildComeAroundVersion1();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Come-around v1 must retain its attributed source diagram.");
+  }
+  return {
+    ...previous,
+    id: COME_AROUND_VERSION_ID,
+    version: 2,
+    diagram: {
+      ...previous.diagram,
+      distribution: {
+        scope: "public",
+        permittedAudience: "All application users.",
+        publicDeliveryPermitted: true,
+      },
+      provenanceNote:
+        "Draw Exercise 6, page 25. Swiss Curling has cleared the diagram for public application delivery.",
+    },
+    source: {
+      ...previous.source,
+      provenanceNote:
+        "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with attribution.",
     },
   };
 }
@@ -883,7 +944,7 @@ function buildSoftTakeoutVersion2(): ExerciseVersion {
   }
   return {
     ...previous,
-    id: SOFT_TAKEOUT_VERSION_ID,
+    id: SOFT_TAKEOUT_V2_VERSION_ID,
     version: 2,
     diagram: {
       ...previous.diagram,
@@ -899,6 +960,34 @@ function buildSoftTakeoutVersion2(): ExerciseVersion {
         textColor: "#000000",
         fontSize: 0.035,
       }],
+    },
+  };
+}
+
+/** Version 3 records public delivery of the attributed Swiss Curling diagram. */
+function buildSoftTakeoutVersion3(): ExerciseVersion {
+  const previous = buildSoftTakeoutVersion2();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Soft Take-out v2 must retain its attributed source diagram.");
+  }
+  return {
+    ...previous,
+    id: SOFT_TAKEOUT_VERSION_ID,
+    version: 3,
+    diagram: {
+      ...previous.diagram,
+      distribution: {
+        scope: "public",
+        permittedAudience: "All application users.",
+        publicDeliveryPermitted: true,
+      },
+      provenanceNote:
+        "Softshot Exercise 5, page 37. Swiss Curling has cleared the diagram for public application delivery.",
+    },
+    source: {
+      ...previous.source,
+      provenanceNote:
+        "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with its embedded German label covered by a faithful English overlay.",
     },
   };
 }
@@ -930,11 +1019,14 @@ export function buildCuratedExerciseVersions(): ExerciseVersion[] {
     buildEightGuardsVersion2(),
     buildEightGuardsVersion3(),
     buildEightGuardsVersion4(),
+    buildEightGuardsVersion5(),
     buildReleaseTimeVersion(),
     buildReleaseGatesVersion(),
     buildRotationCountVersion(),
-    buildComeAroundVersion(),
+    buildComeAroundVersion1(),
+    buildComeAroundVersion2(),
     buildSoftTakeoutVersion1(),
     buildSoftTakeoutVersion2(),
+    buildSoftTakeoutVersion3(),
   ];
 }
