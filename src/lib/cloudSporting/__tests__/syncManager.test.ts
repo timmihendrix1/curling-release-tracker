@@ -142,7 +142,13 @@ describe("SportingCloudSyncManager", () => {
     const h = harness(cloud, () => true);
     await h.repositories.session.saveHistory([session()]);
     await h.manager.initialize();
-    expect(h.manager.getSnapshot().truth).toBe("sync_issue");
+    expect(h.manager.getSnapshot()).toMatchObject({
+      truth: "sync_issue",
+      issueSummary: {
+        personalRecordCount: 1,
+        teamRecordCount: 0,
+      },
+    });
     const loaded = await h.repositories.session.loadHistory();
     expect(loaded.status === "value" ? loaded.value : []).toEqual([session()]);
   });
@@ -167,7 +173,14 @@ describe("SportingCloudSyncManager", () => {
       .mockResolvedValueOnce({ ok: true as const, value: [] });
     const h = harness(service({ restore }), () => true);
     await h.manager.initialize();
-    expect(h.manager.getSnapshot().truth).toBe("sync_issue");
+    expect(h.manager.getSnapshot()).toMatchObject({
+      truth: "sync_issue",
+      issueSummary: {
+        personalRecordCount: 0,
+        teamRecordCount: 0,
+        hasGeneralIssue: true,
+      },
+    });
 
     await h.manager.retry();
     expect(restore).toHaveBeenCalledTimes(2);

@@ -280,7 +280,7 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => screen.getByText("Stone 1 of 2"));
 
     // After one saved shot, the alternating strategy now expects Out Handle.
-    // (The Live Summary filter below also has an "Out Handle" chip — the
+    // (The Live Performance filter below also has an "Out Handle" chip — the
     // Add Shot card's own button is the first one in the DOM.)
     expect(
       screen.getAllByRole("button", { name: "Out Handle" })[0]
@@ -316,13 +316,15 @@ describe("TrackerApp — Training Plans execution", () => {
     expect(screen.getByText("Plan complete")).toBeInTheDocument();
 
     screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByText("Start New Session"));
-    screen.getByRole("button", { name: "Start" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
+    expect(screen.getByRole("button", { name: "Finish" })).not.toHaveClass("bg-red-600");
+    screen.getByRole("button", { name: "Finish" }).click();
 
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));
+    expect(screen.getByText(/2 blocks · 5 shots/)).toBeInTheDocument();
     expect(
       screen.getByText("Started from: Release Consistency")
     ).toBeInTheDocument();

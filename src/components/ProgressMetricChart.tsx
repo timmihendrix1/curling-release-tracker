@@ -73,7 +73,9 @@ function ChartTooltip({
         Thresholds: ±{point.thresholds.onTarget.toFixed(2)}s / ±
         {point.thresholds.acceptable.toFixed(2)}s
       </p>
-      <p className="text-slate-600">Shots: {point.shotCount}</p>
+      <p className="text-slate-600">
+        Shots in this block: {point.shotCount}
+      </p>
       <p className="mt-1 font-medium text-slate-900">
         {formatMetricValue(point.value, metric)}
       </p>

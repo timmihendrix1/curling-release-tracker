@@ -134,6 +134,11 @@ describe("TeamsScreen — signed in", () => {
       truth: "synced",
       pendingCount: 0,
       teamBlockedCount: 0,
+      issueSummary: {
+        personalRecordCount: 0,
+        teamRecordCount: 0,
+        hasGeneralIssue: false,
+      },
       teamSessions: [],
       activeTeamExerciseDraft: null,
       teamExerciseResults: [],

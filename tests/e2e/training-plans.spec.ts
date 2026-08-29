@@ -120,8 +120,9 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await expect(page.getByText("Step complete — Release Time")).not.toBeVisible();
 
   await page.getByRole("button", { name: "Finish Training" }).click();
-  await expect(page.getByText("Current session will be saved to history. Continue?")).toBeVisible();
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Finish Training" })).toBeVisible();
+  await expect(page.getByText("Save this completed training to history?")).toBeVisible();
+  await page.getByRole("button", { name: "Finish", exact: true }).click();
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 
   await goToAnalyze(page);

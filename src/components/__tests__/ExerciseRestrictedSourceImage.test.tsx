@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExerciseDiagramView from "../ExerciseDiagramView";
 import ExerciseRestrictedSourceImage from "../ExerciseRestrictedSourceImage";
@@ -104,6 +105,11 @@ describe("ExerciseRestrictedSourceImage — available", () => {
     expect(screen.getByText(DIAGRAM.caption)).toBeInTheDocument();
     expect(screen.queryByText(DIAGRAM.provenanceNote)).toBeNull();
     expect(container.innerHTML).not.toContain(DIAGRAM.assetReference.assetId);
+    const imageContainer = image.parentElement?.parentElement;
+    expect(imageContainer).toHaveClass("max-h-[70vh]");
+    await userEvent.click(screen.getByRole("button", { name: "View Full Diagram" }));
+    expect(imageContainer).not.toHaveClass("max-h-[70vh]");
+    expect(screen.getByRole("button", { name: "Show Compact Diagram" })).toBeInTheDocument();
   });
 
   it("covers source-language labels with data-driven English text", async () => {

@@ -20,6 +20,7 @@ import {
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_GATES_EXERCISE_ID,
+  RELEASE_GATES_V1_VERSION_ID,
   RELEASE_GATES_VERSION_ID,
   ROTATION_COUNT_EXERCISE_ID,
   ROTATION_COUNT_VERSION_ID,
@@ -72,7 +73,7 @@ describe("production Exercise catalog", () => {
       COME_AROUND_EXERCISE_ID,
       SOFT_TAKEOUT_EXERCISE_ID,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(14);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(15);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -403,10 +404,16 @@ describe("curated Stage A content", () => {
   });
 
   it("Release Gates is an unscored Technique Exercise with a schematic two-gate diagram", () => {
+    expect(findExerciseVersion(EXERCISE_CATALOG, RELEASE_GATES_V1_VERSION_ID)).toMatchObject({
+      version: 1,
+      diagram: { id: "release-gates-diagram-v1" },
+    });
     const version = findExerciseVersion(EXERCISE_CATALOG, RELEASE_GATES_VERSION_ID);
     expect(version).toMatchObject({
+      version: 2,
       primaryFocus: "technique",
       primaryTrainingPurpose: "line-control",
+      diagram: { id: "release-gates-diagram-v2" },
     });
     expect(version?.difficulty).toBeUndefined();
     expect(version?.guidance.kind).toBe("observation");

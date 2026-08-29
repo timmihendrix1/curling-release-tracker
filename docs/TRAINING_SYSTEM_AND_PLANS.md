@@ -973,6 +973,10 @@ between two other Exercises, the active screen shows how many stones remain and 
 offers **Continue to Next Step**. **Start New Session** is hidden while any Training Plan
 is active, so it cannot replace the plan's own progression action.
 
+After the final step, **Finish Training** uses the existing durable session archive
+transition but presents completion-specific, non-destructive confirmation: **Finish
+Training** / **Finish**. It must never reuse the red **Start New Session** dialog copy.
+
 The creation flow should be simple:
 
 ```text

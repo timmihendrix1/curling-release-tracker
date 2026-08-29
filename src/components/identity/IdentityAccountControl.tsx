@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useOptionalIdentity } from "./IdentityProvider";
 import { useSportingCloudSync } from "../ProfileScopedSportingPersistence";
+import SportingSyncStatusControl from "./SportingSyncStatusControl";
 
 const secondaryButtonClassName =
   "min-h-11 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
@@ -26,23 +27,7 @@ export default function IdentityAccountControl({ onOpenTeams }: { onOpenTeams: (
           Offline
         </span>
       )}
-      {cloudSync && (
-        cloudSync.truth === "sync_issue" ? (
-          <button
-            type="button"
-            onClick={cloudSync.retry}
-            className="min-h-11 rounded-full bg-rose-50 px-3 py-1 text-xs font-medium text-rose-800"
-          >
-            Sync issue · Retry
-          </button>
-        ) : (
-          <span role="status" className={`rounded-full px-2 py-1 text-xs font-medium ${
-            cloudSync.truth === "synced" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"
-          }`}>
-            {cloudSync.truth === "synced" ? "Synced" : "Saved on this device"}
-          </span>
-        )
-      )}
+      {cloudSync && <SportingSyncStatusControl cloudSync={cloudSync} />}
       <button type="button" onClick={onOpenTeams} className={secondaryButtonClassName}>Teams</button>
       <button
         type="button"

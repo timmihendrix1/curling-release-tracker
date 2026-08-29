@@ -73,7 +73,7 @@ function ChartTooltip({
       <p className="font-semibold text-slate-900">{point.blockName}</p>
       <p className="text-slate-500">
         {point.sessionTitle} · {new Date(point.date).toLocaleDateString()} ·{" "}
-        {point.shotCount} shots
+        {point.shotCount} shot{point.shotCount === 1 ? "" : "s"} in this block
       </p>
       <p className="mt-1" style={{ color: TARGET_ERROR_CATEGORY_COLORS.on_target }}>
         On Target: {point.onTargetCount} ({Math.round(point.onTargetPercent)}%)

@@ -47,6 +47,12 @@ export type SportingSyncSnapshot = {
   truth: SportingSyncTruth;
   pendingCount: number;
   teamBlockedCount: number;
+  /** Bounded, non-sensitive categories for honest user-facing diagnostics. */
+  issueSummary: {
+    personalRecordCount: number;
+    teamRecordCount: number;
+    hasGeneralIssue: boolean;
+  };
   teamSessions: Array<{ sessionId: string; status: TeamExerciseSyncStatus }>;
   teamEligibilitySnapshots: TeamExerciseEligibilitySnapshot[];
   activeTeamExerciseDraft: ExerciseExecution | null;
@@ -108,6 +114,11 @@ export class SportingCloudSyncManager {
     truth: "saved_on_device",
     pendingCount: 0,
     teamBlockedCount: 0,
+    issueSummary: {
+      personalRecordCount: 0,
+      teamRecordCount: 0,
+      hasGeneralIssue: false,
+    },
     teamSessions: [],
     teamEligibilitySnapshots: [],
     activeTeamExerciseDraft: null,
@@ -141,6 +152,12 @@ export class SportingCloudSyncManager {
     const pendingCount = this.state.entries.filter((entry) => entry.status === "pending").length +
       this.state.teamEntries.filter((entry) => entry.status === "pending").length;
     const teamBlockedCount = this.state.teamEntries.filter((entry) => entry.status === "blocked").length;
+    const personalRecordIssueCount = this.state.entries.filter(
+      (entry) => entry.status === "issue"
+    ).length;
+    const teamRecordIssueCount = this.state.teamEntries.filter(
+      (entry) => entry.status === "issue"
+    ).length;
     const sessionIds = [...new Set(this.state.teamEntries.map((entry) => entry.sessionId))];
     const teamSessions = sessionIds.map((sessionId) => {
       const entries = this.state.teamEntries.filter((entry) => entry.sessionId === sessionId);
@@ -166,6 +183,11 @@ export class SportingCloudSyncManager {
       truth,
       pendingCount,
       teamBlockedCount,
+      issueSummary: {
+        personalRecordCount: personalRecordIssueCount,
+        teamRecordCount: teamRecordIssueCount,
+        hasGeneralIssue: this.globalIssue,
+      },
       teamSessions,
       teamEligibilitySnapshots: this.state.teamEligibilitySnapshots.map((snapshot) => ({
         ...snapshot,

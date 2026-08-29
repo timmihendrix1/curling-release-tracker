@@ -1656,7 +1656,10 @@ Do not permanently retain the entire configuration form after capture begins.
 
 ## 19.5 Live Training Analytics
 
-Display a compact summary first.
+Display a compact summary first. The implemented mobile pattern calls the combined,
+collapsed-by-default surface **Live Performance**: its closed header retains the current
+shot count, average and on-target rate; opening it reveals filters, supporting metrics
+and detailed charts in that order.
 
 Detailed charts should appear:
 

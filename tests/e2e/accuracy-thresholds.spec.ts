@@ -48,7 +48,9 @@ test("Threshold Setup: presets show their values, Custom validates inline, and t
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
   await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
 
-  // The Dashboard reflects the custom thresholds (not the Standard default).
+  // Live Performance is intentionally collapsed by default. Once opened, its
+  // metric cards reflect the custom thresholds (not the Standard default).
+  await page.getByText("Live Performance").click();
   await expect(page.getByText("within ±0.08s")).toBeVisible();
   await expect(page.getByText("beyond ±0.16s")).toBeVisible();
 });
@@ -70,11 +72,13 @@ test("Block Analytics: deterministic shots produce the expected Bias, Average Er
     await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
   }
 
+  await page.getByText("Live Performance").click();
+
   // Bias = mean(+0.05, +0.15, +0.45, -0.30) = +0.0875 -> "+0.09s"
   await expect(page.getByText("+0.09s", { exact: true })).toBeVisible();
   // Average Error = mean(0.05, 0.15, 0.45, 0.30) = 0.2375 -> "0.24s"
   await expect(page.getByText("0.24s", { exact: true })).toBeVisible();
-  await expect(page.getByText("On Target")).toBeVisible();
+  await expect(page.getByText("On Target", { exact: true })).toBeVisible();
   await expect(page.getByText("25%").first()).toBeVisible(); // 1 of 4 on target
   await expect(page.getByText("2 of 4")).toBeVisible(); // Major Misses
   await expect(page.getByText("0.45s", { exact: true })).toBeVisible(); // Largest Miss
@@ -94,10 +98,10 @@ test("Target Error Chart: shows the zero line, positive/negative bars, and a too
     await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
   }
 
-  // Every chart is grouped under one collapsed-by-default Detailed Analytics
+  // Every chart is grouped under one collapsed-by-default Live Performance
   // disclosure (compositional redesign — see TrackerApp.tsx's Active
   // Training composition).
-  await page.getByText("Detailed Analytics").click();
+  await page.getByText("Live Performance").click();
 
   await expect(page.getByText("Target Error by Shot")).toBeVisible();
   await expect(
@@ -120,7 +124,7 @@ test("Scatterplot: legend toggles In/Out visibility without mutating underlying 
     await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
   }
 
-  await page.getByText("Detailed Analytics").click();
+  await page.getByText("Live Performance").click();
 
   await expect(page.getByText("Target vs. Actual")).toBeVisible();
 
@@ -159,7 +163,7 @@ test("Mobile viewport (390x844): Dashboard and charts render without horizontal 
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
   await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
 
-  await page.getByText("Detailed Analytics").click();
+  await page.getByText("Live Performance").click();
   await expect(page.getByText("Target Error by Shot")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(

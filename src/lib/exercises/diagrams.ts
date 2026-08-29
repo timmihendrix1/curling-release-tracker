@@ -148,17 +148,21 @@ export function buildEightGuardsDiagram(): ExerciseDiagram {
   };
 }
 
-export const RELEASE_GATES_DIAGRAM_ID = "release-gates-diagram-v1";
+export const RELEASE_GATES_V1_DIAGRAM_ID = "release-gates-diagram-v1";
+export const RELEASE_GATES_DIAGRAM_ID = "release-gates-diagram-v2";
 
 /**
  * A deliberately simple platform-authored view of the two observation gates.
  * The 30 cm distance is stated by the Exercise instructions; the normalized
  * drawing is schematic and therefore does not pretend to be a measuring tool.
  */
-export function buildReleaseGatesDiagram(): ExerciseDiagram {
+export function buildReleaseGatesDiagramV1(): Extract<
+  ExerciseDiagram,
+  { kind: "structured-platform-diagram" }
+> {
   return {
     kind: "structured-platform-diagram",
-    id: RELEASE_GATES_DIAGRAM_ID,
+    id: RELEASE_GATES_V1_DIAGRAM_ID,
     schemaVersion: EXERCISE_DIAGRAM_SCHEMA_VERSION,
     coordinateSystem: "normalized-ice-sheet-v1",
     aspectRatio: 2,
@@ -210,6 +214,38 @@ export function buildReleaseGatesDiagram(): ExerciseDiagram {
         anchor: "start",
       },
     ],
+  };
+}
+
+/**
+ * Version 2 keeps the same sporting setup but gives both gate labels their
+ * own compact, centred space. The v1 label intentionally remains untouched
+ * for historical Exercise Version snapshots.
+ */
+export function buildReleaseGatesDiagram(): ExerciseDiagram {
+  const previous = buildReleaseGatesDiagramV1();
+  return {
+    ...previous,
+    id: RELEASE_GATES_DIAGRAM_ID,
+    elements: previous.elements.map((element) => {
+      if (element.id === "release-gate-label" && element.kind === "label") {
+        return {
+          ...element,
+          at: { x: 0.42, y: 0.2 },
+          text: "Release gate",
+          anchor: "middle" as const,
+        };
+      }
+      if (element.id === "second-gate-label" && element.kind === "label") {
+        return {
+          ...element,
+          at: { x: 0.58, y: 0.82 },
+          text: "Second gate",
+          anchor: "middle" as const,
+        };
+      }
+      return element;
+    }),
   };
 }
 

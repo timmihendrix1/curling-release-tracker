@@ -17,6 +17,10 @@ import {
 import { deletePlan, updatePlan, addPlan, createEmptyTrainingPlansPersistedState } from "../persistence";
 import { buildPlan, buildStep } from "./testHelpers";
 import { isReleaseTimingPlanStep } from "../steps";
+import {
+  buildHistoryAnalysisContext,
+  createDefaultHistoryFilters,
+} from "../../historyAnalysis";
 
 function timingStep(plan: ReturnType<typeof buildPlan>, index: number) {
   const step = plan.steps[index];
@@ -108,6 +112,57 @@ describe("Training Plan execution — full lifecycle", () => {
 
     // Step 1's block is unaffected by everything that happened in step 2.
     expect(session.shots.filter((shot) => shot.blockId === step1BlockId)).toHaveLength(2);
+  });
+
+  it("retains all 16 Release Time shots from two eight-stone plan steps in analytics", () => {
+    const sixteenStonePlan = buildPlan({
+      name: "Two Full Release Blocks",
+      steps: [
+        buildStep({ id: "step-1", completion: { type: "shot-count", value: 8 } }),
+        buildStep({ id: "step-2", completion: { type: "shot-count", value: 8 } }),
+      ],
+    });
+
+    let session = addTrainingBlock(
+      emptySession(),
+      mapPlanStepToTrainingBlockInput(timingStep(sixteenStonePlan, 0))
+    );
+    session = {
+      ...session,
+      planExecution: startPlanExecution(sixteenStonePlan, {
+        kind: "release-timing-block",
+        blockId: session.activeBlockId,
+      }),
+    };
+
+    const firstBlockId = session.activeBlockId;
+    for (let shot = 1; shot <= 8; shot += 1) {
+      session = saveShot(session, firstBlockId, shot);
+    }
+    session = addTrainingBlock(
+      session,
+      mapPlanStepToTrainingBlockInput(timingStep(sixteenStonePlan, 1))
+    );
+    session = {
+      ...session,
+      planExecution: advanceToNextPlanStep(session.planExecution!, {
+        kind: "release-timing-block",
+        blockId: session.activeBlockId,
+      }),
+    };
+
+    const secondBlockId = session.activeBlockId;
+    for (let shot = 1; shot <= 8; shot += 1) {
+      session = saveShot(session, secondBlockId, shot);
+    }
+
+    expect(isPlanComplete(session, session.planExecution!)).toBe(true);
+    const context = buildHistoryAnalysisContext([session], {
+      ...createDefaultHistoryFilters(),
+      dateRange: { preset: "all" },
+    });
+    expect(context.totalShotCount).toBe(16);
+    expect(context.progressEntries.map((entry) => entry.shots.length)).toEqual([8, 8]);
   });
 
   it("editing the source plan after starting never changes the active session", () => {

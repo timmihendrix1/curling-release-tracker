@@ -15,6 +15,7 @@
 import {
   buildEightGuardsDiagram,
   buildReleaseGatesDiagram,
+  buildReleaseGatesDiagramV1,
   buildRestrictedSwissCurlingDiagram,
 } from "./diagrams";
 import {
@@ -52,7 +53,8 @@ export const EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID =
 export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
   "eight-guards-progressively-longer-v5";
 export const RELEASE_TIME_VERSION_ID = "release-time-v1";
-export const RELEASE_GATES_VERSION_ID = "release-gates-v1";
+export const RELEASE_GATES_V1_VERSION_ID = "release-gates-v1";
+export const RELEASE_GATES_VERSION_ID = "release-gates-v2";
 export const ROTATION_COUNT_VERSION_ID = "rotation-count-v1";
 export const COME_AROUND_V1_VERSION_ID = "come-around-outside-in-before-t-line-v1";
 export const COME_AROUND_VERSION_ID = "come-around-outside-in-before-t-line-v2";
@@ -473,9 +475,9 @@ function buildReleaseTimeVersion(): ExerciseVersion {
 // 4. Release Gates — Technique Exercise
 // ---------------------------------------------------------------------------
 
-function buildReleaseGatesVersion(): ExerciseVersion {
+function buildReleaseGatesVersion1(): ExerciseVersion {
   return {
-    id: RELEASE_GATES_VERSION_ID,
+    id: RELEASE_GATES_V1_VERSION_ID,
     exerciseId: RELEASE_GATES_EXERCISE_ID,
     version: 1,
     contentSchemaVersion: EXERCISE_CONTENT_SCHEMA_VERSION,
@@ -552,7 +554,7 @@ function buildReleaseGatesVersion(): ExerciseVersion {
       },
     ],
     compatibleMeasurementProtocols: [],
-    diagram: buildReleaseGatesDiagram(),
+    diagram: buildReleaseGatesDiagramV1(),
     source: {
       kind: "platform-curated",
       attribution: "Platform-curated from the closed-beta Elite Team technique reference.",
@@ -563,6 +565,16 @@ function buildReleaseGatesVersion(): ExerciseVersion {
         searchAliases: ["Törli", "Toerli", "release gate"],
       },
     },
+  };
+}
+
+/** Version 2 corrects the mobile label layout without rewriting v1. */
+function buildReleaseGatesVersion2(): ExerciseVersion {
+  return {
+    ...buildReleaseGatesVersion1(),
+    id: RELEASE_GATES_VERSION_ID,
+    version: 2,
+    diagram: buildReleaseGatesDiagram(),
   };
 }
 
@@ -1021,7 +1033,8 @@ export function buildCuratedExerciseVersions(): ExerciseVersion[] {
     buildEightGuardsVersion4(),
     buildEightGuardsVersion5(),
     buildReleaseTimeVersion(),
-    buildReleaseGatesVersion(),
+    buildReleaseGatesVersion1(),
+    buildReleaseGatesVersion2(),
     buildRotationCountVersion(),
     buildComeAroundVersion1(),
     buildComeAroundVersion2(),

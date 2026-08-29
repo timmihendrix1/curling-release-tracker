@@ -129,6 +129,8 @@ test("Metric Info popover opens with an explanation and closes with Escape", asy
   await setupFixedBlock(page);
   await addShot(page, 3.8);
 
+  await page.getByText("Live Performance").click();
+
   const infoButton = page.getByRole("button", { name: "About Average Error" });
   await infoButton.click();
 
@@ -153,8 +155,8 @@ test("Chart Info popover distinguishes a statistical outlier from a Major Miss",
   await addShot(page, 3.8);
 
   // Handle Analysis lives inside Active Training's collapsed-by-default
-  // Detailed Analytics section (compositional redesign).
-  await page.getByText("Detailed Analytics").click();
+  // Live Performance section (compositional redesign).
+  await page.getByText("Live Performance").click();
 
   const boxplotInfo = page.getByRole("button", { name: "About Handle Boxplot" });
   await boxplotInfo.click();

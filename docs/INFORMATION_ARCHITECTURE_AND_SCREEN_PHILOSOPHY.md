@@ -292,9 +292,9 @@ What do I need to do right now?
 
 4. Session Progress
 
-5. Live Summary
+5. Compact Live Performance summary
 
-6. Detailed Analytics
+6. Collapsible Live Performance detail
 
 ---
 

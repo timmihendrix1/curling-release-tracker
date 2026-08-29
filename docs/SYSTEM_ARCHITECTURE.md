@@ -3167,7 +3167,9 @@ and how it is staged.
   on reconnect; a durable outbox; fail-closed authority revalidation before upload; at
   least *saved on this device* / *synced* / *sync issue*, with nothing called cloud-backed
   before the server acknowledges it; no silent overwrite of conflicting content under one
-  stable identity.
+  stable identity. A sync-issue disclosure exposes only bounded categories and counts
+  (personal history, Team records, blocked Team results or general verification), never
+  provider messages or sporting payload contents; retry remains explicit.
 - **Legacy local data is disposable.** The former unscoped `localStorage` data is early-
   test data, discarded once and explicitly by Stage B0.3 — never adopted, claimed, imported
   or merged. The ADR-0016/0017/0018 copy-migration and activation track is retired as the
@@ -3546,6 +3548,7 @@ local component state.
 | `identity/IdentityProvider.tsx` | The one application-level identity owner. Mounts `TrackerApp` only for a reducer-accepted ready session; otherwise renders the global gate |
 | `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |
 | `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |
+| `identity/SportingSyncStatusControl.tsx` | Honest Synced/Saved-on-device state plus a bounded sync-issue disclosure and explicit retry; no raw provider error or payload is rendered |
 | `identity/IdentityPendingTeamIntent.tsx` | Replays one durable invitation/Admin-Request intent only after gate readiness |
 | `legal/PrivacyNotice.tsx` | The immutable first closed-beta Privacy Notice content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/privacy` entry point (ADR-0041) |
 | `legal/TermsOfService.tsx` | The immutable first no-charge closed-beta Terms content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/terms` entry point (ADR-0042) |
@@ -3618,7 +3621,7 @@ Library" above and ADR-0023/0028-0040/0044.
 | `validation.ts` | `validateExerciseCatalogPackage` — every package, identity, versioning, content, classification, participation/sweeping, protocol-reference and diagram invariant, checked at runtime against untrusted data and reported in full |
 | `measurementProtocols.ts` | Two reusable versioned release-time protocols plus manual Rotation Count; release-time reuses existing `MeasurementMode`/`measurementModeLabel`, Rotation Count uses rotations without a timing mode, every protocol is target-free and currently manual-only |
 | `diagrams.ts` | Independently authored `normalized-ice-sheet-v1` structured diagrams for historical Eight Guards v2 and Release Gates, plus the generic restricted Swiss Curling source-image builder |
-| `content.ts` | Seven curated Exercises and fourteen immutable Versions; current public source-image Versions are Eight Guards v5, Come-around v2 and Soft Take-out v3, with every historical Version retained; English content with German source titles confined to `nonDisplayedSourceMetadata` and generic English overlays covering two embedded labels |
+| `content.ts` | Seven curated Exercises and fifteen immutable Versions; current versions include the mobile-safe Release Gates v2 plus public source-image Eight Guards v5, Come-around v2 and Soft Take-out v3, with every historical Version retained; English content with German source titles confined to `nonDisplayedSourceMetadata` and generic English overlays covering two embedded labels |
 | `catalog.ts` | Builds, recursively deep-freezes and import-time-validates `EXERCISE_CATALOG`; `assertValidExerciseCatalogPackage` throws one actionable message rather than rendering broken content |
 | `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
 | `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |

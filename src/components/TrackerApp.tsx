@@ -263,6 +263,7 @@ type ConfirmAction = {
   title: string;
   message: string;
   confirmLabel?: string;
+  isDanger?: boolean;
   onConfirm: () => void;
 };
 
@@ -1190,6 +1191,9 @@ export default function TrackerApp() {
   const activeBlockAnalysis = activeBlock && activeBlockAccuracyThresholds
     ? analyzeShots(filteredActiveBlockShots, activeBlockAccuracyThresholds)
     : null;
+  const activeBlockOverviewAnalysis = activeBlock && activeBlockAccuracyThresholds
+    ? analyzeShots(activeBlockShots, activeBlockAccuracyThresholds)
+    : null;
 
   // Whichever capture path is actually in progress is the screen's Hero; the
   // other stays available as a Primary (non-Hero) fallback (Epic 1: exactly
@@ -1550,6 +1554,7 @@ export default function TrackerApp() {
       message:
         "Already captured shots will remain in the training. No half-finished result will be saved.",
       confirmLabel: "Cancel Capture",
+      isDanger: true,
       onConfirm: () => {
         const session = sessionRef.current;
 
@@ -2262,51 +2267,71 @@ export default function TrackerApp() {
         : null,
       null,
       () => {
-        setConfirmAction({
+        openSessionArchiveConfirmation({
           title: "Start New Session",
-          message:
-            "Current session will be saved to history. Continue?",
+          message: "Current session will be saved to history. Continue?",
           confirmLabel: "Start",
-          // Deliberately synchronous, not async: the single-flight check-and-set below
-          // must complete before any await exists anywhere in this call, so a second,
-          // rapid invocation (a double click landing before React removes this modal)
-          // is rejected unconditionally, not merely discouraged by a disabled button or
-          // a state update that hasn't committed yet.
-          onConfirm: () => {
-            if (sessionArchiveInFlightRef.current) return;
-            sessionArchiveInFlightRef.current = true;
-
-            // Enqueued onto the same queue every TimingResult goes through — see
-            // performSessionArchiveTransition's doc comment above. The .catch() mirrors
-            // ADR-0007's processIncomingTimingResult exactly: an unexpected exception
-            // must never leave captureQueueRef permanently rejected, which would
-            // silently break all future capture processing, not just this transition.
-            captureQueueRef.current = captureQueueRef.current
-              .then(() => performSessionArchiveTransition())
-              .catch((error) => {
-                console.error(
-                  "Unexpected error while archiving the session",
-                  error
-                );
-              })
-              .finally(() => {
-                sessionArchiveInFlightRef.current = false;
-              });
-
-            setConfirmAction(null);
-          },
         });
       }
     );
   }
 
   /**
-   * A completed Training Plan's "Finish Training" action is simply this same
-   * existing session-completion path — plan completion introduces no new
-   * session-archiving logic of its own (see ADR-0012).
+   * Presents intent-specific copy while keeping the durable archive transition
+   * itself shared. Saving a completed training is not a destructive action and
+   * must not inherit the red treatment used for deletion/discard confirmations.
    */
   function handleFinishPlannedTraining() {
-    handleStartNewSession();
+    if (sessionHydration !== "ready") return;
+
+    guardLeavingActiveWork(
+      hasUnsavedBlindDraft
+        ? "You have an unfinished blind-weight shot. Finishing this training will discard it — recorded work will still be saved to history. Continue?"
+        : null,
+      isCaptureSequenceActive(currentSession?.captureSequence)
+        ? "Finishing this training will end the current Auto Capture. Already captured shots will remain in the training."
+        : null,
+      null,
+      () => {
+        openSessionArchiveConfirmation({
+          title: "Finish Training",
+          message: "Save this completed training to history?",
+          confirmLabel: "Finish",
+        });
+      }
+    );
+  }
+
+  function openSessionArchiveConfirmation(copy: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+  }) {
+    setConfirmAction({
+      ...copy,
+      isDanger: false,
+      // Deliberately synchronous, not async: the single-flight check-and-set below
+      // must complete before any await exists anywhere in this call, so a second,
+      // rapid invocation is rejected unconditionally.
+      onConfirm: () => {
+        if (sessionArchiveInFlightRef.current) return;
+        sessionArchiveInFlightRef.current = true;
+
+        // Enqueued onto the same queue every TimingResult goes through — see
+        // performSessionArchiveTransition's doc comment above. An unexpected
+        // exception must never leave captureQueueRef permanently rejected.
+        captureQueueRef.current = captureQueueRef.current
+          .then(() => performSessionArchiveTransition())
+          .catch((error) => {
+            console.error("Unexpected error while archiving the session", error);
+          })
+          .finally(() => {
+            sessionArchiveInFlightRef.current = false;
+          });
+
+        setConfirmAction(null);
+      },
+    });
   }
 
   /**
@@ -2332,6 +2357,7 @@ export default function TrackerApp() {
       title: "Unfinished Blind Weight Shot",
       message: warningMessage,
       confirmLabel: "Leave",
+      isDanger: true,
       onConfirm: () => {
         setHasUnsavedBlindDraft(false);
         setBlindDraftResetToken((token) => token + 1);
@@ -2413,6 +2439,7 @@ export default function TrackerApp() {
       title: "Auto Capture In Progress",
       message: warningMessage,
       confirmLabel: "Leave",
+      isDanger: true,
       onConfirm: () => {
         if (sessionHydration === "ready") {
           setCurrentSession((session) => {
@@ -2495,6 +2522,7 @@ export default function TrackerApp() {
       message:
         "Delete this session from history? This cannot be undone.",
       confirmLabel: "Delete",
+      isDanger: true,
       onConfirm: () => {
         setSessionHistory((currentHistory) =>
           currentHistory.filter(
@@ -2515,6 +2543,7 @@ export default function TrackerApp() {
       message:
         "Delete the entire session history? This cannot be undone.",
       confirmLabel: "Clear All",
+      isDanger: true,
       onConfirm: () => {
         setSessionHistory([]);
         setConfirmAction(null);
@@ -3030,15 +3059,31 @@ export default function TrackerApp() {
                 </>
               )}
 
-              {/* Live Summary — filter, live metrics and shot history are
-                  one continuous "how am I doing so far" reading, not three
-                  stacked cards (compositional redesign: IA doc's Active
-                  Training priority groups Session Progress/Live Summary
-                  together, below the current task above). */}
-              <div className={surfaceClass("secondary")}>
+              {/* Rink-side analytics are one optional Live Performance view.
+                  Its closed header still answers "how am I doing?" without
+                  making Active Training feel like an analytics dashboard. */}
+              <details className="group rounded-2xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 marker:content-none group-open:rounded-b-none">
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="font-medium text-slate-800">Live Performance</span>
+                    <span className="text-right text-xs text-slate-500">
+                      {!activeBlockOverviewAnalysis || activeBlockOverviewAnalysis.count === 0
+                        ? "No shots yet"
+                        : `${activeBlockShots.length} shot${activeBlockShots.length === 1 ? "" : "s"} · Avg ${formatReleaseTime(activeBlockOverviewAnalysis.average)} · ${Math.round((activeBlockOverviewAnalysis.targetAccuracy.onTargetRate ?? 0) * 100)}% on target`}
+                    </span>
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-400 group-open:hidden">
+                    Show summary and charts
+                  </span>
+                  <span className="mt-1 hidden text-xs text-slate-400 group-open:block">
+                    Hide summary and charts
+                  </span>
+                </summary>
+
+                <div className="border-t border-slate-100 p-4">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    Live Summary
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Summary
                   </h2>
 
                   <p className="text-xs text-slate-500">
@@ -3171,23 +3216,8 @@ export default function TrackerApp() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* Detailed Analytics comes right after Live Summary — before
-                  Recent Shots/Edit Shots/Session Actions, matching the IA
-                  doc's Active Training priority (Live Summary, then Detailed
-                  Analytics) and closing this gap: editing tools must never
-                  outrank analysis in the reading order. */}
-              <details className="group rounded-2xl border border-slate-200 bg-white">
-                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Detailed Analytics</span>
-                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
-                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
-                  </span>
-                </summary>
-
-                <div className="space-y-4 border-t border-slate-100 p-4">
+                <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">
+                  <h3 className="text-sm font-semibold text-slate-500">Detailed charts</h3>
                   <ReleaseTrendChart shots={filteredActiveBlockShots} />
 
                   <TargetErrorChart
@@ -3209,11 +3239,12 @@ export default function TrackerApp() {
                     explanation={targetVsActualExplanation("current")}
                   />
                 </div>
+                </div>
               </details>
 
               {/* Recent Shots — and its inline Edit/Delete controls — is a
                   correction tool, not the primary analysis surface, so it
-                  stays collapsed by default and below Detailed Analytics
+                  stays collapsed by default and below Live Performance
                   ("Editing previous shots is an exception workflow.
                   Monitoring performance is the primary workflow."). */}
               <details className="group rounded-2xl border border-slate-200 bg-white">
@@ -3666,6 +3697,18 @@ export default function TrackerApp() {
 
           {analyzeTab === "training" && (
           <>
+          {currentSession && sessionHasArchivableActivity(currentSession) && (
+            <div className={surfaceClass("utility")} role="note">
+              <p className="text-sm font-medium text-slate-800">
+                Current training not included yet
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                Finish the training to add its Release Time shots to this completed-session view.
+                Shotmaking and Technique results are reviewed under Exercises.
+              </p>
+            </div>
+          )}
+
           {/* 1. Sticky Analysis Filters — readiness gating
               (docs/PERSISTENCE_BOUNDARY_DESIGN.md §7.10). While
               historyFiltersHydration is "loading", the stored filters
@@ -4014,7 +4057,7 @@ export default function TrackerApp() {
           confirmLabel={
             confirmAction.confirmLabel
           }
-          isDanger
+          isDanger={confirmAction.isDanger}
           onConfirm={confirmAction.onConfirm}
           onCancel={() =>
             setConfirmAction(null)
