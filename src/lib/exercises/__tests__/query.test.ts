@@ -10,6 +10,7 @@ import {
   ROTATION_COUNT_VERSION_ID,
 } from "../content";
 import { listCurrentExerciseVersions } from "../lookup";
+import { SWISS_CURLING_CORPUS_VERSION_IDS } from "../swissCurlingCorpus";
 import {
   areDefaultExerciseLibraryFilters,
   describeActiveExerciseLibraryFilters,
@@ -27,6 +28,16 @@ import {
 import { buildTestVersion } from "./testHelpers";
 
 const CURRENT = listCurrentExerciseVersions(EXERCISE_CATALOG);
+const CORPUS_MEASURED_IDS = ["draw-split-time-v1", "draw-split-time-ladder-v1"];
+const CORPUS_SHOTMAKING_IDS = SWISS_CURLING_CORPUS_VERSION_IDS.filter(
+  (id) => !CORPUS_MEASURED_IDS.includes(id)
+);
+const SOURCE_VERSION_IDS = [
+  EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+  COME_AROUND_VERSION_ID,
+  SOFT_TAKEOUT_VERSION_ID,
+  ...SWISS_CURLING_CORPUS_VERSION_IDS,
+];
 
 function filters(overrides: Partial<ExerciseLibraryFilters> = {}): ExerciseLibraryFilters {
   return { ...DEFAULT_EXERCISE_LIBRARY_FILTERS, ...overrides };
@@ -46,6 +57,7 @@ describe("default filters", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...SWISS_CURLING_CORPUS_VERSION_IDS,
     ]);
   });
 
@@ -73,20 +85,23 @@ describe("classification filters", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...CORPUS_SHOTMAKING_IDS,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "measured" })))).toEqual([
       RELEASE_TIME_VERSION_ID,
       ROTATION_COUNT_VERSION_ID,
+      ...CORPUS_MEASURED_IDS,
     ]);
   });
 
   it("filters by Shot Family, excluding Exercises that declare none", () => {
-    expect(ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "guard" })))).toEqual([
-      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-    ]);
-    expect(ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" })))).toEqual([
-      COME_AROUND_VERSION_ID,
-    ]);
+    const guards = ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "guard" })));
+    expect(guards).toHaveLength(7);
+    expect(guards).toContain(EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID);
+
+    const draws = ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" })));
+    expect(draws).toContain(COME_AROUND_VERSION_ID);
+    expect(draws).toContain("draws-into-house-outside-in-v1");
   });
 
   it("filters by Sweeper requirement", () => {
@@ -94,6 +109,7 @@ describe("classification filters", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...SWISS_CURLING_CORPUS_VERSION_IDS,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ sweeping: "optional" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
@@ -113,6 +129,7 @@ describe("classification filters", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...SWISS_CURLING_CORPUS_VERSION_IDS,
     ]);
 
     const teamOnly = buildTestVersion({
@@ -131,9 +148,12 @@ describe("classification filters", () => {
   });
 
   it("filters by difficulty level and by unrated", () => {
-    expect(
-      ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 6 } })))
-    ).toEqual([EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID]);
+    const levelSix = ids(
+      filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 6 } }))
+    );
+    expect(levelSix).toHaveLength(8);
+    expect(levelSix).toContain(EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID);
+    expect(levelSix).toContain("draw-split-time-ladder-v1");
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "unrated" } })))
     ).toEqual([
@@ -144,7 +164,12 @@ describe("classification filters", () => {
     ]);
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 3 } })))
-    ).toEqual([COME_AROUND_VERSION_ID]);
+    ).toEqual(
+      expect.arrayContaining([
+        COME_AROUND_VERSION_ID,
+        "guards-in-left-mixed-doubles-zone-v1",
+      ])
+    );
   });
 
   it("matches a level inside a bounded difficulty range", () => {
@@ -183,6 +208,7 @@ describe("classification filters", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...CORPUS_SHOTMAKING_IDS,
     ]);
   });
 });
@@ -202,8 +228,9 @@ describe("Library focus grouping", () => {
         EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
         COME_AROUND_VERSION_ID,
         SOFT_TAKEOUT_VERSION_ID,
+        ...CORPUS_SHOTMAKING_IDS,
       ],
-      [RELEASE_TIME_VERSION_ID, ROTATION_COUNT_VERSION_ID],
+      [RELEASE_TIME_VERSION_ID, ROTATION_COUNT_VERSION_ID, ...CORPUS_MEASURED_IDS],
     ]);
   });
 
@@ -218,13 +245,14 @@ describe("Library focus grouping", () => {
 
 describe("text search", () => {
   it("matches on title, goal and instruction text", () => {
-    expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "guards" })))).toEqual([
-      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-    ]);
-    expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "hog line" })))).toEqual([
-      RELEASE_POINT_VERSION_ID,
-      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-    ]);
+    const guards = ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "guards" })));
+    expect(guards).toHaveLength(7);
+    expect(guards).toContain(EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID);
+
+    const hogLine = ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "hog line" })));
+    expect(hogLine).toEqual(
+      expect.arrayContaining([RELEASE_POINT_VERSION_ID, EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID])
+    );
   });
 
   it("is case-insensitive and ignores surrounding whitespace", () => {
@@ -242,23 +270,20 @@ describe("text search", () => {
 
   it("matches a non-displayed source alias, including without its diacritics", () => {
     for (const term of ["Übung", "ubung"]) {
-      expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: term })))).toEqual([
-        EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-        COME_AROUND_VERSION_ID,
-        SOFT_TAKEOUT_VERSION_ID,
-      ]);
+      expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: term })))).toEqual(
+        SOURCE_VERSION_IDS
+      );
     }
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "8 Steine" })))).toEqual([
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+      "eight-guards-progressively-shorter-v1",
     ]);
   });
 
   it("matches on visible source attribution", () => {
-    expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "swiss curling" })))).toEqual([
-      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-      COME_AROUND_VERSION_ID,
-      SOFT_TAKEOUT_VERSION_ID,
-    ]);
+    expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "swiss curling" })))).toEqual(
+      SOURCE_VERSION_IDS
+    );
   });
 
   it("returns nothing for a term no Exercise carries", () => {
@@ -322,6 +347,8 @@ describe("available filter options are derived from the catalog", () => {
       "guard",
       "draw",
       "soft-take-out",
+      "sequence",
+      "freeze",
     ]);
     expect(availableExerciseParticipationModes(CURRENT)).toEqual(["solo", "team"]);
     expect(availableExerciseSweepingPolicies(CURRENT)).toEqual(["optional", "forbidden"]);
@@ -329,8 +356,11 @@ describe("available filter options are derived from the catalog", () => {
 
   it("lists the difficulty levels present plus an unrated option", () => {
     expect(availableExerciseDifficultyFilters(CURRENT)).toEqual([
+      { kind: "level", level: 1 },
+      { kind: "level", level: 2 },
       { kind: "level", level: 3 },
       { kind: "level", level: 4 },
+      { kind: "level", level: 5 },
       { kind: "level", level: 6 },
       { kind: "unrated" },
     ]);

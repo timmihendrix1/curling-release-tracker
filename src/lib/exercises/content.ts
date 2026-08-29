@@ -1,9 +1,9 @@
 // Curated Stage A + Stage E Exercise content (spec sections 5.6, 10.1-10.3, 11).
 //
-// Seven Exercises with immutable Exercise Versions. The three Swiss Curling
-// Shotmaking Exercises retain their historical restricted diagram versions and
-// publish new current versions for the approved public source diagrams. Every
-// user-facing string here is English. Original German source titles appear
+// The original seven Exercises retain their immutable Versions. The complete
+// Swiss Curling source corpus is appended below from `swissCurlingCorpus.ts`;
+// its diagrams are approved public assets with cache-first offline delivery.
+// Every user-facing string is English. Original German source titles appear
 // only inside `nonDisplayedSourceMetadata`, which no component renders — they
 // exist for attribution traceability and Library search (spec 3.6).
 //
@@ -34,6 +34,10 @@ import {
   SWISS_CURLING_GUARD_10_ASSET_ID,
   SWISS_CURLING_SOFTSHOT_5_ASSET_ID,
 } from "./restrictedAssetCatalog";
+import {
+  buildSwissCurlingCorpusExercises,
+  buildSwissCurlingCorpusVersions,
+} from "./swissCurlingCorpus";
 
 export const RELEASE_POINT_EXERCISE_ID = "release-point";
 export const EIGHT_GUARDS_EXERCISE_ID = "eight-guards-progressively-longer";
@@ -1021,6 +1025,7 @@ export function buildCuratedExercises(): Exercise[] {
     { id: ROTATION_COUNT_EXERCISE_ID, currentVersionId: ROTATION_COUNT_VERSION_ID },
     { id: COME_AROUND_EXERCISE_ID, currentVersionId: COME_AROUND_VERSION_ID },
     { id: SOFT_TAKEOUT_EXERCISE_ID, currentVersionId: SOFT_TAKEOUT_VERSION_ID },
+    ...buildSwissCurlingCorpusExercises(),
   ];
 }
 
@@ -1041,5 +1046,6 @@ export function buildCuratedExerciseVersions(): ExerciseVersion[] {
     buildSoftTakeoutVersion1(),
     buildSoftTakeoutVersion2(),
     buildSoftTakeoutVersion3(),
+    ...buildSwissCurlingCorpusVersions(),
   ];
 }

@@ -14,10 +14,11 @@
 
 This document is **approved for staged implementation** and is the canonical product
 and domain source for the Exercise Library and non-release-time exercise execution.
-The product owner has confirmed that the three selected Swiss Curling diagrams may be
-shown to every application user. ADR-0044 records the resulting public, offline-capable
-delivery. The source remains credited in one compact footer at the bottom of each
-Exercise; this does not grant permission for any additional Swiss Curling material.
+The product owner has confirmed that all 37 Swiss Curling Exercises and diagrams in the
+supplied collection may be shown to every application user. ADR-0044 introduced public,
+offline-capable delivery for the first three diagrams; ADR-0045 generalises that
+boundary to the complete collection. The source remains credited in one compact footer
+at the bottom of each Exercise.
 
 It complements, and must not contradict:
 
@@ -304,13 +305,13 @@ The platform uses its own responsive presentation and must not treat the Swiss C
 slide layout as the application layout. Every adapted Exercise preserves a visible
 source attribution and source version.
 
-The product owner has confirmed public application delivery for the three selected
-source diagrams. That permission is narrow: it does not cover the other 34 Exercises or
-any additional Swiss Curling text or illustration. The three diagrams remain visibly
-attributed to Swiss Curling, while the surrounding application copy, interaction design
-and page composition remain the platform's own. ADR-0044 records their versioned public
-delivery and offline cache; future source material still needs its own recorded rights
-decision before inclusion.
+The product owner has confirmed public application delivery for all 37 Exercises and
+source diagrams in this supplied collection, including faithful English adaptations of
+its Exercise text. Every Exercise remains visibly attributed to Swiss Curling, while the
+surrounding application copy, interaction design and page composition remain the
+platform's own. ADR-0044 introduced versioned public delivery and offline caching for
+the first three diagrams; ADR-0045 records the complete-corpus expansion. Material
+outside this supplied collection still needs its own recorded rights decision.
 
 ## 5.5 Curated content delivery
 
@@ -321,9 +322,13 @@ No user-facing or platform-admin authoring interface is required in Version 1. C
 content corrections are made through reviewed content changes that create new immutable
 Exercise Versions when their meaning changes.
 
-## 5.6 Approved initial closed-test catalogue
+## 5.6 Approved curated catalogue
 
-The initial closed test contains seven curated Exercises selected with the Elite Team.
+The initial closed test began with seven curated Exercises selected with the Elite Team.
+The product owner subsequently approved the complete 37-Exercise Swiss Curling
+collection for implementation before the broader Team test. Together with Release
+Point, Release Gates, standalone Release Time and Rotation Count, the Library therefore
+contains 41 current Exercises.
 The previously discussed Technique Exercises **Rotation** and **Laser** are deliberately
 deferred until Team feedback justifies their capture and presentation needs; they remain
 future content, not deleted concepts.
@@ -338,11 +343,12 @@ future content, not deleted concepts.
    title: `Softshot Übung 5: Soft-Takeout auf Centerline T-Line`).
 
 The platform uses its own wording and interaction design while preserving Swiss Curling
-attribution and the source exercise identity. It may use the three corresponding source
-diagrams under Section 5.4's recorded public permission. The
-closed beta provides the generic 0–4 capture mechanism but no platform-authored,
-exercise-specific scoring rubric. The other 34 Exercises in the supplied collection
-are deferred content expansion, not Version 1 implementation scope.
+attribution and source identity. All 37 corresponding source diagrams may be used under
+Section 5.4's recorded public permission. The closed beta provides the generic 0–4
+capture mechanism but no platform-authored, exercise-specific scoring rubric. The other
+34 Exercises in the supplied collection are implemented content expansion: Draw Split
+Time and Draw Split-Time Ladder are Measured Exercises that reuse the existing
+Backline–Hog Release Time runner; the other 32 are Shotmaking Exercises.
 
 ### Technique Exercises
 
@@ -380,13 +386,14 @@ making sensors part of Version 1.
 
 ## 6.3 Attributed source images and distribution
 
-The three selected Swiss Curling Shotmaking Exercises use attributed source-image
-diagrams under Section 5.4's recorded public permission. The content model distinguishes
+All 37 Swiss Curling Exercises use attributed source-image diagrams under Section
+5.4's recorded public permission. The content model distinguishes
 an `attributed source image` from a `structured platform diagram` and retains source,
 version and explicit public/restricted distribution metadata. A source image is a
 responsive instructional asset, not coordinate data and not a sensor-compatible
 diagram. Changing distribution creates a new immutable Exercise Version rather than
-rewriting history. Public diagrams may use the cache-first delivery in ADR-0044;
+rewriting history. Public diagrams use the cache-first delivery introduced in ADR-0044
+and generalised in ADR-0045;
 genuinely restricted future assets must use ADR-0023's separate fail-closed boundary.
 
 ## 6.4 Structured diagram primitives
@@ -1232,11 +1239,11 @@ not be pooled with standardised or differently customised rubric results.
 ## 18.1 Included
 
 - platform-curated Standard Exercises with immutable versions;
-- the approved seven-Exercise closed-beta catalogue from Section 5.6;
+- the 41-Exercise curated catalogue from Section 5.6;
 - source attribution and own platform presentation;
 - Technique, Shotmaking and Measured Exercise focus;
 - Shot Family and Training Purpose as independent classifications;
-- responsive attributed source diagrams for the three cleared Shotmaking Exercises and a
+- responsive attributed source diagrams for all 37 cleared Swiss Curling Exercises and a
   structured platform-diagram seam;
 - search and essential filters;
 - Solo and Team execution;
@@ -1359,9 +1366,9 @@ state never transfers data ownership or hides athlete-owned raw data. Entitlemen
 remain configurable and separate from identity, permission and persistence models: a Team
 permission is never an entitlement, and an entitlement is never a permission.
 
-No unresolved product decision remains in this specification. Section 5.4's Swiss
-Curling rights clarification is an external gate before a larger test or release, not
-authority for an implementation agent to widen distribution.
+No unresolved Exercise product decision remains in this specification. Section 5.4
+records the approved boundary for the supplied collection; it grants no authority to
+widen distribution to unrelated future source material.
 
 Two things this specification depends on but does not decide: the **final commercial name
 of the paid personal tier** (undecided — see above), and the **identity and persistence
@@ -1406,7 +1413,7 @@ Exercise domain decisions already approved in this specification changes.
 
 - approve this specification;
 - verify and record the source-diagram permission scope from Section 5.4;
-- approve the detailed content and diagrams for the initial-test Exercises in Section 5.6; and
+- approve the detailed content and diagrams for the curated catalogue in Section 5.6; and
 - reconcile canonical glossary and roadmap references.
 
 No production implementation begins before this gate.
@@ -1559,19 +1566,21 @@ started or completed history.
 
 ## Stage E — Initial-test content expansion and release hardening
 
-**Implementation status (2026-08-29): Implemented.** The catalogue contains all seven
-approved Exercises. Release Gates and historical Eight Guards Version 2 use generic
-structured diagrams; the current versions of Guard Exercise 10, Draw Exercise 6 and
-Softshot Exercise 5 use the approved Swiss Curling source diagrams. ADR-0044 records the
-product owner's public-delivery clearance. The versioned PNGs live under
+**Implementation status (2026-08-29): Implemented and expanded.** The catalogue contains
+the original seven Exercises plus all 34 remaining Exercises from the supplied Swiss
+Curling collection. Release Gates and historical Eight Guards Version 2 use generic
+structured diagrams; all 37 Swiss Curling Exercises use their approved source diagrams.
+ADR-0044 records the initial three-diagram clearance and ADR-0045 records the complete
+corpus expansion. The versioned PNGs live under
 `public/exercise-diagrams/`; the application preloads them through a cache-first resolver
 and stores validated PNG Data URLs through its `StorageAdapter`, making them available
-after connectivity is lost. The two embedded German labels remain covered by generic,
-data-driven English overlays. Source attribution is shown once at the bottom of the
+after connectivity is lost. Embedded German labels are covered by generic, data-driven
+English overlays. Source attribution is shown once at the bottom of the
 Exercise. ADR-0041/0042 provide the initial Privacy Notice and Terms; deployment and
 explicit Legal metadata publication remain separate release operations.
 
-- add the remaining four approved initial-test Exercises from Section 5.6;
+- add the remaining four approved initial-test Exercises from Section 5.6 and the later
+  approved 34-Exercise corpus expansion;
 - validate every instruction, source diagram, distribution declaration and attribution;
 - verify generic 0–4 capture without hidden exercise-specific thresholds;
 - test essential Library filters and mobile execution;

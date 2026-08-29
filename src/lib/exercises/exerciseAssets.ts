@@ -83,7 +83,7 @@ export type PublicExerciseAssetResolverOptions = {
 };
 
 /**
- * Resolves the three publicly cleared Swiss Curling diagrams cache-first. Each
+ * Resolves the complete publicly cleared Swiss Curling diagram corpus cache-first. Each
  * immutable asset id owns one independent local key, so concurrent warm-up
  * writes cannot overwrite one another. A successful first online load makes
  * the diagram available to the same browser while offline; a new diagram

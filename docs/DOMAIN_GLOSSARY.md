@@ -1597,7 +1597,7 @@ A stable Library identity for one deliberate-practice activity (`{ id, currentVe
 instructions, diagrams, defaults and provenance live in an immutable **Exercise
 Version**. Version 1 exposes only platform-curated Standard Exercises. Athlete-, Team-
 and Community-authored Exercises are deferred.
-**[Implemented — identity and lookup; seven curated closed-beta Exercises. ADR-0028/0029 add the
+**[Implemented — identity and lookup; 41 current curated Exercises. ADR-0028/0029 add the
 Solo execution and Session-persistence foundations; ADR-0030 adds athlete-facing Solo
 start and recording. See `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section.]**
 
@@ -1647,10 +1647,11 @@ platform diagram in normalised Ice Sheet coordinates. It is not captured positio
 and does not itself perform automatic scoring.
 **[Implemented — both variants are modelled and validated; the structured variant has a
 generic responsive SVG renderer (`normalized-ice-sheet-v1`), and unsupported content
-fails visibly rather than disappearing. The three approved Swiss Curling Shotmaking
-diagrams use public attributed-image Versions with English localized-text overlays where
+fails visibly rather than disappearing. All 37 approved Swiss Curling Exercises use
+public attributed-image Versions with English localized-text overlays where
 needed and a cache-first offline copy after initial download. No editor, animation,
-actual positions or sensor overlay exists (Planned). See ADR-0023 and ADR-0044.]**
+actual positions or sensor overlay exists (Planned). See ADR-0023, ADR-0044 and
+ADR-0045.]**
 
 ## Restricted Source Asset
 

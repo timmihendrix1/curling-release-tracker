@@ -1381,18 +1381,16 @@ history and validated metadata-only notification inbox, completing Stage C. Any 
 database/RLS/transaction change still requires real database evidence; TypeScript tests
 alone are not sufficient.
 
-**Exercise source diagrams (resolved 2026-08-29 for the initial three).** The product
-owner has confirmed that Guard Exercise 10, Draw Exercise 6 and Softshot Exercise 5 may
-be shown to every application user. ADR-0044 therefore gives their current immutable
-Exercise Versions a public distribution and delivers the versioned PNGs from
-`public/exercise-diagrams/`. A cache-first resolver validates and preloads all three,
-then persists one PNG Data URL per asset id through `StorageAdapter` for later offline
-use. Data-driven English overlays still cover the two embedded German labels, and one
-compact source footer remains at the bottom of the Exercise. ADR-0023's private route
-and fail-closed restricted boundary remain available for future content whose rights
-actually require an audience restriction; they are no longer the production path for
-these three diagrams. Permission for any additional Swiss Curling material remains a
-separate product-owner/legal decision.
+**Exercise source diagrams and complete corpus (resolved 2026-08-29).** ADR-0044 first
+made Guard Exercise 10, Draw Exercise 6 and Softshot Exercise 5 public and cache-first.
+The product owner subsequently confirmed that the complete supplied Swiss Curling
+collection may be reproduced for every application user. ADR-0045 adds the remaining
+34 Exercises and their versioned PNGs, for 37 Swiss Curling source Exercises in total.
+The cache-first resolver validates and preloads every registered asset, then persists
+one PNG Data URL per asset id through `StorageAdapter` for later offline use. English
+overlays cover embedded German labels, and one compact source footer remains at the
+bottom of each Exercise. ADR-0023's private route and fail-closed restricted boundary
+remain available only for future content whose rights require an audience restriction.
 
 ---
 

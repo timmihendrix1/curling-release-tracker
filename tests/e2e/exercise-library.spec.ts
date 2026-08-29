@@ -130,7 +130,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
 
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
     for (const title of CURATED_TITLES) {
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeHidden();
     }
@@ -138,14 +138,14 @@ test.describe("Exercise Library and Solo execution", () => {
 
     // Text search narrows the list.
     await page.getByLabel("Search exercises").fill("guard");
-    await expect(page.getByText("2 exercises")).toBeVisible();
+    await expect(page.getByText("16 exercises")).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Release Point", exact: true })
     ).toHaveCount(0);
 
     // Reset brings everything back.
     await page.getByRole("button", { name: "Reset filters" }).first().click();
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
 
     // Filters are progressively disclosed, then applied.
     await page.getByRole("button", { name: "Filters", exact: true }).click();
@@ -158,7 +158,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.getByLabel("Difficulty").selectOption("level:6");
     await expect(page.getByText("No exercises match these filters")).toBeVisible();
     await page.getByRole("button", { name: "Reset filters" }).first().click();
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
 
     // Every representative detail opens and returns with one focus-semantic start action.
     for (const title of CURATED_TITLES) {
@@ -171,7 +171,7 @@ test.describe("Exercise Library and Solo execution", () => {
       await expectNoHorizontalOverflow(page);
 
       await page.getByRole("button", { name: "← Back to Exercises" }).click();
-      await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
     }
   });
 
@@ -241,7 +241,7 @@ test.describe("Exercise Library and Solo execution", () => {
 
     await page.keyboard.press("Home");
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
 
     // Wraps backward from the first tab to the last.
     await page.keyboard.press("ArrowLeft");
@@ -312,7 +312,7 @@ test.describe("Exercise Library and Solo execution", () => {
 
     await page.getByRole("button", { name: "Reset filters" }).first().click();
     await expect(summary).toHaveCount(0);
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
   });
 
   test("shows each Exercise's own version, and no internal id or source metadata", async ({
@@ -347,7 +347,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await primaryNavDesktop(page).getByRole("button", { name: "Train" }).click();
     await openTrainTab(page, "Exercises");
 
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     for (const title of CURATED_TITLES) {
@@ -376,7 +376,7 @@ test.describe("Exercise Library and Solo execution", () => {
     // Release Timing is reached from the Library, while its established
     // Fixed/Variable/Blind setup and runner remain unchanged.
     await openTrainTab(page, "Exercises");
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
     await openExerciseDetail(page, "Release Time");
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
     await expect(page.getByText("Set Up Training Block")).toBeVisible();
@@ -402,7 +402,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByText(/Completed without a score/)).toBeVisible();
     await expect(page.getByLabel("Private athlete note")).toHaveValue("Observed by a teammate.");
     await page.getByRole("button", { name: "Back to Exercise Library" }).click();
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -494,7 +494,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByText(/previously verified active roster/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Start Team Exercise" })).toHaveCount(0);
     await page.getByRole("button", { name: "Back to Exercise Library" }).click();
-    await expect(page.getByText("7 exercises")).toBeVisible();
+    await expect(page.getByText("41 exercises")).toBeVisible();
   });
 
   test("persists one-device Team Shotmaking, corrections, rotations and role changes across reload", async ({ page, context }) => {

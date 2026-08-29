@@ -49,6 +49,7 @@ import {
   EXERCISE_CONTENT_SCHEMA_VERSION,
 } from "../types";
 import { validateExerciseCatalogPackage } from "../validation";
+import { SWISS_CURLING_CORPUS_EXERCISE_IDS } from "../swissCurlingCorpus";
 
 describe("production Exercise catalog", () => {
   it("passes its own validation boundary", () => {
@@ -63,7 +64,7 @@ describe("production Exercise catalog", () => {
     expect(EXERCISE_CATALOG.contentLanguage).toBe("en");
   });
 
-  it("contains the seven approved initial-test Exercises", () => {
+  it("contains the seven initial-test Exercises plus all 34 remaining source exercises", () => {
     expect(EXERCISE_CATALOG.exercises.map((exercise) => exercise.id)).toEqual([
       RELEASE_POINT_EXERCISE_ID,
       EIGHT_GUARDS_EXERCISE_ID,
@@ -72,8 +73,10 @@ describe("production Exercise catalog", () => {
       ROTATION_COUNT_EXERCISE_ID,
       COME_AROUND_EXERCISE_ID,
       SOFT_TAKEOUT_EXERCISE_ID,
+      ...SWISS_CURLING_CORPUS_EXERCISE_IDS,
     ]);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(15);
+    expect(EXERCISE_CATALOG.exercises).toHaveLength(41);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(49);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -105,6 +108,23 @@ describe("Exercise runner classification", () => {
 
     expect(exerciseRunnerKind(EXERCISE_CATALOG, releaseTime)).toBe("release-timing");
     expect(exerciseRunnerKind(EXERCISE_CATALOG, rotationCount)).toBe("exercise-execution");
+  });
+
+  it("routes both Swiss Curling split-time draws through the existing timing runner", () => {
+    for (const id of ["draw-split-time-v1", "draw-split-time-ladder-v1"]) {
+      const version = findExerciseVersion(EXERCISE_CATALOG, id);
+      expect(version).toMatchObject({
+        primaryFocus: "measured",
+        shotFamily: "draw",
+        compatibleMeasurementProtocols: [{
+          protocolId: RELEASE_TIME_BACK_HOG_PROTOCOL_ID,
+          protocolVersion: 1,
+          requirement: "required",
+        }],
+      });
+      if (!version) throw new Error(`Missing split-time Exercise ${id}`);
+      expect(exerciseRunnerKind(EXERCISE_CATALOG, version)).toBe("release-timing");
+    }
   });
 
   it("fails closed for absent, mixed or multiple standalone protocols", () => {
@@ -215,6 +235,7 @@ describe("deterministic lookup", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...SWISS_CURLING_CORPUS_EXERCISE_IDS.map((id) => `${id}-v1`),
     ]);
   });
 
@@ -479,7 +500,7 @@ describe("curated Stage A content", () => {
     }
   });
 
-  it("uses publicly cleared source images for exactly the three current Shotmaking Exercises", () => {
+  it("uses publicly cleared source images for all 37 current Swiss Curling Exercises", () => {
     const sourceImages = listCurrentExerciseVersions(EXERCISE_CATALOG).filter(
       (version) => version.diagram?.kind === "attributed-source-image"
     );
@@ -487,7 +508,9 @@ describe("curated Stage A content", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
+      ...SWISS_CURLING_CORPUS_EXERCISE_IDS.map((id) => `${id}-v1`),
     ]);
+    expect(sourceImages).toHaveLength(37);
     for (const version of sourceImages) {
       expect(version.source.kind).toBe("external-collection");
       expect(version.source.organization).toBe("Swiss Curling");
@@ -500,6 +523,29 @@ describe("curated Stage A content", () => {
         expect(overlay.text).not.toMatch(/Übung|Stein|Zielzone/);
       }
     }
+  });
+
+  it("covers every source page once and preserves the two documented source inconsistencies", () => {
+    const corpus = SWISS_CURLING_CORPUS_EXERCISE_IDS.map((id) =>
+      resolveCurrentExerciseVersion(EXERCISE_CATALOG, id)
+    );
+    expect(corpus.every(Boolean)).toBe(true);
+    expect(corpus.filter((version) => version?.primaryFocus === "shotmaking")).toHaveLength(32);
+    expect(corpus.filter((version) => version?.primaryFocus === "measured")).toHaveLength(2);
+    expect(new Set(corpus.map((version) => version?.source.sourcePage)).size).toBe(34);
+
+    expect(resolveCurrentExerciseVersion(
+      EXERCISE_CATALOG,
+      "guard-beyond-then-before-mixed-doubles-zone"
+    )?.difficulty).toEqual({ kind: "range", min: 3, max: 4 });
+    expect(resolveCurrentExerciseVersion(
+      EXERCISE_CATALOG,
+      "matching-depth-corner-guards"
+    )?.difficulty).toEqual({ kind: "range", min: 4, max: 5 });
+    expect(resolveCurrentExerciseVersion(
+      EXERCISE_CATALOG,
+      "soft-takeout-eight-foot-width-front-12-foot"
+    )?.source.provenanceNote).toContain("source repeats the title");
   });
 
   it("keeps every German source title out of displayed content", () => {

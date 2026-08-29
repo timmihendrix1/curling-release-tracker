@@ -2467,9 +2467,11 @@ offline eligibility/permission UI Stage C2c, active-draft persistence Stage C3a 
 one-device setup/capture UI Stage C3b, athlete-owned restore/private-note UI Stage C3c,
 active-attempt correction Stage C3d, post-completion server authority Stage C4a,
 strict client projection/cache Stage C4b, athlete mutation/inbox UI Stage C4c,
-profile-owned mixed Training Plans in Stage D and the seven-Exercise closed-beta content
-in Stage E. ADR-0044 adds public, offline-capable delivery for the three cleared Swiss
-Curling diagrams and the Library-backed plan picker. Team-plan execution, authoring and advanced
+profile-owned mixed Training Plans in Stage D, the original seven-Exercise content in
+Stage E and ADR-0045's expansion to 41 current Exercises. ADR-0044 adds public,
+offline-capable delivery for the first three Swiss Curling diagrams and the
+Library-backed plan picker; ADR-0045 generalises that delivery to all 37 source
+diagrams. Team-plan execution, authoring and advanced
 analytics remain Planned — see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s "Exercise Library
 and multi-athlete execution".
 
@@ -2504,9 +2506,9 @@ and multi-athlete execution".
   C4c adds online, acknowledgement-first athlete correction and terminal void controls,
   visible append-only revision history and metadata-only result-change cards in the
   existing unread Team inbox. ADR-0040 adds Profile-owned mixed Exercise Training Plans.
-  Stage E completes the seven-Exercise closed-beta catalogue, standalone Rotation Count,
-  Release Time semantic reuse and private authenticated delivery for all three approved
-  Swiss Curling source diagrams.
+  Stage E completes the original seven-Exercise catalogue, standalone Rotation Count
+  and Release Time semantic reuse. ADR-0045 adds all 34 remaining source Exercises and
+  public offline delivery for all 37 approved Swiss Curling diagrams.
 - **Not implemented (Planned):** Team Training Plan execution, Exercise authoring and
   Exercise analytics.
 - There is no Exercise `localStorage` key, repository or cloud record kind. Optional
@@ -2681,14 +2683,16 @@ names and renders strictly validated metadata-only cards in the existing Team in
 - `ExerciseTeamSetupScreen.tsx` / `ExerciseTeamExecutionScreen.tsx` — ADR-0036's generic
   cache-bounded Team setup and durable one-device Technique/Shotmaking capture. Both use
   declared focus/guidance/protocol semantics rather than catalog identity.
-- `content.ts` — all seven approved closed-beta Exercises: Release Point, Release Gates,
+- `content.ts` — the original seven approved Exercises: Release Point, Release Gates,
   Eight Guards Progressively Longer, Come-around from Outside to Inside before the
   T-line, Soft Take-out on the Centre Line at the T-line, Release Time and Rotation
   Count. Release Point, Release Gates, both newer Shotmaking Exercises and both Measured
   Exercises began at Version 1; immutable historical Versions are retained. The current
   public-delivery Versions are Eight Guards v5, Come-around v2 and Soft Take-out v3;
   earlier restricted/overlay-correction Versions remain independently resolvable. All user-facing
-  strings are English. Original German source titles exist only under
+  strings are English. `swissCurlingCorpus.ts` adds the 34 remaining source Exercises
+  through one shared content builder, including two Measured split-time Draws. Original
+  German source titles exist only under
   `source.nonDisplayedSourceMetadata`, which no component renders (it feeds attribution
   traceability and Library search only).
 - `diagrams.ts` — independently authored structured diagrams for historical Eight Guards
@@ -2768,7 +2772,7 @@ names and renders strictly validated metadata-only cards in the existing Team in
   PNG delivery. It requires a canonical configured Team id and an active membership
   visible through the caller's own RLS scope, resolves the asset through a fixed map,
   never joins request input into a path and responds with private/no-store headers.
-  It is no longer the active delivery path for the three cleared diagrams.
+  It is no longer the active delivery path for any of the 37 cleared diagrams.
 - `authorizedFetch.ts` / `teamServiceFactory.ts` — the retained restricted browser resolver shares the one
   cached Supabase client and the one token-reading composition seam. It confines requests
   to the exact same-origin Exercise route, validates PNG type and bounded size, then
@@ -3608,11 +3612,11 @@ Wired into `TrackerApp.tsx`/`AssessScreen.tsx` as of Phase B; still covered by
 ### Exercise Library domain modules (`src/lib/exercises/`)
 
 Stages A-E content/execution, including Stage D Profile-owned plans, Stage E's
-closed-beta catalogue and ADR-0044's public/offline diagram delivery. Solo Technique and
+closed-beta catalogue and ADR-0044/0045's public/offline diagram delivery. Solo Technique and
 Shotmaking executions are embedded in `Session`, so `src/types/index.ts` has one
 type-only reference back to this folder without a runtime cycle. The standalone C1 Team
 aggregate is deliberately rejected by that Solo persistence boundary. See "Exercise
-Library" above and ADR-0023/0028-0040/0044.
+Library" above and ADR-0023/0028-0040/0044/0045.
 
 | Module | Responsibility |
 |---|---|
@@ -3621,14 +3625,14 @@ Library" above and ADR-0023/0028-0040/0044.
 | `validation.ts` | `validateExerciseCatalogPackage` — every package, identity, versioning, content, classification, participation/sweeping, protocol-reference and diagram invariant, checked at runtime against untrusted data and reported in full |
 | `measurementProtocols.ts` | Two reusable versioned release-time protocols plus manual Rotation Count; release-time reuses existing `MeasurementMode`/`measurementModeLabel`, Rotation Count uses rotations without a timing mode, every protocol is target-free and currently manual-only |
 | `diagrams.ts` | Independently authored `normalized-ice-sheet-v1` structured diagrams for historical Eight Guards v2 and Release Gates, plus the generic restricted Swiss Curling source-image builder |
-| `content.ts` | Seven curated Exercises and fifteen immutable Versions; current versions include the mobile-safe Release Gates v2 plus public source-image Eight Guards v5, Come-around v2 and Soft Take-out v3, with every historical Version retained; English content with German source titles confined to `nonDisplayedSourceMetadata` and generic English overlays covering two embedded labels |
+| `content.ts` / `swissCurlingCorpus.ts` | 41 current curated Exercises and 49 immutable Versions; the original historical Versions remain intact while the 34 remaining Swiss Curling Exercises are built from one data-driven corpus definition; all display content is English and source-language labels use generic normalized overlays |
 | `catalog.ts` | Builds, recursively deep-freezes and import-time-validates `EXERCISE_CATALOG`; `assertValidExerciseCatalogPackage` throws one actionable message rather than rendering broken content |
 | `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
 | `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |
 | `presentation.ts` | Every English label for a domain value, the Library's shared UI copy, and its `FeatureExplanation` for the existing `InfoButton` |
-| `exerciseAssets.ts` | Cache-first public diagram resolver and eager three-asset preload; validates the allowlist/PNG/size, persists one Data URL per immutable asset id through `StorageAdapter`, and remains total on network/storage failures (ADR-0044) |
+| `exerciseAssets.ts` | Cache-first public diagram resolver and eager 37-asset preload; validates the allowlist/PNG/size, persists one Data URL per immutable asset id through `StorageAdapter`, and remains total on network/storage failures (ADR-0044/0045) |
 | `restrictedAssets.ts` | `resolveRestrictedAssetAccess` — the only path from an opaque restricted reference to a renderable source, fail-closed with a named reason (ADR-0023) |
-| `restrictedAssetCatalog.ts` | Stable ids and public paths for the three cleared diagrams; legacy aliases keep the historical restricted route compatible |
+| `restrictedAssetCatalog.ts` | Stable ids and public paths for all 37 cleared diagrams; legacy aliases keep the historical restricted route compatible |
 | `executionTypes.ts` | Exercise execution lifecycle, configuration, attempts, measurements, athlete results, Team participant/rotation context, actual role segments and append-only active-attempt correction contracts |
 | `execution.ts` | Stage B Solo creation, attempt, note, completion and abandonment transitions |
 | `teamExecution.ts` | Standalone Team creation, Shotmaking capture, role changes, rotation recommendations, audited active correction/annulment, completion/abandonment and rink-order derivation |

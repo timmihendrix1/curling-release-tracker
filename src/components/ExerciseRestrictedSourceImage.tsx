@@ -88,7 +88,7 @@ export default function ExerciseRestrictedSourceImage({
               <span
                 key={overlay.id}
                 aria-hidden="true"
-                className="absolute flex items-center justify-center overflow-hidden px-[0.8cqw] text-center font-medium leading-[1.15]"
+                className="absolute flex items-center justify-center overflow-hidden whitespace-pre-line px-[0.8cqw] text-center font-medium leading-[1.15]"
                 style={{
                   left: `${overlay.x * 100}%`,
                   top: `${overlay.y * 100}%`,

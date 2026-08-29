@@ -9,6 +9,7 @@ import {
 import type { ExerciseAssetResolver } from "../exerciseAssets";
 import {
   PUBLIC_EXERCISE_ASSET_IDS,
+  PUBLIC_EXERCISE_DIAGRAM_PATHS,
   SWISS_CURLING_GUARD_10_ASSET_ID,
 } from "../restrictedAssetCatalog";
 import type { ExerciseAssetDistribution } from "../types";
@@ -43,6 +44,17 @@ function pngResponse(): Response {
 }
 
 describe("public Exercise diagram delivery", () => {
+  it("registers one immutable public asset for every source exercise", () => {
+    expect(PUBLIC_EXERCISE_ASSET_IDS).toHaveLength(37);
+    expect(new Set(PUBLIC_EXERCISE_ASSET_IDS).size).toBe(37);
+    expect(new Set(Object.values(PUBLIC_EXERCISE_DIAGRAM_PATHS)).size).toBe(37);
+    for (const assetId of PUBLIC_EXERCISE_ASSET_IDS) {
+      expect(PUBLIC_EXERCISE_DIAGRAM_PATHS[assetId]).toBe(
+        `/exercise-diagrams/${assetId}.png`
+      );
+    }
+  });
+
   it("downloads once, stores a PNG data URL, and resolves it while offline after reload", async () => {
     const adapter = memoryAdapter();
     const onlineFetch = vi.fn(async () => pngResponse());

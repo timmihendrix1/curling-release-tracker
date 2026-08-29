@@ -163,7 +163,7 @@ technique directly" in the Coaching Principles.
   Framework" section (which also documents one known Phase C limitation: returning from
   the Result Screen to Assess remounts `AssessScreen`, losing an in-flight Completion
   Summary in favor of Landing — the archived run itself is unaffected).
-- **The Exercise Library has its seven-Exercise closed-beta catalogue and executable Solo/Team foundations.**
+- **The Exercise Library has 41 current Exercises and executable Solo/Team foundations.**
   `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product
   and domain source; read it before any Exercise-related work. **Stage A is
   implemented** in `src/lib/exercises/` (stable `Exercise` identity vs. immutable

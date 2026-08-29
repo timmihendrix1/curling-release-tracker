@@ -11,7 +11,10 @@ import {
   type ExerciseDiagram,
   type ExerciseDiagramElement,
 } from "./types";
-import type { ClosedBetaExerciseAssetId } from "./restrictedAssetCatalog";
+import type {
+  ClosedBetaExerciseAssetId,
+  PublicExerciseAssetId,
+} from "./restrictedAssetCatalog";
 
 // --- Geometry (all values in `x` units — a fraction of the depicted length) ---
 //
@@ -282,5 +285,45 @@ export function buildRestrictedSwissCurlingDiagram(input: {
       publicDeliveryPermitted: false,
     },
     provenanceNote: `${input.sourceExerciseReference}, source diagram reproduced for the approved closed beta; any embedded German label is covered by a faithful English overlay.`,
+  };
+}
+
+/**
+ * Public counterpart used by the expanded Swiss Curling corpus. The shared
+ * builder keeps distribution, attribution and provenance uniform for every
+ * source page; content records provide only sporting-specific copy and any
+ * data-driven English overlays.
+ */
+export function buildPublicSwissCurlingDiagram(input: {
+  id: string;
+  assetId: PublicExerciseAssetId;
+  caption: string;
+  accessibleSummary: string;
+  sourceExerciseReference: string;
+  sourcePage: number;
+  localizedTextOverlays?: Extract<
+    ExerciseDiagram,
+    { kind: "attributed-source-image" }
+  >["localizedTextOverlays"];
+}): ExerciseDiagram {
+  return {
+    kind: "attributed-source-image",
+    id: input.id,
+    caption: input.caption,
+    accessibleSummary: input.accessibleSummary,
+    ...(input.localizedTextOverlays
+      ? { localizedTextOverlays: input.localizedTextOverlays }
+      : {}),
+    assetReference: { assetId: input.assetId },
+    attribution: "Diagram reproduced from Swiss Curling.",
+    sourceOrganization: "Swiss Curling",
+    sourceVersion: "Individual On-Ice Training – Exercise Collection, version 2.0",
+    distribution: {
+      scope: "public",
+      permittedAudience: "All application users.",
+      publicDeliveryPermitted: true,
+    },
+    provenanceNote:
+      `${input.sourceExerciseReference}, page ${input.sourcePage}. Swiss Curling has cleared the diagram for public application delivery; embedded German labels are covered by faithful English overlays where needed.`,
   };
 }
