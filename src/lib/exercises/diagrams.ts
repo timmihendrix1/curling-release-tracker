@@ -4,8 +4,10 @@
 // application: it is drawn in this project's own `normalized-ice-sheet-v1`
 // coordinate system, uses this project's own composition and English labels,
 // and contains no raster pixels, page layout, branding or German text from any
-// source document. Stage E additionally uses the attributed-source-image
-// variant through ADR-0023's authenticated, private delivery boundary.
+// source document. The attributed-source-image variant carries the Swiss Curling
+// diagrams, which are publicly cleared and delivered cache-first (ADR-0044/0045);
+// ADR-0023's authenticated private boundary is retained for future restricted content
+// only, and the builder below is kept for the historical Exercise Versions that used it.
 import {
   EXERCISE_DIAGRAM_SCHEMA_VERSION,
   type ExerciseDiagram,
@@ -152,7 +154,8 @@ export function buildEightGuardsDiagram(): ExerciseDiagram {
 }
 
 export const RELEASE_GATES_V1_DIAGRAM_ID = "release-gates-diagram-v1";
-export const RELEASE_GATES_DIAGRAM_ID = "release-gates-diagram-v2";
+export const RELEASE_GATES_V2_DIAGRAM_ID = "release-gates-diagram-v2";
+export const RELEASE_GATES_DIAGRAM_ID = "release-gates-diagram-v3";
 
 /**
  * A deliberately simple platform-authored view of the two observation gates.
@@ -225,11 +228,14 @@ export function buildReleaseGatesDiagramV1(): Extract<
  * own compact, centred space. The v1 label intentionally remains untouched
  * for historical Exercise Version snapshots.
  */
-export function buildReleaseGatesDiagram(): ExerciseDiagram {
+export function buildReleaseGatesDiagramV2(): Extract<
+  ExerciseDiagram,
+  { kind: "structured-platform-diagram" }
+> {
   const previous = buildReleaseGatesDiagramV1();
   return {
     ...previous,
-    id: RELEASE_GATES_DIAGRAM_ID,
+    id: RELEASE_GATES_V2_DIAGRAM_ID,
     elements: previous.elements.map((element) => {
       if (element.id === "release-gate-label" && element.kind === "label") {
         return {
@@ -253,8 +259,64 @@ export function buildReleaseGatesDiagram(): ExerciseDiagram {
 }
 
 /**
- * The shared content shape for a Swiss Curling source diagram. The opaque id
- * can become image bytes only through ADR-0023's authenticated resolver.
+ * Version 3 separates "Direction of travel" from both gates. In Version 2 that text
+ * came from the travel arrow itself, which places its label at the arrow's midpoint —
+ * exactly between the two gate lines, where it crossed them. It is now an authored
+ * label of its own, above the sheet and clear of both gates, and the roughly 30 cm
+ * separation the Exercise states is annotated between the gates rather than folded into
+ * a gate's name. The setup, the gates and the schematic nature of the drawing are
+ * unchanged; the diagram still makes no claim to be a measuring tool.
+ */
+export function buildReleaseGatesDiagram(): ExerciseDiagram {
+  const previous = buildReleaseGatesDiagramV2();
+  const elements = previous.elements
+    .map((element) => {
+      if (element.id === "travel" && element.kind === "arrow") {
+        // The shaft still shows the direction; its label moves out of the gate area.
+        const arrow = { ...element };
+        delete arrow.label;
+        return arrow;
+      }
+      if (element.id === "release-gate-label" && element.kind === "label") {
+        return { ...element, at: { x: 0.42, y: 0.26 } };
+      }
+      if (element.id === "second-gate-label" && element.kind === "label") {
+        return { ...element, at: { x: 0.58, y: 0.9 } };
+      }
+      return element;
+    })
+    .concat([
+      {
+        kind: "label" as const,
+        id: "direction-of-travel-label",
+        at: { x: 0.02, y: 0.08 },
+        text: "Direction of travel",
+        anchor: "start" as const,
+      },
+      {
+        kind: "label" as const,
+        id: "gate-separation-label",
+        at: { x: 0.5, y: 0.74 },
+        text: "About 30 cm",
+        anchor: "middle" as const,
+      },
+    ]);
+
+  return {
+    ...previous,
+    id: RELEASE_GATES_DIAGRAM_ID,
+    accessibleSummary:
+      "A top-down schematic of a short section of the sheet. An arrow along the centre delivery line shows the stone travelling from left to right; the words \"Direction of travel\" sit above the sheet, clear of both gates. One narrow gate crosses the line at the agreed release point and is labelled above it. A second narrow gate crosses the same line approximately 30 centimetres farther along and is labelled below it, with the separation annotated between the two gates. The athlete or observer watches how the stone passes both gates after release.",
+    elements,
+  };
+}
+
+/**
+ * The shared content shape for a Swiss Curling source diagram under the historical
+ * restricted distribution, where the opaque id could become image bytes only through
+ * ADR-0023's authenticated resolver. Retained so the Exercise Versions that declared
+ * that distribution keep resolving exactly as published; new content uses
+ * `buildPublicSwissCurlingDiagram`.
  */
 export function buildRestrictedSwissCurlingDiagram(input: {
   id: string;
@@ -301,6 +363,11 @@ export function buildPublicSwissCurlingDiagram(input: {
   accessibleSummary: string;
   sourceExerciseReference: string;
   sourcePage: number;
+  /**
+   * True for a diagram republished with its embedded German text removed from the
+   * source page before rendering, so the English label needs no patch behind it.
+   */
+  germanTextRemovedAtSource?: boolean;
   localizedTextOverlays?: Extract<
     ExerciseDiagram,
     { kind: "attributed-source-image" }
@@ -324,6 +391,10 @@ export function buildPublicSwissCurlingDiagram(input: {
       publicDeliveryPermitted: true,
     },
     provenanceNote:
-      `${input.sourceExerciseReference}, page ${input.sourcePage}. Swiss Curling has cleared the diagram for public application delivery; embedded German labels are covered by faithful English overlays where needed.`,
+      `${input.sourceExerciseReference}, page ${input.sourcePage}. Swiss Curling has cleared the diagram for public application delivery; ${
+        input.germanTextRemovedAtSource
+          ? "German source labels are removed from the image and replaced by faithful English labels in their measured positions"
+          : "embedded German labels are covered by faithful English overlays where needed"
+      }.`,
   };
 }

@@ -4,11 +4,12 @@ import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
+import { exerciseRunnerKind } from "../lib/exercises/lookup";
 import {
-  exerciseRunnerKind,
-  listCurrentExerciseVersions,
-} from "../lib/exercises/lookup";
-import { exerciseFocusGroupLabel } from "../lib/exercises/presentation";
+  exerciseDiscoveryCategory,
+  listDiscoverableExerciseVersions,
+} from "../lib/exercises/discovery";
+import { exerciseDiscoveryCategoryLabel } from "../lib/exercises/presentation";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import type { Handle, HandleStrategy, TrainingPlanStep } from "../types";
@@ -68,7 +69,9 @@ export default function TrainingPlanStepEditor({
   const initialReleaseStep = initialStep && isReleaseTimingPlanStep(initialStep)
     ? initialStep
     : undefined;
-  const currentExerciseVersions = listCurrentExerciseVersions(EXERCISE_CATALOG);
+  // Only Exercises open to a *new* choice. An already-saved step keeps its own
+  // snapshot selectable below, so retiring an Exercise never invalidates a plan.
+  const currentExerciseVersions = listDiscoverableExerciseVersions(EXERCISE_CATALOG);
   const currentSelectableExerciseVersions = currentExerciseVersions.filter(
     (version) => exerciseRunnerKind(EXERCISE_CATALOG, version) !== "unsupported" &&
       version.participation.supportedModes.includes("solo")
@@ -185,7 +188,9 @@ export default function TrainingPlanStepEditor({
         {showPicker && (
           <TrainingPlanExercisePicker
             versions={currentSelectableExerciseVersions}
-            initialFocus={initialVersion?.primaryFocus}
+            initialCategory={
+              initialVersion ? exerciseDiscoveryCategory(initialVersion) : undefined
+            }
             exerciseAssetResolver={exerciseAssetResolver}
             onChoose={(version) => {
               setSelectedExerciseVersionId(version.id);
@@ -198,7 +203,7 @@ export default function TrainingPlanStepEditor({
         {!showPicker && selectedVersion && (
           <section className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {exerciseFocusGroupLabel(selectedVersion.primaryFocus)}
+              {exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(selectedVersion))}
             </p>
             <h3 className="mt-1 font-semibold text-slate-900">{selectedVersion.title}</h3>
             <p className="mt-1 text-sm text-slate-600">{selectedVersion.goal}</p>

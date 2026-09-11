@@ -1,7 +1,7 @@
 import { localStorageAdapter } from "../persistence/localStorageAdapter";
 import type { StorageAdapter } from "../persistence/types";
 import {
-  PUBLIC_EXERCISE_ASSET_IDS,
+  CURRENT_PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_DIAGRAM_PATHS,
   isPublicExerciseAssetId,
 } from "./restrictedAssetCatalog";
@@ -121,12 +121,27 @@ export function createPublicExerciseAssetResolver(
   };
 }
 
-/** Fetches every public diagram once so it is ready before the athlete reaches the ice. */
+/**
+ * Fetches every current public diagram once so it is ready before the athlete reaches
+ * the ice.
+ *
+ * **Nothing is ever evicted.** A superseded asset id is not dead weight: it is the exact
+ * image a historical Exercise Version snapshot references, and a Training Plan step or a
+ * recorded result can still be holding that snapshot. Deleting its cached bytes would
+ * take a diagram the athlete already had offline and make it unavailable at the rink —
+ * the very failure this cache exists to prevent — and no amount of "it will be
+ * re-downloaded on demand" helps when there is no connection. Cache size is the lesser
+ * concern, and it is bounded anyway: each id is written once, and a quota failure is
+ * already a normal, visible non-fatal outcome of `saveCachedDiagram`.
+ *
+ * Preload is therefore idempotent and additive, so repeated mounts, an offline mount and
+ * a failed fetch all leave whatever is already cached exactly as it was.
+ */
 export async function preloadPublicExerciseDiagrams(
   resolver: ExerciseAssetResolver
 ): Promise<void> {
   await Promise.allSettled(
-    PUBLIC_EXERCISE_ASSET_IDS.map((assetId) =>
+    CURRENT_PUBLIC_EXERCISE_ASSET_IDS.map((assetId) =>
       resolver.resolveExerciseAsset(
         { assetId },
         {

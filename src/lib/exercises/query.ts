@@ -5,9 +5,14 @@
 // Results always keep the catalog's own order. There is no relevance score and
 // no per-Exercise special case anywhere in this file.
 import {
+  EXERCISE_DISCOVERY_CATEGORIES,
+  exerciseDiscoveryCategory,
+  type ExerciseDiscoveryCategory,
+} from "./discovery";
+import {
   UNRATED_DIFFICULTY_LABEL,
   exerciseDifficultyLabel,
-  exerciseFocusLabel,
+  exerciseDiscoveryCategoryLabel,
   exerciseParticipationModeLabel,
   exerciseShotFamilyLabel,
   exerciseSweepingPolicyLabel,
@@ -16,7 +21,6 @@ import {
 import type {
   ExerciseDifficulty,
   ExerciseParticipationMode,
-  ExercisePrimaryFocus,
   ExerciseShotFamily,
   ExerciseSweepingPolicy,
   ExerciseVersion,
@@ -29,7 +33,8 @@ export type ExerciseDifficultyFilter =
 
 export type ExerciseLibraryFilters = {
   searchTerm: string;
-  focus: ExercisePrimaryFocus | "any";
+  /** The discovery category, not the execution focus — see `./discovery.ts`. */
+  category: ExerciseDiscoveryCategory | "any";
   shotFamily: ExerciseShotFamily | "any";
   participationMode: ExerciseParticipationMode | "any";
   sweeping: ExerciseSweepingPolicy | "any";
@@ -38,7 +43,7 @@ export type ExerciseLibraryFilters = {
 
 export const DEFAULT_EXERCISE_LIBRARY_FILTERS: ExerciseLibraryFilters = {
   searchTerm: "",
-  focus: "any",
+  category: "any",
   shotFamily: "any",
   participationMode: "any",
   sweeping: "any",
@@ -51,7 +56,7 @@ export const DEFAULT_EXERCISE_LIBRARY_FILTERS: ExerciseLibraryFilters = {
  * the advanced panel collapses, so repeating it would be noise.
  */
 export type ActiveExerciseFilterDescription = {
-  id: "focus" | "difficulty" | "participationMode" | "sweeping" | "shotFamily";
+  id: "category" | "difficulty" | "participationMode" | "sweeping" | "shotFamily";
   label: string;
   value: string;
 };
@@ -66,8 +71,12 @@ export function describeActiveExerciseLibraryFilters(
 ): ActiveExerciseFilterDescription[] {
   const active: ActiveExerciseFilterDescription[] = [];
 
-  if (filters.focus !== "any") {
-    active.push({ id: "focus", label: "Focus", value: exerciseFocusLabel(filters.focus) });
+  if (filters.category !== "any") {
+    active.push({
+      id: "category",
+      label: "Category",
+      value: exerciseDiscoveryCategoryLabel(filters.category),
+    });
   }
   if (filters.difficulty.kind !== "any") {
     active.push({
@@ -107,7 +116,7 @@ export function describeActiveExerciseLibraryFilters(
 export function areDefaultExerciseLibraryFilters(filters: ExerciseLibraryFilters): boolean {
   return (
     filters.searchTerm.trim().length === 0 &&
-    filters.focus === "any" &&
+    filters.category === "any" &&
     filters.shotFamily === "any" &&
     filters.participationMode === "any" &&
     filters.sweeping === "any" &&
@@ -137,7 +146,7 @@ export function exerciseSearchableText(version: ExerciseVersion): string {
     version.title,
     version.goal,
     version.whyItMatters,
-    exerciseFocusLabel(version.primaryFocus),
+    exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version)),
     exerciseTrainingPurposeLabel(version.primaryTrainingPurpose),
     exerciseSweepingPolicyLabel(version.sweeping.policy),
     version.participation.summary,
@@ -211,7 +220,12 @@ export function filterExerciseVersions(
   filters: ExerciseLibraryFilters
 ): ExerciseVersion[] {
   return versions.filter((version) => {
-    if (filters.focus !== "any" && version.primaryFocus !== filters.focus) return false;
+    if (
+      filters.category !== "any" &&
+      exerciseDiscoveryCategory(version) !== filters.category
+    ) {
+      return false;
+    }
     if (filters.shotFamily !== "any" && version.shotFamily !== filters.shotFamily) return false;
     if (
       filters.participationMode !== "any" &&
@@ -225,31 +239,25 @@ export function filterExerciseVersions(
   });
 }
 
-export const EXERCISE_FOCUS_ORDER: readonly ExercisePrimaryFocus[] = [
-  "technique",
-  "shotmaking",
-  "measured",
-];
-
-export type ExerciseFocusGroup = {
-  focus: ExercisePrimaryFocus;
+export type ExerciseCategoryGroup = {
+  category: ExerciseDiscoveryCategory;
   versions: ExerciseVersion[];
 };
 
 /**
- * Groups filtered Library results into the product's three stable top-level
- * categories. Empty groups are omitted, while both group order and Exercise
- * order remain deterministic.
+ * Groups filtered Library results into the product's two stable top-level categories.
+ * Empty groups are omitted, while both group order and Exercise order remain
+ * deterministic.
  */
-export function groupExerciseVersionsByFocus(
+export function groupExerciseVersionsByCategory(
   versions: readonly ExerciseVersion[]
-): ExerciseFocusGroup[] {
-  return EXERCISE_FOCUS_ORDER.flatMap((focus) => {
+): ExerciseCategoryGroup[] {
+  return EXERCISE_DISCOVERY_CATEGORIES.flatMap((category) => {
     const groupedVersions = versions.filter(
-      (version) => version.primaryFocus === focus
+      (version) => exerciseDiscoveryCategory(version) === category
     );
     return groupedVersions.length > 0
-      ? [{ focus, versions: groupedVersions }]
+      ? [{ category, versions: groupedVersions }]
       : [];
   });
 }
@@ -259,14 +267,12 @@ export function groupExerciseVersionsByFocus(
 // a filter is never offered for a value no Exercise actually has.
 // ---------------------------------------------------------------------------
 
-export function availableExerciseFocuses(
+export function availableExerciseDiscoveryCategories(
   versions: readonly ExerciseVersion[]
-): ExercisePrimaryFocus[] {
-  const seen: ExercisePrimaryFocus[] = [];
-  for (const version of versions) {
-    if (!seen.includes(version.primaryFocus)) seen.push(version.primaryFocus);
-  }
-  return seen;
+): ExerciseDiscoveryCategory[] {
+  return EXERCISE_DISCOVERY_CATEGORIES.filter((category) =>
+    versions.some((version) => exerciseDiscoveryCategory(version) === category)
+  );
 }
 
 export function availableExerciseShotFamilies(

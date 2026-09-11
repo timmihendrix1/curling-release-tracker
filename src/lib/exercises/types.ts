@@ -522,10 +522,16 @@ export type ExerciseDiagram =
       /** English alt text. */
       accessibleSummary: string;
       /**
-       * Optional data-driven English overlays for labels embedded in a source
-       * image in another language. Coordinates and font size are normalized to
+       * Optional data-driven English labels drawn over a source image whose own
+       * text is in another language. Coordinates and font size are normalized to
        * the image width/height; the generic renderer never branches on an
        * Exercise or asset id.
+       *
+       * `backgroundColor` is optional and is only used where the source text is
+       * still present in the image and genuinely has to be covered. The Swiss
+       * Curling corpus removes its German text at the source instead, so its
+       * labels declare no background and therefore cannot hide a stone, an arrow
+       * or a target-zone boundary.
        */
       localizedTextOverlays?: readonly {
         id: string;
@@ -534,7 +540,7 @@ export type ExerciseDiagram =
         width: number;
         height: number;
         text: string;
-        backgroundColor: string;
+        backgroundColor?: string;
         textColor: string;
         fontSize: number;
       }[];

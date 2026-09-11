@@ -961,12 +961,17 @@ Avoid storing two competing order representations.
 The user should be able to create a plan from the Train area.
 
 The implemented step picker is Library-backed rather than a title-only native select.
-It first offers **Technique**, **Shotmaking** and **Measured Exercises**, supports search
-across all three, and shows each Exercise's goal and classification. The athlete can
-expand the setup and diagram before selecting the exact immutable Exercise Version.
-The same flow is used when editing a step. Release Time lives under Measured Exercises;
-selecting it reveals the established Fixed/Variable/Blind configuration rather than a
-second timing feature.
+It first offers the Library's two discovery categories, **Technique** and
+**Shotmaking**, supports search across both, and shows each Exercise's goal and
+classification. The athlete can expand the setup and diagram before selecting the exact
+immutable Exercise Version. The same flow is used when editing a step. Release Time
+lives under Technique (see the Exercise Library specification section 4.1a); selecting
+it reveals the established Fixed/Variable/Blind configuration rather than a second
+timing feature.
+
+The picker offers only Exercises open to a new choice. A step that already references an
+Exercise since retired from discovery keeps its own snapshot selectable, so editing a
+saved plan never forces a substitution and never silently drops a step.
 
 During execution, a Release Time step completes at its configured shot count. If it is
 between two other Exercises, the active screen shows how many stones remain and then
@@ -1145,7 +1150,7 @@ Train
 
 Exercises
 
-→ Choose a Technique, Shotmaking, or Measured Exercise
+→ Choose a Technique or Shotmaking Exercise
 
 Training Plans
 
@@ -1153,11 +1158,13 @@ Training Plans
 
 ```
 
-> **Superseded in part (2026-08-29).** The earlier Quick Start entry was removed.
-> Release Timing remains fully available through the Release Time Measured Exercise,
-> which opens the same Fixed/Variable/Blind setup and runner. See ADR-0043 and the
-> Exercise Library specification section 14.1. This document stays authoritative for
-> the Release Timing Training Plan product itself.
+> **Superseded in part (2026-08-29, updated 2026-09-10).** The earlier Quick Start entry
+> was removed. Release Timing remains fully available through the Release Time Exercise,
+> which opens the same Fixed/Variable/Blind setup and runner; since ADR-0046 that
+> Exercise is discovered under **Technique** rather than a third "Measured Exercises"
+> group. See ADR-0043, ADR-0046 and the Exercise Library specification sections 4.1a and
+> 14.1. This document stays authoritative for the Release Timing Training Plan product
+> itself.
 
 Training Plans add reuse without replacing flexible training.
 
@@ -1169,7 +1176,7 @@ A future Train landing screen may contain:
 
 ```text
 
-Release Time (under Measured Exercises)
+Release Time (under Technique)
 
 Start a custom session using:
 

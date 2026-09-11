@@ -46,10 +46,12 @@ deliberately narrows this:
     `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
     Plans" section.
   - **The Exercise Library and Solo Stage B are implemented** for 41 curated Standard
-    Exercises, including structured Ice Sheet diagrams and public, offline-capable
-    delivery of all 37 approved Swiss Curling source diagrams. Technique and
-    Shotmaking use Profile-owned Solo execution; the Release Time Measured Exercise
-    opens the existing Fixed/Variable/Blind setup and runner as its nested execution
+    Exercise identities, of which 39 are offered in active discovery under two
+    categories — **Technique** (4) and **Shotmaking** (35). This includes structured
+    Ice Sheet diagrams and public, offline-capable delivery of all 37 approved Swiss
+    Curling source diagrams. Technique and Shotmaking use Profile-owned Solo execution;
+    Release Time — a Measured Exercise discovered under Technique — opens the existing
+    Fixed/Variable/Blind setup and runner as its nested execution
     path. One-device Team Exercise execution is implemented;
     Team-plan orchestration remains planned. See
     `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (the

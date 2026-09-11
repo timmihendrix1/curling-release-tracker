@@ -8,7 +8,7 @@ import { blockModeLabel } from "../lib/trainingBlocks";
 import { TRAINING_PLANS_SCHEMA_VERSION } from "../lib/trainingPlans/persistence";
 import {
   isReleaseTimingPlanStep,
-  trainingPlanStepFocusLabel,
+  trainingPlanStepCategoryLabel,
   trainingPlanStepTitle,
 } from "../lib/trainingPlans/steps";
 import { validatePlan } from "../lib/trainingPlans/validation";
@@ -176,7 +176,7 @@ export default function TrainingPlanEditor({
                 </p>
 
                 <p className="mt-1 text-sm text-slate-600">
-                  {trainingPlanStepFocusLabel(step)} · {isReleaseTimingPlanStep(step)
+                  {trainingPlanStepCategoryLabel(step)} · {isReleaseTimingPlanStep(step)
                     ? `${blockModeLabel(step.configuration.mode)} · ${step.completion.value} stones · ${handleStrategyLabel(step)}`
                     : handleStrategyLabel(step)}
                 </p>

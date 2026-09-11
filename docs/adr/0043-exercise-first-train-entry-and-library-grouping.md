@@ -1,8 +1,10 @@
 # ADR-0043: Exercise-first Train entry and Library grouping
 
-- Status: Accepted and implemented
+- Status: Accepted and implemented; **Decision 2 superseded by ADR-0046**
 - Date: 2026-08-29
 - Supersedes: ADR-0030 only where it retained a separate Quick Start entry
+- Superseded in part by: ADR-0046 (discovery has two categories, Technique and
+  Shotmaking; Release Time is discovered under Technique). Decisions 1 and 3-6 stand.
 
 ## Context
 
@@ -39,6 +41,10 @@ the same Fixed Weight, Variable Weight and Blind Weight runner.
 - Showing Swiss Curling diagrams in a deployed closed beta still requires an existing
   Team, active membership, and that Team's UUID in
   `CLOSED_BETA_EXERCISE_ASSET_TEAM_ID` for the deployment environment.
+  **No longer true (ADR-0044/0045):** Swiss Curling has cleared every diagram for all
+  application users, and none of them is delivered through the restricted route any
+  more. The consequence is retained because it explains why the restricted boundary
+  exists at all.
 
 ## Rejected alternatives
 

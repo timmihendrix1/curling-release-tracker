@@ -9,34 +9,36 @@ import {
   RELEASE_TIME_VERSION_ID,
   ROTATION_COUNT_VERSION_ID,
 } from "../content";
-import { listCurrentExerciseVersions } from "../lookup";
+import { listDiscoverableExerciseVersions } from "../discovery";
 import { SWISS_CURLING_CORPUS_VERSION_IDS } from "../swissCurlingCorpus";
 import {
   areDefaultExerciseLibraryFilters,
   describeActiveExerciseLibraryFilters,
   availableExerciseDifficultyFilters,
-  availableExerciseFocuses,
+  availableExerciseDiscoveryCategories,
   availableExerciseParticipationModes,
   availableExerciseShotFamilies,
   availableExerciseSweepingPolicies,
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   filterExerciseVersions,
-  groupExerciseVersionsByFocus,
+  groupExerciseVersionsByCategory,
   matchesExerciseSearchTerm,
   type ExerciseLibraryFilters,
 } from "../query";
 import { buildTestVersion } from "./testHelpers";
 
-const CURRENT = listCurrentExerciseVersions(EXERCISE_CATALOG);
-const CORPUS_MEASURED_IDS = ["draw-split-time-v1", "draw-split-time-ladder-v1"];
-const CORPUS_SHOTMAKING_IDS = SWISS_CURLING_CORPUS_VERSION_IDS.filter(
-  (id) => !CORPUS_MEASURED_IDS.includes(id)
+// Discovery is what the Library offers, so the retired Draw Split Time pair is absent
+// throughout this suite; their continued resolvability is covered in discovery.test.ts.
+const CURRENT = listDiscoverableExerciseVersions(EXERCISE_CATALOG);
+const RETIRED_IDS = ["draw-split-time-v2", "draw-split-time-ladder-v2"];
+const CORPUS_IDS = SWISS_CURLING_CORPUS_VERSION_IDS.filter(
+  (id) => !RETIRED_IDS.includes(id)
 );
 const SOURCE_VERSION_IDS = [
   EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
   COME_AROUND_VERSION_ID,
   SOFT_TAKEOUT_VERSION_ID,
-  ...SWISS_CURLING_CORPUS_VERSION_IDS,
+  ...CORPUS_IDS,
 ];
 
 function filters(overrides: Partial<ExerciseLibraryFilters> = {}): ExerciseLibraryFilters {
@@ -57,7 +59,7 @@ describe("default filters", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...SWISS_CURLING_CORPUS_VERSION_IDS,
+      ...CORPUS_IDS,
     ]);
   });
 
@@ -65,7 +67,7 @@ describe("default filters", () => {
     expect(areDefaultExerciseLibraryFilters(DEFAULT_EXERCISE_LIBRARY_FILTERS)).toBe(true);
     expect(areDefaultExerciseLibraryFilters(filters({ searchTerm: "  " }))).toBe(true);
     expect(areDefaultExerciseLibraryFilters(filters({ searchTerm: "guard" }))).toBe(false);
-    expect(areDefaultExerciseLibraryFilters(filters({ focus: "technique" }))).toBe(false);
+    expect(areDefaultExerciseLibraryFilters(filters({ category: "technique" }))).toBe(false);
     expect(areDefaultExerciseLibraryFilters(filters({ shotFamily: "guard" }))).toBe(false);
     expect(areDefaultExerciseLibraryFilters(filters({ participationMode: "solo" }))).toBe(false);
     expect(areDefaultExerciseLibraryFilters(filters({ sweeping: "forbidden" }))).toBe(false);
@@ -76,21 +78,18 @@ describe("default filters", () => {
 });
 
 describe("classification filters", () => {
-  it("filters by Primary Exercise Focus", () => {
-    expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "technique" })))).toEqual([
+  it("filters by discovery category, with Release Time and Rotation Count under Technique", () => {
+    expect(ids(filterExerciseVersions(CURRENT, filters({ category: "technique" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
+      RELEASE_TIME_VERSION_ID,
       RELEASE_GATES_VERSION_ID,
+      ROTATION_COUNT_VERSION_ID,
     ]);
-    expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "shotmaking" })))).toEqual([
+    expect(ids(filterExerciseVersions(CURRENT, filters({ category: "shotmaking" })))).toEqual([
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...CORPUS_SHOTMAKING_IDS,
-    ]);
-    expect(ids(filterExerciseVersions(CURRENT, filters({ focus: "measured" })))).toEqual([
-      RELEASE_TIME_VERSION_ID,
-      ROTATION_COUNT_VERSION_ID,
-      ...CORPUS_MEASURED_IDS,
+      ...CORPUS_IDS,
     ]);
   });
 
@@ -101,7 +100,7 @@ describe("classification filters", () => {
 
     const draws = ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" })));
     expect(draws).toContain(COME_AROUND_VERSION_ID);
-    expect(draws).toContain("draws-into-house-outside-in-v1");
+    expect(draws).toContain("draws-into-house-outside-in-v2");
   });
 
   it("filters by Sweeper requirement", () => {
@@ -109,7 +108,7 @@ describe("classification filters", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...SWISS_CURLING_CORPUS_VERSION_IDS,
+      ...CORPUS_IDS,
     ]);
     expect(ids(filterExerciseVersions(CURRENT, filters({ sweeping: "optional" })))).toEqual([
       RELEASE_POINT_VERSION_ID,
@@ -129,7 +128,7 @@ describe("classification filters", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...SWISS_CURLING_CORPUS_VERSION_IDS,
+      ...CORPUS_IDS,
     ]);
 
     const teamOnly = buildTestVersion({
@@ -151,9 +150,9 @@ describe("classification filters", () => {
     const levelSix = ids(
       filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "level", level: 6 } }))
     );
-    expect(levelSix).toHaveLength(8);
+    expect(levelSix).toHaveLength(7);
     expect(levelSix).toContain(EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID);
-    expect(levelSix).toContain("draw-split-time-ladder-v1");
+    expect(levelSix).not.toContain("draw-split-time-ladder-v2");
     expect(
       ids(filterExerciseVersions(CURRENT, filters({ difficulty: { kind: "unrated" } })))
     ).toEqual([
@@ -167,7 +166,7 @@ describe("classification filters", () => {
     ).toEqual(
       expect.arrayContaining([
         COME_AROUND_VERSION_ID,
-        "guards-in-left-mixed-doubles-zone-v1",
+        "guards-in-left-mixed-doubles-zone-v2",
       ])
     );
   });
@@ -194,52 +193,54 @@ describe("classification filters", () => {
     expect(
       filterExerciseVersions(
         CURRENT,
-        filters({ focus: "technique", difficulty: { kind: "level", level: 6 } })
+        filters({ category: "technique", difficulty: { kind: "level", level: 6 } })
       )
     ).toEqual([]);
     expect(
       ids(
         filterExerciseVersions(
           CURRENT,
-          filters({ focus: "shotmaking", sweeping: "forbidden", participationMode: "team" })
+          filters({ category: "shotmaking", sweeping: "forbidden", participationMode: "team" })
         )
       )
     ).toEqual([
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...CORPUS_SHOTMAKING_IDS,
+      ...CORPUS_IDS,
     ]);
   });
 });
 
-describe("Library focus grouping", () => {
-  it("groups in the stable Technique, Shotmaking, Measured order", () => {
-    const groups = groupExerciseVersionsByFocus(CURRENT);
+describe("Library category grouping", () => {
+  it("groups into exactly two categories, in the stable Technique then Shotmaking order", () => {
+    const groups = groupExerciseVersionsByCategory(CURRENT);
 
-    expect(groups.map((group) => group.focus)).toEqual([
-      "technique",
-      "shotmaking",
-      "measured",
-    ]);
+    expect(groups.map((group) => group.category)).toEqual(["technique", "shotmaking"]);
     expect(groups.map((group) => ids(group.versions))).toEqual([
-      [RELEASE_POINT_VERSION_ID, RELEASE_GATES_VERSION_ID],
+      [
+        RELEASE_POINT_VERSION_ID,
+        RELEASE_TIME_VERSION_ID,
+        RELEASE_GATES_VERSION_ID,
+        ROTATION_COUNT_VERSION_ID,
+      ],
       [
         EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
         COME_AROUND_VERSION_ID,
         SOFT_TAKEOUT_VERSION_ID,
-        ...CORPUS_SHOTMAKING_IDS,
+        ...CORPUS_IDS,
       ],
-      [RELEASE_TIME_VERSION_ID, ROTATION_COUNT_VERSION_ID, ...CORPUS_MEASURED_IDS],
     ]);
+    expect(groups[0].versions).toHaveLength(4);
+    expect(groups[1].versions).toHaveLength(35);
   });
 
   it("omits empty categories without changing the order inside a category", () => {
-    const filtered = filterExerciseVersions(CURRENT, filters({ focus: "shotmaking" }));
-    expect(groupExerciseVersionsByFocus(filtered)).toEqual([
-      { focus: "shotmaking", versions: filtered },
+    const filtered = filterExerciseVersions(CURRENT, filters({ category: "shotmaking" }));
+    expect(groupExerciseVersionsByCategory(filtered)).toEqual([
+      { category: "shotmaking", versions: filtered },
     ]);
-    expect(groupExerciseVersionsByFocus([])).toEqual([]);
+    expect(groupExerciseVersionsByCategory([])).toEqual([]);
   });
 });
 
@@ -276,7 +277,7 @@ describe("text search", () => {
     }
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "8 Steine" })))).toEqual([
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-      "eight-guards-progressively-shorter-v1",
+      "eight-guards-progressively-shorter-v2",
     ]);
   });
 
@@ -306,8 +307,8 @@ describe("active advanced-filter description", () => {
   });
 
   it("describes each selected filter with an English label and value", () => {
-    expect(describeActiveExerciseLibraryFilters(filters({ focus: "technique" }))).toEqual([
-      { id: "focus", label: "Focus", value: "Technique" },
+    expect(describeActiveExerciseLibraryFilters(filters({ category: "technique" }))).toEqual([
+      { id: "category", label: "Category", value: "Technique" },
     ]);
     expect(
       describeActiveExerciseLibraryFilters(filters({ difficulty: { kind: "level", level: 6 } }))
@@ -331,18 +332,21 @@ describe("active advanced-filter description", () => {
       describeActiveExerciseLibraryFilters(
         filters({
           shotFamily: "guard",
-          focus: "shotmaking",
+          category: "shotmaking",
           sweeping: "forbidden",
           difficulty: { kind: "level", level: 6 },
         })
       ).map((entry) => entry.id)
-    ).toEqual(["focus", "difficulty", "sweeping", "shotFamily"]);
+    ).toEqual(["category", "difficulty", "sweeping", "shotFamily"]);
   });
 });
 
 describe("available filter options are derived from the catalog", () => {
-  it("lists only the focuses, families, modes and policies actually present", () => {
-    expect(availableExerciseFocuses(CURRENT)).toEqual(["technique", "shotmaking", "measured"]);
+  it("lists only the categories, families, modes and policies actually present", () => {
+    expect(availableExerciseDiscoveryCategories(CURRENT)).toEqual([
+      "technique",
+      "shotmaking",
+    ]);
     expect(availableExerciseShotFamilies(CURRENT)).toEqual([
       "guard",
       "draw",
@@ -387,7 +391,7 @@ describe("available filter options are derived from the catalog", () => {
   });
 
   it("returns empty option lists for an empty catalog", () => {
-    expect(availableExerciseFocuses([])).toEqual([]);
+    expect(availableExerciseDiscoveryCategories([])).toEqual([]);
     expect(availableExerciseShotFamilies([])).toEqual([]);
     expect(availableExerciseParticipationModes([])).toEqual([]);
     expect(availableExerciseSweepingPolicies([])).toEqual([]);

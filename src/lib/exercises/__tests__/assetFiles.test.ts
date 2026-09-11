@@ -3,6 +3,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CURRENT_PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_DIAGRAM_PATHS,
 } from "../restrictedAssetCatalog";
@@ -22,19 +23,34 @@ describe("public Exercise diagram files", () => {
 
     expect(actualNames).toEqual(expectedNames);
 
-    let totalBytes = 0;
+    const currentNames = new Set(
+      CURRENT_PUBLIC_EXERCISE_ASSET_IDS.map(
+        (assetId) => path.basename(PUBLIC_EXERCISE_DIAGRAM_PATHS[assetId])
+      )
+    );
+    let shippedBytes = 0;
+    let cachedBytes = 0;
     for (const name of actualNames) {
       const file = path.join(diagramDirectory, name);
       const fileStat = await stat(file);
-      totalBytes += fileStat.size;
+      shippedBytes += fileStat.size;
+      if (currentNames.has(name)) cachedBytes += fileStat.size;
       expect(fileStat.size).toBeGreaterThan(0);
       expect(fileStat.size).toBeLessThanOrEqual(2_000_000);
       expect([...await readFile(file).then((bytes) => bytes.subarray(0, 8))])
         .toEqual(PNG_SIGNATURE);
     }
 
-    // Keep the current localStorage-backed offline boundary comfortably below
-    // common per-origin quotas even after base64 expansion.
-    expect(totalBytes).toBeLessThan(3_000_000);
+    // A fresh install caches the *current* set, so that is the number the
+    // localStorage-backed offline boundary has to stay inside, comfortably below common
+    // per-origin quotas even after base64 expansion. It must not creep upward as
+    // diagrams are corrected.
+    expect(cachedBytes).toBeLessThan(1_500_000);
+
+    // A browser upgrading from a previous release keeps its cached copy of the
+    // superseded revisions too — they are what its saved plans and results reference —
+    // so the shipped total bounds the worst-case local footprint as well. Static
+    // hosting affords it; a runaway total would still be worth noticing.
+    expect(shippedBytes).toBeLessThan(4_000_000);
   });
 });

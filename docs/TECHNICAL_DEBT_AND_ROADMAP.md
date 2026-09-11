@@ -1271,9 +1271,41 @@ global state infrastructure beyond this feature's reviewed scope.
 implemented. Stage C is complete; profile-owned Stage D and closed-beta content/release
 hardening Stage E are implemented.** The canonical product and domain boundary
 is `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` (section 21 defines the stages).
-The narrowed initial-test catalogue contains three Swiss Curling Shotmaking Exercises,
-two unscored Technique Exercises and two standalone Measured Exercises. Rotation and
-Laser are deferred until Team feedback. All user-facing content is English.
+The catalogue holds 41 current Exercise identities; **39 are offered in active
+discovery, under two categories — 4 Technique and 35 Shotmaking** (ADR-0046). Rotation
+and Laser are deferred until Team feedback. All user-facing content is English.
+
+**Open follow-up — the two retired Draw split-time variations.** Draw Split Time and
+Draw Split-Time Ladder are withdrawn from the Library and from new plan-step selection
+because they are variations of how a Draw is practised against a target split time, not
+separate Exercises. They remain fully resolvable and executable from content an athlete
+already saved, but until a variation model exists there is no way to *start* them
+afresh. Designing that model — an explicit variation of an existing Exercise, with its
+own setup guidance and without a second catalogue — is the outstanding product work; it
+was deliberately excluded from the 2026-09-10 correction.
+
+**Accepted consequence — 80 Exercise Versions for 41 identities.** A released Exercise
+Version is never rewritten, so each diagram correction adds a Version rather than
+editing one. That is what keeps an existing plan step or recorded result resolving to
+the content it actually captured. The catalogue is compiled data, so the cost is bundle
+size rather than runtime work; if it ever becomes material, the answer is lazy loading
+of historical Versions, not mutating them.
+
+**Accepted consequence — an upgrading browser caches two diagram corpora.** A superseded
+diagram asset is never evicted, because a saved Training Plan step or a recorded result
+still references exactly those bytes and deleting them would make a diagram the athlete
+already had offline unavailable at the rink. A device that cached the previous corpus
+therefore keeps it alongside the corrected one: roughly 2.0 MB of PNGs, about 2.7 MB once
+Data-URL encoded, against a per-origin `localStorage` budget commonly around 5 MB. A
+fresh install caches only the current ~890 KB. A cache write that hits a quota limit is
+already a normal, visible, non-fatal outcome and never removes anything already stored.
+If this ever becomes tight, the answer is a storage backend with a real quota (the
+existing IndexedDB adapter) or eviction driven by what local content actually references
+— not a blanket delete on start.
+
+**Dev-only artifact seen during the diagram audit.** Next.js's development indicator
+badge floats over the bottom-right of the viewport and therefore over part of a diagram
+in `next dev`. It does not exist in a production build and is not a diagram defect.
 
 **Stage A (domain and curated-content foundation) — implemented.** See
 `docs/SYSTEM_ARCHITECTURE.md`'s "Exercise Library" section for what exists:

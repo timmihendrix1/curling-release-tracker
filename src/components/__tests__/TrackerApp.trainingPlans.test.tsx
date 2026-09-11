@@ -211,7 +211,7 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
     screen.getByRole("tab", { name: "Training Plans" }).click();
     await waitFor(() => screen.getByText("Complete Mixed Practice"));
-    expect(screen.getByText("Technique · Shotmaking · Measured")).toBeInTheDocument();
+    expect(screen.getByText("Technique · Shotmaking")).toBeInTheDocument();
     screen.getByRole("button", { name: "Start" }).click();
     await waitFor(() => screen.getByRole("button", { name: "Start Training" }));
     screen.getByRole("button", { name: "Start Training" }).click();

@@ -8,11 +8,11 @@
 // `src/lib/assessmentContent.ts` already play for their domains.
 import type { TimingProviderType } from "../../types";
 import type { FeatureExplanation } from "../helpContent";
+import type { ExerciseDiscoveryCategory } from "./discovery";
 import type {
   ExerciseDifficulty,
   ExerciseParticipantRole,
   ExerciseParticipationMode,
-  ExercisePrimaryFocus,
   ExerciseRecommendedVolume,
   ExerciseRequirementLevel,
   ExerciseShotFamily,
@@ -23,20 +23,27 @@ import type {
   MeasurementUnit,
 } from "./types";
 
-export function exerciseFocusLabel(focus: ExercisePrimaryFocus): string {
-  switch (focus) {
-    case "technique":
-      return "Technique";
-    case "shotmaking":
-      return "Shotmaking";
-    case "measured":
-      return "Measured";
-  }
+/**
+ * The Library's two discovery categories. There is deliberately no label for the raw
+ * `ExercisePrimaryFocus`: that value is execution semantics recorded in a snapshot, and
+ * is not what the athlete browses by (see `./discovery.ts`).
+ */
+export function exerciseDiscoveryCategoryLabel(
+  category: ExerciseDiscoveryCategory
+): string {
+  return category === "technique" ? "Technique" : "Shotmaking";
 }
 
-/** Library section names. Kept separate from the compact focus-chip labels. */
-export function exerciseFocusGroupLabel(focus: ExercisePrimaryFocus): string {
-  return focus === "measured" ? "Measured Exercises" : exerciseFocusLabel(focus);
+/**
+ * One sentence on what belongs in a category, shown where the athlete is choosing
+ * between them.
+ */
+export function exerciseDiscoveryCategoryDescription(
+  category: ExerciseDiscoveryCategory
+): string {
+  return category === "technique"
+    ? "Delivery and movement work, including Release Time and Rotation Count."
+    : "Defined curling shots judged against their intended outcome.";
 }
 
 export function exerciseShotFamilyLabel(family: ExerciseShotFamily): string {
@@ -244,6 +251,12 @@ export function activeFilterCountLabel(count: number): string {
 
 export const EXERCISE_DETAIL_BACK_LABEL = "Back to Exercises";
 
+export const DIAGRAM_ENLARGE_LABEL = "Enlarge Diagram";
+
+export const DIAGRAM_ENLARGED_CLOSE_LABEL = "Close";
+
+export const DIAGRAM_ENLARGED_HINT = "Scroll to see the rest of the diagram.";
+
 export const RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE = "Diagram not available on this device";
 
 export const RESTRICTED_DIAGRAM_UNAVAILABLE_BODY =
@@ -267,7 +280,7 @@ export function exerciseLibraryExplanation(): FeatureExplanation {
       "A set of standard curling exercises, each with its setup, instructions and what to look for.",
     purpose: "What should I practise today, and how is it done properly?",
     howItWorks: [
-      "Every exercise states one primary focus: Technique, Shotmaking or Measured.",
+      "Exercises are grouped into two categories: Technique and Shotmaking. Release Time and Rotation Count sit under Technique.",
       "Search or filter to narrow the list, then open an exercise for its full setup and instructions.",
       "Each exercise carries its own version, plus the source it was adapted from and that source's version.",
     ],
@@ -278,8 +291,8 @@ export function exerciseLibraryExplanation(): FeatureExplanation {
     ],
     limitations: [
       "Solo Technique and Shotmaking exercises can be recorded here. Team execution and role rotation are not available yet.",
-      "Measured Release Time uses the existing Fixed, Variable and Blind Weight training flow rather than a separate recorder.",
-      "A Technique exercise is never scored by the app, and there is no platform-standardised scoring rubric for any exercise.",
+      "Release Time uses the existing Fixed, Variable and Blind Weight training flow rather than a separate recorder.",
+      "An exercise without a shot outcome is never scored by the app, and there is no platform-standardised scoring rubric for any exercise.",
     ],
   };
 }

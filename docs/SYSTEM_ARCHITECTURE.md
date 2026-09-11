@@ -2764,6 +2764,18 @@ names and renders strictly validated metadata-only cards in the existing Team in
   non-empty bounded PNG, stores a Data URL for later offline use and is preloaded at app
   mount. Failures remain the normal visible unavailable state. The legacy restricted
   resolver/route below remains available for future genuinely restricted content.
+  The catalog registers **every** published revision of each diagram, so a historical
+  Exercise Version snapshot stays resolvable, and distinguishes
+  `CURRENT_PUBLIC_EXERCISE_ASSET_IDS` from `SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS` only to
+  decide what to *warm*: `preloadPublicExerciseDiagrams` fetches the current ids and
+  **never removes anything**. A superseded entry is not dead weight — it is the exact
+  image a saved Training Plan step or a recorded result still references — so evicting it
+  would take a diagram the athlete already had offline and make it unavailable at the
+  rink. Preload is additive and idempotent: repeated mounts, an offline mount and a
+  failed fetch all leave the cache exactly as it was. A fresh install caches only the
+  current set (~890 KB of PNGs, against ~1.28 MB for the previous corpus, because a
+  redacted, palette-quantised render compresses better); a browser upgrading keeps both,
+  and a cache write that hits a quota limit remains a normal, visible, non-fatal outcome.
 - `src/app/api/_lib/userScopedSupabaseContext.ts` — the domain-neutral server auth seam:
   it creates one fresh client bound to the request's bearer token, never a service-role
   credential. Team email routes and restricted Exercise delivery reuse it while keeping
@@ -2795,11 +2807,14 @@ domain semantics and never on which Exercise it is drawing:
   there is no pixel geometry anywhere. This is the seam a future sensor-derived position
   would arrive through; Stage A implements no editor, animation, dragging, actual
   positions or coordinate-based scoring.
-- **`attributed-source-image`** — used by the current versions of the three Swiss Curling
-  Shotmaking Exercises. The discriminated distribution is either public or restricted.
-  ADR-0044 governs these three public, cache-first assets; ADR-0023 continues to govern
-  future restricted delivery. Both use the same attribution, English overlay and visible
-  unavailable-state renderer.
+- **`attributed-source-image`** — used by the current versions of all 37 Swiss Curling
+  Exercises. The discriminated distribution is either public or restricted.
+  ADR-0044/0045 govern these public, cache-first assets; ADR-0023 continues to govern
+  future restricted delivery. Both use the same attribution, English label and visible
+  unavailable-state renderer. Since ADR-0046 the image itself contains no
+  foreign-language text: the source document's text objects are removed before the panel
+  is rendered, and the English label is drawn on top from the measured box the removed
+  label occupied, with no background.
 
 Accessibility and honest failure, both variants: a semantic `<figure>`/`<figcaption>`,
 `role="img"` with the caption and an English textual summary as the accessible name, and
@@ -2839,8 +2854,26 @@ renderer's notice is the second line of defence.
   semantics. **Exercises depends on no persisted domain at all** — it reads the compiled
   `EXERCISE_CATALOG` directly and takes no props — so it stays reachable while the
   Training Plans library is still loading or write-protected.
-- The Library groups every filtered result under the stable domain order **Technique**,
-  **Shotmaking**, **Measured Exercises** and omits an empty group. Category controls are
+- **Discovery category vs. execution focus.** `src/lib/exercises/discovery.ts` owns the
+  two categories the athlete browses by — **Technique** and **Shotmaking** — as a pure
+  projection over the immutable `primaryFocus`: `shotmaking` maps to Shotmaking, every
+  other focus (including `measured`) to Technique. `primaryFocus` keeps its full
+  execution meaning (runner selection in `exerciseRunnerKind`, required protocols,
+  attempt/completion rules, `executionValidation`, `teamExecution`, cloud validation) and
+  is snapshotted into results and plan steps, so it is never re-labelled. Nothing is
+  persisted for the category and there is no migration; `exerciseFocusLabel` no longer
+  exists, so "Measured" cannot reappear as a visible category through a stray call site.
+  The same projection feeds Library grouping, the category filter, badges, detail and
+  setup copy, `TrainingPlanExercisePicker` and `trainingPlanStepCategoryLabel`.
+- **Retired from discovery.** `RETIRED_DISCOVERY_EXERCISE_IDS` (Draw Split Time, Draw
+  Split-Time Ladder) is applied by `listDiscoverableExerciseVersions`, the single entry
+  point for the Library and for adding or changing a Training Plan step. Resolving a
+  *stored* version id still goes through `findExerciseVersion`, which knows nothing about
+  discovery, so a saved plan step, an active run and a recorded or cloud-restored result
+  keep working unchanged. 39 of 41 current identities are discoverable: 4 Technique and
+  35 Shotmaking.
+- The Library groups every filtered result under the stable order **Technique**,
+  **Shotmaking** and omits an empty group. Category controls are
   initially collapsed and independently expandable; active search or filters reveal
   matching groups automatically. Entering the Exercises
   tab resets both its subview and its filters; the filter state
@@ -2852,7 +2885,7 @@ renderer's notice is the second line of defence.
   heading's own accessible name.
 - `ExerciseLibraryFilterBar.tsx` — search always visible, the rest behind one "Filters"
   toggle. When that panel is collapsed, a compact summary restates what is still applied
-  ("2 active filters: Focus: Technique · Sweepers: Sweeping optional"), built from
+  ("2 active filters: Category: Technique · Sweepers: Sweeping optional"), built from
   `describeActiveExerciseLibraryFilters` in `query.ts` — otherwise the narrowing would
   be invisible the moment the panel closed (DESIGN_SYSTEM.md §23.2). The search term is
   deliberately not repeated there, since its field stays visible.
@@ -2860,6 +2893,32 @@ renderer's notice is the second line of defence.
   `ExerciseStructuredDiagram.tsx`, `ExerciseRestrictedSourceImage.tsx` — the last renders
   either a public cached or future restricted attributed image through one injected
   resolver and keeps the opaque catalog reference out of the DOM.
+- **A source image is never cropped inline.** `ExerciseRestrictedSourceImage` shows the
+  whole diagram scaled to the column and offers *Enlarge Diagram*, a dialog that renders
+  the identical image and labels at twice the column width, scrollable on both axes, with
+  its close control outside the scrolling area. Both views share one internal
+  `LabelledDiagramImage`, so the overview and the enlargement can never diverge.
+- **The enlargement is a real modal.** It declares `aria-modal`, so it also behaves like
+  one: a keydown listener bound while it is open cycles Tab/Shift+Tab between the close
+  control and the scroll area, which is itself a focus stop so the diagram can be panned
+  from the keyboard. Without that containment one Tab reached the Training Plan step
+  editor underneath while the overlay still covered it. Escape closes only the
+  enlargement — no ancestor listens for it, so the parent editor and its draft survive —
+  and closing returns focus to the *Enlarge Diagram* control that opened it. The
+  structured-diagram renderer has no enlargement action; its SVG already scales to the
+  column and is never cropped.
+- **English diagram labels come from measured source geometry.** The published Swiss
+  Curling images contain no German text: `scripts/generate_swiss_curling_diagrams.py`
+  redacts the source PDF's text objects (line art untouched) before rendering each
+  exercise panel at a fixed per-family crop, and emits the exact normalised box every
+  removed label occupied into the generated
+  `src/lib/exercises/swissCurlingDiagramLabels.ts`. `sourceDiagramLabel`
+  (`diagramLabelGeometry.ts`) composes position, type size and colour from that
+  measurement — content supplies only the English wording — and throws for an unknown
+  asset or label rather than guessing. Because the image carries no text to hide,
+  `localizedTextOverlays[].backgroundColor` is now optional and the corpus declares none,
+  so a label cannot cover a stone, an arrow or a target-zone boundary. A background is
+  still honoured for a historical Version whose image kept its own text.
 - `ExerciseDetail.tsx` — **one generic renderer**, following the specification's fixed
   information order (spec 14.3) across **five** surfaces rather than one card per
   section (DESIGN_SYSTEM.md §10.2/§10.5 and its "Card Hierarchy" refactor priority):
@@ -2888,8 +2947,11 @@ renderer's notice is the second line of defence.
   Exercise UI components contains any catalog Exercise id, Version id or display title.
 - Stage A delivered the read-only Library. ADR-0030 later added the generic Solo/detail
   actions, and ADR-0036 adds an independently gated Team setup action for Technique and
-  Shotmaking. ADR-0043 removes the top-level Quick Start shortcut: Measured Release Time
+  Shotmaking. ADR-0043 removes the top-level Quick Start shortcut: Release Time
   retains only its existing timing-runner action, now nested within its Library detail.
+  ADR-0046 replaces ADR-0043's three focus groups with the two discovery categories
+  above, retires the two Draw split-time variations from new selection, and corrects the
+  source diagrams.
 - Train's page header description reads "Find an exercise, set up a session, and record
   release times as you throw."
 
@@ -3630,7 +3692,9 @@ Library" above and ADR-0023/0028-0040/0044/0045.
 | `lookup.ts` | Deterministic resolution by Exercise id, Version id and current version; never guesses when a reference is missing or belongs to another Exercise |
 | `query.ts` | `ExerciseLibraryFilters`, `filterExerciseVersions`, diacritic-folding alias search, and catalog-derived filter option lists — no ranking, recommendation or popularity signal |
 | `presentation.ts` | Every English label for a domain value, the Library's shared UI copy, and its `FeatureExplanation` for the existing `InfoButton` |
-| `exerciseAssets.ts` | Cache-first public diagram resolver and eager 37-asset preload; validates the allowlist/PNG/size, persists one Data URL per immutable asset id through `StorageAdapter`, and remains total on network/storage failures (ADR-0044/0045) |
+| `exerciseAssets.ts` | Cache-first public diagram resolver; eagerly preloads the 37 current assets and evicts nothing, so a superseded revision a saved plan or result still references stays available offline. Validates the allowlist/PNG/size, persists one Data URL per immutable asset id through `StorageAdapter`, and remains total on network/storage failures (ADR-0044/0045/0046) |
+| `discovery.ts` | The two Library discovery categories as a projection over the immutable `primaryFocus`, plus the identities retired from new selection (ADR-0046) |
+| `diagramLabelGeometry.ts` / `swissCurlingDiagramLabels.ts` | Measured source-label boxes and the composer that turns one plus English wording into a diagram label; throws rather than guessing a position (ADR-0046) |
 | `restrictedAssets.ts` | `resolveRestrictedAssetAccess` — the only path from an opaque restricted reference to a renderable source, fail-closed with a named reason (ADR-0023) |
 | `restrictedAssetCatalog.ts` | Stable ids and public paths for all 37 cleared diagrams; legacy aliases keep the historical restricted route compatible |
 | `executionTypes.ts` | Exercise execution lifecycle, configuration, attempts, measurements, athlete results, Team participant/rotation context, actual role segments and append-only active-attempt correction contracts |

@@ -12,7 +12,8 @@ import type { TrainingPlan } from "../../types";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
 import { RELEASE_TIME_VERSION_ID } from "../../lib/exercises/content";
 import { findExerciseVersion } from "../../lib/exercises/lookup";
-import { exerciseFocusGroupLabel } from "../../lib/exercises/presentation";
+import { exerciseDiscoveryCategoryLabel } from "../../lib/exercises/presentation";
+import { exerciseDiscoveryCategory } from "../../lib/exercises/discovery";
 
 afterEach(cleanup);
 
@@ -93,7 +94,7 @@ function openFilters() {
 function openDetail(title: string) {
   const version = EXERCISE_CATALOG.versions.find((candidate) => candidate.title === title);
   if (!version) throw new Error(`Missing Exercise fixture: ${title}`);
-  const groupLabel = exerciseFocusGroupLabel(version.primaryFocus);
+  const groupLabel = exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version));
   const group = screen.getByRole("button", { name: new RegExp(`^${groupLabel}`) });
   if (group.getAttribute("aria-expanded") === "false") fireEvent.click(group);
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
@@ -160,7 +161,7 @@ describe("Train entry paths", () => {
     openExercises();
 
     expect(screen.getByLabelText("Search exercises")).toHaveValue("");
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back to Exercises/ })).toBeNull();
   });
 });
@@ -178,21 +179,24 @@ describe("Exercise Library", () => {
       expect(screen.getByText(title)).toBeInTheDocument();
     }
 
-    expect(screen.getAllByText("Technique")).toHaveLength(3);
+    // One group heading plus one badge per Exercise in that category. "Measured" is no
+    // longer an active category anywhere in discovery.
+    expect(screen.getAllByText("Technique")).toHaveLength(5);
     expect(screen.getAllByText("Shotmaking")).toHaveLength(36);
-    expect(screen.getAllByText("Measured")).toHaveLength(4);
+    expect(screen.queryByText("Measured")).toBeNull();
+    expect(screen.queryByText("Measured Exercises")).toBeNull();
     expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("button", { name: /^Measured Exercises/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
     expect(screen.getAllByText("Guard")).toHaveLength(7);
     expect(screen.getAllByText("Level 6").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Level 3").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Level 4").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Not rated")).toHaveLength(4);
-    expect(screen.getAllByText("Solo or Team")).toHaveLength(41);
-    expect(screen.getAllByText("No sweeping")).toHaveLength(37);
+    expect(screen.getAllByText("Solo or Team")).toHaveLength(39);
+    expect(screen.getAllByText("No sweeping")).toHaveLength(35);
     expect(screen.getAllByText("Sweeping optional")).toHaveLength(4);
-    expect(screen.getAllByText("0 Sweepers")).toHaveLength(37);
+    expect(screen.getAllByText("0 Sweepers")).toHaveLength(35);
     expect(screen.getAllByText("0–2 Sweepers")).toHaveLength(4);
   });
 
@@ -226,15 +230,16 @@ describe("Exercise Library", () => {
     expect(document.body.textContent).not.toMatch(/Guard Übung 10/);
   });
 
-  it("narrows by focus, difficulty, Solo/Team, Shot Family and Sweeper requirement", () => {
+  it("narrows by category, difficulty, Solo/Team, Shot Family and Sweeper requirement", () => {
     renderTrainLanding();
     openExercises();
     openFilters();
 
-    fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "measured" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "technique" } });
     expect(screen.getByText("4 exercises")).toBeInTheDocument();
     expect(screen.getByText("Release Time")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "any" } });
+    expect(screen.getByText("Rotation Count")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "level:6" } });
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
@@ -244,7 +249,7 @@ describe("Exercise Library", () => {
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Solo or Team"), { target: { value: "team" } });
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Solo or Team"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Shot Family"), { target: { value: "guard" } });
@@ -252,7 +257,7 @@ describe("Exercise Library", () => {
     fireEvent.change(screen.getByLabelText("Shot Family"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Sweepers"), { target: { value: "forbidden" } });
-    expect(screen.getByText("37 exercises")).toBeInTheDocument();
+    expect(screen.getByText("35 exercises")).toBeInTheDocument();
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
@@ -301,7 +306,7 @@ describe("Exercise Library", () => {
     expect(screen.queryByText("Release Point")).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: "Reset filters" })[0]);
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
     expect(screen.getByLabelText("Search exercises")).toHaveValue("");
   });
 
@@ -348,7 +353,7 @@ describe("Exercise detail", () => {
     expect(screen.getByText("Instructions")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
     expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
   });
 
@@ -552,13 +557,15 @@ describe("Exercise detail", () => {
       .toBeInTheDocument();
   });
 
-  it("Release Time is a Measured Exercise, distinct from the Assessment, with no prescribed target", () => {
+  it("Release Time is discovered under Technique, distinct from the Assessment, with no prescribed target", () => {
     renderTrainLanding();
     openExercises();
     openDetail("Release Time");
 
     expect(screen.getByRole("heading", { name: "Release Time" })).toBeInTheDocument();
-    expect(screen.getByText("Measured")).toBeInTheDocument();
+    // Its execution focus is unchanged; only the category the athlete browses by is.
+    expect(screen.getByText("Technique")).toBeInTheDocument();
+    expect(screen.queryByText("Measured")).toBeNull();
     expect(
       screen.getByText(
         /It is not the Release Time Core Assessment, which has its own fixed protocol and lives under Assess\./
@@ -709,7 +716,7 @@ describe("Train tab ARIA semantics", () => {
 
     openExercises();
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
     expect(screen.getByRole("tabpanel")).toHaveAttribute(
       "aria-labelledby",
       tab("Exercises").id
@@ -785,7 +792,7 @@ describe("Train tab keyboard navigation", () => {
 
     pressOnTablist("ArrowLeft");
     expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("41 exercises")).toBeInTheDocument();
+    expect(screen.getByText("39 exercises")).toBeInTheDocument();
   });
 
   it("ignores keys that are not tab navigation", () => {
@@ -830,7 +837,7 @@ describe("collapsed advanced-filter summary", () => {
     openExercises();
     openFilters();
 
-    fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "technique" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "technique" } });
     fireEvent.change(screen.getByLabelText("Sweepers"), { target: { value: "optional" } });
 
     // While open, the controls themselves show the selection.
@@ -841,7 +848,7 @@ describe("collapsed advanced-filter summary", () => {
     openFilters(); // collapse
     const summary = screen.getByTestId("exercise-library-active-filter-summary");
     expect(summary).toHaveTextContent("2 active filters");
-    expect(summary).toHaveTextContent("Focus: Technique");
+    expect(summary).toHaveTextContent("Category: Technique");
     expect(summary).toHaveTextContent("Sweepers: Sweeping optional");
   });
 
@@ -856,7 +863,7 @@ describe("collapsed advanced-filter summary", () => {
     renderTrainLanding();
     openExercises();
     openFilters();
-    fireEvent.change(screen.getByLabelText("Focus"), { target: { value: "measured" } });
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "technique" } });
     openFilters(); // collapse
     expect(screen.getByTestId("exercise-library-active-filter-summary")).toHaveTextContent(
       "1 active filter"
@@ -874,10 +881,10 @@ describe("version, provenance and participant wording", () => {
 
     for (const [title, version] of [
       ["Release Point", 1],
-      ["Eight Guards, Progressively Longer", 5],
+      ["Eight Guards, Progressively Longer", 6],
       ["Release Time", 1],
       ["Come-around from Outside to Inside, Before the T-Line", 2],
-      ["Soft Take-out on the Centre Line at the T-Line", 3],
+      ["Soft Take-out on the Centre Line at the T-Line", 4],
     ] as const) {
       openDetail(title);
       expect(screen.getByText(`Exercise version ${version}`)).toBeInTheDocument();

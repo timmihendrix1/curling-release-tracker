@@ -1,11 +1,12 @@
 import {
   exerciseDifficultyLabel,
-  exerciseFocusLabel,
+  exerciseDiscoveryCategoryLabel,
   exerciseParticipationModesLabel,
   exerciseShotFamilyLabel,
   exerciseSweeperCountSummary,
   exerciseSweepingPolicyLabel,
 } from "../lib/exercises/presentation";
+import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import { surfaceClass } from "./Surface";
 
@@ -35,7 +36,7 @@ export default function ExerciseSummaryCard({ version, onOpen }: ExerciseSummary
       <p className="mt-1 text-sm text-slate-600">{version.goal}</p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
-        <Badge>{exerciseFocusLabel(version.primaryFocus)}</Badge>
+        <Badge>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</Badge>
         {version.shotFamily && <Badge>{exerciseShotFamilyLabel(version.shotFamily)}</Badge>}
         <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>
         <Badge>{exerciseParticipationModesLabel(version.participation.supportedModes)}</Badge>

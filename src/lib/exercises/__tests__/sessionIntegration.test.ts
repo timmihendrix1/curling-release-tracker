@@ -12,6 +12,7 @@ import { completeExerciseExecution, updatePrivateAthleteNote } from "../executio
 import {
   createCompletedTechniqueExecution,
   createMeasuredExecution,
+  createRotationCountExecution,
   createTechniqueExecution,
   FIXTURE_SESSION_ID,
 } from "./executionFixtures";
@@ -41,6 +42,22 @@ describe("Exercise Execution integration with Training Session", () => {
       issues: [],
     });
     expect(session()).not.toHaveProperty("exerciseExecutions");
+  });
+
+  it("keeps a measured-focus execution valid now that Measured is no longer a visible category", () => {
+    // The Library projects Release Time and Rotation Count into Technique. Nothing
+    // about the recorded execution changes, so persistence and cloud eligibility must
+    // read exactly as before.
+    const measured = createRotationCountExecution();
+    expect(measured.exerciseVersionSnapshot.primaryFocus).toBe("measured");
+
+    const attached = expectOk(attachSoloExerciseExecution(session(), measured));
+    expect(validateSessionExerciseState(attached, FIXTURE_SESSION_ID).valid).toBe(true);
+    expect(isSessionExerciseCloudEligible(attached)).toBe(
+      isSessionExerciseCloudEligible(expectOk(
+        attachSoloExerciseExecution(session(), createTechniqueExecution())
+      ))
+    );
   });
 
   it("attaches one active Solo execution without changing existing Session data", () => {

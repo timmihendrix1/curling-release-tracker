@@ -7,16 +7,17 @@ import {
   EXERCISE_LIBRARY_EMPTY_STATE_TITLE,
   EXERCISE_LIBRARY_HEADING,
   EXERCISE_LIBRARY_RESET_FILTERS_LABEL,
-  exerciseFocusGroupLabel,
+  exerciseDiscoveryCategoryLabel,
   exerciseLibraryExplanation,
 } from "../lib/exercises/presentation";
 import {
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   areDefaultExerciseLibraryFilters,
   filterExerciseVersions,
-  groupExerciseVersionsByFocus,
+  groupExerciseVersionsByCategory,
   type ExerciseLibraryFilters,
 } from "../lib/exercises/query";
+import type { ExerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseLibraryFilterBar from "./ExerciseLibraryFilterBar";
 import ExerciseSummaryCard from "./ExerciseSummaryCard";
@@ -24,7 +25,10 @@ import InfoButton from "./InfoButton";
 import { surfaceClass } from "./Surface";
 
 type ExerciseLibraryProps = {
-  /** The current Exercise Version of every catalog Exercise, in catalog order. */
+  /**
+   * The current Exercise Version of every Exercise open to new selection, in catalog
+   * order. Retired identities are excluded upstream — see `listDiscoverableExerciseVersions`.
+   */
   versions: readonly ExerciseVersion[];
   filters: ExerciseLibraryFilters;
   onFiltersChange: (filters: ExerciseLibraryFilters) => void;
@@ -35,7 +39,7 @@ type ExerciseLibraryProps = {
  * Read-only Exercise discovery. Reads nothing from persistence and owns no
  * persistence. Filters are lifted to `TrainLanding` so leaving a detail screen
  * returns to the same filtered list, while the component owns only ephemeral
- * disclosure state for its initially collapsed focus groups.
+ * disclosure state for its initially collapsed category groups.
  *
  * Every row is produced by one generic card component from catalog data. There
  * is no authoring, favourites, recommendation, popularity, rating or
@@ -47,18 +51,18 @@ export default function ExerciseLibrary({
   onFiltersChange,
   onOpenExercise,
 }: ExerciseLibraryProps) {
-  const [openFocuses, setOpenFocuses] = useState<Set<ExerciseVersion["primaryFocus"]>>(
+  const [openCategories, setOpenCategories] = useState<Set<ExerciseDiscoveryCategory>>(
     () => new Set()
   );
   const matches = filterExerciseVersions(versions, filters);
-  const groups = groupExerciseVersionsByFocus(matches);
+  const groups = groupExerciseVersionsByCategory(matches);
   const filtersActive = !areDefaultExerciseLibraryFilters(filters);
 
-  function toggleFocus(focus: ExerciseVersion["primaryFocus"]) {
-    setOpenFocuses((current) => {
+  function toggleCategory(category: ExerciseDiscoveryCategory) {
+    setOpenCategories((current) => {
       const next = new Set(current);
-      if (next.has(focus)) next.delete(focus);
-      else next.add(focus);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
       return next;
     });
   }
@@ -111,22 +115,22 @@ export default function ExerciseLibrary({
           </p>
 
           {groups.map((group) => {
-            const expanded = filtersActive || openFocuses.has(group.focus);
-            const panelId = `exercise-group-${group.focus}`;
+            const expanded = filtersActive || openCategories.has(group.category);
+            const panelId = `exercise-group-${group.category}`;
             return (
-              <section key={group.focus} className="space-y-3">
+              <section key={group.category} className="space-y-3">
                 <button
                   type="button"
                   aria-expanded={expanded}
                   aria-controls={panelId}
-                  aria-label={`${exerciseFocusGroupLabel(group.focus)}, ${group.versions.length} ${group.versions.length === 1 ? "exercise" : "exercises"}`}
+                  aria-label={`${exerciseDiscoveryCategoryLabel(group.category)}, ${group.versions.length} ${group.versions.length === 1 ? "exercise" : "exercises"}`}
                   disabled={filtersActive}
-                  onClick={() => toggleFocus(group.focus)}
+                  onClick={() => toggleCategory(group.category)}
                   title={filtersActive ? "Matching categories stay open while search or filters are active." : undefined}
                   className="flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:opacity-100"
                 >
                   <span className="text-base font-semibold text-slate-900">
-                    {exerciseFocusGroupLabel(group.focus)}
+                    {exerciseDiscoveryCategoryLabel(group.category)}
                   </span>
                   <span className="flex items-center gap-3 text-xs text-slate-500">
                     {group.versions.length} in category

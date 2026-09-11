@@ -1,5 +1,6 @@
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
-import { exerciseFocusLabel } from "../lib/exercises/presentation";
+import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
+import { exerciseDiscoveryCategoryLabel } from "../lib/exercises/presentation";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseSetupOverview from "./ExerciseSetupOverview";
 import { surfaceClass } from "./Surface";
@@ -31,7 +32,7 @@ export default function ExerciseSoloSetupScreen({
 
       <section className={surfaceClass("hero")}>
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {exerciseFocusLabel(version.primaryFocus)} · Solo setup
+          {exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo setup
         </p>
         <h2 className="mt-1 text-xl font-semibold text-slate-900">{version.title}</h2>
         <p className="mt-2 text-sm text-slate-600">

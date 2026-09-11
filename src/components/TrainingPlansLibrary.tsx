@@ -4,7 +4,7 @@ import { useState } from "react";
 import { isPlanExecutable } from "../lib/trainingPlans/validation";
 import {
   isReleaseTimingPlanStep,
-  trainingPlanStepFocusLabel,
+  trainingPlanStepCategoryLabel,
 } from "../lib/trainingPlans/steps";
 import type { TrainingPlan } from "../types";
 import ConfirmModal from "./ConfirmModal";
@@ -31,13 +31,13 @@ function planSummary(plan: TrainingPlan): string {
   }`;
 }
 
-/** Unique Exercise focuses used, in step order. */
+/** Unique Exercise categories used, in step order. */
 function focusComposition(plan: TrainingPlan): string {
   const seen = new Set<string>();
   const ordered: string[] = [];
 
   for (const step of plan.steps) {
-    const label = trainingPlanStepFocusLabel(step);
+    const label = trainingPlanStepCategoryLabel(step);
     if (!seen.has(label)) {
       seen.add(label);
       ordered.push(label);

@@ -407,9 +407,9 @@ and completes through the existing explicit Exercise transition without an inven
 planned volume. The materialised runtime entity always gets its own identity; a Plan
 Step id is never reused as a Block or Exercise Execution id.
 
-Create and edit select that snapshot through the same searchable Technique /
-Shotmaking / Measured Exercise catalogue. Release Time is therefore selected as a
-Measured Exercise before its timing-specific fields are configured.
+Create and edit select that snapshot through the same searchable catalogue, under the
+two Exercise Discovery Categories. Release Time is therefore selected under **Technique**
+before its timing-specific fields are configured.
 
 ---
 
@@ -1614,12 +1614,43 @@ those snapshots inside persisted Training Sessions.]**
 
 ## Primary Exercise Focus
 
-The one dimension that determines an Exercise's main training and execution experience:
-**Technique**, **Shotmaking**, or **Measured**. It is independent of Shot Family and
+The one dimension that determines an Exercise's **execution** experience: **Technique**,
+**Shotmaking**, or **Measured**. It selects the runner, the applicable Measurement
+Protocols and the attempt, completion and validation rules, and it is snapshotted into
+results, Training Plan steps and cloud records. It is independent of Shot Family and
 Training Purpose. `Consistency` is a Training Purpose, not a fourth focus.
-**[Implemented — all three values drive Library discovery, detail and the B3 execution
-entry. Technique and Shotmaking use their focus-specific Solo UI; Measured Release Time
-opens the existing timing runner. Validation prevents incompatible guidance.]**
+
+It is **not** what the athlete browses by — see Exercise Discovery Category. A recorded
+`measured` focus is never re-labelled; it simply displays under Technique.
+**[Implemented — all three values drive detail rendering and the B3 execution entry.
+Technique and Shotmaking use their focus-specific Solo UI; Measured Release Time opens
+the existing timing runner. Validation prevents incompatible guidance.]**
+
+## Exercise Discovery Category
+
+The category an Exercise is browsed under in the Library, the filters and the Training
+Plan picker. There are exactly two, in this order: **Technique** and **Shotmaking**.
+
+It is a pure projection over Primary Exercise Focus — `shotmaking` presents as
+Shotmaking, every other focus (including `measured`) presents as Technique — not a second
+stored classification. Nothing is persisted for it and no migration exists, so changing
+how a category is presented can never alter an existing result, plan step or cloud
+record. Release Time and Rotation Count are discovered under Technique while remaining
+Measured Exercises in execution.
+**[Implemented — ADR-0046. One projection serves Library grouping, the category filter,
+badges, detail and setup copy, the plan picker and a plan step's summary.]**
+
+## Retired from Discovery
+
+An Exercise identity withdrawn from the active Library and from new Training Plan step
+selection, without being deleted. Its identity, every published Exercise Version, its
+diagram assets, any saved plan step, any active run and any recorded or cloud-restored
+result remain fully resolvable and executable; only *new* selection is closed. Draw
+Split Time and Draw Split-Time Ladder are the current members: they are variations of
+how a Draw is practised against a target split time rather than separate Library
+Exercises.
+**[Implemented — ADR-0046. Applied by `listDiscoverableExerciseVersions`; resolving a
+stored Exercise Version id is unaffected.]**
 
 ## Shot Family
 

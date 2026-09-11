@@ -18,11 +18,8 @@ async function openExercise(title: string) {
   await waitFor(() => screen.getByText("No scheduled session."));
   navButton("Train").click();
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
-  const category = title === "Release Point"
-    ? "Technique"
-    : title === "Eight Guards, Progressively Longer"
-      ? "Shotmaking"
-      : "Measured Exercises";
+  const category =
+    title === "Eight Guards, Progressively Longer" ? "Shotmaking" : "Technique";
   fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${category}`) }));
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
 }
@@ -154,7 +151,7 @@ describe("TrackerApp Solo Exercise execution", () => {
     await waitFor(() => screen.getByText("No scheduled session."));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
-    fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
     expect(screen.queryByRole("tab", { name: "Quick Start" })).toBeNull();
     expect(screen.queryByText("Set Up Training Block")).toBeNull();
     expect(

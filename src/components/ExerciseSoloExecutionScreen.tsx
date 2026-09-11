@@ -17,7 +17,11 @@ import type {
   ExerciseExecution,
   ShotmakingExclusionReason,
 } from "../lib/exercises/executionTypes";
-import { exerciseFocusLabel, measurementUnitLabel } from "../lib/exercises/presentation";
+import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
+import {
+  exerciseDiscoveryCategoryLabel,
+  measurementUnitLabel,
+} from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
 import ExerciseExecutionReference from "./ExerciseExecutionReference";
 import { surfaceClass } from "./Surface";
@@ -239,7 +243,7 @@ export default function ExerciseSoloExecutionScreen({
     <div className="space-y-4">
       <div className={surfaceClass("primary")}>
         <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-          <span>{exerciseFocusLabel(version.primaryFocus)}</span>
+          <span>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</span>
           <span aria-hidden="true">·</span>
           <span>Solo</span>
           <span aria-hidden="true">·</span>

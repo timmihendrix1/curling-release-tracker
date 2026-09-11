@@ -12,10 +12,12 @@
 // value (difficulty for the two unrated Exercises, recommended volume, source
 // reference goal, variations), the field is simply absent rather than filled
 // with a plausible-looking default.
+import { sourceDiagramLabel } from "./diagramLabelGeometry";
 import {
   buildEightGuardsDiagram,
   buildReleaseGatesDiagram,
   buildReleaseGatesDiagramV1,
+  buildReleaseGatesDiagramV2,
   buildRestrictedSwissCurlingDiagram,
 } from "./diagrams";
 import {
@@ -33,6 +35,7 @@ import {
   SWISS_CURLING_DRAW_6_ASSET_ID,
   SWISS_CURLING_GUARD_10_ASSET_ID,
   SWISS_CURLING_SOFTSHOT_5_ASSET_ID,
+  swissCurlingExerciseAssetId,
 } from "./restrictedAssetCatalog";
 import {
   buildSwissCurlingCorpusExercises,
@@ -54,17 +57,21 @@ export const EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID =
   "eight-guards-progressively-longer-v3";
 export const EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID =
   "eight-guards-progressively-longer-v4";
-export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_V5_VERSION_ID =
   "eight-guards-progressively-longer-v5";
+export const EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID =
+  "eight-guards-progressively-longer-v6";
 export const RELEASE_TIME_VERSION_ID = "release-time-v1";
 export const RELEASE_GATES_V1_VERSION_ID = "release-gates-v1";
-export const RELEASE_GATES_VERSION_ID = "release-gates-v2";
+export const RELEASE_GATES_V2_VERSION_ID = "release-gates-v2";
+export const RELEASE_GATES_VERSION_ID = "release-gates-v3";
 export const ROTATION_COUNT_VERSION_ID = "rotation-count-v1";
 export const COME_AROUND_V1_VERSION_ID = "come-around-outside-in-before-t-line-v1";
 export const COME_AROUND_VERSION_ID = "come-around-outside-in-before-t-line-v2";
 export const SOFT_TAKEOUT_V1_VERSION_ID = "soft-takeout-centre-line-t-line-v1";
 export const SOFT_TAKEOUT_V2_VERSION_ID = "soft-takeout-centre-line-t-line-v2";
-export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v3";
+export const SOFT_TAKEOUT_V3_VERSION_ID = "soft-takeout-centre-line-t-line-v3";
+export const SOFT_TAKEOUT_VERSION_ID = "soft-takeout-centre-line-t-line-v4";
 
 /** Curling's familiar 0-4 scale (spec 11.1). Zero is a valid scored result, never missing data. */
 const CURLING_SCORE_SCALE: readonly ExerciseScoreScaleEntry[] = [
@@ -347,7 +354,7 @@ function buildEightGuardsVersion5(): ExerciseVersion {
   }
   return {
     ...previous,
-    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_V5_VERSION_ID,
     version: 5,
     diagram: {
       ...previous.diagram,
@@ -363,6 +370,43 @@ function buildEightGuardsVersion5(): ExerciseVersion {
       ...previous.source,
       provenanceNote:
         "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with its embedded German instruction covered by a faithful English overlay.",
+    },
+  };
+}
+
+/**
+ * Version 6 publishes the corrected diagram: the German instruction is removed from the
+ * source page itself rather than covered by an opaque patch, so the English sentence sits
+ * in the label's measured position without hiding the callout, a stone or an arrow.
+ */
+function buildEightGuardsVersion6(): ExerciseVersion {
+  const previous = buildEightGuardsVersion5();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Eight Guards v5 must retain its attributed source diagram.");
+  }
+  const assetId = swissCurlingExerciseAssetId("guard", 10);
+  return {
+    ...previous,
+    id: EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
+    version: 6,
+    diagram: {
+      ...previous.diagram,
+      id: "eight-guards-progressively-longer-source-diagram-v3",
+      assetReference: { assetId },
+      localizedTextOverlays: [
+        sourceDiagramLabel(
+          assetId,
+          "move-stone-aside",
+          "After each stone\nstops, move it aside\nas a marker."
+        ),
+      ],
+      provenanceNote:
+        "Guard Exercise 10, page 17. Swiss Curling has cleared the diagram for public application delivery; the German source instruction is removed from the image and replaced by a faithful English label in its measured position.",
+    },
+    source: {
+      ...previous.source,
+      provenanceNote:
+        "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with its German instruction removed at the source and replaced by a faithful English label.",
     },
   };
 }
@@ -576,8 +620,22 @@ function buildReleaseGatesVersion1(): ExerciseVersion {
 function buildReleaseGatesVersion2(): ExerciseVersion {
   return {
     ...buildReleaseGatesVersion1(),
-    id: RELEASE_GATES_VERSION_ID,
+    id: RELEASE_GATES_V2_VERSION_ID,
     version: 2,
+    diagram: buildReleaseGatesDiagramV2(),
+  };
+}
+
+/**
+ * Version 3 takes the corrected diagram, in which "Direction of travel" no longer sits
+ * on top of the two gate lines and the stated separation is annotated between them.
+ * The setup, instructions and observation guidance are unchanged.
+ */
+function buildReleaseGatesVersion3(): ExerciseVersion {
+  return {
+    ...buildReleaseGatesVersion2(),
+    id: RELEASE_GATES_VERSION_ID,
+    version: 3,
     diagram: buildReleaseGatesDiagram(),
   };
 }
@@ -988,7 +1046,7 @@ function buildSoftTakeoutVersion3(): ExerciseVersion {
   }
   return {
     ...previous,
-    id: SOFT_TAKEOUT_VERSION_ID,
+    id: SOFT_TAKEOUT_V3_VERSION_ID,
     version: 3,
     diagram: {
       ...previous.diagram,
@@ -1013,6 +1071,39 @@ function buildSoftTakeoutVersion3(): ExerciseVersion {
 // ---------------------------------------------------------------------------
 
 /** Exported unfrozen so tests can verify the builders are deterministic; product code uses the frozen catalog. */
+/**
+ * Version 4 publishes the corrected diagram. As with Eight Guards, the German
+ * "Zielzone" is removed from the source page instead of being covered, so the English
+ * label cannot alter the target-zone boundary it sits on.
+ */
+function buildSoftTakeoutVersion4(): ExerciseVersion {
+  const previous = buildSoftTakeoutVersion3();
+  if (previous.diagram?.kind !== "attributed-source-image") {
+    throw new Error("Soft Take-out v3 must retain its attributed source diagram.");
+  }
+  const assetId = swissCurlingExerciseAssetId("softshot", 5);
+  return {
+    ...previous,
+    id: SOFT_TAKEOUT_VERSION_ID,
+    version: 4,
+    diagram: {
+      ...previous.diagram,
+      id: "soft-takeout-centre-line-t-line-source-diagram-v3",
+      assetReference: { assetId },
+      localizedTextOverlays: [
+        sourceDiagramLabel(assetId, "target-zone", "Target zone"),
+      ],
+      provenanceNote:
+        "Softshot Exercise 5, page 37. Swiss Curling has cleared the diagram for public application delivery; the German source label is removed from the image and replaced by a faithful English label in its measured position.",
+    },
+    source: {
+      ...previous.source,
+      provenanceNote:
+        "English exercise copy and application presentation are platform-authored. The Swiss Curling diagram is publicly delivered with its German label removed at the source and replaced by a faithful English label.",
+    },
+  };
+}
+
 export function buildCuratedExercises(): Exercise[] {
   return [
     { id: RELEASE_POINT_EXERCISE_ID, currentVersionId: RELEASE_POINT_VERSION_ID },
@@ -1037,15 +1128,18 @@ export function buildCuratedExerciseVersions(): ExerciseVersion[] {
     buildEightGuardsVersion3(),
     buildEightGuardsVersion4(),
     buildEightGuardsVersion5(),
+    buildEightGuardsVersion6(),
     buildReleaseTimeVersion(),
     buildReleaseGatesVersion1(),
     buildReleaseGatesVersion2(),
+    buildReleaseGatesVersion3(),
     buildRotationCountVersion(),
     buildComeAroundVersion1(),
     buildComeAroundVersion2(),
     buildSoftTakeoutVersion1(),
     buildSoftTakeoutVersion2(),
     buildSoftTakeoutVersion3(),
+    buildSoftTakeoutVersion4(),
     ...buildSwissCurlingCorpusVersions(),
   ];
 }

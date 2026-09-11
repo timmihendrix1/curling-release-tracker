@@ -1,5 +1,7 @@
 import { EXERCISE_CATALOG } from "../exercises/catalog";
+import { exerciseDiscoveryCategory } from "../exercises/discovery";
 import { findExerciseVersion } from "../exercises/lookup";
+import { exerciseDiscoveryCategoryLabel } from "../exercises/presentation";
 import type { ExerciseVersion } from "../exercises/types";
 import type {
   CuratedExercisePlanStep,
@@ -40,15 +42,15 @@ export function trainingPlanStepTitle(step: TrainingPlanStep): string {
   return step.exerciseVersionSnapshot.title;
 }
 
-export function trainingPlanStepFocusLabel(step: TrainingPlanStep): string {
-  switch (step.exerciseVersionSnapshot.primaryFocus) {
-    case "technique":
-      return "Technique";
-    case "shotmaking":
-      return "Shotmaking";
-    case "measured":
-      return "Measured";
-  }
+/**
+ * The Library category the step's Exercise is discovered under. A step keeps whatever
+ * execution focus its snapshot recorded; this is only how the step is described to the
+ * athlete, and it uses the same two categories the Library and the picker do.
+ */
+export function trainingPlanStepCategoryLabel(step: TrainingPlanStep): string {
+  return exerciseDiscoveryCategoryLabel(
+    exerciseDiscoveryCategory(step.exerciseVersionSnapshot)
+  );
 }
 
 export function trainingPlanStepPlannedStoneCount(

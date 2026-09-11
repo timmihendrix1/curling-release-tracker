@@ -19,7 +19,7 @@ function navButton(label: string) {
 
 async function openReleaseTimingSetup() {
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
-  fireEvent.click(screen.getByRole("button", { name: /^Measured Exercises/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
   fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
   fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
   await waitFor(() => screen.getByText("Set Up Training Block"));
@@ -53,7 +53,7 @@ describe("TrackerApp — top-level navigation", () => {
       "aria-expanded",
       "false"
     );
-    expect(screen.getByRole("button", { name: /^Measured Exercises/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute(
       "aria-expanded",
       "false"
     );

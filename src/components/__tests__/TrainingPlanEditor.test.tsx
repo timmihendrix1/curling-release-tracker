@@ -35,7 +35,7 @@ describe("TrainingPlanEditor", () => {
     // Opens the Add Step modal (the editor's own "Add Step" button is the only
     // one in the DOM until the modal mounts).
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
-    fireEvent.click(screen.getByRole("button", { name: /Measured Exercises/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Technique/ }));
     const releaseTimeCard = screen.getByRole("heading", { name: "Release Time" }).closest("section");
     if (!releaseTimeCard) throw new Error("Missing Release Time picker card");
     fireEvent.click(within(releaseTimeCard).getByRole("button", { name: "Select Exercise" }));

@@ -33,6 +33,27 @@ describe("isStepExecutable", () => {
     expect(isStepExecutable(buildStep({ exerciseVersionSnapshot: version }))).toBe(false);
   });
 
+  it("keeps a saved step executable after its Exercise is retired from discovery", () => {
+    // Retiring Draw Split Time removes it from *new* selection only. A plan an athlete
+    // already saved must still start, so the step is validated against the catalog by
+    // version id, which knows nothing about discovery.
+    for (const versionId of ["draw-split-time-v2", "draw-split-time-ladder-v2"]) {
+      const version = findExerciseVersion(EXERCISE_CATALOG, versionId);
+      if (!version) throw new Error(`Missing retired Exercise fixture ${versionId}`);
+      expect(version.primaryFocus).toBe("measured");
+      expect(isStepExecutable(buildStep({ exerciseVersionSnapshot: version }))).toBe(true);
+    }
+  });
+
+  it("keeps a step that snapshotted a superseded Exercise Version executable", () => {
+    // The diagram correction publishes new Versions. A plan created before it holds the
+    // older snapshot, and must keep running against exactly that content.
+    const legacy = findExerciseVersion(EXERCISE_CATALOG, "draws-into-house-outside-in-v1");
+    if (!legacy) throw new Error("Missing superseded Exercise fixture");
+    expect(legacy.version).toBe(1);
+    expect(isStepExecutable(buildExerciseStep({ exerciseVersionSnapshot: legacy }))).toBe(true);
+  });
+
   it("rejects a tampered Exercise Version snapshot", () => {
     const step = buildExerciseStep();
     step.exerciseVersionSnapshot = {

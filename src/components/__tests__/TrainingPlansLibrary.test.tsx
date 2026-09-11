@@ -93,7 +93,9 @@ describe("TrainingPlansLibrary", () => {
     );
 
     expect(screen.getByText("2 steps · 24 planned timing stones")).toBeInTheDocument();
-    expect(screen.getByText("Measured")).toBeInTheDocument();
+    // Release Time steps are described by the category the athlete chose them under.
+    expect(screen.getByText("Technique")).toBeInTheDocument();
+    expect(screen.queryByText("Measured")).toBeNull();
   });
 
   it("disables Start and shows a warning for an unexecutable plan", () => {

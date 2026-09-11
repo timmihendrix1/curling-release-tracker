@@ -3,7 +3,7 @@
 import { blockModeLabel } from "../lib/trainingBlocks";
 import {
   isReleaseTimingPlanStep,
-  trainingPlanStepFocusLabel,
+  trainingPlanStepCategoryLabel,
   trainingPlanStepTitle,
 } from "../lib/trainingPlans/steps";
 import type { TrainingPlan, TrainingPlanStep } from "../types";
@@ -65,7 +65,7 @@ export default function TrainingPlanStartReview({
             </p>
 
             <p className="mt-1 text-xs text-slate-600">
-              {trainingPlanStepFocusLabel(step)} · {isReleaseTimingPlanStep(step)
+              {trainingPlanStepCategoryLabel(step)} · {isReleaseTimingPlanStep(step)
                 ? `${blockModeLabel(step.configuration.mode)} · ${step.completion.value} stones · ${handleStrategySummary(step)}`
                 : handleStrategySummary(step)}
             </p>

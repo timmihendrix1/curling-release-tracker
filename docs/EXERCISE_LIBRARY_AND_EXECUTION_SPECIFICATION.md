@@ -154,8 +154,13 @@ not be used for every question.
 
 ## 4.1 Primary Exercise Focus
 
-Every Exercise Version has one primary focus used for the main Library grouping and
-the default execution experience.
+Every Exercise Version has one primary focus. It determines the execution experience:
+which runner the Exercise uses, which Measurement Protocols apply, how attempts and
+completion are validated, and what a recorded result means. It is snapshotted into
+results, Training Plan steps and cloud records, and is therefore never re-labelled
+retrospectively.
+
+Primary focus is **not** how the Library is browsed — see Section 4.1a.
 
 ### Technique Exercise
 
@@ -187,7 +192,26 @@ The primary purpose is to reproduce, vary or observe a measurable property, for
 example Release Time or Rotation Count.
 
 A Measured Exercise can stand alone in the Library. Release Time training is therefore
-one Exercise family, not a special shortcut outside the Library.
+one Exercise family, not a special shortcut outside the Library. In discovery a Measured
+Exercise appears under **Technique** (Section 4.1a); "Measured" is an execution focus, not
+a category the athlete browses by.
+
+## 4.1a Exercise Discovery Category
+
+Discovery has exactly two categories, in this fixed order:
+
+- **Technique** — delivery and movement work, including Release Time and Rotation Count;
+- **Shotmaking** — defined curling shots judged against their intended outcome.
+
+The category is a **projection over the Primary Exercise Focus**, not a second stored
+classification and not a rename of the first: `shotmaking` presents as Shotmaking, and
+every other focus — including `measured` — presents as Technique. Nothing about
+execution, validation or an existing snapshot changes when a category label changes; a
+result recorded as a Measured Exercise stays a Measured Exercise everywhere it matters.
+
+One category source serves Library grouping, the category filter, Exercise badges,
+detail and setup copy, the Training Plan picker and a plan step's summary, so the athlete
+never meets two different groupings of the same catalogue.
 
 ## 4.2 Shot Family
 
@@ -327,8 +351,18 @@ Exercise Versions when their meaning changes.
 The initial closed test began with seven curated Exercises selected with the Elite Team.
 The product owner subsequently approved the complete 37-Exercise Swiss Curling
 collection for implementation before the broader Team test. Together with Release
-Point, Release Gates, standalone Release Time and Rotation Count, the Library therefore
-contains 41 current Exercises.
+Point, Release Gates, standalone Release Time and Rotation Count, the catalogue
+therefore holds 41 current Exercise identities.
+
+**Active discovery offers 39 of them: 4 Technique and 35 Shotmaking.** Draw Split Time
+and Draw Split-Time Ladder are withdrawn from the active Library and from new Training
+Plan step selection: they are variations of how a draw is practised against a target
+split time, not separate Library Exercises. Withdrawal is a discovery decision only —
+their Exercise identities, every published Version, their diagram assets, any saved plan
+step, any active run and any recorded or cloud-restored result remain fully supported and
+executable. A saved plan is never silently stripped or re-pointed. Giving these two a
+home as explicit variations of an existing Draw is future work; no variation-selection
+subsystem exists yet.
 The previously discussed Technique Exercises **Rotation** and **Laser** are deliberately
 deferred until Team feedback justifies their capture and presentation needs; they remain
 future content, not deleted concepts.
@@ -348,7 +382,8 @@ Section 5.4's recorded public permission. The closed beta provides the generic 0
 capture mechanism but no platform-authored, exercise-specific scoring rubric. The other
 34 Exercises in the supplied collection are implemented content expansion: Draw Split
 Time and Draw Split-Time Ladder are Measured Exercises that reuse the existing
-Backline–Hog Release Time runner; the other 32 are Shotmaking Exercises.
+Backline–Hog Release Time runner and are now withdrawn from active discovery (see
+above); the other 32 are Shotmaking Exercises.
 
 ### Technique Exercises
 
@@ -359,6 +394,11 @@ Backline–Hog Release Time runner; the other 32 are Shotmaking Exercises.
 
 1. **Release Time**; and
 2. **Rotation Count**.
+
+Both are discovered under **Technique** (Section 4.1a) and keep their Measured execution
+unchanged: Release Time opens the existing Fixed/Variable/Blind timing runner, and
+Rotation Count keeps its required Rotation Count protocol, actual measurement entry,
+validation and completion rules in Solo and Team.
 
 The first domain and UI vertical slice uses Release Point, Eight Guards, Progressively
 Longer and standalone Release Time. The other four initial-test Exercises expand the
@@ -395,6 +435,55 @@ diagram. Changing distribution creates a new immutable Exercise Version rather t
 rewriting history. Public diagrams use the cache-first delivery introduced in ADR-0044
 and generalised in ADR-0045;
 genuinely restricted future assets must use ADR-0023's separate fail-closed boundary.
+Nothing in the current catalogue is restricted: no Team membership or Elite Team
+configuration gates a diagram.
+
+### Foreign-language labels are removed at the source
+
+A diagram must communicate the **complete** setup — every relevant stone, target area,
+arrow and sequence marker — and every visible label must be English.
+
+The published image therefore contains no foreign-language text at all. The source
+document's text objects are removed before the exercise panel is rendered, leaving all
+line art intact, and the English label is drawn over the image with **no background**.
+This is a hard requirement rather than a preference: an opaque patch cannot be placed
+safely where a source label sits on top of ice-sheet geometry — two Draw diagrams label a
+white "Zielzone" across the twelve-foot ring boundary, where any rectangle would erase
+part of a ring arc and move a visible target-zone edge.
+
+Label placement is **measured, never estimated**. The generation step records the exact
+normalised box each removed label occupied, and the callout rectangle the source drew
+around it where there is one; content supplies only the English wording, and position,
+type size and text colour come from that measurement. A framed label is centred in its
+callout rather than on the removed text, because English wording is rarely the same
+length as the German it replaces and centring on the text pushes that difference outward
+— far enough, in one case, to clip the label at the edge of the image. Reusing one
+rectangle across two differently positioned labels is not permitted, and an unknown label
+fails the build rather than being placed by guess. Every label must be readable at the
+source's own type size; where the English is longer, it is re-wrapped onto the lines the
+source label itself used rather than shrunk.
+
+A corrected diagram is new content: it is published under a new asset id inside a new
+immutable Exercise Version with a new diagram id, so a browser holding the previous image
+in its offline cache can never present it as the correction. Superseded asset ids stay
+registered, fetchable **and cached** — a historical Exercise Version snapshot, held by a
+saved Training Plan step or a recorded result, must keep its own image available offline.
+Preload warms the current ids and removes nothing: an offline device that already has a
+diagram must never lose it because the application started.
+
+### Reading a diagram on a phone
+
+The inline diagram always shows the **whole** image, scaled to the column. It is never
+cropped to a fixed height: an athlete cannot tell that a cropped setup diagram is
+incomplete, which makes silent cropping worse than a small diagram. Readability comes
+from an explicit enlargement action that opens the same diagram at a larger scale, with
+its close control always reachable rather than scrolled away.
+
+The enlargement is modal in behaviour, not only in its ARIA role: the keyboard stays
+inside it, the diagram can still be panned with the keyboard, closing it returns focus to
+the control that opened it, and it can be dismissed without disturbing whatever screen or
+unsaved draft it was opened from — including the Training Plan step editor, where the
+diagram is previewed inside another modal.
 
 ## 6.4 Structured diagram primitives
 
@@ -983,13 +1072,14 @@ making Release Time a privileged top-level shortcut.
 
 Version 1 discovery includes:
 
-- stable top-level grouping in the order **Technique**, **Shotmaking**, **Measured
-  Exercises**. Each category is independently collapsible and initially collapsed so
-  the Library remains scannable as the catalogue grows. Search or filters automatically
-  reveal the matching categories;
+- stable top-level grouping in the order **Technique**, **Shotmaking** (Section 4.1a).
+  Each category is independently collapsible and initially collapsed so the Library
+  remains scannable as the catalogue grows. Search or filters automatically reveal the
+  matching categories;
 
-- text search;
-- Primary Exercise Focus;
+- text search, which reaches every Exercise regardless of category — Release Time and
+  Rotation Count are findable both under Technique and by searching for them;
+- Exercise Discovery Category;
 - Shot Family where applicable;
 - difficulty;
 - Solo / Team suitability;
@@ -1239,9 +1329,11 @@ not be pooled with standardised or differently customised rubric results.
 ## 18.1 Included
 
 - platform-curated Standard Exercises with immutable versions;
-- the 41-Exercise curated catalogue from Section 5.6;
+- the curated catalogue from Section 5.6: 41 current Exercise identities, 39 of them
+  offered in active discovery;
 - source attribution and own platform presentation;
-- Technique, Shotmaking and Measured Exercise focus;
+- Technique, Shotmaking and Measured Exercise focus, presented through the two discovery
+  categories of Section 4.1a;
 - Shot Family and Training Purpose as independent classifications;
 - responsive attributed source diagrams for all 37 cleared Swiss Curling Exercises and a
   structured platform-diagram seam;
@@ -1551,13 +1643,16 @@ the initial test implementation.
 - extend the existing discriminated Training Plan step model with curated Exercise
   steps;
 - preserve lazy execution and snapshot integrity where still appropriate;
-- support a mixed sequence of Technique, Shotmaking and Measured Exercises; and
+- support a mixed sequence of Technique and Shotmaking Exercises, including Measured
+  ones; and
 - keep scheduling, assignment and plan sharing out of scope.
 
-Create and edit use one Library-backed picker: Technique, Shotmaking and Measured
-Exercises, cross-category search, descriptive Exercise cards and an inline setup/diagram
-preview. Release Time is selected under Measured Exercises and then opens the existing
-timing configuration. A Release Time step between two other Exercises shows its
+Create and edit use one Library-backed picker with the same two discovery categories as
+the Library — Technique and Shotmaking — plus cross-category search, descriptive Exercise
+cards and an inline setup/diagram preview. Release Time is selected under Technique and
+then opens the existing timing configuration. A step that already references an Exercise
+retired from discovery keeps its own snapshot selectable, so editing a saved plan never
+forces a substitution. A Release Time step between two other Exercises shows its
 remaining configured stones and, when reached, the same Continue transition as every
 other non-final plan step; `Start New Session` is not offered inside an active plan.
 
@@ -1566,18 +1661,22 @@ started or completed history.
 
 ## Stage E — Initial-test content expansion and release hardening
 
-**Implementation status (2026-08-29): Implemented and expanded.** The catalogue contains
-the original seven Exercises plus all 34 remaining Exercises from the supplied Swiss
-Curling collection. Release Gates and historical Eight Guards Version 2 use generic
-structured diagrams; all 37 Swiss Curling Exercises use their approved source diagrams.
-ADR-0044 records the initial three-diagram clearance and ADR-0045 records the complete
-corpus expansion. The versioned PNGs live under
-`public/exercise-diagrams/`; the application preloads them through a cache-first resolver
-and stores validated PNG Data URLs through its `StorageAdapter`, making them available
-after connectivity is lost. Embedded German labels are covered by generic, data-driven
-English overlays. Source attribution is shown once at the bottom of the
-Exercise. ADR-0041/0042 provide the initial Privacy Notice and Terms; deployment and
-explicit Legal metadata publication remain separate release operations.
+**Implementation status (2026-09-10): Implemented, expanded and corrected.** The
+catalogue contains the original seven Exercises plus all 34 remaining Exercises from the
+supplied Swiss Curling collection; 39 of the 41 identities are offered in active
+discovery, under the two categories of Section 4.1a. Release Gates and historical Eight
+Guards Version 2 use generic structured diagrams; all 37 Swiss Curling Exercises use
+their approved source diagrams. ADR-0044 records the initial three-diagram clearance,
+ADR-0045 the complete corpus expansion, and ADR-0046 the two-category discovery model
+and the diagram correction. The versioned PNGs live under
+`public/exercise-diagrams/`; the application preloads the current revision of each
+through a cache-first resolver, stores validated PNG Data URLs through its
+`StorageAdapter`, and releases superseded revisions from that cache, so the diagrams
+remain available after connectivity is lost without the corpus growing on the device.
+German source labels are removed from the image itself and replaced by English labels
+placed from measured source geometry (Section 6.3). Source attribution is shown once at
+the bottom of the Exercise. ADR-0041/0042 provide the initial Privacy Notice and Terms;
+deployment and explicit Legal metadata publication remain separate release operations.
 
 - add the remaining four approved initial-test Exercises from Section 5.6 and the later
   approved 34-Exercise corpus expansion;

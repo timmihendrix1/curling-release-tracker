@@ -4,11 +4,11 @@ import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "rea
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
 import {
-  listCurrentExerciseVersions,
   findExerciseVersion,
   exerciseRunnerKind,
   resolveMeasurementProtocols,
 } from "../lib/exercises/lookup";
+import { listDiscoverableExerciseVersions } from "../lib/exercises/discovery";
 import {
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   type ExerciseLibraryFilters,
@@ -149,7 +149,10 @@ export default function TrainLanding({
     DEFAULT_EXERCISE_LIBRARY_FILTERS
   );
 
-  const currentExerciseVersions = listCurrentExerciseVersions(EXERCISE_CATALOG);
+  // The Library offers what can be chosen now. An Exercise retired from discovery is
+  // still resolvable by version id below, so a saved plan or a recorded result can be
+  // opened and read exactly as it was.
+  const currentExerciseVersions = listDiscoverableExerciseVersions(EXERCISE_CATALOG);
 
   const openExerciseVersion =
     exercisesSubView.screen === "detail" ||

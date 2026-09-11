@@ -163,7 +163,7 @@ technique directly" in the Coaching Principles.
   Framework" section (which also documents one known Phase C limitation: returning from
   the Result Screen to Assess remounts `AssessScreen`, losing an in-flight Completion
   Summary in favor of Landing — the archived run itself is unaffected).
-- **The Exercise Library has 41 current Exercises and executable Solo/Team foundations.**
+- **The Exercise Library offers 39 discoverable Exercises (4 Technique, 35 Shotmaking) out of 41 current identities, and executable Solo/Team foundations.**
   `docs/EXERCISE_LIBRARY_AND_EXECUTION_SPECIFICATION.md` is the authoritative product
   and domain source; read it before any Exercise-related work. **Stage A is
   implemented** in `src/lib/exercises/` (stable `Exercise` identity vs. immutable
@@ -214,17 +214,33 @@ technique directly" in the Coaching Principles.
   Exercise Version snapshots and typed lazy runtime references; Team-plan execution is
   deliberately deferred. Stage E adds Release Gates, standalone Rotation Count and the
   remaining two Swiss Curling Shotmaking Exercises, advances Eight Guards to immutable
-  Version 3, and delivers all three approved source diagrams through private server assets,
-  an allowlisted authenticated Route Handler, active-membership RLS and an asynchronous
-  fail-closed resolver. Build on the existing
+  Version 3, and originally delivered the first three source diagrams through the
+  restricted, authenticated boundary. **That restriction is historical.** Swiss Curling
+  has cleared every diagram in the collection for all application users: ADR-0044 and
+  ADR-0045 moved the corpus to public, versioned, cache-first delivery from
+  `public/exercise-diagrams/`. ADR-0023's private route and authenticated resolver remain
+  a valid boundary for genuinely restricted *future* content only; nothing in the current
+  catalog uses it, and no Team membership, Elite Team configuration or
+  `CLOSED_BETA_EXERCISE_ASSET_TEAM_ID` value gates a diagram today.
+  **ADR-0046 records the 2026-09-10 discovery and diagram correction:** active discovery
+  has exactly two categories — Technique (Release Point, Release Gates, Release Time,
+  Rotation Count) and Shotmaking (35) — projected over the unchanged
+  `primaryFocus` by `src/lib/exercises/discovery.ts`. `primaryFocus` remains execution
+  semantics (runner selection, protocols, validation, snapshots) and is never re-labelled;
+  `"measured"` is still a real focus and simply displays under Technique. Draw Split Time
+  and Draw Split-Time Ladder are retired from *new* selection only — their identities,
+  versions, assets, saved plan steps and recorded results stay fully supported. Every
+  published diagram now has its German text removed at the source by
+  `scripts/generate_swiss_curling_diagrams.py`, with the English label placed from
+  measured geometry in the generated `swissCurlingDiagramLabels.ts`; a corrected diagram
+  always takes a **new** asset id, and superseded ids stay registered, resolvable **and
+  cached** — never evict a diagram a saved plan or recorded result still references, or it
+  disappears offline. Build on the existing
   domain rather than re-deriving equivalent types, keep the detail renderer generic
   (branch on declared domain semantics — focus, guidance `kind`, diagram `kind` — never
-  on an Exercise id or title), and read
-  `docs/adr/0023-restricted-source-asset-delivery-boundary.md` before touching anything
-  to do with a restricted source image. The three closed-beta assets live outside
-  `public/` and may only ever be reached through an opaque allowlisted reference plus an
-  explicitly authorized resolver that fails closed. Swiss Curling permission remains an
-  external gate before access expands beyond the configured Elite Team.
+  on an Exercise id or title), never hand-author diagram-label coordinates, and read
+  `docs/adr/0046-two-discovery-categories-and-source-level-diagram-correction.md` before
+  touching Exercise discovery or a source diagram.
 - **Identity and Profile-scoped local persistence are mandatory and implemented.** Before any work touching authentication, onboarding,
   identity scope, local-persistence scope, cloud persistence, entitlements, sync status,
   or account deletion, read

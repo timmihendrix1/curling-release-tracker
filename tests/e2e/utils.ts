@@ -233,11 +233,11 @@ export async function openReleaseTimingSetup(page: Page) {
   if (alreadyOnSetup) return;
 
   await goToTrain(page);
-  const measuredExercises = page.getByRole("button", {
-    name: /^Measured Exercises,/,
+  const techniqueCategory = page.getByRole("button", {
+    name: /^Technique,/,
   });
-  if ((await measuredExercises.getAttribute("aria-expanded")) === "false") {
-    await measuredExercises.click();
+  if ((await techniqueCategory.getAttribute("aria-expanded")) === "false") {
+    await techniqueCategory.click();
   }
   await page
     .getByRole("button", { name: "View Details: Release Time" })

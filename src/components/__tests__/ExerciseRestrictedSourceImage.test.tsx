@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ExerciseDiagramView from "../ExerciseDiagramView";
 import ExerciseRestrictedSourceImage from "../ExerciseRestrictedSourceImage";
 import {
+  DIAGRAM_ENLARGE_LABEL,
+  DIAGRAM_ENLARGED_CLOSE_LABEL,
   DIAGRAM_UNSUPPORTED_ELEMENTS_NOTICE,
   RESTRICTED_DIAGRAM_UNAVAILABLE_BODY,
   RESTRICTED_DIAGRAM_UNAVAILABLE_TITLE,
@@ -105,15 +107,93 @@ describe("ExerciseRestrictedSourceImage — available", () => {
     expect(screen.getByText(DIAGRAM.caption)).toBeInTheDocument();
     expect(screen.queryByText(DIAGRAM.provenanceNote)).toBeNull();
     expect(container.innerHTML).not.toContain(DIAGRAM.assetReference.assetId);
-    const imageContainer = image.parentElement?.parentElement;
-    expect(imageContainer).toHaveClass("max-h-[70vh]");
-    await userEvent.click(screen.getByRole("button", { name: "View Full Diagram" }));
-    expect(imageContainer).not.toHaveClass("max-h-[70vh]");
-    expect(screen.getByRole("button", { name: "Show Compact Diagram" })).toBeInTheDocument();
   });
 
-  it("covers source-language labels with data-driven English text", async () => {
+  it("shows the whole diagram inline, with no height cap that could hide the lower setup", async () => {
+    const { container } = render(
+      <ExerciseRestrictedSourceImage
+        diagram={DIAGRAM}
+        exerciseAssetResolver={resolverReturning("blob:authorized-test-asset")}
+      />
+    );
+
+    await screen.findByRole("img", { name: DIAGRAM.accessibleSummary });
+    expect(container.innerHTML).not.toMatch(/max-h-\[\d+vh\]/);
+    expect(screen.queryByTestId("exercise-diagram-enlarged")).toBeNull();
+  });
+
+  it("enlarges the same diagram in a dialog that keeps its close control reachable", async () => {
+    render(
+      <ExerciseRestrictedSourceImage
+        diagram={DIAGRAM}
+        exerciseAssetResolver={resolverReturning("blob:authorized-test-asset")}
+      />
+    );
+    await screen.findByRole("img", { name: DIAGRAM.accessibleSummary });
+
+    await userEvent.click(screen.getByRole("button", { name: DIAGRAM_ENLARGE_LABEL }));
+
+    const dialog = screen.getByRole("dialog", { name: DIAGRAM.caption });
+    // Both the inline and the enlarged rendering of the same diagram are present,
+    // and the enlarged one carries the identical accessible description.
+    expect(screen.getAllByRole("img", { name: DIAGRAM.accessibleSummary })).toHaveLength(2);
+    const close = within(dialog).getByRole("button", { name: DIAGRAM_ENLARGED_CLOSE_LABEL });
+    // The close control sits outside the scrolling area, so panning cannot lose it.
+    expect(close.closest(".overflow-auto")).toBeNull();
+
+    await userEvent.click(close);
+    expect(screen.queryByTestId("exercise-diagram-enlarged")).toBeNull();
+  });
+
+  it("closes the enlargement with Escape", async () => {
+    render(
+      <ExerciseRestrictedSourceImage
+        diagram={DIAGRAM}
+        exerciseAssetResolver={resolverReturning("blob:authorized-test-asset")}
+      />
+    );
+    await screen.findByRole("img", { name: DIAGRAM.accessibleSummary });
+
+    await userEvent.click(screen.getByRole("button", { name: DIAGRAM_ENLARGE_LABEL }));
+    expect(screen.getByTestId("exercise-diagram-enlarged")).toBeInTheDocument();
+
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("exercise-diagram-enlarged")).toBeNull();
+  });
+
+  it("draws a data-driven English label at its measured position, with no background patch", async () => {
     const localizedDiagram: SourceImageDiagram = {
+      ...DIAGRAM,
+      localizedTextOverlays: [{
+        id: "target-zone",
+        x: 0.7,
+        y: 0.1,
+        width: 0.25,
+        height: 0.04,
+        text: "Target zone",
+        textColor: "#000000",
+        fontSize: 0.035,
+      }],
+    };
+    render(
+      <ExerciseRestrictedSourceImage
+        diagram={localizedDiagram}
+        exerciseAssetResolver={resolverReturning("blob:localized-test-asset")}
+      />
+    );
+
+    await screen.findByRole("img", { name: localizedDiagram.accessibleSummary });
+    const label = screen.getByText("Target zone");
+    expect(label).toHaveStyle({ left: "70%", top: "10%", color: "#000000" });
+    // No opaque patch: an English label must not be able to hide a stone, an arrow or
+    // a target-zone boundary, because the source text is removed from the image itself.
+    expect(label.style.backgroundColor).toBe("");
+    // Nor may it be clipped: the box positions the text, it does not crop it.
+    expect(label.className).not.toContain("overflow-hidden");
+  });
+
+  it("still honours a background on a historical diagram whose image kept its own text", async () => {
+    const patchedDiagram: SourceImageDiagram = {
       ...DIAGRAM,
       localizedTextOverlays: [{
         id: "target-zone",
@@ -129,17 +209,13 @@ describe("ExerciseRestrictedSourceImage — available", () => {
     };
     render(
       <ExerciseRestrictedSourceImage
-        diagram={localizedDiagram}
-        exerciseAssetResolver={resolverReturning("blob:localized-test-asset")}
+        diagram={patchedDiagram}
+        exerciseAssetResolver={resolverReturning("blob:legacy-test-asset")}
       />
     );
 
-    await screen.findByRole("img", { name: localizedDiagram.accessibleSummary });
-    expect(screen.getByText("Target zone")).toHaveStyle({
-      left: "70%",
-      top: "10%",
-      backgroundColor: "#b7e3f4",
-    });
+    await screen.findByRole("img", { name: patchedDiagram.accessibleSummary });
+    expect(screen.getByText("Target zone")).toHaveStyle({ backgroundColor: "#b7e3f4" });
   });
 });
 

@@ -3,16 +3,19 @@
 import { useState } from "react";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import {
-  exerciseFocusGroupLabel,
+  exerciseDiscoveryCategoryDescription,
+  exerciseDiscoveryCategoryLabel,
   exerciseParticipationModesLabel,
   exerciseShotFamilyLabel,
   exerciseTrainingPurposeLabel,
 } from "../lib/exercises/presentation";
 import { matchesExerciseSearchTerm } from "../lib/exercises/query";
-import type {
-  ExercisePrimaryFocus,
-  ExerciseVersion,
-} from "../lib/exercises/types";
+import {
+  EXERCISE_DISCOVERY_CATEGORIES,
+  exerciseDiscoveryCategory,
+  type ExerciseDiscoveryCategory,
+} from "../lib/exercises/discovery";
+import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseSetupOverview from "./ExerciseSetupOverview";
 
 type Props = {
@@ -20,19 +23,7 @@ type Props = {
   onChoose: (version: ExerciseVersion) => void;
   onCancel: () => void;
   exerciseAssetResolver?: ExerciseAssetResolver;
-  initialFocus?: ExercisePrimaryFocus;
-};
-
-const FOCUSES: readonly ExercisePrimaryFocus[] = [
-  "technique",
-  "shotmaking",
-  "measured",
-];
-
-const FOCUS_DESCRIPTIONS: Readonly<Record<ExercisePrimaryFocus, string>> = {
-  technique: "Movement, delivery and repeatable technique cues.",
-  shotmaking: "Defined curling shots evaluated against their intended outcome.",
-  measured: "Exercises built around a measurable property such as time or rotations.",
+  initialCategory?: ExerciseDiscoveryCategory;
 };
 
 function Tag({ children }: { children: string }) {
@@ -45,19 +36,19 @@ function Tag({ children }: { children: string }) {
 
 /**
  * Rich, catalog-driven selection for Training Plan steps. The picker uses the
- * same three Primary Exercise Focus groups and searchable content as the
- * Library, but owns plan-specific Choose/Preview actions instead of navigating
- * away from the editor.
+ * same two discovery categories and searchable content as the Library, but owns
+ * plan-specific Choose/Preview actions instead of navigating away from the
+ * editor.
  */
 export default function TrainingPlanExercisePicker({
   versions,
   onChoose,
   onCancel,
   exerciseAssetResolver,
-  initialFocus,
+  initialCategory,
 }: Props) {
-  const [focus, setFocus] = useState<ExercisePrimaryFocus | null>(
-    initialFocus ?? null
+  const [category, setCategory] = useState<ExerciseDiscoveryCategory | null>(
+    initialCategory ?? null
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
@@ -65,7 +56,9 @@ export default function TrainingPlanExercisePicker({
   const searching = searchTerm.trim().length > 0;
   const visibleVersions = versions.filter(
     (version) =>
-      (searching || focus === null || version.primaryFocus === focus) &&
+      (searching ||
+        category === null ||
+        exerciseDiscoveryCategory(version) === category) &&
       matchesExerciseSearchTerm(version, searchTerm)
   );
 
@@ -88,28 +81,28 @@ export default function TrainingPlanExercisePicker({
         />
       </div>
 
-      {!searching && focus === null ? (
+      {!searching && category === null ? (
         <div className="space-y-3">
           <p className="text-sm text-slate-600">Choose a category.</p>
-          {FOCUSES.map((candidate) => {
+          {EXERCISE_DISCOVERY_CATEGORIES.map((candidate) => {
             const count = versions.filter(
-              (version) => version.primaryFocus === candidate
+              (version) => exerciseDiscoveryCategory(version) === candidate
             ).length;
             return (
               <button
                 key={candidate}
                 type="button"
-                onClick={() => setFocus(candidate)}
+                onClick={() => setCategory(candidate)}
                 className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition hover:bg-slate-100"
               >
                 <span className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-slate-900">
-                    {exerciseFocusGroupLabel(candidate)}
+                    {exerciseDiscoveryCategoryLabel(candidate)}
                   </span>
                   <span className="text-xs text-slate-500">{count}</span>
                 </span>
                 <span className="mt-1 block text-sm text-slate-600">
-                  {FOCUS_DESCRIPTIONS[candidate]}
+                  {exerciseDiscoveryCategoryDescription(candidate)}
                 </span>
               </button>
             );
@@ -117,11 +110,11 @@ export default function TrainingPlanExercisePicker({
         </div>
       ) : (
         <div className="space-y-3">
-          {!searching && focus && (
+          {!searching && category && (
             <button
               type="button"
               onClick={() => {
-                setFocus(null);
+                setCategory(null);
                 setPreviewVersionId(null);
               }}
               className="inline-flex min-h-11 items-center text-sm font-medium text-slate-600 underline"
@@ -134,8 +127,8 @@ export default function TrainingPlanExercisePicker({
             <h3 className="font-semibold text-slate-900">
               {searching
                 ? "Matching Exercises"
-                : focus
-                  ? exerciseFocusGroupLabel(focus)
+                : category
+                  ? exerciseDiscoveryCategoryLabel(category)
                   : "Exercises"}
             </h3>
             <p className="mt-1 text-xs text-slate-500">
@@ -158,7 +151,7 @@ export default function TrainingPlanExercisePicker({
                   <h4 className="font-semibold text-slate-900">{version.title}</h4>
                   <p className="mt-1 text-sm text-slate-600">{version.goal}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    <Tag>{exerciseFocusGroupLabel(version.primaryFocus)}</Tag>
+                    <Tag>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</Tag>
                     {version.shotFamily && (
                       <Tag>{exerciseShotFamilyLabel(version.shotFamily)}</Tag>
                     )}

@@ -1286,8 +1286,12 @@ function validateDiagram(diagram: ExerciseDiagram, where: string, add: AddIssue)
               `${overlayWhere} must have positive dimensions and a font size no greater than 0.2.`
             );
           }
+          // A background is optional: a label placed on a diagram whose own text
+          // was removed at the source needs no patch behind it. When one *is*
+          // declared it still has to be an exact colour, never an arbitrary string.
           if (
-            !/^#[0-9a-fA-F]{6}$/.test(overlay.backgroundColor) ||
+            (overlay.backgroundColor !== undefined &&
+              !/^#[0-9a-fA-F]{6}$/.test(overlay.backgroundColor)) ||
             !/^#[0-9a-fA-F]{6}$/.test(overlay.textColor)
           ) {
             add(

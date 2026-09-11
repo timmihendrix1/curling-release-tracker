@@ -10,17 +10,20 @@ import {
   EIGHT_GUARDS_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_V3_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_V4_VERSION_ID,
+  EIGHT_GUARDS_SOURCE_DIAGRAM_V5_VERSION_ID,
   EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
   COME_AROUND_EXERCISE_ID,
   COME_AROUND_VERSION_ID,
   SOFT_TAKEOUT_EXERCISE_ID,
   SOFT_TAKEOUT_V1_VERSION_ID,
   SOFT_TAKEOUT_V2_VERSION_ID,
+  SOFT_TAKEOUT_V3_VERSION_ID,
   SOFT_TAKEOUT_VERSION_ID,
   RELEASE_POINT_EXERCISE_ID,
   RELEASE_POINT_VERSION_ID,
   RELEASE_GATES_EXERCISE_ID,
   RELEASE_GATES_V1_VERSION_ID,
+  RELEASE_GATES_V2_VERSION_ID,
   RELEASE_GATES_VERSION_ID,
   ROTATION_COUNT_EXERCISE_ID,
   ROTATION_COUNT_VERSION_ID,
@@ -49,7 +52,10 @@ import {
   EXERCISE_CONTENT_SCHEMA_VERSION,
 } from "../types";
 import { validateExerciseCatalogPackage } from "../validation";
-import { SWISS_CURLING_CORPUS_EXERCISE_IDS } from "../swissCurlingCorpus";
+import {
+  SWISS_CURLING_CORPUS_EXERCISE_IDS,
+  SWISS_CURLING_CORPUS_VERSION_IDS,
+} from "../swissCurlingCorpus";
 
 describe("production Exercise catalog", () => {
   it("passes its own validation boundary", () => {
@@ -76,7 +82,9 @@ describe("production Exercise catalog", () => {
       ...SWISS_CURLING_CORPUS_EXERCISE_IDS,
     ]);
     expect(EXERCISE_CATALOG.exercises).toHaveLength(41);
-    expect(EXERCISE_CATALOG.versions).toHaveLength(49);
+    // 41 identities, plus every superseded Version kept byte-identical: the diagram
+    // correction publishes a new Version rather than rewriting a released one.
+    expect(EXERCISE_CATALOG.versions).toHaveLength(80);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {
@@ -235,7 +243,7 @@ describe("deterministic lookup", () => {
       ROTATION_COUNT_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...SWISS_CURLING_CORPUS_EXERCISE_IDS.map((id) => `${id}-v1`),
+      ...SWISS_CURLING_CORPUS_VERSION_IDS,
     ]);
   });
 
@@ -245,7 +253,7 @@ describe("deterministic lookup", () => {
     ).toEqual([1]);
     expect(
       listExerciseVersions(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID).map((v) => v.version)
-    ).toEqual([1, 2, 3, 4, 5]);
+    ).toEqual([1, 2, 3, 4, 5, 6]);
     expect(listExerciseVersions(EXERCISE_CATALOG, "not-a-real-exercise")).toEqual([]);
   });
 });
@@ -350,7 +358,7 @@ describe("curated Stage A content", () => {
     }]);
   });
 
-  it("retains each Eight Guards version while v4 fixes the overlay and v5 clears public delivery", () => {
+  it("retains each Eight Guards version while v5 clears public delivery and v6 corrects the diagram", () => {
     const v1 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_V1_VERSION_ID);
     const v2 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_VERSION_ID);
     const v3 = findExerciseVersion(
@@ -363,7 +371,7 @@ describe("curated Stage A content", () => {
     );
     const v5 = findExerciseVersion(
       EXERCISE_CATALOG,
-      EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID
+      EIGHT_GUARDS_SOURCE_DIAGRAM_V5_VERSION_ID
     );
     expect(v1).toMatchObject({ version: 1, compatibleMeasurementProtocols: [] });
     expect(v2).toMatchObject({ version: 2 });
@@ -391,11 +399,29 @@ describe("curated Stage A content", () => {
       expect(v5.diagram.localizedTextOverlays).toEqual(v4?.diagram?.kind === "attributed-source-image"
         ? v4.diagram.localizedTextOverlays
         : undefined);
+      // The superseded revision keeps its own asset id, so its opaque patch and the
+      // image it was drawn for stay together.
+      expect(v5.diagram.assetReference.assetId).toBe("swiss-curling-guard-exercise-10-v2");
     }
-    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v5?.id);
+
+    const v6 = findExerciseVersion(EXERCISE_CATALOG, EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID);
+    expect(v6).toMatchObject({ version: 6 });
+    if (v6?.diagram?.kind === "attributed-source-image") {
+      // A corrected diagram is a new asset id, so a warm cache of the old bytes can
+      // never be presented as the correction.
+      expect(v6.diagram.assetReference.assetId).toBe("swiss-curling-guard-exercise-10-v3");
+      expect(v6.diagram.id).not.toBe(v5?.diagram?.id);
+      const [label] = v6.diagram.localizedTextOverlays ?? [];
+      expect(label).toMatchObject({ id: "move-stone-aside" });
+      // Nothing is painted over the diagram any more: the German text is gone from the
+      // image itself.
+      expect(label?.backgroundColor).toBeUndefined();
+    }
+    expect(findExercise(EXERCISE_CATALOG, EIGHT_GUARDS_EXERCISE_ID)?.currentVersionId).toBe(v6?.id);
     expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V1_VERSION_ID)).toMatchObject({ version: 1 });
     expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V2_VERSION_ID)).toMatchObject({ version: 2 });
-    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_VERSION_ID)).toMatchObject({ version: 3 });
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_V3_VERSION_ID)).toMatchObject({ version: 3 });
+    expect(findExerciseVersion(EXERCISE_CATALOG, SOFT_TAKEOUT_VERSION_ID)).toMatchObject({ version: 4 });
   });
 
   it("Eight Guards carries visible English Swiss Curling attribution and an independently drawn diagram", () => {
@@ -429,17 +455,43 @@ describe("curated Stage A content", () => {
       version: 1,
       diagram: { id: "release-gates-diagram-v1" },
     });
+    expect(findExerciseVersion(EXERCISE_CATALOG, RELEASE_GATES_V2_VERSION_ID)).toMatchObject({
+      version: 2,
+      diagram: { id: "release-gates-diagram-v2" },
+    });
     const version = findExerciseVersion(EXERCISE_CATALOG, RELEASE_GATES_VERSION_ID);
     expect(version).toMatchObject({
-      version: 2,
+      version: 3,
       primaryFocus: "technique",
       primaryTrainingPurpose: "line-control",
-      diagram: { id: "release-gates-diagram-v2" },
+      diagram: { id: "release-gates-diagram-v3" },
     });
     expect(version?.difficulty).toBeUndefined();
     expect(version?.guidance.kind).toBe("observation");
     expect(version?.diagram?.kind).toBe("structured-platform-diagram");
     expect(version?.source.nonDisplayedSourceMetadata?.originalTitles).toEqual(["Törli"]);
+
+    if (version?.diagram?.kind !== "structured-platform-diagram") return;
+    const elements = version.diagram.elements;
+    const travel = elements.find((element) => element.id === "travel");
+    // "Direction of travel" no longer rides on the arrow, whose label lands exactly
+    // between — and across — the two gate lines.
+    expect(travel).toMatchObject({ kind: "arrow" });
+    expect(travel && "label" in travel ? travel.label : undefined).toBeUndefined();
+
+    const gateXs = elements
+      .filter((element) => element.id === "release-gate" || element.id === "second-gate")
+      .map((element) => (element.kind === "line" ? element.from.x : Number.NaN));
+    const labels = elements.filter((element) => element.kind === "label");
+    const direction = labels.find((element) => element.id === "direction-of-travel-label");
+    expect(direction).toBeDefined();
+    // Clear of both gate lines on the depicted length.
+    for (const gateX of gateXs) {
+      expect(Math.abs((direction?.kind === "label" ? direction.at.x : 0) - gateX)).toBeGreaterThan(0.2);
+    }
+    // The stated separation survives as its own annotation.
+    expect(labels.some((element) => element.kind === "label" && /30 cm/.test(element.text))).toBe(true);
+    expect(version.diagram.accessibleSummary).toContain("30 centimetres");
   });
 
   it("Rotation Count is a target-free standalone Measured Exercise with one required protocol", () => {
@@ -508,7 +560,7 @@ describe("curated Stage A content", () => {
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
       COME_AROUND_VERSION_ID,
       SOFT_TAKEOUT_VERSION_ID,
-      ...SWISS_CURLING_CORPUS_EXERCISE_IDS.map((id) => `${id}-v1`),
+      ...SWISS_CURLING_CORPUS_VERSION_IDS,
     ]);
     expect(sourceImages).toHaveLength(37);
     for (const version of sourceImages) {

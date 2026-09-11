@@ -6,7 +6,7 @@ import {
 import {
   EXERCISE_DETAIL_BACK_LABEL,
   exerciseDifficultyLabel,
-  exerciseFocusLabel,
+  exerciseDiscoveryCategoryLabel,
   exerciseParticipantRoleLabel,
   exerciseParticipationModesLabel,
   exerciseRecommendedVolumeLabel,
@@ -20,6 +20,7 @@ import {
   measurementSourceLabel,
   measurementUnitLabel,
 } from "../lib/exercises/presentation";
+import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseDiagramView from "./ExerciseDiagramView";
@@ -157,7 +158,7 @@ export default function ExerciseDetail({
         <h2 className="text-xl font-semibold text-slate-900">{version.title}</h2>
 
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Badge>{exerciseFocusLabel(version.primaryFocus)}</Badge>
+          <Badge>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</Badge>
           {version.shotFamily && <Badge>{exerciseShotFamilyLabel(version.shotFamily)}</Badge>}
           <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>
           <Badge>{exerciseTrainingPurposeLabel(version.primaryTrainingPurpose)}</Badge>

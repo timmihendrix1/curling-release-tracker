@@ -4,18 +4,18 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EXERCISE_CATALOG } from "../../lib/exercises/catalog";
 import type { ExerciseAssetResolver } from "../../lib/exercises/exerciseAssets";
-import { listCurrentExerciseVersions } from "../../lib/exercises/lookup";
+import { listDiscoverableExerciseVersions } from "../../lib/exercises/discovery";
 import TrainingPlanExercisePicker from "../TrainingPlanExercisePicker";
 
 afterEach(cleanup);
 
-const versions = listCurrentExerciseVersions(EXERCISE_CATALOG);
+const versions = listDiscoverableExerciseVersions(EXERCISE_CATALOG);
 const resolver: ExerciseAssetResolver = {
   resolveExerciseAsset: () => ({ src: "data:image/png;base64,AA==" }),
 };
 
 describe("TrainingPlanExercisePicker", () => {
-  it("starts with the three product categories and reveals descriptive Exercise cards", () => {
+  it("starts with the two product categories and reveals descriptive Exercise cards", () => {
     render(
       <TrainingPlanExercisePicker
         versions={versions}
@@ -24,10 +24,17 @@ describe("TrainingPlanExercisePicker", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: /Technique/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Shotmaking/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Measured Exercises/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Technique/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Measured/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Release Point" })).toBeNull();
+
+    // Release Time and Rotation Count are chosen through Technique, not a third group.
+    fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
+    for (const title of ["Release Point", "Release Gates", "Release Time", "Rotation Count"]) {
+      expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "← Back to categories" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Shotmaking/ }));
     const card = screen.getByRole("heading", {
@@ -64,8 +71,8 @@ describe("TrainingPlanExercisePicker", () => {
 
     expect(onChoose).toHaveBeenCalledTimes(1);
     expect(onChoose.mock.calls[0][0]).toMatchObject({
-      id: "eight-guards-progressively-longer-v5",
-      version: 5,
+      id: "eight-guards-progressively-longer-v6",
+      version: 6,
     });
   });
 
@@ -84,5 +91,22 @@ describe("TrainingPlanExercisePicker", () => {
     expect(screen.getByRole("heading", { name: "Rotation Count" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Release Point" })).toBeNull();
     expect(screen.getByText("Matching Exercises")).toBeInTheDocument();
+  });
+
+  it("offers no retired Exercise for a new plan step, in either category or in search", () => {
+    render(
+      <TrainingPlanExercisePicker
+        versions={versions}
+        onChoose={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search exercises" }), {
+      target: { value: "split" },
+    });
+    expect(screen.queryByRole("heading", { name: "Draw Split Time" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Draw Split-Time Ladder" })).toBeNull();
+    expect(screen.getByText("No exercise matches this search.")).toBeInTheDocument();
   });
 });

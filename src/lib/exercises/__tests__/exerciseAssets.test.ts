@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import type { StorageAdapter } from "../../persistence/types";
+import type { RemovableStorageAdapter } from "../../persistence/types";
 import {
   createPublicExerciseAssetResolver,
   preloadPublicExerciseDiagrams,
@@ -8,8 +8,10 @@ import {
 } from "../exerciseAssets";
 import type { ExerciseAssetResolver } from "../exerciseAssets";
 import {
+  CURRENT_PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_DIAGRAM_PATHS,
+  SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS,
   SWISS_CURLING_GUARD_10_ASSET_ID,
 } from "../restrictedAssetCatalog";
 import type { ExerciseAssetDistribution } from "../types";
@@ -20,7 +22,7 @@ const PUBLIC_DISTRIBUTION: ExerciseAssetDistribution = {
   publicDeliveryPermitted: true,
 };
 
-function memoryAdapter(): StorageAdapter & { values: Map<string, string> } {
+function memoryAdapter(): RemovableStorageAdapter & { values: Map<string, string> } {
   const values = new Map<string, string>();
   return {
     values,
@@ -29,6 +31,10 @@ function memoryAdapter(): StorageAdapter & { values: Map<string, string> } {
     },
     async set(key, value) {
       values.set(key, value);
+      return { ok: true };
+    },
+    async remove(key) {
+      values.delete(key);
       return { ok: true };
     },
   };
@@ -44,10 +50,20 @@ function pngResponse(): Response {
 }
 
 describe("public Exercise diagram delivery", () => {
-  it("registers one immutable public asset for every source exercise", () => {
-    expect(PUBLIC_EXERCISE_ASSET_IDS).toHaveLength(37);
-    expect(new Set(PUBLIC_EXERCISE_ASSET_IDS).size).toBe(37);
-    expect(new Set(Object.values(PUBLIC_EXERCISE_DIAGRAM_PATHS)).size).toBe(37);
+  it("registers one current immutable public asset for every source exercise, plus every superseded revision", () => {
+    expect(CURRENT_PUBLIC_EXERCISE_ASSET_IDS).toHaveLength(37);
+    expect(new Set(CURRENT_PUBLIC_EXERCISE_ASSET_IDS).size).toBe(37);
+    // A superseded revision stays registered so a historical Exercise Version snapshot
+    // keeps resolving, and can never collide with the current one.
+    for (const assetId of SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS) {
+      expect(CURRENT_PUBLIC_EXERCISE_ASSET_IDS).not.toContain(assetId);
+    }
+    expect(PUBLIC_EXERCISE_ASSET_IDS).toHaveLength(
+      CURRENT_PUBLIC_EXERCISE_ASSET_IDS.length + SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS.length
+    );
+    expect(new Set(PUBLIC_EXERCISE_ASSET_IDS).size).toBe(PUBLIC_EXERCISE_ASSET_IDS.length);
+    expect(new Set(Object.values(PUBLIC_EXERCISE_DIAGRAM_PATHS)).size)
+      .toBe(PUBLIC_EXERCISE_ASSET_IDS.length);
     for (const assetId of PUBLIC_EXERCISE_ASSET_IDS) {
       expect(PUBLIC_EXERCISE_DIAGRAM_PATHS[assetId]).toBe(
         `/exercise-diagrams/${assetId}.png`
@@ -82,7 +98,7 @@ describe("public Exercise diagram delivery", () => {
     expect(offlineFetch).not.toHaveBeenCalled();
   });
 
-  it("preloads all cleared diagrams so an athlete need not open each Exercise online", async () => {
+  it("preloads only the current diagrams so an athlete need not open each Exercise online", async () => {
     const resolveExerciseAsset = vi.fn<ExerciseAssetResolver["resolveExerciseAsset"]>(
       () => ({ src: "data:image/png;base64,AA==" })
     );
@@ -90,10 +106,84 @@ describe("public Exercise diagram delivery", () => {
     await preloadPublicExerciseDiagrams(resolver);
 
     expect(resolveExerciseAsset).toHaveBeenCalledTimes(
-      PUBLIC_EXERCISE_ASSET_IDS.length
+      CURRENT_PUBLIC_EXERCISE_ASSET_IDS.length
     );
     expect(resolveExerciseAsset.mock.calls.map(([reference]) => reference.assetId))
-      .toEqual(PUBLIC_EXERCISE_ASSET_IDS);
+      .toEqual(CURRENT_PUBLIC_EXERCISE_ASSET_IDS);
+  });
+
+  it("never evicts a superseded revision, because a saved plan or result still references it", async () => {
+    const adapter = memoryAdapter();
+    const online = createPublicExerciseAssetResolver({
+      adapter,
+      fetchImpl: (async () => pngResponse()) as typeof fetch,
+    });
+
+    // A browser that already cached the previous corpus, exactly as a historical
+    // Exercise Version snapshot needs it.
+    for (const assetId of SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS) {
+      await resolveExerciseAssetAccess({ assetId }, PUBLIC_DISTRIBUTION, online);
+    }
+    const before = new Map(adapter.values);
+    expect(before.size).toBe(SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS.length);
+
+    await preloadPublicExerciseDiagrams(online);
+
+    const cachedIds = [...adapter.values.keys()];
+    for (const assetId of SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS) {
+      expect(cachedIds.some((key) => key.endsWith(assetId))).toBe(true);
+    }
+    for (const assetId of CURRENT_PUBLIC_EXERCISE_ASSET_IDS) {
+      expect(cachedIds.some((key) => key.endsWith(assetId))).toBe(true);
+    }
+    // Byte-identical: preload adds, it never rewrites what was already there.
+    for (const [key, value] of before) expect(adapter.values.get(key)).toBe(value);
+  });
+
+  it("leaves an already-cached diagram intact when preload runs offline, however often it repeats", async () => {
+    const adapter = memoryAdapter();
+    const [superseded] = SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS;
+    await resolveExerciseAssetAccess(
+      { assetId: superseded },
+      PUBLIC_DISTRIBUTION,
+      createPublicExerciseAssetResolver({
+        adapter,
+        fetchImpl: (async () => pngResponse()) as typeof fetch,
+      })
+    );
+    const cached = new Map(adapter.values);
+
+    const offline = createPublicExerciseAssetResolver({
+      adapter,
+      fetchImpl: (async () => {
+        throw new TypeError("offline");
+      }) as unknown as typeof fetch,
+    });
+    await preloadPublicExerciseDiagrams(offline);
+    await preloadPublicExerciseDiagrams(offline);
+
+    expect([...adapter.values]).toEqual([...cached]);
+    await expect(
+      resolveExerciseAssetAccess({ assetId: superseded }, PUBLIC_DISTRIBUTION, offline)
+    ).resolves.toMatchObject({ available: true });
+  });
+
+  it("still resolves a superseded revision on demand, so a historical snapshot keeps its diagram", async () => {
+    const adapter = memoryAdapter();
+    const fetchImpl = vi.fn(async () => pngResponse());
+    const resolver = createPublicExerciseAssetResolver({
+      adapter,
+      fetchImpl: fetchImpl as typeof fetch,
+    });
+
+    const [superseded] = SUPERSEDED_PUBLIC_EXERCISE_ASSET_IDS;
+    await expect(
+      resolveExerciseAssetAccess({ assetId: superseded }, PUBLIC_DISTRIBUTION, resolver)
+    ).resolves.toMatchObject({ available: true });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      `/exercise-diagrams/${superseded}.png`,
+      expect.anything()
+    );
   });
 
   it("rejects unknown assets and non-PNG responses without caching them", async () => {

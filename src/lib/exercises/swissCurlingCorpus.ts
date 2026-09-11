@@ -1,9 +1,13 @@
+import { sourceDiagramLabel } from "./diagramLabelGeometry";
 import { buildPublicSwissCurlingDiagram } from "./diagrams";
 import {
   RELEASE_TIME_BACK_HOG_PROTOCOL_ID,
   ROTATION_COUNT_PROTOCOL_ID,
 } from "./measurementProtocols";
-import { swissCurlingExerciseAssetId } from "./restrictedAssetCatalog";
+import {
+  swissCurlingExerciseAssetId,
+  swissCurlingExerciseAssetIdAtVersion,
+} from "./restrictedAssetCatalog";
 import {
   EXERCISE_CONTENT_SCHEMA_VERSION,
   type Exercise,
@@ -37,10 +41,21 @@ type CorpusDefinition = {
   stones: number;
   variations: readonly string[];
   diagramSummary: string;
+  /**
+   * The Version 1 overlays exactly as published on 2026-08-29. They are frozen: a
+   * released Exercise Version is never rewritten, so the correction below ships as a
+   * new Version rather than as an edit of these values.
+   */
   overlays?: Extract<
     ExerciseDiagram,
     { kind: "attributed-source-image" }
   >["localizedTextOverlays"];
+  /**
+   * English wording for the corrected diagram. Position, type size and colour come from
+   * the measured source geometry in `swissCurlingDiagramLabels.ts`; only the words are
+   * authored here. Present exactly when the diagram carried embedded German text.
+   */
+  labels?: readonly { id: string; text: string }[];
   sourceNote?: string;
 };
 
@@ -113,6 +128,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: [...COMMON_HANDLE_VARIATIONS, "Play away from the centre line."],
     diagramSummary: "A top-down sheet with three example centre guards in the blue target zone between the hog line and the house.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: TARGET_BOTTOM_RIGHT,
   },
   {
@@ -132,6 +148,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: [...COMMON_HANDLE_VARIATIONS, "Play away from the centre line."],
     diagramSummary: "The Mixed Doubles positioning rectangle is highlighted below the house, with three example stones fully inside it.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.68, 0.59, 0.28, 0.045, "Target zone")],
   },
   {
@@ -151,6 +168,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "A blue Mixed Doubles target rectangle sits to the left of the centre line below the house.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.70, 0.59, 0.27, 0.045, "Target zone")],
   },
   {
@@ -170,6 +188,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "A blue Mixed Doubles target rectangle sits to the right of the centre line below the house.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.70, 0.59, 0.27, 0.045, "Target zone")],
   },
   {
@@ -189,6 +208,10 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "Two blue centre-line guard zones are numbered: stone 1 before the Mixed Doubles zone and stone 2 beyond it.",
+    labels: [
+      { id: "near-zone", text: "Target zone 2" },
+      { id: "far-zone", text: "Target zone 1" },
+    ],
     overlays: [
       overlay("near-zone", 0.67, 0.58, 0.30, 0.045, "Target zone 2"),
       overlay("far-zone", 0.67, 0.90, 0.30, 0.045, "Target zone 1"),
@@ -212,6 +235,10 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "Two blue centre-line guard zones are numbered: stone 1 beyond the Mixed Doubles zone and stone 2 before it.",
+    labels: [
+      { id: "near-zone", text: "Target zone 1" },
+      { id: "far-zone", text: "Target zone 2" },
+    ],
     overlays: [
       overlay("near-zone", 0.67, 0.58, 0.30, 0.045, "Target zone 1"),
       overlay("far-zone", 0.67, 0.90, 0.30, 0.045, "Target zone 2"),
@@ -290,6 +317,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "Eight numbered guards progress from the house toward the hog line, with a side marker showing each previous depth.",
+    labels: [{ id: "move-aside", text: "After each stone\nstops, move it aside\nas a marker." }],
     overlays: [overlay("move-aside", 0.22, 0.58, 0.42, 0.12, "After each stone stops,\nmove it aside as a marker.", "#ffffff", 0.026)],
   },
   {
@@ -309,6 +337,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "The whole house is highlighted as the target, with an example outside-to-inside draw.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.42, 0.31, 0.27, 0.045, "Target zone")],
   },
   {
@@ -328,6 +357,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "The whole house is highlighted as the target, with an example inside-to-outside draw.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.72, 0.31, 0.25, 0.045, "Target zone")],
   },
   {
@@ -347,6 +377,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "The front half of the house is highlighted, with an example outside-to-inside draw.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.42, 0.31, 0.27, 0.045, "Target zone")],
   },
   {
@@ -366,6 +397,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: COMMON_HANDLE_VARIATIONS,
     diagramSummary: "The front half of the house is highlighted, with an example inside-to-outside draw.",
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: [overlay("target-zone", 0.01, 0.31, 0.28, 0.045, "Target zone")],
   },
   {
@@ -385,6 +417,12 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 16,
     variations: ["Play eight stones with one handle, then eight with the other.", "Change handle after four stones.", "Change handle after every stone.", "Start with the back quarters.", "Play four consecutive stones into the same quarter.", "Slide with the stone and without a broom."],
     diagramSummary: "The house is divided into four numbered target quarters.",
+    labels: [
+      { id: "quarter-2", text: "House quarter 2" },
+      { id: "quarter-4", text: "House quarter 4" },
+      { id: "quarter-1", text: "House quarter 1" },
+      { id: "quarter-3", text: "House quarter 3" },
+    ],
     overlays: [
       overlay("q2", 0.10, 0.015, 0.28, 0.04, "House quarter 2", "#f7e2a2", 0.026),
       overlay("q4", 0.62, 0.015, 0.28, 0.04, "House quarter 4", "#f7e2a2", 0.026),
@@ -428,6 +466,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: ["Use the same handle for all eight stones.", "Change handle after stone 1.", "Change handle after every stone.", "Slide with the stone and without a broom."],
     diagramSummary: "Stone 1 sits in the house and stone 2 freezes immediately in front, with a one-broom-length maximum gap marked.",
+    labels: [{ id: "distance", text: "Maximum gap\nbetween the\ntwo stones:\none broom length" }],
     overlays: [overlay("distance", 0.63, 0.57, 0.32, 0.13, "Maximum gap:\none broom length", "#ffffff", 0.025)],
   },
   {
@@ -447,6 +486,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: ["Use the same handle for all eight stones.", "Change handle after stone 1.", "Change handle after every stone.", "Slide with the stone and without a broom."],
     diagramSummary: "Stone 1 sits in the house and stone 2 freezes immediately in front on an inside-to-outside path, with a one-broom-length maximum gap marked.",
+    labels: [{ id: "distance", text: "Maximum gap\nbetween the\ntwo stones:\none broom length" }],
     overlays: [overlay("distance", 0.63, 0.57, 0.32, 0.13, "Maximum gap:\none broom length", "#ffffff", 0.025)],
     sourceNote: "The page contains a duplicated text block from Draw Exercise 7; the second block and diagram define this inside-to-outside freeze exercise.",
   },
@@ -468,6 +508,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: ["Change the target time.", "Use a smaller tolerance as a personal variation.", "Play inside to outside.", "Slide with the stone and without a broom."],
     diagramSummary: "A house-weight draw is shown above an English note to play eight consecutive stones at the same target split time.",
+    labels: [{ id: "timing-note", text: "Play 8 consecutive stones\nwith the same target split time." }],
     overlays: [overlay("timing-note", 0.12, 0.43, 0.76, 0.09, "Play 8 consecutive stones\nwith the same target split time.", "#ffffff", 0.025)],
   },
   {
@@ -488,6 +529,13 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: ["Reverse the ladder by starting at 3.9 seconds.", "Change the ladder endpoints.", "Use a smaller tolerance as a personal variation.", "Play inside to outside.", "Slide with the stone and without a broom."],
     diagramSummary: "A draw is shown above the eight-step target-time ladder: 3.6, 3.7, 3.8, 3.9, 3.9, 3.8, 3.7 and 3.6 seconds.",
+    labels: [
+      { id: "ladder-heading", text: "Play 8 consecutive stones,\neach with a new target split time:" },
+      {
+        id: "ladder-values",
+        text: "Stone 1: 3.6s\nStone 2: 3.7s\nStone 3: 3.8s\nStone 4: 3.9s\nStone 5: 3.9s\nStone 6: 3.8s\nStone 7: 3.7s\nStone 8: 3.6s",
+      },
+    ],
     overlays: [overlay("ladder", 0.11, 0.42, 0.78, 0.24, "Target split-time ladder\n1  3.6s     5  3.9s\n2  3.7s     6  3.8s\n3  3.8s     7  3.7s\n4  3.9s     8  3.6s", "#ffffff", 0.023)],
   },
   {
@@ -507,6 +555,12 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: ["Change handle after every stone.", "Slide with the stone and without a broom."],
     diagramSummary: "Four numbered stones and arrows show the guard, come-around, freeze and tap sequence.",
+    labels: [
+      { id: "stone-2", text: "Stone 2: Come-around" },
+      { id: "stone-3", text: "Stone 3: Freeze" },
+      { id: "stone-4", text: "Stone 4: Tap to\nback 8/12-foot" },
+      { id: "stone-1", text: "Stone 1: Guard" },
+    ],
     overlays: [
       overlay("stone-1", 0.02, 0.66, 0.34, 0.045, "Stone 1: Guard", "#ffffff", 0.024),
       overlay("stone-2", 0.02, 0.21, 0.34, 0.045, "Stone 2: Come-around", "#ffffff", 0.022),
@@ -531,6 +585,11 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: [...COMMON_HANDLE_VARIATIONS, "Narrow the target to out-weight through hack depth.", "Narrow the target to hack through board depth."],
     diagramSummary: "A blue long-draw target zone extends beyond the house toward the boards, with two smaller optional zones.",
+    labels: [
+      { id: "target-zone", text: "Target zone" },
+      { id: "alternative-2", text: "Alternative\ntarget zone 2\nHack–Board" },
+      { id: "alternative-1", text: "Alternative\ntarget zone 1\nOut–Hack" },
+    ],
     overlays: [
       overlay("target", 0.31, 0.01, 0.38, 0.055, "Target zone", "#a6ddef", 0.027),
       overlay("alt-2", 0.70, 0.01, 0.29, 0.10, "Alternative 2\nHack–Board", "#e8e8f2", 0.022),
@@ -554,6 +613,11 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 8,
     variations: [...COMMON_HANDLE_VARIATIONS, "Narrow the target to out-weight through hack depth.", "Narrow the target to hack through board depth."],
     diagramSummary: "A blue long-draw target zone extends beyond the house toward the boards, with two smaller optional zones.",
+    labels: [
+      { id: "target-zone", text: "Target zone" },
+      { id: "alternative-2", text: "Alternative\ntarget zone 2\nHack–Board" },
+      { id: "alternative-1", text: "Alternative\ntarget zone 1\nOut–Hack" },
+    ],
     overlays: [
       overlay("target", 0.70, 0.01, 0.29, 0.055, "Target zone", "#a6ddef", 0.027),
       overlay("alt-2", 0.01, 0.01, 0.29, 0.10, "Alternative 2\nHack–Board", "#e8e8f2", 0.022),
@@ -589,6 +653,7 @@ const DEFINITIONS: readonly CorpusDefinition[] = [
     stones: 4,
     variations: SOFTSHOT_VARIATIONS,
     diagramSummary: `A target stone at ${position} is struck with soft take-out weight and shown finishing in the blue zone beyond the house.`,
+    labels: [{ id: "target-zone", text: "Target zone" }],
     overlays: TARGET_TOP_RIGHT_SOFT,
     ...(number === 12
       ? { sourceNote: "The source repeats the title 'back 12-foot' from Exercise 8, while the ordered Level 2–6 series and diagram place Exercise 12 at the front 12-foot position." }
@@ -643,13 +708,30 @@ function sourceReference(definition: CorpusDefinition): string {
   return `${family} Exercise ${definition.number}`;
 }
 
-function buildVersion(definition: CorpusDefinition): ExerciseVersion {
+/**
+ * True when this exercise's source diagram carried embedded German text and has
+ * therefore been republished with that text removed at the source.
+ */
+function hasCorrectedDiagram(definition: CorpusDefinition): boolean {
+  return definition.labels !== undefined;
+}
+
+/** The Exercise Version an athlete opens today. */
+export function currentCorpusVersionNumber(definition: CorpusDefinition): number {
+  return hasCorrectedDiagram(definition) ? 2 : 1;
+}
+
+function buildVersion(
+  definition: CorpusDefinition,
+  versionNumber: number
+): ExerciseVersion {
   const measured = definition.focus === "measured";
   const reference = sourceReference(definition);
+  const corrected = versionNumber > 1;
   return {
-    id: `${definition.id}-v1`,
+    id: `${definition.id}-v${versionNumber}`,
     exerciseId: definition.id,
-    version: 1,
+    version: versionNumber,
     contentSchemaVersion: EXERCISE_CONTENT_SCHEMA_VERSION,
     contentLanguage: "en",
     title: definition.title,
@@ -743,13 +825,24 @@ function buildVersion(definition: CorpusDefinition): ExerciseVersion {
           requirement: "optional",
         }],
     diagram: buildPublicSwissCurlingDiagram({
-      id: `${definition.id}-source-diagram-v1`,
-      assetId: swissCurlingExerciseAssetId(definition.family, definition.number),
+      id: `${definition.id}-source-diagram-v${versionNumber}`,
+      assetId: corrected
+        ? swissCurlingExerciseAssetId(definition.family, definition.number)
+        : swissCurlingExerciseAssetIdAtVersion(definition.family, definition.number, 1),
       caption: `${reference} — Swiss Curling diagram.`,
       accessibleSummary: definition.diagramSummary,
       sourceExerciseReference: reference,
       sourcePage: definition.page,
-      localizedTextOverlays: definition.overlays,
+      germanTextRemovedAtSource: corrected,
+      localizedTextOverlays: corrected
+        ? definition.labels?.map(({ id, text }) =>
+            sourceDiagramLabel(
+              swissCurlingExerciseAssetId(definition.family, definition.number),
+              id,
+              text
+            )
+          )
+        : definition.overlays,
     }),
     source: {
       kind: "external-collection",
@@ -776,17 +869,28 @@ export const SWISS_CURLING_CORPUS_EXERCISE_IDS = DEFINITIONS.map(
   ({ id }) => id
 );
 
+/** The current Exercise Version id per corpus Exercise. */
 export const SWISS_CURLING_CORPUS_VERSION_IDS = DEFINITIONS.map(
-  ({ id }) => `${id}-v1`
+  (definition) => `${definition.id}-v${currentCorpusVersionNumber(definition)}`
 );
 
 export function buildSwissCurlingCorpusExercises(): Exercise[] {
-  return DEFINITIONS.map(({ id }) => ({
-    id,
-    currentVersionId: `${id}-v1`,
+  return DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    currentVersionId: `${definition.id}-v${currentCorpusVersionNumber(definition)}`,
   }));
 }
 
+/**
+ * Every published version, oldest first. Version 1 stays exactly as released so a
+ * Training Plan step or completed result that snapshotted it keeps resolving to the
+ * content it actually recorded; the diagram correction is published as Version 2.
+ */
 export function buildSwissCurlingCorpusVersions(): ExerciseVersion[] {
-  return DEFINITIONS.map(buildVersion);
+  return DEFINITIONS.flatMap((definition) => {
+    const current = currentCorpusVersionNumber(definition);
+    return Array.from({ length: current }, (_, index) =>
+      buildVersion(definition, index + 1)
+    );
+  });
 }

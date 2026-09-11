@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   areDefaultExerciseLibraryFilters,
   availableExerciseDifficultyFilters,
-  availableExerciseFocuses,
+  availableExerciseDiscoveryCategories,
   availableExerciseParticipationModes,
   availableExerciseShotFamilies,
   availableExerciseSweepingPolicies,
@@ -18,7 +18,7 @@ import {
   UNRATED_DIFFICULTY_LABEL,
   activeFilterCountLabel,
   exerciseDifficultyLabel,
-  exerciseFocusLabel,
+  exerciseDiscoveryCategoryLabel,
   exerciseParticipationModeLabel,
   exerciseShotFamilyLabel,
   exerciseSweepingPolicyLabel,
@@ -80,7 +80,7 @@ export default function ExerciseLibraryFilterBar({
 }: ExerciseLibraryFilterBarProps) {
   const [showFilters, setShowFilters] = useState(false);
 
-  const focuses = availableExerciseFocuses(allVersions);
+  const categories = availableExerciseDiscoveryCategories(allVersions);
   const shotFamilies = availableExerciseShotFamilies(allVersions);
   const participationModes = availableExerciseParticipationModes(allVersions);
   const sweepingPolicies = availableExerciseSweepingPolicies(allVersions);
@@ -150,26 +150,26 @@ export default function ExerciseLibraryFilterBar({
       {showFilters && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label htmlFor="exercise-filter-focus" className="text-xs font-medium text-slate-500">
-              Focus
+            <label htmlFor="exercise-filter-category" className="text-xs font-medium text-slate-500">
+              Category
             </label>
             <select
-              id="exercise-filter-focus"
-              value={filters.focus}
+              id="exercise-filter-category"
+              value={filters.category}
               onChange={(event) =>
                 onChange({
                   ...filters,
-                  focus: event.target.value === ANY_VALUE
+                  category: event.target.value === ANY_VALUE
                     ? "any"
-                    : (event.target.value as ExerciseLibraryFilters["focus"]),
+                    : (event.target.value as ExerciseLibraryFilters["category"]),
                 })
               }
               className={`mt-1 ${SELECT_CLASS}`}
             >
-              <option value={ANY_VALUE}>Any focus</option>
-              {focuses.map((focus) => (
-                <option key={focus} value={focus}>
-                  {exerciseFocusLabel(focus)}
+              <option value={ANY_VALUE}>Any category</option>
+              {categories.map((category) => (
+                <option key={category} value={category}>
+                  {exerciseDiscoveryCategoryLabel(category)}
                 </option>
               ))}
             </select>

@@ -3,6 +3,12 @@
 ## Status
 
 Accepted and implemented for the 2026-08-29 Exercise Library expansion.
+**Decision 6 superseded by ADR-0046:** an embedded German label is now removed from the
+image at the source and replaced by an English label placed from measured geometry,
+rather than covered by an opaque overlay. ADR-0046 also retires Draw Split Time and Draw
+Split-Time Ladder from active discovery (Decision 4's execution routing is unchanged for
+the snapshots that already reference them) and republishes 30 of the 37 diagram assets
+under new ids (Decision 5's versioning rule is what makes that safe).
 
 ## Context
 

@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted and implemented.
+Accepted and implemented; **Decision 6 superseded by ADR-0046** (the picker offers two
+discovery categories, and Release Time is selected under Technique). Every other
+decision stands.
 
 ## Context
 
