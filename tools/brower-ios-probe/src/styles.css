@@ -1,0 +1,176 @@
+/* A deliberately plain, dense diagnostic surface. This is a developer instrument, not
+   product UI: it does not import the application's design tokens, and it should never
+   be mistaken on screen for the Curling Performance Platform. */
+:root {
+  color-scheme: dark;
+  --canvas: #0f1115;
+  --surface: #171a21;
+  --surface-muted: #1f232c;
+  --text: #e8eaee;
+  --text-secondary: #a8b0bd;
+  --text-muted: #79828f;
+  --accent: #4f8cff;
+  --danger: #ff6b6b;
+  --border: #2a2f3a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+
+#app {
+  padding: 16px 16px 48px;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.header {
+  padding: 8px 0 16px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 650;
+  margin: 0 0 4px;
+}
+
+.identity {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.panel-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
+.line {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.failure {
+  color: var(--danger);
+}
+
+.notices {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.notices li {
+  margin-bottom: 4px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.action {
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 12px 14px;
+  text-align: left;
+  min-height: 44px;
+}
+
+.action-primary:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.action-destructive:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.action:disabled {
+  opacity: 0.45;
+}
+
+.reason {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding-left: 2px;
+}
+
+.service,
+.observation {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+  margin-top: 10px;
+}
+
+.service-title,
+.observation-title,
+.characteristic-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.characteristic {
+  margin: 8px 0 0 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 4px;
+  overflow-wrap: anywhere;
+}
+
+.hex {
+  color: var(--text);
+  font-size: 13px;
+  -webkit-user-select: all;
+  user-select: all;
+}
+
+.meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}

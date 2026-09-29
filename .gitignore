@@ -48,3 +48,15 @@ next-env.d.ts
 # supabase (local CLI-generated metadata only — never product work)
 /supabase/.branches/
 /supabase/.temp/
+
+# mobile client (Capacitor/Vite) — generated build output only.
+# The mobile SOURCE (mobile/src, mobile/__tests__, mobile's configs and
+# capacitor.config.ts) is tracked and reviewed. The generated native project
+# under ios/ brings its own reviewable ios/.gitignore, which already scopes the
+# copied web bundle, build products and Xcode/SPM user state — not repeated here.
+/mobile/dist/
+/mobile/.vite/
+/mobile/.tmp-verification/
+# Vitest writes its cache next to the config's root, which is mobile/ — the
+# repository-root /node_modules rule above does not reach it.
+/mobile/node_modules/

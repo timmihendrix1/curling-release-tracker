@@ -1426,6 +1426,209 @@ remain available only for future content whose rights require an audience restri
 
 ---
 
+## External timing: Brower TCi discovery stage
+
+**State:** Stage 0 (hardware discovery) is **implemented, development-only, and under
+way — not complete**. As of the 2026-09-25 test collection against the real timer, Gates A and B
+in `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` are **demonstrated**, Gate C is
+**partial and not passed**, and Gate D is **not started**. No production external timing
+provider exists.
+
+The generic "which device, which transport, which protocol" question is settled: a Brower
+TCi Timer is in hand, Brower supplied an official BLE specification, and
+`src/lib/brower/` + `src/components/BrowerBleDiagnosticScreen.tsx` provide an isolated
+diagnostic that records raw bytes without touching sporting data. That diagnostic has now
+connected to the physical timer, discovered both documented services, read characteristics
+and received real Athlete Data notifications, and the exported bytes support the tested
+Chron base-packet fields when compared against the operator's reported display values. That
+is **one test collection**, not a reproduced result.
+
+**That is evidence, not an integration.** The application still contains no decoder, no
+production transport and no capture path from the device: the analysis was done offline
+against exported files, and the diagnostic creates no `TimingResult`, Shot, Session,
+Assessment or Exercise result. See `docs/BROWER_INTEGRATION_STATUS.md` (canonical protocol,
+findings and their limits), `docs/hardware/brower/observations/2026-09-25-chron/`
+(archived evidence) and `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` (stage scope,
+desktop procedure, acceptance gates).
+
+### What the diagnostic stage does NOT resolve
+
+These are production-integration problems. Each is still open, and none may be treated as
+answered because the diagnostic exists:
+
+- **Stale or replayed data.** **The device does resend.** Two Athlete Data packets — the
+  two whose values the operator reported seeing on the display — were observed arriving a
+  second time, byte for byte, during the 2026-09-25 collection, 6.63 s and 6.72 s after
+  their originals. The Capture Sequence boundary's at-least-once assumption is therefore no
+  longer purely hypothetical, and a future provider will have to cope with repeats rather
+  than hope to avoid them. Everything past that bare fact is still open: **what triggers a
+  repeat is unknown**, and nothing is established about corrections, replays after
+  reconnect, or behaviour across separate collections. In particular, **no conclusion may
+  be drawn from the third packet**: no repeat of it was recorded, and listening was stopped
+  5.369 s after it arrived. Whether it would have repeated later is unknown.
+- **Result identity.** What stable identity a real device reading has, and therefore how a
+  repeat is recognised as the same reading rather than a new one. The app deduplicates by
+  `TimingResult.id` alone; nothing yet maps a device record to such an id. The observed
+  packets do carry a memory-location field, and requesting a location returned the matching
+  record — but a memory location is a **storage slot**, not a durable identity: location
+  499 is continually overwritten once memory is full, and clearing restarts at location 1.
+  **No production identity or deduplication algorithm is selected here**, and none should
+  be until record finality and reset behaviour are understood. See "A stale delayed result
+  can be attributed to a *new* sequence started after a Cancel" above, which is the same
+  gap seen from the app's side.
+- **Record lifecycle and finality.** Packets with a zero first split were observed
+  preceding packets with a non-zero first split for the same record. What a zero packet
+  signifies, and whether a non-zero split can later be superseded or corrected, is
+  **unresolved** — so "the first non-zero split is the result" is not a rule this project
+  may rely on yet.
+- **Session resets and the "New Athlete" workflow.** The timer's session/athlete model is
+  device state changed by a physical button. How it maps onto Training Blocks and
+  Assessment Runs — and who is allowed to change it — is undecided. The diagnostic
+  deliberately cannot send the New Athlete command.
+- **Memory overwrite.** Location 499 is continually overwritten once memory is full, so
+  the device's record store is lossy by design. Any retrieval-based integration needs a
+  policy for detecting and handling that; none exists.
+- **Split mapping.** Nothing maps a device split to Back-Hog or Hog-Hog. Doing so
+  automatically is explicitly out of scope until the packet encoding is verified and the
+  physical gate layout is agreed — a wrong mapping would silently produce plausible,
+  incorrect measurements.
+- **Capture ownership.** Training and Assessment already share one active-capture-owner
+  rule (ADR-0011). A real device adds a second question: what happens when the device
+  keeps sending while no capture is active, and what owns the connection across screens.
+- **Mobile transport.** The diagnostic targets a Chromium-based **desktop** browser on
+  macOS via Web Bluetooth — **Brave on macOS** is what the 2026-09-25 collection actually
+  used successfully, with Web Bluetooth enabled via
+  `brave://flags/#brave-web-bluetooth-api`; Chrome is an untested alternative on the same
+  platform. **These experiments establish nothing about iPhone browser compatibility.**
+  Desktop Brave and a browser on an iPhone are separate questions and must not be
+  collapsed: a result on the former transfers no information about the latter, in either
+  direction. Nothing about mobile Web Bluetooth support has been tested here, and no
+  general rule about iOS browser engines is asserted — Apple documents a conditional
+  alternative-browser-engine path that is scoped by region, OS version and entitlement
+  (<https://developer.apple.com/support/alternative-browser-engines/>), and in any case
+  permission to ship an alternative engine is not evidence that any particular browser
+  supports Web Bluetooth. **Production mobile transport remains untested and undecided**;
+  no architecture — native, Capacitor, a specialised browser, or anything else — is
+  selected here, and nothing in the desktop evidence may be used to infer one.
+
+  **A bounded native-iOS transport prototype exists** at `tools/brower-ios-probe/`
+  (Capacitor + `@capacitor-community/bluetooth-le`), documented in
+  `docs/BROWER_IOS_FEASIBILITY.md`. On **2026-09-28 it ran on a physical iPhone** and
+  received real Athlete Data notifications from the timer, so **native iOS BLE transport to
+  this timer is demonstrated** — in a prototype. **Android remains entirely untested**: no
+  Android project exists, no Android tooling is installed, and an iOS result is never
+  evidence for Android. The prototype is still a separate developer instrument with no
+  identity, no persistence, no path into sporting data and no ability to write to the
+  timer, and it **does not** move any acceptance gate's definition. Its 142 automated tests
+  run against an injected transport and prove nothing about radios.
+
+  **What the hardware session did not establish**, and what therefore remains untested for
+  production capture: real timing-gate behaviour (the TCi was tested alone), lifecycle
+  races while a subscription is active (the app was never backgrounded during the listening
+  window), 20-split exhaustion, and automatic New.
+
+  **The application's own mobile migration is now designed** in
+  `docs/MOBILE_APP_MIGRATION.md` — the single canonical migration document, covering iOS
+  and Android as one shared architecture. **Nothing in it is implemented.** It records the
+  four boundaries the prototype sidestepped (API origin and trust boundary, native OAuth
+  callback handling, the separate WebView storage container, offline cold start), a
+  recommended build arrangement, bounded implementation stages, and five open product
+  decisions that are **not** settled by its existence — long-term Web versus mobile-only
+  delivery, whether browser-local drafts must transfer, whether measurement must continue
+  during backgrounding or screen lock, production app identity and distribution, and
+  whether the required alternative login satisfies Apple guideline 4.8.
+
+### Remaining work before this stage can be called complete
+
+Explicitly open, in roughly the order a second session could address them:
+
+- **Split and appendix interpretation.** The 2026-09-28 collection corroborated **splits
+  2–4**, the **appendix-count field** and **one appendix packet** at their documented
+  positions, and reproduced Split 1 on a second transport. Still uncorroborated: the
+  **3.5-byte start time**, **splits 6–20**, the **second appendix packet**, and behaviour at
+  the documented 20-split limit. Settling those needs controlled runs reaching more splits,
+  **with timing gates**, and an exactly-recorded display value per split.
+- **Record completion.** What marks a record final, and whether a delivered value can
+  change. The 2026-09-28 collection made this sharper rather than easier: one record was
+  observed in **six versions** — an initial version plus five updates — and nothing marked it
+  complete.
+- **Session headers and reset behaviour.** No bib-1000 session-header packet appears in the
+  exports. Memory clear, power cycle and the New Athlete workflow were not performed as
+  *documented* experiments and their effects are unverified — the operator's button actions
+  were not recorded, so neither their occurrence nor their absence during the collection can
+  be asserted.
+- **The Time Base discrepancy.** Three consecutive reads returned identical bytes across
+  more than two minutes. Until this is understood, **no verified wall-clock timestamp
+  mapping exists**, and the documented "subtract the time base from the phone clock"
+  procedure is untested.
+- **Serial-number encoding.** Two bytes observed; nothing maps them to a printed serial.
+- **Advertising details.** No raw advertising capture exists, so the document's
+  advertising example still cannot be checked against the device.
+- **Reconnect behaviour.** Two unexpected disconnects occurred, and the exports show a
+  successful reconnection after each via a fresh device selection. What is missing is a
+  *controlled* reconnect test, and whether the timer accepts more than one concurrent
+  central is unknown.
+- **Production and mobile architecture.** Everything in the list above this line, plus the
+  open items in this section.
+
+**Recommendation:** run the procedure again, targeting what both collections missed —
+above all **with timing gates**, which the 2026-09-28 multi-split session did not use — and
+record the evidence before any production design work. **Do not write a packet decoder
+before Gate C** — a partial Gate C is not Gate C.
+
+Seven displayed times are now reproduced exactly across two transports, and splits 2–4, the
+appendix-count transition and one appendix split field are corroborated. **A decoder would
+still have to guess**, because what remains unestablished is not peripheral: **record
+finality** (one record was seen in six versions, with nothing marking any of them final),
+the start-time field, splits 6–20, the second appendix packet, session headers, and what
+causes a byte-for-byte repeat. A decoder would present those guesses as measurements.
+
+A narrowly scoped **decoder specification** — covering only evidence-supported fields, with
+an explicit representation for "not established" — can be identified as a possible future
+task once Gate C reproduces across separate collections under production-like conditions.
+It is neither authorized nor scheduled here.
+
+### Flagged while correcting the diagnostic, deliberately not fixed here
+
+**Most overlays other than the BLE diagnostic do not contain keyboard focus.** The BLE
+diagnostic's review found that a full-screen overlay left the primary navigation behind it
+reachable by Shift+Tab, so an athlete could change page while the overlay still owned live
+state. That is now fixed **in the diagnostic only**.
+
+`ExerciseRestrictedSourceImage`'s diagram enlargement is the exception — it already
+implements Tab containment (see `docs/SYSTEM_ARCHITECTURE.md`'s Exercise section), and it
+moves initial focus to its close control rather than to the dialog container. Verified
+directly, correcting an earlier, inaccurate claim in this document that no overlay
+implemented containment.
+
+The remaining overlays do not trap Tab: `ConfirmModal`, `AssessmentInvalidAttemptDialog`
+and `AssessmentProtocolSheet` declare `aria-modal="true"` without containment (the second
+also handles Escape and initial focus), and `AccuracyToleranceProfilesScreen`,
+`SmartRandomProfilesScreen` and `TeamsScreen` are full-screen overlays with neither
+`aria-modal` nor containment.
+
+**Impact:** low for most of them — they own no external connection, and the worst case is
+a confusing focus order rather than a leaked resource. It is a real accessibility gap
+nonetheless.
+
+**One containment detail worth carrying into any shared primitive:** `Node.contains`
+reports a node as containing *itself*, so a handler that tests only
+`dialog.contains(document.activeElement)` treats a focused dialog **container** as
+"focus is already safely inside" and lets Shift+Tab fall through to the page behind. That
+is precisely how the BLE diagnostic leaked focus in its initial state, where the container
+holds focus by design. Both the diagnostic and
+`ExerciseRestrictedSourceImage` share this handler shape; the latter does not currently
+manifest it because it focuses its close control rather than the container, which makes it
+a latent rather than active defect there.
+
+**Recommendation:** if this is worth fixing, extract one small shared modal primitive
+(dialog semantics, initial focus, Escape, Tab containment including the container case,
+focus restoration) and adopt it across the existing overlays as its own scoped task. Doing
+it as a side effect of a hardware-discovery correction would have meant rewriting every
+overlay in the application under a prompt that explicitly excluded that.
+
+---
+
 ## Open product decisions
 
 These are not technical debt — they are decisions the product owner / domain expert
@@ -1440,9 +1643,15 @@ needs to make, not something engineering can resolve by itself:
 4. **Whether/when to build a settings UI for mid-block Smart Random range edits** — the
    underlying function exists (`updateSmartRandomRange`); no product ask has confirmed
    this is wanted yet.
-5. **External timing device discovery** — see
-   `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md`; this is a full open question, not a
-   narrow one.
+5. ~~**External timing device discovery** — a full open question.~~ — Narrowed further
+   (2026-09-25). The device is chosen and in hand (Brower TCi Timer), its official BLE
+   documentation is available, a development-only BLE diagnostic exists, and it has now
+   **physically connected to the timer and recorded real bytes** — see "External timing:
+   Brower TCi discovery stage" above. What remains open is no longer "which device and
+   how", nor "can we reach it at all", but the specific unresolved protocol questions in
+   `docs/BROWER_INTEGRATION_STATUS.md` (most of the packet layout, command byte order,
+   record finality, Time Base semantics, advertising) and the production-integration issues
+   listed in that section, none of which this stage resolves.
 6. ~~**Assess as a real screen.**~~ — Resolved (Phase B). `NAVIGATION_ITEMS`'s
    `"assess"` entry is now `availability: "active"`, and `AssessScreen.tsx` implements
    the full Release Time Core Assessment v1 execution flow on top of the Phase A
@@ -1455,3 +1664,23 @@ needs to make, not something engineering can resolve by itself:
    Home-branching logic exists yet — Home currently behaves identically regardless of
    this concept. Needs a decision on where this selection would live (Settings?
    first-run?) before any implementation.
+8. **Mobile delivery.** That the application should run on iOS, that Android must follow
+   with minimal additional implementation, and that the Web application is preserved during
+   the migration are **confirmed objectives**, not open questions. The architecture and
+   bounded stages are in `docs/MOBILE_APP_MIGRATION.md`. **Stage M1 — the shared
+   Capacitor/Vite client, the bundled asset build and a generated iOS project that launches
+   as far as the real identity gate — is implemented and verified to an unsigned native
+   build; physical-device acceptance is still outstanding, and M2–M6 are not started.** No
+   file under `src/` changed and the Web build is unaffected. Five
+   product decisions remain genuinely open, each blocking a named stage:
+   (a) long-term Web **and** mobile support versus eventual mobile-only delivery;
+   (b) whether the first mobile pilot must transfer browser-local drafts and
+   unsynchronised data — the recommendation is **no**, restore from cloud instead;
+   (c) whether production measurement must continue during backgrounding or screen lock,
+   which decides whether an iOS background Bluetooth mode is declared at all;
+   (d) production app identity, release configuration and distribution commitments —
+   bundle identifier, app name, API origin, callback domain, store accounts; **no value
+   may be invented**;
+   (e) whether email OTP satisfies Apple guideline 4.8's requirement for an equivalent
+   alternative to Google Sign-In, or whether Sign in with Apple must be added. **Do not
+   resolve (e) by removing Google sign-in.**

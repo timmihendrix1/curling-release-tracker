@@ -9,6 +9,11 @@ import {
   isClosedBetaExerciseAssetId,
 } from "../../../../../lib/exercises/restrictedAssetCatalog";
 import { resolveUserScopedSupabaseContext } from "../../../_lib/userScopedSupabaseContext";
+// Native mobile clients are cross-origin (ADR-0047). `withNativeCors` refuses a
+// request from an origin this application does not serve BEFORE this handler
+// runs — so an unapproved cross-origin caller never reaches the membership
+// query or the file read — and adds the CORS grant to whatever it returns.
+import { nativeCorsPreflight, withNativeCors } from "../../../_lib/nativeCors";
 import { isCanonicalUuid } from "../../../../../lib/uuid";
 
 const PRIVATE_CACHE_HEADERS = {
@@ -46,7 +51,7 @@ export function resolveClosedBetaExerciseTeamId(
  * Authorization is proven by a user-scoped RLS query for an active membership
  * in the one configured Team; a service-role key is neither needed nor used.
  */
-export async function GET(
+async function handleGet(
   request: Request,
   context: { params: Promise<{ assetId: string }> }
 ): Promise<NextResponse> {
@@ -86,3 +91,16 @@ export async function GET(
     return unavailable(500);
   }
 }
+
+/** This route family's own contract: one fixed sentence and private/no-store
+ * cache headers, deliberately NOT the Team routes' `'<kind>: <message>'` shape.
+ * Never embeds a caught value. */
+function internalError() {
+  return unavailable(500);
+}
+
+export const GET = withNativeCors<{ params: Promise<{ assetId: string }> }>(
+  handleGet,
+  internalError
+);
+export const OPTIONS = nativeCorsPreflight(["GET"]);

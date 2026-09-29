@@ -1,0 +1,600 @@
+{
+  "schemaVersion": 1,
+  "kind": "brower-tci-ios-native-ble-probe-log",
+  "probe": {
+    "name": "brower-ios-probe",
+    "transport": "capacitor-community/bluetooth-le over iOS CoreBluetooth",
+    "platform": "ios",
+    "foregroundOnly": true
+  },
+  "exportedAt": "2026-09-28T10:48:46.530Z",
+  "entryCount": 37,
+  "droppedEntryCount": 0,
+  "truncatedPayloadCount": 0,
+  "retention": {
+    "maxEntries": 500,
+    "maxPayloadBytes": 64,
+    "storage": "in-memory only; lost when the app process ends"
+  },
+  "connections": [
+    {
+      "epoch": 3,
+      "peripheralId": "ACFEF74F-694B-ACFB-0976-9FB7D462A99C",
+      "deviceName": "BROWER TCi CH 0",
+      "selectionMode": "timing-service-filter",
+      "connectedAt": "2026-09-28T10:45:49.336Z",
+      "endedAt": "2026-09-28T10:48:24.896Z",
+      "endedBy": "backgrounded"
+    }
+  ],
+  "notes": [
+    "Development-only native iOS BLE transport probe for the Brower TCi Timer. Not the Curling Performance Platform application.",
+    "No training, assessment or exercise record was created, read or changed. This probe has no account, no Profile and no cloud connection.",
+    "This probe never writes to the timer. No memory request, New Athlete, clear, channel or test command can be sent from it.",
+    "Raw bytes are recorded exactly as received. No packet field has been decoded: the manufacturer document does not state the byte and nibble ordering, and Gate C is not passed.",
+    "A notification carrying a zero first split is not established as a start event, and a notification carrying a non-zero first split is not established as a final result.",
+    "This file can contain the iOS-assigned peripheral identifier and raw athlete records read from the timer.",
+    "This is the native iOS probe format. It is NOT the desktop diagnostic format (brower-tci-ble-diagnostic-log)."
+  ],
+  "entries": [
+    {
+      "sequence": 1,
+      "at": "2026-09-28T10:45:02.687Z",
+      "connectionEpoch": 0,
+      "direction": "none",
+      "kind": "app_backgrounded",
+      "message": "The app left the foreground. This probe declares no iOS background Bluetooth mode, so it stops treating this session as actively observed."
+    },
+    {
+      "sequence": 2,
+      "at": "2026-09-28T10:45:04.997Z",
+      "connectionEpoch": 1,
+      "direction": "none",
+      "kind": "app_foregrounded",
+      "message": "The app returned to the foreground. Nothing was observed while it was in the background; select a device again to continue."
+    },
+    {
+      "sequence": 3,
+      "at": "2026-09-28T10:45:40.187Z",
+      "connectionEpoch": 1,
+      "direction": "none",
+      "kind": "app_backgrounded",
+      "message": "The app left the foreground. This probe declares no iOS background Bluetooth mode, so it stops treating this session as actively observed."
+    },
+    {
+      "sequence": 4,
+      "at": "2026-09-28T10:45:42.054Z",
+      "connectionEpoch": 0,
+      "direction": "none",
+      "kind": "bluetooth_ready",
+      "message": "Bluetooth initialised and reported as enabled.",
+      "detail": {
+        "platform": "ios"
+      }
+    },
+    {
+      "sequence": 5,
+      "at": "2026-09-28T10:45:42.469Z",
+      "connectionEpoch": 2,
+      "direction": "none",
+      "kind": "app_foregrounded",
+      "message": "The app returned to the foreground. Nothing was observed while it was in the background; select a device again to continue."
+    },
+    {
+      "sequence": 6,
+      "at": "2026-09-28T10:45:46.919Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "device_selection_started",
+      "message": "Device selection opened by the operator.",
+      "detail": {
+        "selectionMode": "timing-service-filter"
+      }
+    },
+    {
+      "sequence": 7,
+      "at": "2026-09-28T10:45:49.336Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "connected",
+      "message": "GATT connection established.",
+      "detail": {
+        "selectionMode": "timing-service-filter",
+        "deviceName": "BROWER TCi CH 0",
+        "peripheralId": "ACFEF74F-694B-ACFB-0976-9FB7D462A99C"
+      }
+    },
+    {
+      "sequence": 8,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "discovery_completed",
+      "message": "Service discovery completed. Every service the device reported is recorded.",
+      "detail": {
+        "serviceCount": 4,
+        "documentedServiceCount": 2,
+        "undocumentedServiceCount": 2
+      }
+    },
+    {
+      "sequence": 9,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "service_discovery",
+      "message": "Timing service found.",
+      "uuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "detail": {
+        "discovery": "found",
+        "documented": true,
+        "required": true,
+        "characteristicCount": 3
+      }
+    },
+    {
+      "sequence": 10,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic Athlete Data observed.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "detail": {
+        "documented": true,
+        "properties": "write,notify",
+        "read": false,
+        "write": true,
+        "writeWithoutResponse": false,
+        "notify": true,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 11,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic Time Base observed.",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "detail": {
+        "documented": true,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 12,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic Power On Counter observed.",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "detail": {
+        "documented": true,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 13,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "service_discovery",
+      "message": "Serial Number service found.",
+      "uuid": "ffae864c-ee9f-4f31-ad8a-9bcbac855a9f",
+      "detail": {
+        "discovery": "found",
+        "documented": true,
+        "required": false,
+        "characteristicCount": 1
+      }
+    },
+    {
+      "sequence": 14,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic Serial Number observed.",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "serviceUuid": "ffae864c-ee9f-4f31-ad8a-9bcbac855a9f",
+      "detail": {
+        "documented": true,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 15,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "service_discovery",
+      "message": "Undocumented service found.",
+      "uuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "discovery": "found",
+        "documented": false,
+        "required": false,
+        "characteristicCount": 6
+      }
+    },
+    {
+      "sequence": 16,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a00-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 17,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a29-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 18,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a27-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 19,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a24-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 20,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a26-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 21,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "00002a23-0000-1000-8000-00805f9b34fb",
+      "serviceUuid": "0000180a-0000-1000-8000-00805f9b34fb",
+      "detail": {
+        "documented": false,
+        "properties": "read",
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 22,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "service_discovery",
+      "message": "Undocumented service found.",
+      "uuid": "1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0",
+      "detail": {
+        "discovery": "found",
+        "documented": false,
+        "required": false,
+        "characteristicCount": 1
+      }
+    },
+    {
+      "sequence": 23,
+      "at": "2026-09-28T10:45:49.345Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "characteristic_discovery",
+      "message": "Characteristic (not named in the manufacturer document) observed.",
+      "uuid": "f7bf3564-fb6d-4e53-88a4-5e37e0326063",
+      "serviceUuid": "1d14d6ee-fd63-4fa1-bfa4-8f47b42119f0",
+      "detail": {
+        "documented": false,
+        "properties": "write",
+        "read": false,
+        "write": true,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 24,
+      "at": "2026-09-28T10:45:56.827Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "notifications_started",
+      "message": "Listening for raw Athlete Data notifications.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "detail": {
+        "subscriptionToken": 1,
+        "registrationId": 1
+      }
+    },
+    {
+      "sequence": 25,
+      "at": "2026-09-28T10:46:03.380Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 0B DA 30 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 1,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 26,
+      "at": "2026-09-28T10:46:06.098Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 0B DA 30 0A 90 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 2,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 27,
+      "at": "2026-09-28T10:47:25.862Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 0B DA 30 0A 90 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 3,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 28,
+      "at": "2026-09-28T10:47:34.417Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 20 00 FF 00 00 00 22 14 F0 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 4,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 29,
+      "at": "2026-09-28T10:47:39.835Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 20 00 FF 00 00 00 22 14 F0 15 27 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 5,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 30,
+      "at": "2026-09-28T10:47:45.481Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 20 00 FF 00 00 00 22 14 F0 15 27 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 6,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 31,
+      "at": "2026-09-28T10:47:53.874Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 30 00 FF 00 00 00 26 D4 D0 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 7,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 32,
+      "at": "2026-09-28T10:48:04.112Z",
+      "connectionEpoch": 3,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 30 00 FF 00 00 00 26 D4 D0 27 F8 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 8,
+        "subscriptionToken": 1
+      }
+    },
+    {
+      "sequence": 33,
+      "at": "2026-09-28T10:48:18.461Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "export_cancelled",
+      "message": "Sharing was cancelled. The log was NOT saved anywhere.",
+      "detail": {
+        "entriesInFile": 32,
+        "highestSequenceInFile": 32
+      }
+    },
+    {
+      "sequence": 34,
+      "at": "2026-09-28T10:48:18.669Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "notifications_stopped",
+      "message": "Stopped listening for Athlete Data notifications.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "detail": {
+        "subscriptionToken": 1,
+        "peripheralId": "ACFEF74F-694B-ACFB-0976-9FB7D462A99C"
+      }
+    },
+    {
+      "sequence": 35,
+      "at": "2026-09-28T10:48:24.895Z",
+      "connectionEpoch": 3,
+      "direction": "none",
+      "kind": "app_backgrounded",
+      "message": "The app left the foreground. This probe declares no iOS background Bluetooth mode, so it stops treating this session as actively observed."
+    },
+    {
+      "sequence": 36,
+      "at": "2026-09-28T10:48:25.924Z",
+      "connectionEpoch": 4,
+      "direction": "none",
+      "kind": "export_shared",
+      "message": "The observation log was exported and shared.",
+      "detail": {
+        "entriesInFile": 34,
+        "highestSequenceInFile": 34
+      }
+    },
+    {
+      "sequence": 37,
+      "at": "2026-09-28T10:48:45.728Z",
+      "connectionEpoch": 4,
+      "direction": "none",
+      "kind": "app_foregrounded",
+      "message": "The app returned to the foreground. Nothing was observed while it was in the background; select a device again to continue."
+    }
+  ]
+}

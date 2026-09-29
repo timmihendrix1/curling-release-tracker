@@ -3,6 +3,11 @@
 // nominee also receives an in-app AccountNotification regardless of email outcome —
 // created inside the same RPC transaction, not by this route.
 import { NextResponse } from "next/server";
+// Native mobile clients are cross-origin (ADR-0047). `withNativeCors` refuses a
+// request from an origin this application does not serve BEFORE this handler
+// runs — so an unapproved cross-origin caller cannot cause a mutation or an
+// email send — and adds the CORS grant to whatever this handler returns.
+import { nativeCorsPreflight, withNativeCors } from "../../_lib/nativeCors";
 import {
   bestEffort,
   buildAcceptUrl,
@@ -28,7 +33,7 @@ function isValidBody(value: unknown): value is CreateAdminRequestBody {
   return typeof body.teamId === "string" && typeof body.membershipId === "string";
 }
 
-export async function POST(request: Request): Promise<NextResponse> {
+async function handlePost(request: Request): Promise<NextResponse> {
   const context = resolveRouteContext(request);
   if (!context.ok) return context.response;
   const { client } = context.value;
@@ -85,3 +90,13 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   return NextResponse.json({ request: adminRequest, emailSent });
 }
+
+/** This route family's sanitized internal-error response — the same
+ * `'<kind>: <message>'` contract every other Team failure uses
+ * (docs/adr/0022 §Error Boundary Sanitization). Never embeds a caught value. */
+function internalError() {
+  return errorJson("unexpected_error", "Something went wrong. Please try again.", 500);
+}
+
+export const POST = withNativeCors(handlePost, internalError);
+export const OPTIONS = nativeCorsPreflight(["POST"]);

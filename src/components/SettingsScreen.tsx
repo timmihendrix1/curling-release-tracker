@@ -27,6 +27,13 @@ type SettingsScreenProps = {
   /** Team Foundation (docs/adr/0022) — cloud-backed, so this card always renders;
    * TeamsScreen itself shows the "sign in" / "not configured" messaging. */
   onManageTeams: () => void;
+  /**
+   * Development-only hardware discovery tools. `TrackerApp` passes its `IS_DEV`
+   * value, so the entry point below is absent from a production build entirely
+   * rather than merely hidden — see `BrowerBleDiagnosticScreen.tsx`.
+   */
+  showDeveloperDiagnostics?: boolean;
+  onOpenBleDiagnostic?: () => void;
 };
 
 /**
@@ -51,6 +58,8 @@ export default function SettingsScreen({
   onManageSmartRandomProfiles,
   manageSmartRandomProfilesDisabled = false,
   onManageTeams,
+  showDeveloperDiagnostics = false,
+  onOpenBleDiagnostic,
 }: SettingsScreenProps) {
   const defaultProfile =
     accuracyToleranceProfiles.find(
@@ -208,6 +217,29 @@ export default function SettingsScreen({
           </div>
         </div>
       </div>
+
+      {/* Development-only hardware discovery. Absent from production builds; see the
+          prop documentation above and docs/BROWER_INTEGRATION_STATUS.md. */}
+      {showDeveloperDiagnostics && onOpenBleDiagnostic !== undefined && (
+        <div className={surfaceClass("secondary")}>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Developer Tools
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-600">
+            Connect to a Brower TCi Timer over Bluetooth and record its raw responses.
+            It does not record training, and it is not available outside development.
+          </p>
+
+          <button
+            type="button"
+            onClick={onOpenBleDiagnostic}
+            className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-100"
+          >
+            Open BLE Diagnostic
+          </button>
+        </div>
+      )}
 
       {/* Destructive action kept in its own, clearly separated section
           (DESIGN_SYSTEM.md §12.4) rather than sharing a card with the

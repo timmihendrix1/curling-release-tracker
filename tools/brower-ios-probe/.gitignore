@@ -1,0 +1,19 @@
+# Dependencies, build output and generated native scaffolding for the
+# standalone Brower iOS BLE probe. The root .gitignore's /node_modules rule is
+# anchored to the repository root and does not cover this directory.
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Capacitor copies the built web assets into the native project on `cap sync`.
+ios/App/App/public/
+
+# Xcode / SPM local state. The generated native project itself IS reviewable
+# source; these are per-machine build products and user settings.
+ios/App/build/
+ios/App/DerivedData/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/.swiftpm/
+ios/App/Pods/
+.DS_Store

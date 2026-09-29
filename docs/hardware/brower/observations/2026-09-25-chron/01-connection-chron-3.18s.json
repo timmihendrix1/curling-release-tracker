@@ -1,0 +1,576 @@
+{
+  "schemaVersion": 1,
+  "kind": "brower-tci-ble-diagnostic-log",
+  "exportedAt": "2026-09-25T12:18:14.568Z",
+  "entryCount": 47,
+  "droppedEntryCount": 0,
+  "truncatedPayloadCount": 0,
+  "retentionLimits": {
+    "maxEntries": 500,
+    "maxPayloadBytes": 64
+  },
+  "notes": [
+    "Development-only Brower TCi BLE diagnostic. No training or assessment record was created or changed.",
+    "Raw bytes are recorded exactly as received. No packet field has been decoded, because the manufacturer document does not state the byte or nibble ordering.",
+    "A byte-order selection recorded here is an experimental hypothesis, not a confirmed encoding.",
+    "This file can contain the browser's device identifier and raw athlete records read from the timer."
+  ],
+  "entries": [
+    {
+      "sequence": 1,
+      "at": "2026-09-25T12:12:45.812Z",
+      "direction": "none",
+      "kind": "device_selection_requested",
+      "message": "Device chooser opened for all nearby devices, with both documented services requested as optional.",
+      "detail": {
+        "selectionMode": "all-devices"
+      }
+    },
+    {
+      "sequence": 2,
+      "at": "2026-09-25T12:12:50.584Z",
+      "direction": "none",
+      "kind": "device_selected",
+      "message": "A device was selected. A plausible name does not confirm this is a TCi Timer — only the discovered services do.",
+      "detail": {
+        "deviceName": "BROWER TCi CH 0",
+        "browserDeviceId": "o1J9XgwDaKO37QNUH+MaBg=="
+      }
+    },
+    {
+      "sequence": 3,
+      "at": "2026-09-25T12:12:51.108Z",
+      "direction": "none",
+      "kind": "connected",
+      "message": "GATT connection established."
+    },
+    {
+      "sequence": 4,
+      "at": "2026-09-25T12:12:51.767Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "message": "Timing service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 3
+      }
+    },
+    {
+      "sequence": 5,
+      "at": "2026-09-25T12:12:51.769Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "ffae864c-ee9f-4f31-ad8a-9bcbac855a9f",
+      "message": "Serial Number service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 1
+      }
+    },
+    {
+      "sequence": 6,
+      "at": "2026-09-25T12:12:51.769Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Power On Counter characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 7,
+      "at": "2026-09-25T12:12:51.769Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Athlete Data characteristic found.",
+      "detail": {
+        "read": false,
+        "write": true,
+        "writeWithoutResponse": false,
+        "notify": true,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 8,
+      "at": "2026-09-25T12:12:51.769Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Time Base characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 9,
+      "at": "2026-09-25T12:12:51.769Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Serial Number characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 10,
+      "at": "2026-09-25T12:12:51.829Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 2B 0D A2",
+        "byteLength": 4
+      }
+    },
+    {
+      "sequence": 11,
+      "at": "2026-09-25T12:12:51.888Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 06 00 01 00 00 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 16
+      }
+    },
+    {
+      "sequence": 12,
+      "at": "2026-09-25T12:12:51.947Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "8C 8B",
+        "byteLength": 2
+      }
+    },
+    {
+      "sequence": 13,
+      "at": "2026-09-25T12:13:04.596Z",
+      "direction": "none",
+      "kind": "unexpected_disconnect",
+      "message": "The device disconnected while the diagnostic was connected."
+    },
+    {
+      "sequence": 14,
+      "at": "2026-09-25T12:13:32.449Z",
+      "direction": "none",
+      "kind": "device_selection_requested",
+      "message": "Device chooser opened for all nearby devices, with both documented services requested as optional.",
+      "detail": {
+        "selectionMode": "all-devices"
+      }
+    },
+    {
+      "sequence": 15,
+      "at": "2026-09-25T12:13:35.540Z",
+      "direction": "none",
+      "kind": "device_selected",
+      "message": "A device was selected. A plausible name does not confirm this is a TCi Timer — only the discovered services do.",
+      "detail": {
+        "deviceName": "BROWER TCi CH 0",
+        "browserDeviceId": "o1J9XgwDaKO37QNUH+MaBg=="
+      }
+    },
+    {
+      "sequence": 16,
+      "at": "2026-09-25T12:13:35.989Z",
+      "direction": "none",
+      "kind": "connected",
+      "message": "GATT connection established."
+    },
+    {
+      "sequence": 17,
+      "at": "2026-09-25T12:13:35.998Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "message": "Timing service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 3
+      }
+    },
+    {
+      "sequence": 18,
+      "at": "2026-09-25T12:13:36.000Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "ffae864c-ee9f-4f31-ad8a-9bcbac855a9f",
+      "message": "Serial Number service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 1
+      }
+    },
+    {
+      "sequence": 19,
+      "at": "2026-09-25T12:13:36.000Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Power On Counter characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 20,
+      "at": "2026-09-25T12:13:36.000Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Athlete Data characteristic found.",
+      "detail": {
+        "read": false,
+        "write": true,
+        "writeWithoutResponse": false,
+        "notify": true,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 21,
+      "at": "2026-09-25T12:13:36.000Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Time Base characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 22,
+      "at": "2026-09-25T12:13:36.000Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Serial Number characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 23,
+      "at": "2026-09-25T12:13:36.049Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 2B BC 39",
+        "byteLength": 4
+      }
+    },
+    {
+      "sequence": 24,
+      "at": "2026-09-25T12:13:36.109Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 07 00 01 00 00 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 16
+      }
+    },
+    {
+      "sequence": 25,
+      "at": "2026-09-25T12:13:36.193Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "8C 8B",
+        "byteLength": 2
+      }
+    },
+    {
+      "sequence": 26,
+      "at": "2026-09-25T12:14:01.509Z",
+      "direction": "none",
+      "kind": "unexpected_disconnect",
+      "message": "The device disconnected while the diagnostic was connected."
+    },
+    {
+      "sequence": 27,
+      "at": "2026-09-25T12:14:13.132Z",
+      "direction": "none",
+      "kind": "device_selection_requested",
+      "message": "Device chooser opened, filtered on the documented timing service.",
+      "detail": {
+        "selectionMode": "timing-service-filter"
+      }
+    },
+    {
+      "sequence": 28,
+      "at": "2026-09-25T12:14:15.943Z",
+      "direction": "none",
+      "kind": "device_selected",
+      "message": "A device was selected. A plausible name does not confirm this is a TCi Timer — only the discovered services do.",
+      "detail": {
+        "deviceName": "BROWER TCi CH 0",
+        "browserDeviceId": "o1J9XgwDaKO37QNUH+MaBg=="
+      }
+    },
+    {
+      "sequence": 29,
+      "at": "2026-09-25T12:14:16.642Z",
+      "direction": "none",
+      "kind": "connected",
+      "message": "GATT connection established."
+    },
+    {
+      "sequence": 30,
+      "at": "2026-09-25T12:14:16.650Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "message": "Timing service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 3
+      }
+    },
+    {
+      "sequence": 31,
+      "at": "2026-09-25T12:14:16.653Z",
+      "direction": "none",
+      "kind": "service_discovered",
+      "uuid": "ffae864c-ee9f-4f31-ad8a-9bcbac855a9f",
+      "message": "Serial Number service found and its characteristics enumerated.",
+      "detail": {
+        "characteristicCount": 1
+      }
+    },
+    {
+      "sequence": 32,
+      "at": "2026-09-25T12:14:16.653Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Power On Counter characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 33,
+      "at": "2026-09-25T12:14:16.653Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Athlete Data characteristic found.",
+      "detail": {
+        "read": false,
+        "write": true,
+        "writeWithoutResponse": false,
+        "notify": true,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 34,
+      "at": "2026-09-25T12:14:16.653Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Time Base characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 35,
+      "at": "2026-09-25T12:14:16.653Z",
+      "direction": "none",
+      "kind": "characteristic_discovered",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Serial Number characteristic found.",
+      "detail": {
+        "read": true,
+        "write": false,
+        "writeWithoutResponse": false,
+        "notify": false,
+        "indicate": false
+      }
+    },
+    {
+      "sequence": 36,
+      "at": "2026-09-25T12:14:16.699Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 00 33 D7",
+        "byteLength": 4
+      }
+    },
+    {
+      "sequence": 37,
+      "at": "2026-09-25T12:14:16.759Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 07 00 01 00 00 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 16
+      }
+    },
+    {
+      "sequence": 38,
+      "at": "2026-09-25T12:14:16.850Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "8C 8B",
+        "byteLength": 2
+      }
+    },
+    {
+      "sequence": 39,
+      "at": "2026-09-25T12:16:47.502Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 00 33 D7",
+        "byteLength": 4
+      }
+    },
+    {
+      "sequence": 40,
+      "at": "2026-09-25T12:16:54.999Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "ee152c14-79a7-447d-b435-030880aa7d7d",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 00 33 D7",
+        "byteLength": 4
+      }
+    },
+    {
+      "sequence": 41,
+      "at": "2026-09-25T12:17:05.710Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "882c254a-d1f1-440f-8d08-4d0e5a9d4226",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "00 07 00 01 00 00 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 16
+      }
+    },
+    {
+      "sequence": 42,
+      "at": "2026-09-25T12:17:12.760Z",
+      "direction": "rx",
+      "kind": "characteristic_read",
+      "uuid": "beef94d7-4124-423d-82e0-5aa556bc722b",
+      "message": "Raw bytes, preserved exactly as read. No numeric interpretation has been applied.",
+      "payload": {
+        "hex": "8C 8B",
+        "byteLength": 2
+      }
+    },
+    {
+      "sequence": 43,
+      "at": "2026-09-25T12:17:20.202Z",
+      "direction": "none",
+      "kind": "notifications_started",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Subscribed to Athlete Data notifications."
+    },
+    {
+      "sequence": 44,
+      "at": "2026-09-25T12:17:25.311Z",
+      "direction": "rx",
+      "kind": "notification_received",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Raw notification bytes, preserved exactly as received. No field has been decoded.",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 04 3F B0 0B FD 2D 26 70 00 00 00 00 00",
+        "byteLength": 20
+      }
+    },
+    {
+      "sequence": 45,
+      "at": "2026-09-25T12:17:28.810Z",
+      "direction": "rx",
+      "kind": "notification_received",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Raw notification bytes, preserved exactly as received. No field has been decoded.",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 04 3F B0 0B FD 2D 26 72 E0 31 00 00 00",
+        "byteLength": 20
+      }
+    },
+    {
+      "sequence": 46,
+      "at": "2026-09-25T12:17:47.262Z",
+      "direction": "rx",
+      "kind": "notification_received",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Raw notification bytes, preserved exactly as received. No field has been decoded.",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 36 BC B0 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      }
+    },
+    {
+      "sequence": 47,
+      "at": "2026-09-25T12:17:50.411Z",
+      "direction": "rx",
+      "kind": "notification_received",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "message": "Raw notification bytes, preserved exactly as received. No field has been decoded.",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 36 BC B0 0C 6E 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      }
+    }
+  ]
+}

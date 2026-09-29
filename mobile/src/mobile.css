@@ -1,0 +1,96 @@
+/*
+ * The mobile client's single stylesheet.
+ *
+ * It imports the application's real stylesheet unchanged — the same Tailwind v4
+ * entry, theme variables and `.app-content-clearance` safe-area rule the Web
+ * build uses. `src/app/globals.css` is NOT copied or forked here.
+ */
+@import "../../src/app/globals.css";
+
+/*
+ * Tailwind v4 discovers utility classes by scanning source files, and its
+ * automatic detection is rooted at the stylesheet that imports Tailwind — which
+ * is `src/app/globals.css`. The shared UI lives outside that directory, so
+ * without these the mobile bundle would ship CSS for the mobile entry only and
+ * every class used by TrackerApp, the identity gate and the rest of
+ * src/components would silently be missing.
+ *
+ * mobile/__tests__/bundle.test.ts asserts that classes used *only* in
+ * src/components reach the built stylesheet, so a regression here fails a test
+ * rather than shipping an unstyled app.
+ */
+@source "../../src/components";
+@source "../../src/lib";
+@source "./";
+@source "../index.html";
+
+/*
+ * Font fallback. The Web build sets `--font-geist-sans` / `--font-geist-mono`
+ * from `next/font/google` in `src/app/layout.tsx`; that loader does not exist
+ * outside Next, and a mobile build must not fetch a font from a remote origin
+ * (the bundle has to work offline, and the release configuration loads from the
+ * local app scheme).
+ *
+ * `src/app/globals.css`'s `@theme inline` maps Tailwind's `--font-sans` /
+ * `--font-mono` onto those two variables, so they must resolve to something.
+ * Defining them here as platform system-font stacks keeps `font-sans` and
+ * `font-mono` working, uses the font the device already has, and costs no
+ * download. Self-hosting Geist locally is the alternative if the product later
+ * requires typeface parity with the Web build; that is a deliberate, separate
+ * decision and not an M1 one.
+ */
+:root {
+  --font-geist-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-geist-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+}
+
+/*
+ * The mount point is a layout no-op. Next renders `page.tsx`'s <main> as a
+ * direct child of <body>; a Vite entry needs a container element. `display:
+ * contents` removes that container's box so <main> participates in <body>'s
+ * flex column exactly as it does on the Web.
+ */
+#root {
+  display: contents;
+}
+
+/*
+ * Safe areas, supplied only where the application does not already handle them.
+ *
+ * The shared stylesheet handles the BOTTOM inset itself — `.app-content-clearance`
+ * in src/app/globals.css already adds `env(safe-area-inset-bottom)` for the
+ * floating PrimaryNavigation. These rules therefore deliberately touch only the
+ * top and the sides. Adding a bottom inset here, or letting the native shell
+ * inset the WebView's content (Capacitor's `contentInset`), would double-pad the
+ * one edge the application already pays for — see capacitor.config.ts.
+ *
+ * The Web build never needs the top and side insets because a browser's own
+ * chrome occupies them. A native WebView is full-bleed, so the shell supplies
+ * them:
+ *
+ *  - <main> keeps its full-bleed slate background under the status bar, which is
+ *    what `viewport-fit=cover` is for, and widens its horizontal padding only
+ *    when a landscape notch inset exceeds the design value.
+ *  - the content container is pushed clear of the status bar / notch.
+ *
+ * `--spacing` and `--breakpoint-sm` are Tailwind's own theme tokens, so the
+ * design values here stay the ones `px-4` / `sm:px-6` already express rather
+ * than a second hard-coded copy of them.
+ */
+#root > main {
+  padding-left: max(calc(var(--spacing) * 4), env(safe-area-inset-left));
+  padding-right: max(calc(var(--spacing) * 4), env(safe-area-inset-right));
+}
+
+#root > main > div {
+  padding-top: env(safe-area-inset-top);
+}
+
+@media (width >= 40rem) {
+  #root > main {
+    padding-left: max(calc(var(--spacing) * 6), env(safe-area-inset-left));
+    padding-right: max(calc(var(--spacing) * 6), env(safe-area-inset-right));
+  }
+}

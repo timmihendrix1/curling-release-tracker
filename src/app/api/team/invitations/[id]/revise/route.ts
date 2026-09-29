@@ -1,6 +1,11 @@
 // POST /api/team/invitations/[id]/revise — replaces a still-pending invitation with a
 // fresh one carrying a revised proposal (docs/adr/0022 Decisions 5/11).
 import { NextResponse } from "next/server";
+// Native mobile clients are cross-origin (ADR-0047). `withNativeCors` refuses a
+// request from an origin this application does not serve BEFORE this handler
+// runs — so an unapproved cross-origin caller cannot cause a mutation or an
+// email send — and adds the CORS grant to whatever this handler returns.
+import { nativeCorsPreflight, withNativeCors } from "../../../../_lib/nativeCors";
 import {
   bestEffort,
   buildAcceptUrl,
@@ -35,7 +40,7 @@ function isValidBody(value: unknown): value is ReviseInvitationBody {
   );
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {
+async function handlePost(request: Request, { params }: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const context = resolveRouteContext(request);
   if (!context.ok) return context.response;
   const { client } = context.value;
@@ -100,3 +105,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     emailSent,
   });
 }
+
+/** This route family's sanitized internal-error response — the same
+ * `'<kind>: <message>'` contract every other Team failure uses
+ * (docs/adr/0022 §Error Boundary Sanitization). Never embeds a caught value. */
+function internalError() {
+  return errorJson("unexpected_error", "Something went wrong. Please try again.", 500);
+}
+
+export const POST = withNativeCors<{ params: Promise<{ id: string }> }>(handlePost, internalError);
+export const OPTIONS = nativeCorsPreflight(["POST"]);

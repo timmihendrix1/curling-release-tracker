@@ -17,6 +17,7 @@ import AssessmentAnalyze from "./AssessmentAnalyze";
 import AssessmentResultScreen from "./AssessmentResultScreen";
 import AutoCapture, { type AutoCaptureStartConfig } from "./AutoCapture";
 import BlindShotEntry from "./BlindShotEntry";
+import BrowerBleDiagnosticScreen from "./BrowerBleDiagnosticScreen";
 import ConfirmModal from "./ConfirmModal";
 import DashboardCard from "./DashboardCard";
 import HomeScreen from "./HomeScreen";
@@ -378,6 +379,11 @@ export default function TrackerApp() {
   // profile managers above this owns no local persisted state here; TeamsScreen
   // fetches everything itself once mounted.
   const [showTeamsScreen, setShowTeamsScreen] = useState(false);
+
+  // Development-only Brower TCi BLE hardware diagnostic. Like the Timing Simulator it
+  // is gated on IS_DEV at every mount point, and the screen itself refuses to construct
+  // its controller outside development — see BrowerBleDiagnosticScreen.tsx.
+  const [showBleDiagnostic, setShowBleDiagnostic] = useState(false);
 
   const [historyFilters, setHistoryFilters] = useState<HistoryAnalysisFilters>(
     createDefaultHistoryFilters()
@@ -2376,6 +2382,18 @@ export default function TrackerApp() {
    * itself is untouched by which screen is currently rendered. See
    * docs/adr/0009.
    */
+  /**
+   * The single point at which a navigation is actually committed. Every guarded and
+   * unguarded path in `handleNavigate` goes through here, so leaving Settings always
+   * releases the development BLE diagnostic instead of leaving it mounted — and owning a
+   * live GATT connection — behind another screen. It never bypasses
+   * `guardLeavingActiveWork`: it is only ever reached once a guard has allowed the move.
+   */
+  function commitNavigation(view: ActiveView) {
+    if (view !== "settings") setShowBleDiagnostic(false);
+    setActiveView(view);
+  }
+
   function handleNavigate(view: ActiveView) {
     if (activeView === "train" && view !== "train") {
       guardLeavingActiveWork(
@@ -2386,7 +2404,7 @@ export default function TrackerApp() {
           ? "Leaving Auto Capture will end the current capture sequence. Already captured shots will remain in the training."
           : null,
         null,
-        () => setActiveView(view)
+        () => commitNavigation(view)
       );
       return;
     }
@@ -2396,12 +2414,12 @@ export default function TrackerApp() {
         null,
         null,
         isAssessmentCaptureActive() ? ASSESSMENT_LEAVE_NOTICE : null,
-        () => setActiveView(view)
+        () => commitNavigation(view)
       );
       return;
     }
 
-    setActiveView(view);
+    commitNavigation(view);
   }
 
   function handleOpenNewBlockModal() {
@@ -2652,6 +2670,8 @@ export default function TrackerApp() {
           }}
           manageSmartRandomProfilesDisabled={!smartRandomProfilesWritable}
           onManageTeams={() => setShowTeamsScreen(true)}
+          showDeveloperDiagnostics={IS_DEV}
+          onOpenBleDiagnostic={() => setShowBleDiagnostic(true)}
         />
       )}
 
@@ -4049,6 +4069,14 @@ export default function TrackerApp() {
       )}
 
       {showTeamsScreen && <TeamsScreen onClose={() => setShowTeamsScreen(false)} />}
+
+      {/* Owned by Settings, where it is opened. Gated on `activeView` as well as the
+          flag so that ANY path which changes the view — including the three that call
+          `setActiveView` directly for Train — unmounts this overlay and releases its
+          connection, rather than relying on the flag reset in `commitNavigation` alone. */}
+      {IS_DEV && showBleDiagnostic && activeView === "settings" && (
+        <BrowerBleDiagnosticScreen onClose={() => setShowBleDiagnostic(false)} />
+      )}
 
       {confirmAction && (
         <ConfirmModal

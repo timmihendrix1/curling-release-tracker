@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "kind": "brower-tci-ios-native-ble-probe-log",
+  "probe": {
+    "name": "brower-ios-probe",
+    "transport": "capacitor-community/bluetooth-le over iOS CoreBluetooth",
+    "platform": "ios",
+    "foregroundOnly": true
+  },
+  "exportedAt": "2026-09-28T10:52:56.074Z",
+  "entryCount": 8,
+  "droppedEntryCount": 0,
+  "truncatedPayloadCount": 0,
+  "retention": {
+    "maxEntries": 500,
+    "maxPayloadBytes": 64,
+    "storage": "in-memory only; lost when the app process ends"
+  },
+  "connections": [
+    {
+      "epoch": 3,
+      "peripheralId": "ACFEF74F-694B-ACFB-0976-9FB7D462A99C",
+      "deviceName": "BROWER TCi CH 0",
+      "selectionMode": "timing-service-filter",
+      "connectedAt": "2026-09-28T10:45:49.336Z",
+      "endedAt": "2026-09-28T10:48:24.896Z",
+      "endedBy": "backgrounded"
+    },
+    {
+      "epoch": 6,
+      "peripheralId": "ACFEF74F-694B-ACFB-0976-9FB7D462A99C",
+      "deviceName": "BROWER TCi CH 0",
+      "selectionMode": "timing-service-filter",
+      "connectedAt": "2026-09-28T10:51:38.725Z",
+      "endedAt": null,
+      "endedBy": null
+    }
+  ],
+  "notes": [
+    "Development-only native iOS BLE transport probe for the Brower TCi Timer. Not the Curling Performance Platform application.",
+    "No training, assessment or exercise record was created, read or changed. This probe has no account, no Profile and no cloud connection.",
+    "This probe never writes to the timer. No memory request, New Athlete, clear, channel or test command can be sent from it.",
+    "Raw bytes are recorded exactly as received. No packet field has been decoded: the manufacturer document does not state the byte and nibble ordering, and Gate C is not passed.",
+    "A notification carrying a zero first split is not established as a start event, and a notification carrying a non-zero first split is not established as a final result.",
+    "This file can contain the iOS-assigned peripheral identifier and raw athlete records read from the timer.",
+    "This is the native iOS probe format. It is NOT the desktop diagnostic format (brower-tci-ble-diagnostic-log)."
+  ],
+  "entries": [
+    {
+      "sequence": 62,
+      "at": "2026-09-28T10:51:52.344Z",
+      "connectionEpoch": 6,
+      "direction": "none",
+      "kind": "log_cleared",
+      "message": "The operator cleared the observation log."
+    },
+    {
+      "sequence": 63,
+      "at": "2026-09-28T10:52:07.924Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 1,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 64,
+      "at": "2026-09-28T10:52:11.480Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 0D F7 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 2,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 65,
+      "at": "2026-09-28T10:52:22.799Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 0D F7 03 A2 80 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 3,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 66,
+      "at": "2026-09-28T10:52:28.625Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 0D F7 03 A2 80 50 FD 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 4,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 67,
+      "at": "2026-09-28T10:52:41.698Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 0D F7 03 A2 80 50 FD 08 3F 30",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 5,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 68,
+      "at": "2026-09-28T10:52:52.611Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "00 10 00 FF 00 00 00 64 CF F0 0D F7 03 A2 80 50 FD 08 3F 31",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 6,
+        "subscriptionToken": 2
+      }
+    },
+    {
+      "sequence": 69,
+      "at": "2026-09-28T10:52:52.613Z",
+      "connectionEpoch": 6,
+      "direction": "rx",
+      "kind": "notification",
+      "message": "Raw notification received. No field has been decoded.",
+      "uuid": "bb8722a4-3810-4fd3-9321-f6cbdcc1ea4e",
+      "serviceUuid": "11574949-d37a-4fd7-a171-f36fcdc3a461",
+      "payload": {
+        "hex": "0A E9 50 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00",
+        "byteLength": 20
+      },
+      "detail": {
+        "notificationIndex": 7,
+        "subscriptionToken": 2
+      }
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 // The ONE infrastructure helper permitted to read the provider session's
-// access token (ADR-0025 Decision 20). The token is read here, put into the
-// `Authorization` header of an already-validated same-origin Team or restricted-
-// Exercise request, and
+// access token (ADR-0025 Decision 20, as narrowed by ADR-0047). The token is
+// read here, put into the `Authorization` header of an already-validated Team or
+// restricted-Exercise request addressed to the ONE resolved API target — the
+// document origin on Web, the one configured HTTPS origin on native — and
 // nowhere else: it is never returned, logged, snapshotted, serialized, stored,
 // or handed to a caller. `teamServiceFactory.ts` is the only production module
 // that value-imports this file — enforced by
@@ -19,18 +20,60 @@ import type {
 } from "./authorizedTeamRequest";
 import type { RestrictedAssetResolver } from "../exercises/restrictedAssets";
 import { isClosedBetaExerciseAssetId } from "../exercises/restrictedAssetCatalog";
+import {
+  resolveApiTarget,
+  type ApiTarget,
+  type ApiTargetResolver,
+} from "../platform/apiTarget";
 
 /** Every authorized request is confined to this prefix on this app's own
  * origin. Validated after construction, not merely assumed from the hard-coded
  * literals below. */
 const TEAM_API_PREFIX = "/api/team/";
 
-/** Test-only seams. The production construction in teamServiceFactory.ts
- * passes none of these. */
+/**
+ * Test-only seams. Production construction (teamServiceFactory.ts) supplies
+ * only `resolveTarget`, and supplies the real production resolver.
+ *
+ * `origin` remains a Web-shaped seam: it stands in for a resolved document
+ * origin, so tests written against the Web path keep exercising the Web path.
+ */
 export type AuthorizedFetchOverrides = {
   fetchImpl?: typeof fetch;
   origin?: string;
+  resolveTarget?: ApiTargetResolver;
 };
+
+/**
+ * Resolves the one destination this request may use.
+ *
+ * Ordering matters: an unresolvable target denies before the token is read.
+ */
+function resolveTargetFor(overrides: AuthorizedFetchOverrides): ApiTarget | null {
+  if (overrides.origin !== undefined) {
+    return { kind: "web_document", origin: overrides.origin };
+  }
+  const resolution = (overrides.resolveTarget ?? resolveApiTarget)();
+  return resolution.status === "resolved" ? resolution.target : null;
+}
+
+/**
+ * Native requests are cross-origin by construction, so they get two properties
+ * a same-origin Web request never needed:
+ *
+ *  - `credentials: "omit"` — this application authorizes with a bearer header,
+ *    never with cookies, and no CORS response here permits credentials.
+ *  - `redirect: "error"` — a redirect would move the request to a destination
+ *    that was never validated. Failing closed is the whole point; there is
+ *    deliberately no redirect discovery and no destination rewriting.
+ *
+ * Web keeps fetch's defaults, unchanged.
+ */
+function transportOptionsFor(target: ApiTarget): RequestInit {
+  return target.kind === "native_configured"
+    ? { credentials: "omit", redirect: "error" }
+    : {};
+}
 
 /**
  * A dynamic path segment is rejected outright — before any URL is built —
@@ -104,12 +147,6 @@ function buildConfinedUrl(
   return url;
 }
 
-function resolveDefaultOrigin(): string | null {
-  if (typeof window === "undefined") return null;
-  const origin = window.location.origin;
-  return typeof origin === "string" && origin.length > 0 && origin !== "null" ? origin : null;
-}
-
 async function readAccessToken(client: SupabaseClient): Promise<string | null> {
   try {
     const { data } = await client.auth.getSession();
@@ -134,7 +171,6 @@ export function createAuthorizedTeamRequest(
   overrides: AuthorizedFetchOverrides = {}
 ): AuthorizedTeamRequest {
   const fetchImpl = overrides.fetchImpl;
-  const configuredOrigin = overrides.origin;
 
   return async function authorizedTeamRequest(
     route: TeamApiRoute,
@@ -143,10 +179,10 @@ export function createAuthorizedTeamRequest(
     const path = resolveRoutePath(route);
     if (path === null) return { kind: "forbidden" };
 
-    const origin = configuredOrigin ?? resolveDefaultOrigin();
-    if (origin === null) return { kind: "forbidden" };
+    const target = resolveTargetFor(overrides);
+    if (target === null) return { kind: "forbidden" };
 
-    const url = buildConfinedUrl(path, origin);
+    const url = buildConfinedUrl(path, target.origin);
     if (url === null) return { kind: "forbidden" };
 
     // Serialized before the session is read, so an unserializable body also
@@ -165,11 +201,12 @@ export function createAuthorizedTeamRequest(
     const doFetch = fetchImpl ?? fetch;
     try {
       const response = await doFetch(url.toString(), {
+        ...transportOptionsFor(target),
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          // Crosses exactly this one boundary, on a URL already proven
-          // same-origin and prefix-confined.
+          // Crosses exactly this one boundary, on a URL already proven to be
+          // the resolved target's origin and prefix-confined.
           Authorization: `Bearer ${token}`,
         },
         body: payload,
@@ -228,12 +265,12 @@ export function createAuthorizedRestrictedAssetResolver(
       }
 
       const path = `${RESTRICTED_DIAGRAM_API_PREFIX}${reference.assetId}`;
-      const origin = overrides.origin ?? resolveDefaultOrigin();
-      if (origin === null) return null;
+      const target = resolveTargetFor(overrides);
+      if (target === null) return null;
 
       const url = buildConfinedUrl(
         path,
-        origin,
+        target.origin,
         RESTRICTED_DIAGRAM_API_PREFIX
       );
       if (url === null) return null;
@@ -243,6 +280,7 @@ export function createAuthorizedRestrictedAssetResolver(
 
       try {
         const response = await (overrides.fetchImpl ?? fetch)(url.toString(), {
+          ...transportOptionsFor(target),
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",

@@ -1,0 +1,33 @@
+<!doctype html>
+<!--
+  The mobile shell.
+
+  This reproduces what Next's `src/app/layout.tsx` emits for the Web build: the
+  document language, the `<html>` / `<body>` layout classes, the title, the theme
+  colour, and — critically — `viewport-fit=cover`, without which
+  `env(safe-area-inset-*)` resolves to 0 and the application's safe-area handling
+  (`.app-content-clearance` in src/app/globals.css, plus the shell rules in
+  mobile/src/mobile.css) silently does nothing on a notched device.
+
+  The Geist font variables `layout.tsx` sets via `next/font/google` are supplied
+  by mobile/src/mobile.css instead; see the note there.
+
+  No web app manifest is linked: a native app does not use one, and the Web
+  build's `/manifest.json` reference is a separate, already-recorded observation
+  (docs/MOBILE_APP_MIGRATION.md §2.9) that this stage does not touch.
+-->
+<html lang="en" class="h-full antialiased">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0f172a" />
+    <title>Curling Release Tracker</title>
+  </head>
+  <body class="min-h-full flex flex-col">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

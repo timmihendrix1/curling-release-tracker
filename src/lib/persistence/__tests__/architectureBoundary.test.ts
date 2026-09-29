@@ -422,18 +422,35 @@ describe("authorized request boundary — the access token crosses exactly one s
     ]);
   });
 
-  it("that one production construction passes no test overrides", () => {
+  it("that one production construction supplies the real resolver and no test overrides", () => {
     const code = stripComments(readFileSync(FACTORY_FILE, "utf8"));
-    const calls = [...code.matchAll(/createAuthorizedTeamRequest\s*\(([^)]*)\)/g)].map((m) => m[1].trim());
-    // Exactly one call, whose only argument is the shared cached client — no
-    // `fetchImpl` and no `origin` may be supplied in production.
-    expect(calls).toEqual(["client"]);
+    // Exactly one call each, whose arguments are the shared cached client plus
+    // the REAL production target resolver — never a substitute transport
+    // (`fetchImpl`) and never a hard-coded destination (`origin`).
+    //
+    // Pinning `resolveApiTarget` by name is the point: since ADR-0047 the
+    // destination is resolved rather than assumed, so "passes no overrides"
+    // would no longer prove production talks to the resolved target. An
+    // arbitrary function here would be exactly the retargeting this boundary
+    // exists to prevent.
+    const expectedArguments = "client, { resolveTarget: resolveApiTarget }";
+    // Whitespace and a trailing comma are formatting, not meaning.
+    const normalize = (args: string) =>
+      args.replace(/\s+/g, " ").replace(/,\s*\}/g, " }").trim();
+    const calls = [...code.matchAll(/createAuthorizedTeamRequest\s*\(([^)]*)\)/g)].map((m) =>
+      normalize(m[1])
+    );
+    expect(calls).toEqual([expectedArguments]);
     const restrictedCalls = [
       ...code.matchAll(/createAuthorizedRestrictedAssetResolver\s*\(([^)]*)\)/g),
-    ].map((m) => m[1].trim());
-    expect(restrictedCalls).toEqual(["client"]);
+    ].map((m) => normalize(m[1]));
+    expect(restrictedCalls).toEqual([expectedArguments]);
+    // The resolver must be the imported production one, not a local shadow.
+    expect(code).toMatch(
+      /import\s*\{\s*resolveApiTarget\s*\}\s*from\s*"\.\.\/platform\/apiTarget"/
+    );
     expect(code).not.toContain("fetchImpl");
-    expect(code).not.toContain("origin");
+    expect(code).not.toMatch(/\borigin\s*:/);
   });
 
   it("no component and no module under src/lib/identity or src/lib/team imports authorizedFetch.ts at all", () => {

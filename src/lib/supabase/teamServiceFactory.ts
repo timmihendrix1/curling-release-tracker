@@ -16,6 +16,7 @@ import {
   createAuthorizedRestrictedAssetResolver,
   createAuthorizedTeamRequest,
 } from "./authorizedFetch";
+import { resolveApiTarget } from "../platform/apiTarget";
 import { SupabaseTeamService } from "./supabaseTeamService";
 import type { TeamService } from "../team/teamService";
 import { withNeverThrows } from "../team/withNeverThrows";
@@ -29,14 +30,29 @@ import type { RestrictedAssetResolver } from "../exercises/restrictedAssets";
  * outcome inside the authorized-request helper, without throwing. */
 export function createSupabaseTeamService(config: ConfiguredCloudConfig): TeamService {
   const client = getSupabaseBrowserClient(config);
-  // No test overrides: the real document origin and the real global `fetch`.
-  return withNeverThrows(new SupabaseTeamService(client, createAuthorizedTeamRequest(client)));
+  // The real production resolver and the real global `fetch`. `resolveApiTarget`
+  // is passed explicitly rather than left to the helper's default so that the
+  // production wiring is visible at the composition seam: on Web it resolves the
+  // document origin exactly as before, and on native it resolves the one
+  // configured, validated HTTPS origin (ADR-0047). It is not injectable from
+  // here, so nothing at a call site can retarget these requests.
+  return withNeverThrows(
+    new SupabaseTeamService(
+      client,
+      createAuthorizedTeamRequest(client, { resolveTarget: resolveApiTarget })
+    )
+  );
 }
 
-/** Shares the one cached browser client and the one token-reading boundary. */
+/** Shares the one cached browser client, the one token-reading boundary and the
+ * same resolved API target as the Team service. ADR-0023's restricted delivery
+ * is currently dormant — no catalogue entry uses it — but it is a real boundary
+ * and must not be left pointing at the WebView origin on native. */
 export function createSupabaseRestrictedAssetResolver(
   config: ConfiguredCloudConfig
 ): RestrictedAssetResolver {
   const client = getSupabaseBrowserClient(config);
-  return createAuthorizedRestrictedAssetResolver(client);
+  return createAuthorizedRestrictedAssetResolver(client, {
+    resolveTarget: resolveApiTarget,
+  });
 }

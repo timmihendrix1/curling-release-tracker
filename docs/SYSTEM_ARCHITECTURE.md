@@ -1644,7 +1644,11 @@ setMeasuredReleaseTime(draft: BlindShotDraft, releaseTime: number, source: Relea
 
 - `ReleaseTimeSource` (`src/types/index.ts`) is `"manual" | "external"`. Only `"manual"`
   is used today (typed into the Measured Release Time field); `"external"` exists as a
-  named, tested placeholder — **no hardware, protocol, or device integration exists**.
+  named, tested placeholder — **no production hardware or device integration exists**.
+  Timing hardware (a Brower TCi Timer) and its official BLE protocol documentation are
+  available, and a development-only BLE diagnostic exists (see "Hardware discovery" below)
+  which has now connected to the real timer and recorded real bytes — but **nothing from a
+  device reaches this boundary**, and the diagnostic has no path to it.
 - The function only takes effect during the `measure` phase (see the state machine
   above) — a value arriving through this path before the prediction is locked is
   silently discarded, by construction, not by a special case. This is the one rule that
@@ -2054,13 +2058,192 @@ filters, and CSV export all handle it without any special-casing, by constructio
 
 ### Not implemented (Planned)
 
-Real hardware/radio/Bluetooth/USB/serial integration, an `"external"` `TimingProvider`
-implementation, a formal `TimingProviderError` shape (considered, deliberately deferred —
-see above), multi-lane or multi-athlete capture, a "generation token" tying a result to
-the specific sequence that was active when it was requested (see the Provider lifecycle
-scope limit above), buffering a result that arrives while paused, and Auto Capture for
-Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
+A production hardware/radio/Bluetooth/USB/serial integration, an `"external"`
+`TimingProvider` implementation, a formal `TimingProviderError` shape (considered,
+deliberately deferred — see above), multi-lane or multi-athlete capture, a "generation
+token" tying a result to the specific sequence that was active when it was requested (see
+the Provider lifecycle scope limit above), buffering a result that arrives while paused,
+and Auto Capture for Blind Weight. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` and
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
+
+**Hardware discovery (Implemented, development-only) — separate from all of the above.**
+A Brower TCi Timer and its official BLE documentation are available, and a
+development-only diagnostic exists to establish the protocol from evidence:
+`src/lib/brower/` (protocol constants, bounded in-memory log, a minimal Web Bluetooth
+surface, and a controller testable against an injected Bluetooth API) plus
+`src/components/BrowerBleDiagnosticScreen.tsx`, mounted as an overlay from `TrackerApp.tsx`
+and reached from Settings, both gated on `IS_DEV`; the controller additionally refuses to
+construct outside development. A production build therefore contains no Web Bluetooth call
+site, no controller and no diagnostic view — verified by inspecting the built client
+chunks for `requestDevice`, `gattserverdisconnected`, `startNotifications`,
+`writeValueWithResponse` and `characteristicvaluechanged`, none of which are present. That
+is a claim about the BLE **transport and view**, not about every string: a few bare
+protocol UUID constants survive tree-shaking as unreferenced dead data, and the Settings
+card's label text is reachable in the bundle behind a prop that is always `false` in
+production.
+
+It is deliberately isolated: it does **not** implement `TimingProvider`, produce a
+`TimingResult`, touch Session/Assessment/Exercise state or any repository, or persist
+anything (its log is in memory and leaves only through an explicit download). It reads
+and records raw bytes and never decodes a packet field, because the manufacturer document
+does not state the byte or nibble ordering those fields use. The only command it can send
+is the documented bounded athlete-data request (`0x01`).
+
+**It has now been run against the real device** (2026-09-25, Brave on macOS): a real
+connection, service and characteristic discovery, successful characteristic reads, and real
+Athlete Data notifications were recorded and exported. **None of that changed the code
+paths described above.** The diagnostic still displays and exports raw bytes and still has
+no decoder; the packet analysis was done offline against the exported files, never in the
+application. No `TimingResult`, Shot, Session, Assessment or Exercise result is created by
+it, and no production transport, capture integration or automatic save behaviour has been
+added.
+
+**No production external timing provider exists**, and this diagnostic is not a step
+toward one by reuse — a future Brower provider must enter the app through the
+provider-neutral boundary described above (ADR-0006), not through this controller. The
+canonical protocol and status reference is `docs/BROWER_INTEGRATION_STATUS.md` — including
+what the hardware evidence does and does not support, and why acceptance Gate C is still
+only partial; the archived exports live in
+`docs/hardware/brower/observations/2026-09-25-chron/`. The stage scope, desktop test
+procedure and acceptance gates are in `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md`.
+None of that is duplicated here.
+
+A **separate** bounded prototype for **native iOS** BLE transport lives outside the
+application at `tools/brower-ios-probe/` — a standalone Capacitor + Vite project with its
+own dependency graph, excluded from this repository's TypeScript program, Vitest run and
+ESLint run by three narrow path-specific rules. It is not a component, not a route, not a
+provider, and nothing in `src/` imports it or is imported by it. On **2026-09-28 it was
+signed, installed and run on a physical iPhone**, where it connected to the timer,
+discovered both documented services and received real Athlete Data notifications
+(archived at `docs/hardware/brower/observations/2026-09-28-ios-manual/`). **That
+demonstrates native iOS BLE transport in a prototype. It demonstrates nothing about this
+application, nothing about Android, and no acceptance gate's definition changes because of
+it.** See `docs/BROWER_IOS_FEASIBILITY.md`.
+
+## Mobile delivery (Stage M1 implemented; M2–M6 planned)
+
+**Stage M1 — the shared client and build groundwork — is implemented**, and nothing
+beyond it is. The Web path is unchanged: `src/app/page.tsx` still mounts
+`IdentityProvider → AuthenticatedSportingPersistence → TrackerApp`, the six dynamic Route
+Handlers under `src/app/api/` still mean `output: "export"` cannot be enabled without
+removing Team functionality, and `next.config.ts` and every file under `src/` are
+untouched by the migration so far.
+
+What M1 added is a **second consumer of the same shared modules**, not a second copy of
+the application: a Vite build under `mobile/` whose root component composes the identical
+provider tree as `src/app/page.tsx`, a `capacitor.config.ts` pointing at its local output,
+and a generated `ios/` project. iOS and a future Android project consume **the same asset
+bundle**. The build carries all 67 registered public Exercise diagrams, inlines a small,
+explicitly allow-listed set of build-time literals (`mobile/publicEnv.ts` is the authority),
+and declares no `server.url`, no background mode, no Bluetooth permission and no URL scheme
+or associated domain.
+
+**Stage M2a then gave the native client an API it can actually reach.** A native build loads
+from a local app scheme, so `authorizedFetch.ts`'s "this app's own origin" named the WebView
+rather than a server. One explicitly configured `NEXT_PUBLIC_NATIVE_API_ORIGIN` — a canonical
+bare HTTPS origin, selected through the Capacitor bridge signal rather than a user-agent
+heuristic — is now the only destination a native build may address, with no fallback and no
+mutable setter; **Web keeps the document origin byte-identically** and a configured native
+value never retargets it. Narrowly scoped, exact-string CORS on the five Team routes and the
+restricted-diagram route makes those requests possible, and a request from an origin this
+application does not serve is refused **before** the handler body runs, so an unapproved
+cross-origin caller cannot cause a mutation or an email send. CORS grants no access: every
+bearer verification and RLS policy still applies. Email OTP needed no change — it carries no
+`emailRedirectTo` and talks to Supabase directly. See
+[`docs/adr/0047`](adr/0047-configured-native-api-origin-boundary.md). **The server change is
+implemented but NOT deployed, and no on-device request has been made.**
+
+Two invariants of that build are load-bearing rather than incidental. **Vite's `--mode`
+selects configuration, never runtime semantics:** every artifact the mobile build produces
+is installable, so `NODE_ENV` is pinned to `production` for every build regardless of mode
+or ambient environment — otherwise `IS_DEV` would expose the Timing Simulator and the
+Brower BLE diagnostic screen, and a `test` value would ship
+`ProfileScopedSportingPersistence`'s fixed test Profile fallback, a bypass of the mandatory
+Profile scope. **And the claim that the mobile root composes the identical provider tree is
+checked structurally**, by comparing the React element trees the two roots return with
+component identity compared by reference — not by comparing rendered DOM, which the
+identity gate would hide.
+
+**M1 is a development shell, verified here as far as an unsigned native build.** Beyond
+that, the developer has **reported** the prescribed visible launch and layout checks working
+on a physical iPhone — installation, launch, splash dismissal, the identity gate rendering
+and safe areas. That is **user-reported evidence**, not a measurement produced or observed
+by this repository. M1's remaining device items — `crypto.randomUUID` and external links —
+have **not** been reported and must not be described as verified. **Native sign-in (the rest
+of M2), usable offline persistence and export (M3), production Brower capture (M4) and
+Android (M5) are not implemented**, and no persistence-durability claim is made. `docs/MOBILE_APP_MIGRATION.md` §10 M1 holds the implemented file list, the exact
+verification results and what remains unperformed; it is not duplicated here.
+
+**`docs/MOBILE_APP_MIGRATION.md` is the single canonical migration document** — one shared
+iOS/Android design, not an iOS-only plan. It records the confirmed objectives, the verified
+current implementation, the recommended build arrangement, the open product decisions, and
+bounded implementation stages with their acceptance evidence. The four boundaries it must
+resolve, each verified against this working tree, are:
+
+- **Server access — RESOLVED by Stage M2a (ADR-0047); not deployed.**
+  `src/lib/supabase/authorizedFetch.ts` proves every request prefix-confined and **exactly**
+  the path its hard-coded route table produced, before the access token is read. Those
+  checks are unchanged. What changed is the origin it proves against: it is now the one
+  resolved API target — on Web still `window.location.origin`, byte-identically, and on
+  native the one explicitly configured, validated HTTPS origin
+  (`NEXT_PUBLIC_NATIVE_API_ORIGIN`, confirmed as `https://curling.evolane.me`). The ADR
+  amending ADR-0025 Decision 20 is **written** —
+  [`docs/adr/0047`](adr/0047-configured-native-api-origin-boundary.md) — not future work.
+  **Still outstanding:** deploying the accompanying server CORS change, and any on-device
+  evidence.
+- **Identity callbacks.** The current design assumes a **full-page redirect and a fresh
+  document**, and injecting the existing seams is not sufficient. Four facts make this the
+  hardest boundary: `isUsableUrl` accepts **only `http:`/`https:`** and guards both
+  `isValidRedirectTarget` and `validateAuthorizationUrl`'s `redirect_to` check, so a custom
+  scheme cannot be enabled by overriding an origin; the capture cell is **page-scoped and
+  terminally finalized**; `startUp()` finalizes it **even when no callback arrived**, and
+  `startUpOnce()` caches one startup; and `startGoogleSignIn` states that navigation ends
+  the page epoch. In a WebView that never reloads, a warm callback would be silently
+  unclaimable. The proposal changes **scope and binding, not admission rules**:
+  an **attempt-scoped** capture cell, a destination-validated **delivered-URL ingestion**
+  entry point, and a **warm continuation** performing Phase 0 without Phase A.
+  **`decideOAuthIntake` remains the pure admission authority and is reused verbatim** —
+  correlation is already durable (`sb_flow_id` against the persisted attempt, with no
+  verifier fallback), so a stale callback is already branch D with zero exchanges.
+  **`consumeAdmittedContinuation` is not reused unchanged**: it reaches its cell through the
+  coordinator's closure and finalizes it unconditionally, so with replaceable cells it
+  requires an **explicit binding to the cell it owns**. Native continuation additionally
+  requires **safe conditional ownership** — the slot claimed only through a synchronous
+  handoff proven against evidence established *before* the path's first `await`, because
+  `startGoogleSignIn` claims that slot before persisting its barrier or attempt — and a
+  **bootstrap delivery owner** so that neither the launch URL nor `appUrlOpen` is required.
+  **One piece is deliberately unsolved:** `startUp()` claims the ownership slot
+  unconditionally, so startup and a callback continuation can contend for it, and assigning
+  them separate cells does not prevent that. That scheduling mechanism is recorded as an
+  explicit **Stage M2 design gate** with stated invariants rather than a written-down
+  ordering; **M1 does not depend on it.**
+  **Email OTP needs no callback at all.** PKCE is retained; an implicit-grant fragment stays
+  `malformed_callback`. **These are proposed Stage M2 changes, not implemented behaviour**;
+  `docs/MOBILE_APP_MIGRATION.md` §6 is the canonical design and the full algorithm is not
+  duplicated here.
+- **Local data.** A native WebView has its own storage container, so nothing from the
+  user's browser appears after installation. **Capacitor documents WebView LocalStorage as
+  transient — the OS reclaims it under storage pressure** — so native durability is an
+  explicit design and acceptance decision, not something a passing device test retires.
+  Successfully synchronised archived Training Sessions, terminal Assessment Runs and owned
+  Team results restore through the existing hash-verified `restoreIntoLocalRepositories()`
+  path; **cloud restoration is not protection for local drafts or for records still in the
+  outbox**, which depend on their original device. The `StorageAdapter` interface is
+  ADR-0013's sanctioned extension point — every Profile-scoping and repository factory
+  already takes the base adapter as a parameter — so a future native adapter would change
+  the **engine**, not the authority, the Profile scope or the single sync engine. The
+  retired IndexedDB migration track stays retired regardless.
+- **Persisted capture state.** `Session.captureSequence` is **persisted** with the current
+  Session and restored by `sessionMigration.ts` with a `running` sequence coerced to
+  `paused`. Only the live capture machinery (the provider subscription, `captureQueueRef`)
+  and the Blind Weight draft are genuinely in-memory. Cross-device continuation of an
+  in-progress sequence is a separate, unapproved question.
+- **Platform services.** Export is a DOM anchor download at one shared mechanism and needs
+  one adapter; external links, app lifecycle and Android's hardware back button need
+  explicit handling.
+
+Nothing above is implemented. Do not treat the migration document as a description of
+current behaviour.
 
 ## Platform Navigation (Implemented for Home/Train/Assess/Analyze/Settings)
 

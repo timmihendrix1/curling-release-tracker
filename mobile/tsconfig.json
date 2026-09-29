@@ -1,0 +1,15 @@
+{
+  // The mobile client is type-checked by the ROOT program as well — the root
+  // tsconfig's `**/*.ts(x)` include already covers `mobile/` and
+  // `capacitor.config.ts`, and nothing excludes them, so `npx tsc --noEmit`
+  // catches a mobile type error too. This project exists so `npm run
+  // mobile:typecheck` can check the mobile surface on its own, under exactly the
+  // root's compiler options.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": ["../mobile/**/*.ts", "../mobile/**/*.tsx", "../capacitor.config.ts"],
+  "exclude": ["../mobile/dist"]
+}

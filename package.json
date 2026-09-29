@@ -9,9 +9,18 @@
     "lint": "eslint",
     "test": "vitest run",
     "pretest:e2e": "node tests/e2e/preflight-local.mjs",
-    "test:e2e": "node tests/e2e/run-local.mjs"
+    "test:e2e": "node tests/e2e/run-local.mjs",
+    "mobile:build": "vite build --config mobile/vite.config.ts",
+    "mobile:preview": "vite preview --config mobile/vite.config.ts",
+    "mobile:typecheck": "tsc --noEmit --project mobile/tsconfig.json",
+    "mobile:lint": "eslint mobile capacitor.config.ts",
+    "mobile:test": "vitest run --config mobile/vitest.config.ts",
+    "mobile:verify": "npm run mobile:typecheck && npm run mobile:build && npm run mobile:test",
+    "ios:sync": "cap sync ios",
+    "ios:open": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "8.5.2",
     "@supabase/supabase-js": "^2.112.3",
     "idb": "^8.0.3",
     "next": "16.2.6",
@@ -21,8 +30,11 @@
     "recharts": "^3.8.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "@capacitor/ios": "8.5.2",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/vite": "4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -30,12 +42,14 @@
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "6.1.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^29.1.1",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vite": "8.1.4",
     "vitest": "^4.1.10"
   }
 }

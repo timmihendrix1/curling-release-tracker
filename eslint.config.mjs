@@ -26,6 +26,23 @@ const eslintConfig = defineConfig([
     // sources are never silently excluded.
     "supabase/.temp/**",
     "supabase/.branches/**",
+    // The standalone Brower iOS BLE probe (docs/BROWER_IOS_FEASIBILITY.md) is a
+    // separate project with its own ESLint configuration, its own TypeScript
+    // program and its own `npm run lint`. It also contains generated artefacts
+    // this config has no business reading: the Vite build output copied into the
+    // native app bundle, and the Capacitor-generated Xcode project.
+    //
+    // Deliberately narrow: this names that one project, NOT `tools/**`, so any
+    // future tool added under tools/ stays lint-visible here until someone
+    // decides otherwise.
+    "tools/brower-ios-probe/**",
+    // Generated output of the mobile client build (mobile/vite.config.ts) and
+    // the Capacitor-generated native iOS project. Deliberately narrow: the
+    // mobile SOURCE (mobile/src, mobile/__tests__, the configs and
+    // capacitor.config.ts) stays lint-visible and is covered by `npm run
+    // mobile:lint` as well as the root `npm run lint`.
+    "mobile/dist/**",
+    "ios/App/App/public/**",
   ]),
 ]);
 

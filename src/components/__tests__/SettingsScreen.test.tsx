@@ -217,6 +217,47 @@ describe("SettingsScreen", () => {
     expect(onManageSmartRandomProfiles).toHaveBeenCalledTimes(1);
   });
 
+  it("hides the development-only BLE diagnostic entry point by default", () => {
+    render(
+      <SettingsScreen
+        {...baseProps}
+        hasHistory={false}
+        onExportHistoryCsv={() => {}}
+        onClearHistory={() => {}}
+      />
+    );
+
+    expect(screen.queryByText("Developer Tools")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Open BLE Diagnostic" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the BLE diagnostic entry point only when developer diagnostics are enabled", () => {
+    const onOpenBleDiagnostic = vi.fn();
+
+    render(
+      <SettingsScreen
+        {...baseProps}
+        hasHistory={false}
+        onExportHistoryCsv={() => {}}
+        onClearHistory={() => {}}
+        showDeveloperDiagnostics
+        onOpenBleDiagnostic={onOpenBleDiagnostic}
+      />
+    );
+
+    expect(screen.getByText("Developer Tools")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Connect to a Brower TCi Timer over Bluetooth and record its raw responses. It does not record training, and it is not available outside development."
+      )
+    ).toBeInTheDocument();
+
+    screen.getByRole("button", { name: "Open BLE Diagnostic" }).click();
+    expect(onOpenBleDiagnostic).toHaveBeenCalledTimes(1);
+  });
+
   it("shows an empty state when no profiles are saved", () => {
     render(
       <SettingsScreen
