@@ -670,6 +670,13 @@ describe("Stage B0.2 identity layer — one mounted authority, structurally unab
         // The shared containment primitive, which is where the single audited
         // `remove` call lives.
         "untrustedValue.ts",
+        // Stage M3b3's injection point. It NAMES the removable contract because
+        // that is the adapter type the whole set is built over; it deletes
+        // nothing itself, and it does not widen any repository's capability —
+        // `identityBarrierRepository` still takes the BASE contract and still
+        // cannot remove a barrier (ADR-0025 Decision 6), which the test below
+        // and `storageComposition.test.ts` both assert.
+        "identityRepositorySet.ts",
       ].sort()
     );
   });
@@ -776,5 +783,225 @@ describe("Stage B0.2 identity layer — one mounted authority, structurally unab
     expect(importers.map((path) => relative(SRC_ROOT, path))).toEqual([
       join("components", "identity", "IdentityProvider.tsx"),
     ]);
+  });
+});
+
+describe("persistence architecture boundary — native storage is composed in ONE place, lazily", () => {
+  // Stage M3b3 (docs/MOBILE_APP_MIGRATION.md Stage M3b0 §3, ADR-0049): the
+  // native adapter is now composed — but behind an off-by-default build flag,
+  // and still NOT cut over (production cutover is Stage M3b5).
+  //
+  // The earlier rule here was "nothing under src/ may name the native adapter at
+  // all". That rule has done its job and is replaced by two narrower ones that
+  // preserve exactly the properties that mattered:
+  //
+  //   1. exactly ONE production module may reach the native adapter, and it must
+  //      do so through a DYNAMIC import — which is what keeps SQLite out of
+  //      every bundle that does not actually compose a native store, the Web and
+  //      Next builds included;
+  //   2. the plugin packages stay confined to their one binding file each.
+  const NATIVE_ADAPTER_MODULES = ["nativeSqliteAdapter", "capacitorSqliteEngine"];
+  const SQLITE_PACKAGE = "@capacitor-community/sqlite";
+  const SECURE_STORAGE_PACKAGE = "@aparajita/capacitor-secure-storage";
+  const ALLOWED_SQLITE_FILE = join(SRC_ROOT, "lib", "persistence", "capacitorSqliteEngine.ts");
+  const ALLOWED_SECURE_STORAGE_FILE = join(
+    SRC_ROOT,
+    "lib",
+    "persistence",
+    "capacitorSecureStorageBinding.ts"
+  );
+  // The adapter's own lazy `import("./capacitorSqliteEngine")`.
+  const ADAPTER_FILE = join(SRC_ROOT, "lib", "persistence", "nativeSqliteAdapter.ts");
+  // The one composition module.
+  const COMPOSITION_FILE = join(SRC_ROOT, "lib", "persistence", "storageComposition.ts");
+  const SECURE_STORE_FILE = join(SRC_ROOT, "lib", "persistence", "secureCredentialStore.ts");
+
+  function importsAny(source: string, modules: string[]): boolean {
+    const code = stripComments(source);
+    return modules.some((moduleName) => {
+      const quoted = `["'][^"']*${moduleName}["']`;
+      return new RegExp(
+        [
+          `\\bfrom\\s*${quoted}`,
+          `\\bimport\\s*${quoted}`,
+          `\\bimport\\s*\\(\\s*${quoted}`,
+          `\\brequire\\s*\\(\\s*${quoted}`,
+        ].join("|")
+      ).test(code);
+    });
+  }
+
+  /** A STATIC import — the kind that pulls a module into every bundle that
+   * reaches this file. `import type` is excluded because it erases. */
+  function staticallyImports(source: string, modules: string[]): boolean {
+    const code = stripComments(source);
+    return modules.some((moduleName) => {
+      const quoted = `["'][^"']*${moduleName}["']`;
+      return new RegExp(`\\bimport\\s+(?!type\\b)[^;]*?\\bfrom\\s*${quoted}`).test(code);
+    });
+  }
+
+  it("the detectors are not vacuous", () => {
+    expect(
+      importsAny('import { createNativeSqliteStore } from "./nativeSqliteAdapter";', NATIVE_ADAPTER_MODULES)
+    ).toBe(true);
+    expect(importsAny('await import("../persistence/capacitorSqliteEngine");', NATIVE_ADAPTER_MODULES)).toBe(true);
+    expect(importsAny("// nativeSqliteAdapter is only mentioned in prose here", NATIVE_ADAPTER_MODULES)).toBe(false);
+
+    expect(
+      staticallyImports('import { createNativeSqliteStore } from "./nativeSqliteAdapter";', NATIVE_ADAPTER_MODULES)
+    ).toBe(true);
+    // A dynamic import and a type-only import are both permitted and must not
+    // register as static.
+    expect(staticallyImports('const m = await import("./nativeSqliteAdapter");', NATIVE_ADAPTER_MODULES)).toBe(false);
+    expect(
+      staticallyImports('import type { NativeSqliteEngine } from "./nativeSqliteAdapter";', NATIVE_ADAPTER_MODULES)
+    ).toBe(false);
+  });
+
+  it("exactly one production module composes the native adapter, and only it", () => {
+    const offenders = collectSourceFiles(SRC_ROOT)
+      .filter((path) => !isTestPath(path))
+      // The two halves of the adapter/binding pair reference each other — the
+      // adapter lazily imports the binding, the binding imports the adapter's
+      // types. That is the module boundary itself, not a composition.
+      .filter((path) => path !== ADAPTER_FILE && path !== ALLOWED_SQLITE_FILE)
+      .filter((path) => path !== COMPOSITION_FILE)
+      .filter((path) => importsAny(readFileSync(path, "utf8"), NATIVE_ADAPTER_MODULES));
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+    // Targeted, not vacuous: the composition module really does reach it.
+    expect(importsAny(readFileSync(COMPOSITION_FILE, "utf8"), NATIVE_ADAPTER_MODULES)).toBe(true);
+  });
+
+  it("no production module STATICALLY imports the native adapter or the secure store's binding", () => {
+    // This is what keeps SQLite and the Keychain plugin out of every bundle that
+    // does not compose a native store — the Web build, the Next build, and a
+    // DEFAULT mobile build. `mobile/__tests__/bundle.test.ts` asserts the same
+    // property against the real artifact.
+    const offenders = collectSourceFiles(SRC_ROOT)
+      .filter((path) => !isTestPath(path))
+      .filter((path) => path !== ALLOWED_SQLITE_FILE && path !== ALLOWED_SECURE_STORAGE_FILE)
+      .filter((path) =>
+        staticallyImports(readFileSync(path, "utf8"), [
+          "nativeSqliteAdapter",
+          "capacitorSqliteEngine",
+          "capacitorSecureStorageBinding",
+        ])
+      );
+    expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+  });
+
+  it("only its own binding file names each native storage package", () => {
+    for (const [pkg, allowed] of [
+      [SQLITE_PACKAGE, ALLOWED_SQLITE_FILE],
+      [SECURE_STORAGE_PACKAGE, ALLOWED_SECURE_STORAGE_FILE],
+    ] as const) {
+      const offenders = collectSourceFiles(SRC_ROOT)
+        .filter((path) => !isTestPath(path))
+        .filter((path) => path !== allowed)
+        .filter((path) => stripComments(readFileSync(path, "utf8")).includes(pkg));
+      expect(offenders.map((path) => relative(SRC_ROOT, path))).toEqual([]);
+      // Targeted, not vacuous.
+      expect(stripComments(readFileSync(allowed, "utf8"))).toContain(pkg);
+    }
+  });
+
+  it("the repositories still default to the localStorage adapter", () => {
+    // Composition changed WHERE a repository can be pointed; it did not change
+    // any repository's default, so an un-composed tree is byte-for-byte what it
+    // always was.
+    const source = stripComments(
+      readFileSync(join(SRC_ROOT, "lib", "sessionRepository.ts"), "utf8")
+    );
+    expect(source).toContain("localStorageAdapter");
+    expect(source).not.toContain("nativeSqlite");
+  });
+
+  it("the secure credential store fails closed before it can load a Web implementation", () => {
+    // The installed plugin ships a `localStorage`-backed Web implementation
+    // (`dist/esm/web.js`). The platform gate is what makes it unreachable, so
+    // inside the one function that loads the binding, the gate must come FIRST.
+    const source = stripComments(readFileSync(SECURE_STORE_FILE, "utf8"));
+    const start = source.indexOf("async function ensureConfigured(");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const body = source.slice(start, source.indexOf("async function readTask("));
+
+    const gate = body.indexOf('platform !== "ios" && platform !== "android"');
+    const load = body.indexOf("loadDefaultBinding()");
+    expect(gate).toBeGreaterThanOrEqual(0);
+    expect(load).toBeGreaterThan(gate);
+    // And the gate throws rather than falling through.
+    expect(body.slice(gate, load)).toContain("SecureStoreUnavailableError");
+  });
+});
+
+describe("Stage M3b3 — no shipped path can declare native storage ready", () => {
+  // The barrier against premature cutover. A ready activation verdict is
+  // constructible in exactly one place, it is named for what it is, and no
+  // production module may call it. Everything else about the barrier is behaviour
+  // and is covered by `storageComposition.test.ts`; this is the structural half.
+  const READY_FACTORY = "nativeActivationReadyForTests";
+  const MOBILE_ROOT = join(process.cwd(), "mobile");
+  const PRODUCTION_AUTHORITY_FILE = join(
+    MOBILE_ROOT,
+    "src",
+    "storage",
+    "nativeStorageComposition.ts"
+  );
+
+  function productionSources(): string[] {
+    return [...collectSourceFiles(SRC_ROOT), ...collectSourceFiles(MOBILE_ROOT)].filter(
+      (path) => !isTestPath(path)
+    );
+  }
+
+  it("the test-only ready factory is referenced by no production module", () => {
+    const offenders = productionSources()
+      .filter((path) => path !== PRODUCTION_AUTHORITY_FILE)
+      .filter((path) => stripComments(readFileSync(path, "utf8")).includes(READY_FACTORY));
+    expect(offenders.map((path) => relative(process.cwd(), path))).toEqual([]);
+
+    // The declaring file mentions the name EXACTLY ONCE — its own declaration —
+    // so it contains no call either.
+    const declaration = stripComments(readFileSync(PRODUCTION_AUTHORITY_FILE, "utf8"));
+    expect([...declaration.matchAll(new RegExp(READY_FACTORY, "g"))]).toHaveLength(1);
+    expect(declaration).toMatch(new RegExp(`export function ${READY_FACTORY}\\s*\\(`));
+  });
+
+  it("the ONE production authority reports unavailable, with no branch that can report ready", () => {
+    const source = stripComments(readFileSync(PRODUCTION_AUTHORITY_FILE, "utf8"));
+    const authority = source.slice(
+      source.indexOf("PRODUCTION_ACTIVATION_AUTHORITY"),
+      source.indexOf(`export function ${READY_FACTORY}`)
+    );
+    expect(authority).toContain('status: "unavailable"');
+    expect(authority).toContain('reason: "migration_not_implemented"');
+    expect(authority).not.toContain('status: "ready"');
+  });
+
+  it("no production module reads an environment variable, URL parameter or stored preference to reach readiness", () => {
+    // The opt-in is build-time only. A runtime switch would make the barrier
+    // bypassable on an installed device.
+    //
+    // Matched as EXPRESSIONS, not substrings: a bare `includes("sessionStorage")`
+    // false-positives on the perfectly ordinary identifier `sessionStorageKey`,
+    // which names the SDK key establishment reads and is not a switch of any
+    // kind. The patterns below match actual reads instead.
+    const composition = stripComments(readFileSync(PRODUCTION_AUTHORITY_FILE, "utf8"));
+    const runtimeSwitches: Array<[string, RegExp]> = [
+      ["process.env access", /\bprocess\s*\.\s*env\b/],
+      ["URL search parameters", /\bsearchParams\b|\blocation\s*\.\s*search\b/],
+      ["Web Storage reads", /\b(?:window\s*\.\s*)?(?:local|session)Storage\s*\./],
+    ];
+    for (const [label, pattern] of runtimeSwitches) {
+      expect(pattern.test(composition), label).toBe(false);
+    }
+
+    // Non-vacuous: each pattern really does catch the form it is for.
+    expect(/\bprocess\s*\.\s*env\b/.test('process.env.CURLING_X === "1"')).toBe(true);
+    expect(/\bsearchParams\b|\blocation\s*\.\s*search\b/.test("url.searchParams.get('x')")).toBe(true);
+    expect(/\b(?:window\s*\.\s*)?(?:local|session)Storage\s*\./.test('localStorage.getItem("x")')).toBe(true);
+    // And it does NOT flag the ordinary identifier.
+    expect(/\b(?:window\s*\.\s*)?(?:local|session)Storage\s*\./.test("const sessionStorageKey = null;")).toBe(false);
   });
 });

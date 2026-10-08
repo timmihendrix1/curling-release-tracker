@@ -79,7 +79,7 @@ function addShot(releaseTime: string) {
   fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
     target: { value: releaseTime },
   });
-  screen.getByRole("button", { name: "Add Shot" }).click();
+  screen.getByRole("button", { name: "Save Shot" }).click();
 }
 
 function catalogVersion(id: string) {
@@ -188,19 +188,22 @@ describe("TrackerApp — Training Plans execution", () => {
     recordStone.click();
     await waitFor(() => screen.getByText("1 stone recorded"));
     screen.getByRole("button", { name: "Complete Exercise" }).click();
-    await waitFor(() => screen.getByText("Next: Release Time"));
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Complete Exercise" })).toBeNull()
+    );
+    expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Next Exercise" }).click();
 
-    await waitFor(() => screen.getByText("Complete this Release Time step"));
-    expect(screen.getByText("Record 1 more stone to continue to the next planned exercise."))
-      .toBeInTheDocument();
+    await waitFor(() => screen.getByText("0 of 1 planned stone"));
     expect(screen.queryByRole("button", { name: "Start New Session" })).toBeNull();
     addShot("3.75");
 
-    await waitFor(() => screen.getByText("Next: Release Point"));
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    await waitFor(() => screen.getByText("1 of 1 planned stone"));
+    expect(screen.getByText("Next: Release Point")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Next Exercise" }).click();
     await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
     expect(screen.getByText(/Step 3 of 3/)).toBeInTheDocument();
+    expect(screen.getByText("This is the last planned exercise.")).toBeInTheDocument();
   });
 
   it("executes a profile-owned Technique → Shotmaking → Measured plan through the existing runners", async () => {
@@ -218,9 +221,12 @@ describe("TrackerApp — Training Plans execution", () => {
 
     await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
     expect(screen.getByText(/Step 1 of 4/)).toBeInTheDocument();
+    expect(screen.getByText("Next: Eight Guards, Progressively Longer")).toBeInTheDocument();
     screen.getByRole("button", { name: "Complete Exercise" }).click();
-    await waitFor(() => screen.getByText("Next: Eight Guards, Progressively Longer"));
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Complete Exercise" })).toBeNull()
+    );
+    screen.getByRole("button", { name: "Next Exercise" }).click();
 
     await waitFor(() => screen.getByRole("heading", { name: "Eight Guards, Progressively Longer" }));
     expect(screen.getByText(/Step 2 of 4/)).toBeInTheDocument();
@@ -230,9 +236,8 @@ describe("TrackerApp — Training Plans execution", () => {
     await waitFor(() => expect(recordStone).toBeEnabled());
     recordStone.click();
     await waitFor(() => screen.getByText("1 stone recorded"));
-    screen.getByRole("button", { name: "Complete Exercise" }).click();
-    await waitFor(() => screen.getByText("Next: Rotation Count"));
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    expect(screen.getByText("Next: Rotation Count")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Next Exercise" }).click();
 
     await waitFor(() => screen.getByRole("heading", { name: "Rotation Count" }));
     expect(screen.getByText(/Step 3 of 4/)).toBeInTheDocument();
@@ -241,15 +246,15 @@ describe("TrackerApp — Training Plans execution", () => {
     });
     screen.getByRole("button", { name: "Record Measurement" }).click();
     await waitFor(() => screen.getAllByText(/2.5 rotations/));
-    screen.getByRole("button", { name: "Complete Exercise" }).click();
-    await waitFor(() => screen.getByText("Next: Release Time"));
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
+    screen.getByRole("button", { name: "Next Exercise" }).click();
 
     await waitFor(() => screen.getByText("Active Training Block"));
     expect(screen.getByText(/Step 4 of 4/)).toBeInTheDocument();
+    expect(screen.getByText("This is the last planned exercise.")).toBeInTheDocument();
     addShot("3.75");
-    await waitFor(() => screen.getByText("Plan complete"));
-    expect(screen.getByText("All 4 steps completed.")).toBeInTheDocument();
+    await waitFor(() => screen.getByText("1 of 1 planned stone"));
+    expect(screen.queryByRole("button", { name: "Next Exercise" })).toBeNull();
   });
 
   it("drives a full plan through both steps to completion, then archives it via Finish Training", async () => {
@@ -274,10 +279,10 @@ describe("TrackerApp — Training Plans execution", () => {
 
     // Step 1: alternating handles starting In.
     expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
-    expect(screen.getByText("Stone 0 of 2")).toBeInTheDocument();
+    expect(screen.getByText("0 of 2 planned stones")).toBeInTheDocument();
 
     addShot("3.75");
-    await waitFor(() => screen.getByText("Stone 1 of 2"));
+    await waitFor(() => screen.getByText("1 of 2 planned stones"));
 
     // After one saved shot, the alternating strategy now expects Out Handle.
     // (The Live Performance filter below also has an "Out Handle" chip — the
@@ -287,40 +292,32 @@ describe("TrackerApp — Training Plans execution", () => {
     ).toHaveClass("bg-slate-900");
 
     addShot("3.80");
-    await waitFor(() =>
-      screen.getByText("Step complete — Release Time")
-    );
+    await waitFor(() => screen.getByText("2 of 2 planned stones"));
     expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Plan complete")
-    ).not.toBeInTheDocument();
 
-    screen.getByRole("button", { name: "Continue to Next Step" }).click();
+    screen.getByRole("button", { name: "Next Exercise" }).click();
     await waitFor(() => screen.getByText(/Step 2 of 2/));
-    expect(screen.getByText("Stone 0 of 2")).toBeInTheDocument();
+    expect(screen.getByText("0 of 2 planned stones")).toBeInTheDocument();
 
-    // Step 2: Free handles — no preselect assertion needed, just completion.
+    // Step 2: Free handles — no preselect assertion needed, just volume.
     addShot("3.76");
-    await waitFor(() => screen.getByText("Stone 1 of 2"));
+    await waitFor(() => screen.getByText("1 of 2 planned stones"));
     addShot("3.77");
 
-    await waitFor(() => screen.getByText("Plan complete"));
-    expect(screen.getByText("All 2 steps completed.")).toBeInTheDocument();
-    expect(
-      screen.queryByText("Step complete — Release Time")
-    ).not.toBeInTheDocument();
+    await waitFor(() => screen.getByText("2 of 2 planned stones"));
+    expect(screen.getByText("This is the last planned exercise.")).toBeInTheDocument();
 
-    // Deliberate extra shots remain allowed after plan completion.
+    // Deliberate extra shots remain allowed once the planned volume is reached.
     addShot("3.78");
-    await waitFor(() => expect(screen.getByText("All 2 steps completed.")).toBeInTheDocument());
-    expect(screen.getByText("Plan complete")).toBeInTheDocument();
+    await waitFor(() => screen.getByText("3 of 2 planned stones"));
 
     screen.getByRole("button", { name: "Finish Training" }).click();
     await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
     expect(screen.getByRole("button", { name: "Finish" })).not.toHaveClass("bg-red-600");
     screen.getByRole("button", { name: "Finish" }).click();
 
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByText("Training finished"));
+    expect(screen.getAllByText("Completed")).toHaveLength(2);
 
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));

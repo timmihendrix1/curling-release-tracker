@@ -153,7 +153,7 @@ describe("TrackerApp — top-level navigation", () => {
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
     });
-    screen.getByRole("button", { name: "Add Shot" }).click();
+    screen.getByRole("button", { name: "Save Shot" }).click();
 
     await waitFor(() => screen.getByText("1 shot total"));
 
@@ -184,7 +184,7 @@ describe("TrackerApp — top-level navigation", () => {
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
     });
-    screen.getByRole("button", { name: "Add Shot" }).click();
+    screen.getByRole("button", { name: "Save Shot" }).click();
     await waitFor(() => screen.getByText("1 shot total"));
 
     navButton("Analyze").click();

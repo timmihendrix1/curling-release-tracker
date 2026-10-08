@@ -1,5 +1,5 @@
-// Exercises the full plan → session → blocks → shots → step transition → plan
-// completion flow purely through the domain layer (trainingBlocks.ts +
+// Exercises the full plan → session → blocks → shots → step transition → planned-
+// volume flow purely through the domain layer (trainingBlocks.ts +
 // trainingPlans/*), the same composition TrackerApp.tsx's handlers use — without any
 // React/component involvement. See TrackerApp.trainingPlans.test.tsx for the
 // component-level equivalent.
@@ -82,11 +82,11 @@ describe("Training Plan execution — full lifecycle", () => {
     session = saveShot(session, step1BlockId, 1);
     session = saveShot(session, step1BlockId, 2);
 
-    // Step 1 complete, not the final step → "Continue", never "Plan complete".
+    // Step 1 has reached its planned volume; the plan is not finished.
     expect(isActiveStepComplete(session, session.planExecution!)).toBe(true);
     expect(isPlanComplete(session, session.planExecution!)).toBe(false);
 
-    // Continue to step 2 — mirrors TrackerApp.handleContinueToNextPlanStep.
+    // Next Exercise — mirrors TrackerApp.performPlanStepAdvance.
     session = addTrainingBlock(session, mapPlanStepToTrainingBlockInput(timingStep(plan, 1)));
     session = {
       ...session,
@@ -102,7 +102,7 @@ describe("Training Plan execution — full lifecycle", () => {
     session = saveShot(session, step2BlockId, 1);
     session = saveShot(session, step2BlockId, 2);
 
-    // Final step reaches its count → Plan complete, never "Continue".
+    // The final step reaches its planned count → every planned volume is met.
     expect(isPlanComplete(session, session.planExecution!)).toBe(true);
 
     // Deliberate extra shots remain allowed and recorded in the same block.

@@ -14,12 +14,80 @@ copied.** A change to the shared modules reaches Web and mobile at once.
   remaining M1 device items — notably `crypto.randomUUID` and external links —
   have **not** been reported as verified.
 - **Stage M2a — configured API origin, server CORS and email-OTP groundwork:
-  implemented, automated tests only.** Email OTP needs no callback, so the
-  acceptance procedure below is possible — but **nobody has run it**, the server
-  CORS change is **not deployed**, and no on-device sign-in or API call has been
-  made. M2a is **not** M2 and **not** M2-partial.
-- **Not implemented:** native Google sign-in (the rest of M2), usable offline
-  persistence and export (M3), Brower capture (M4), Android (M5).
+  implemented, automated tests only.** On **2026-09-29** the user reported that
+  email login works on their iPhone, that a training recorded on iOS reached the
+  Web app, and that an offline cold start, recording and later sync worked — the
+  receiving Web app had to be reopened before the training appeared. Those are
+  **user-reported device observations**, not agent-executed tests, and they do
+  not cover the full acceptance matrix. The server CORS change is still **not
+  deployed** and no on-device Team API call has been made. M2a is **not** M2 and
+  **not** M2-partial.
+- **Stage M3a — native file export and external public links: implemented**,
+  verified by automated tests and an unsigned native build. **Partly reported on a
+  device by the user (2026-09-29):** CSV export works including in Airplane Mode,
+  and the Privacy Notice opens in the native Safari browser surface after
+  rebuilding with the configured public API origin. Team JSON export is deferred
+  (no Team results available); **every other M3a device step is unperformed**
+  (procedure below). M3a does **not** complete M3.
+- **Stage M3b — durable native local storage: ADAPTER, IN-APP DIAGNOSTICS AND COMPOSITION.
+  NO MIGRATION AND NO CUTOVER.**
+  P6's direction was decided on 2026-09-29 (adopt durable native storage; do not keep
+  `localStorage` by accepting its eviction risk), and P2 was answered (no browser→app
+  transfer in the first pilot). On **2026-09-30** the user decided that native storage is
+  exercised **directly in this app**, not in a separate harness application, and settled
+  three further points: **provider credentials use a separate protected store** (iOS
+  Keychain; Android encrypted app-private storage with keys in the Android Keystore, behind
+  one shared contract), **all existing local data is preserved** — no pilot reset,
+  uninstall/reinstall, storage clearing or discarding of unsynchronised work — and
+  **existing data must be migrated and verified before any cutover**.
+
+  **What now exists:** the pinned `@capacitor-community/sqlite` engine; a native
+  `RemovableStorageAdapter` (`src/lib/persistence/nativeSqliteAdapter.ts`) behind the
+  unchanged persistence contract; an **off-by-default, build-time-opt-in diagnostic panel**
+  driving it against a **dedicated synthetic database** (procedure below); and — behind a
+  **second, independent** off-by-default flag — the **storage composition**: all five seams,
+  identity-repository injection, the protected credential store and a readiness gate
+  (`npm run mobile:build:native-storage`, and the warning below).
+
+  **What does not exist:** any **migration**, any **cutover**, any transfer of the
+  credentials already in WebView storage, any change to cloud synchronisation, and any
+  **background-sync guarantee** — nothing here makes an upload happen while iOS has
+  suspended or closed the app. **A default build contains no composition code at all** and
+  the app's own data keeps using its existing storage.
+
+  **The protected credential path is CLOSED, and that requirement is not complete.** The
+  contract requires the platform to say, per item, whether nothing is there — only a
+  positively established absence may be read as "no session". No audited Capacitor 8
+  dependency supplies that: on iOS the plugin discards the Keychain result code, and on
+  Android a restored backup leaves ciphertext whose Keystore key is gone and reports it as
+  nothing. An earlier "readability marker" inference was invalid (reading one key says
+  nothing about another) and has been removed, and no global probe replaces it. So the
+  binding reports "no absence evidence" and composition blocks — a **second** barrier
+  alongside the unavailable activation authority. What would close it: a dependency that
+  surfaces the iOS `OSStatus`, or an Android `contains(key)` check separated from a
+  decryption failure.
+
+  **Device evidence now exists, within limits.** The user reported (2026-09-30) that
+  `journal_mode = wal` and `synchronous = 2` (FULL) are actually in force, that written
+  values survive a restart in airplane mode, and that a never-written key reads as absent.
+  **Unmeasured:** failed and uncertain commit reporting, reopen-after-interruption,
+  backup/restore, power-loss survival, any capacity limit, and anything about Android. So
+  the engine is settled for the **adapter** while **source retirement stays unjustified**.
+
+  The design is Stage M3b0 in `docs/MOBILE_APP_MIGRATION.md` and ADR-0049, whose **migration
+  protocol is still an unresolved design**. **Production cutover is Stage M3b5**; every
+  earlier stage is inert in production. Three open design items block M3b4: reconciling two
+  differing installation store ids seen before activation; a pre-activation record whose
+  source marker is missing, which cannot be told apart from later source clearing and is
+  therefore blocked; and the human-authorised resolution of a blocked source-generation
+  divergence. **Two further migration requirements follow from the credential decision:**
+  transferring the existing session out of WebView storage, and handling the interruption
+  where one of the two separate stores is written and the other is not. Migration of
+  existing on-device data between storage engines is a **separate, still-required**
+  operation from the deferred browser import.
+- **Not implemented:** native Google sign-in (the rest of M2), the rest of M3
+  (durable storage composition, migration and its capacity measurement), Brower capture
+  (M4), Android (M5).
 
 This is **not** a distributable app.
 
@@ -28,6 +96,8 @@ This is **not** a distributable app.
 | Command | What it does |
 | --- | --- |
 | `npm run mobile:build` | Production bundle into `mobile/dist/` |
+| `npm run mobile:build:diagnostics` | The same production bundle **plus** the native storage diagnostics panel (Stage M3b1). Never use this for anything but storage evidence |
+| `npm run mobile:build:native-storage` | The same production bundle **plus** the native storage composition (Stage M3b3). **This build does not run the app** — see the warning below. Never install it for training |
 | `npm run mobile:preview` | Serve that bundle in a desktop browser |
 | `npm run mobile:typecheck` | Type-check the mobile surface alone |
 | `npm run mobile:lint` | Lint `mobile/` and `capacitor.config.ts` |
@@ -146,7 +216,160 @@ automated run to perform hosted mutations or send email.
 **What a pass does and does not establish.** Passing 1–11 makes Stage M2 **M2-partial**:
 email OTP and authorized API access work on device. It does **not** make native Google
 sign-in work (not implemented — see ADR-0047 and migration §6), and it establishes nothing
-about offline persistence durability or export, which are Stage M3.
+about offline persistence durability, which remains Stage M3b — designed only, not
+implemented (ADR-0049).
+
+## Manual iPhone acceptance — export and public links (Stage M3a)
+
+**Partly reported by the user on 2026-09-29; the rest is unperformed.** Nothing in this
+repository claims a device result — the items below are the **user's report**, recorded as
+such:
+
+- **Step 1/2/10 — CSV export works on iPhone, including in Airplane Mode.**
+- **Step 8 (Privacy only) — the Privacy Notice opens in the native Safari browser surface**,
+  after **rebuilding with the configured public API origin** (see *Build requirement* below).
+- **Step 4 (Team JSON) — explicitly deferred:** no Team results are available to export.
+
+**Still unperformed, and not to be described as passing:** step 3 (value comparison), step 4
+(any JSON export), step 5 (cancellation), step 6 (retry), step 7 (double-tap), the **Terms**
+half of step 8, step 9 (return-to-app state) and step 11.
+
+**Build requirement for the link steps.** `NEXT_PUBLIC_NATIVE_API_ORIGIN` must be set to the
+configured public origin (`https://curling.evolane.me`) **at build time** — it is inlined,
+not read at runtime — so a build without it resolves no legal destination. Rebuild and
+re-sync after changing it. See *Configuration* above and `.env.example` for the exact
+contract; never read local environment values.
+
+No prerequisite deployment is needed for export — it is entirely on-device. Opening the
+legal pages does need the public site to be reachable.
+
+| # | Check | Expected |
+| --- | --- | --- |
+| 1 | Export a training CSV (Settings → Export History CSV, or a current session) | The iOS share sheet appears with a `.csv` file whose name is readable, not a generated id |
+| 2 | Save it to Files, then open it | The file opens and contains the training you exported |
+| 3 | Compare representative values against the app | Shot times, targets and session title match what the app shows. **Report any mismatch — this is the check that proves the export is real** |
+| 4 | Export JSON where available (a Team Exercise result; the Brower diagnostic log in a development build) | A `.json` file arrives the same way |
+| 5 | Cancel an export: open the share sheet, dismiss it | The app says the export was cancelled and that nothing was saved. It must **not** claim success |
+| 6 | Retry immediately after cancelling | The share sheet opens again and completes |
+| 7 | Double-tap the export button quickly | Exactly one share sheet appears |
+| 8 | Open Privacy and Terms (Settings) | They open **outside** the app, in the platform browser |
+| 9 | Return to the app | The app is exactly where you left it — same screen, same in-progress work. It must **not** have restarted |
+| 9b | On Android (M5, no project yet) an exported file is deliberately kept in the app cache for a bounded window after sharing, because the chooser result is not proof the recipient finished reading it | n/a on iOS — listed so the difference is not mistaken for a leak |
+| 10 | Export while in Airplane Mode | Export still works: it is a local file plus the share sheet, and needs no network |
+| 11 | Open Privacy while in Airplane Mode | The **page** fails to load, because it is fetched from the public site. This is expected and is a different thing from export being offline-capable |
+
+Use only your own accounts and data. This is a manual operator procedure, not authorization
+for any automated run to perform hosted mutations or send email.
+
+**What a pass establishes.** That export produces a retrievable, correct file on a device
+and that public links do not destroy the app. It establishes **nothing** about storage
+durability under pressure (P6), browser-local data transfer (P2), or the rest of Stage M3.
+
+## The native storage composition build (Stage M3b3) — NOT a build for training
+
+`npm run mobile:build:native-storage` sets `CURLING_MOBILE_NATIVE_STORAGE=1`, which is a
+**separate switch from the diagnostics one** — turning on storage evidence must never also
+opt your real training data into a different store, so the two are deliberately not one flag.
+
+**Read this before installing it: the app does not open.** The composition asks a
+migration/activation authority for a verdict before it constructs anything, and the only
+authority that ships reports that the migration is **not implemented** (Stage M3b4) and that
+cutover is a separate stage (M3b5). So the build shows a short blocking message —
+"Training data is unavailable", with a *Try again* button — and **the sporting application
+never mounts**. That is the intended behaviour, not a fault. A second barrier stands behind
+it: the protected credential store cannot establish absence with the available dependency, so
+even a ready activation verdict would block.
+
+Why it is built that way: mounting an existing installation against a fresh, empty SQLite
+database and an empty Keychain would have every domain read "absent", write its documented
+default, and leave you looking at a clean-looking workspace over training data that still
+exists in the old store. Blocking before anything is opened is what makes that unreachable.
+
+**It does not touch your training data.** It does not reset, clear, migrate or copy any of it,
+it does not sign you out, and it does not transfer the sign-in session that is already there —
+a further reason it cannot show you your data. (It does create an empty native database file
+before it blocks, so "nothing at all happened on the device" would be too strong a claim; your
+existing data is untouched either way.) Going back is the ordinary sequence:
+
+```bash
+npm run mobile:build && npm run ios:sync
+```
+
+then Run again in Xcode. **Use the default build for training.** This one exists so the
+composition can be reviewed and exercised, and there is deliberately no switch — no URL
+parameter, no stored preference, no developer toggle — that can make it mount.
+
+## Manual iPhone procedure — native storage diagnostics (Stage M3b1)
+
+**Partially performed (user-reported, 2026-09-30):** `journal_mode = wal`,
+`synchronous = 2` (FULL), `page_size = 4096`, `sqlite_version = 3.53.4`, a successful
+"Verify after app restart" **in airplane mode**, all five synthetic fixtures matched at
+994,669 bytes total, the never-written key absent, and 55 ms for the reported verification.
+**Still not measured:** failed and uncertain commit reporting, reopen after an interrupted
+commit, backup/restore, power-loss survival, any capacity limit, and anything on Android.
+This section is the procedure; the remaining results are the user's to produce.
+
+### What this installs
+
+`npm run mobile:build:diagnostics` produces the **same production artifact** as
+`npm run mobile:build` — production React, production JSX transform, `IS_DEV` false, no
+`NODE_ENV === "test"` Profile-scope fallback, the real identity gate — **plus** one extra
+surface: a "Storage diagnostics" button in the bottom-right corner, opening a panel. The
+normal app is underneath and one "Close" away. A default build contains none of this: the
+conditional import folds away, so the panel, the synthetic database name and the SQLite
+plugin are simply absent from the artifact.
+
+The panel touches **only** a dedicated synthetic database named
+`curling-storage-diagnostics-synthetic`, with deterministic generated fixtures. It never
+reads, writes, clears or migrates a real record, and it uploads nothing. **Your existing
+app data is not read and not modified by any step below.**
+
+### Build and install
+
+```bash
+npm run mobile:build:diagnostics
+npm run ios:sync
+npm run ios:open
+```
+
+Then in Xcode: select the **App** target, choose your **Team** under *Signing &
+Capabilities*, select the connected iPhone, and Run. This **replaces the app already on the
+device** with the same bundle identifier (`local.dev.curlingperformance`) — it is the same
+app, not a second one. To go back to an ordinary build afterwards, run
+`npm run mobile:build && npm run ios:sync` and Run again.
+
+### Procedure
+
+| # | Step | What to record |
+| --- | --- | --- |
+| 1 | Open the panel, press **Read effective SQLite settings** | The reported `journal_mode`, `synchronous`, `page_size` and `sqlite_version`. These are what the engine reports, not what the build asked for |
+| 2 | Press **Write synthetic fixtures** | Per-fixture bytes and elapsed milliseconds, especially for the ~1 MiB whole-document JSON |
+| 3 | Press **Verify in this app session** | Pass/fail. This proves round-tripping only |
+| 4 | Press **Update and remove a test key** | Pass/fail for write, overwrite, removal and genuine absence |
+| 5 | Press **Close and reopen the database** | Pass/fail after the connection was closed and reopened |
+| 6 | Put the device in **Airplane Mode**, repeat steps 2–5 | Whether anything differs offline. It should not: this is entirely local |
+| 7 | **Force-quit** the app (swipe it away from the app switcher). Do not merely background it | — |
+| 8 | Relaunch, open the panel, press **Verify after app restart** — and press nothing else first | "Verified after app restart" with the earlier run id and timestamp. If it says the fixtures were written by this session, the force-quit did not take effect. If it says the last run did not finish writing, step 2 was interrupted — repeat from step 2 |
+| 9 | Repeat 7–8 after leaving the device idle/locked for a while | Whether anything is lost |
+| 10 | Press **Delete the synthetic data** when finished | Confirmation naming the synthetic database |
+
+**Do not skip step 8's "press nothing else first".** Writing the fixtures again before
+verifying destroys the very evidence the restart check depends on — which is also why the
+panel writes nothing when it opens.
+
+A run marks itself in progress **before** it touches the first fixture and marks itself
+complete only after every write is acknowledged. So an interrupted or failed write cannot be
+mistaken for restart evidence later: the panel reports that the run did not finish rather than
+certifying fixtures it cannot attribute. The fixtures are byte-identical between runs, so that
+record is the only thing that can tell one run from another.
+
+### What a pass does and does not establish
+
+A pass establishes that the engine round-trips these payloads on this device, and that
+values written before a force-quit are still there after relaunch. It establishes
+**nothing** about power loss, nothing about OS-initiated eviction over weeks, nothing about
+Android, and **no safe capacity** — the fixture sizes are measurement points, not a limit.
+It also says nothing about the migration protocol, which is unimplemented.
 
 ## Development placeholders
 

@@ -888,13 +888,23 @@ not duplicated here.
 **Implemented.** See `docs/TRAINING_SYSTEM_AND_PLANS.md` for the authoritative product
 and domain model, `docs/SYSTEM_ARCHITECTURE.md`'s "Training Plans" section for the
 architecture-level summary, and ADR-0012 plus ADR-0040 for the domain separation,
-typed lazy-runtime and migration decisions.
+typed lazy-runtime and migration decisions. **Flexible progression and early finishing
+are implemented** — see ADR-0048 and spec section 31.
 
 ### Deliberately deferred to keep Version 1 focused
 
-- **Skip Step.** Only "Continue after completion" and "End session early" (the
-  existing Start New Session flow) exist — a dedicated Skip Step action was left out
-  per the spec's own recommended Version 1 decisions (section 63).
+- **No backward navigation.** The plan only moves forward. Returning to an earlier step
+  (to add stones to one already left behind) has no affordance; a real ask for it would
+  need its own product decision about what re-entering a terminal Exercise means.
+- **No resume after Finish Training.** Finishing archives the Session and starts a fresh
+  one; a plan cannot be picked up where it stopped. Re-starting the plan begins a new
+  execution with new runtimes, which is the intended behaviour, not a workaround.
+- **The finished-training summary is in-memory only.** It is dismissed by leaving Train
+  and does not survive a reload. The archived Session is unaffected and remains in
+  History; only the summary presentation is transient.
+- **No planned volume for Technique/Shotmaking steps.** Those step types deliberately
+  have none (ADR-0040), so their progress shows recorded counts without a planned
+  figure. Inventing one would be a product decision, not an implementation detail.
 - **Drag-and-drop step reordering.** Explicit Move Up/Down controls only, per spec
   sections 16/50 — more reliable on mobile, and avoids a drag-and-drop library
   dependency for a small, usually-short list.
@@ -905,7 +915,7 @@ typed lazy-runtime and migration decisions.
   same preset, still fully overridable, but this pairing wasn't a focus of the V1
   acceptance criteria.
 - **No re-entry after a manual block interrupts an active plan.** If the athlete taps
-  "New Training Block" instead of the plan's own Continue/Finish action,
+  "New Training Block" instead of the plan's own Next Exercise/Finish Training action,
   `isPlanExecutionActive` becomes false and the plan progress/transition UI simply
   stops rendering for that session — the plan's own execution state isn't lost or
   corrupted, but there's no "resume the plan" action to return to it. A real ask for
@@ -983,6 +993,179 @@ Tolerance Profile"/"Default Profile" entries for the domain concepts.
   `TrainingBlock`/`ReleaseTimingBlockConfiguration`. The product spec allowed this as
   optional; omitted to avoid a schema/migration change to either type for a purely
   informational nicety with no other product need yet.
+
+---
+
+## Fixed Weight measured quantities (Stage A reviewed; Stage B implemented)
+
+**Status: Stage A implemented and independently reviewed. Stage B implemented;
+independent review outstanding. Rollout readiness and real-device iOS/TCi acceptance
+are separate, unmet gates.** Canonical
+product source: `docs/FIXED_WEIGHT_SPEED_AND_CAPTURE_SPECIFICATION.md`. Architecture:
+`docs/adr/0051-fixed-weight-measured-quantities-and-per-side-tolerances.md`.
+
+Implemented in Stage A: the shared `MeasuredQuantity` model (time / speed / both) with
+an independent fixed target, per-side tolerance and classification per quantity;
+centralized eligibility, deviation and classification in `src/lib/measurement/`; pure
+operations to build a stone and to complete one missing measurement on one explicitly
+identified stone; plan configuration/snapshot/mapping carry-through; measurement-aware
+migration that leaves every legacy repair rule untouched; strict validation at the
+repository and cloud boundaries; and version-aware cloud serialization.
+
+### Blocking release gate: deployed old clients
+
+An already deployed old client stops its **entire** restore pass on a record whose
+schema version it does not recognize, and nothing in this checkout can retroactively
+change that on an installation already in the field. A wire-version-2 record is
+therefore only safe to create once the rollout/update policy guarantees no old client
+will attempt to restore it.
+
+This is a **release gate**, not permission to silently discard unsupported records.
+Stage A was harmless on its own, because no user-reachable path could create such a
+record. **Stage B removes that protection**: a Speed, Both or asymmetric-tolerance
+configuration is now reachable from ordinary setup, so a wire-version-2 record can be
+created by a person using the app. The gate is therefore now live and must be resolved
+before this is deployed — Stage B authorizes local implementation and testing only.
+Use disposable local test accounts for version-2 records; do not create them in real
+production accounts.
+
+### Delivered in Stage B
+
+Setup and capture UI for measurement selection and targets; the compact tolerance
+summary and its Adjust editor with unit-safe templates (built-in values and saved
+templates in one list, replacing the Standard/Tight/Custom preset row); the
+asymmetric-tolerance reveal; a template editor that can now create and edit speed and
+per-side templates while a saved template's quantity stays immutable; the plan step
+editor's measurement carry-through in both directions; missing-measurement completion
+against an explicitly selected stone; metric-specific result *presentation* with
+per-quantity denominators; and the contextual help copy
+(`measuredQuantitiesExplanation`).
+
+### Still outstanding after Stage B
+
+- **Speed has no chart of its own.** The trend, target-error and scatter charts all
+  plot a release time against a time target. A speed view therefore shows figures with
+  no charts rather than a relabelled seconds axis. Worth building a speed counterpart.
+- **Missing-measurement completion is scoped to the CURRENT training.** Every block of
+  the active session is covered, including completed ones, so moving on to the next
+  exercise does not strand a half-measured stone. An ARCHIVED session is deliberately
+  outside it — that is the boundary between completing a missing measurement and
+  general historical editing, which this feature does not introduce.
+- **No automatic speed measurement.** No supported device reports speed; a time is
+  never converted into one. Unchanged by Stage B and not a defect.
+- **Real-device iOS/TCi acceptance** and mobile visual validation remain their own
+  evidence, reported separately from automated tests.
+
+### Current invariants worth knowing
+
+- **Validating the persisted representation is separate from intentional recovery.**
+  Two distinct conditions, because they answer different questions:
+  `sessionMeasurementStateIsCanonical` (terminal cloud records) requires that reading a
+  measurement-aware session back changes *nothing*, which is exactly what the cloud
+  reader enforces; `sessionMeasurementStateIsRestorable` (local storage) additionally
+  tolerates the one documented recovery transition — a Capture Sequence still
+  `running` is paused on load (ADR-0006). A running sequence is valid local state, not
+  malformed data, so active training saves immediately and every accepted result is
+  durable before capture pauses or completes. Required structure — containers,
+  entries, identities, references, enums, plan-execution state — is validated before
+  any repair can alter it, and legacy sessions keep their ADR-0005 rules. Finishing a
+  training now actually ends an active Capture Sequence, as its confirmation always
+  promised, so archived records are genuinely terminal.
+- **The persisted representation is the authority on its own property order.**
+  A terminal cloud record is identified by the SHA-256 of its exact payload bytes, and
+  both `reconcile` and the restore pass compare those bytes. Property order is
+  therefore part of the record contract, and two guarantees must hold at once:
+
+  1. A **new** record stays stable through every later domain transition, archive,
+     reload and synchronization.
+  2. An **existing authoritative** payload — including one written by an earlier
+     producer whose field order differed — comes back byte-for-byte identical, with
+     its digest intact, through deserialize, local persistence, reload, reconciliation
+     and fresh-device restore.
+
+  Both follow from one rule, applied on **load**: a Session is restored in the order it
+  was stored in (`preserveStoredSessionOrder`, `src/lib/measurement/canonicalSession.ts`).
+  Re-serializing it therefore reproduces exactly the bytes it came from. A brand-new
+  Session has no stored representation yet, so the order its producers chose becomes
+  authoritative on first write and is preserved from then on — which is why later
+  transitions such as `addTrainingBlock` appending `completedAt`, a plan attaching
+  before a capture sequence, or `pauseCaptureSequenceWithError` adding `lastError`
+  can no longer destabilise it.
+
+  Writes and `serializeTrainingSession` impose **no** ordering of their own. Nothing is
+  re-sorted, re-hashed or rewritten, and no value is ever taken from the stored shape:
+  values always come from migration, so a genuine edit, a legacy repair or the
+  running-to-paused recovery transition still changes the content and is still detected
+  as a conflict. Order is only ever taken from a stored entry with the same record id,
+  so one session's layout can never be imposed on another's.
+
+  `src/lib/measurement/canonicalShape.ts` keeps freshly constructed Shots, Blocks and
+  plan executions in the order migration emits. That is consistency for new records,
+  not the correctness mechanism.
+- **Unreadable is not absent.** Training Plan and tolerance-template storage report a
+  protected read failure for unparseable, unknown-version or malformed-envelope data,
+  and for a plan library whose steps migration would not carry across losslessly —
+  a dropped plan or a minted step identity. A plan that is merely *semantically*
+  misconfigured stays readable and editable; that distinction is deliberate.
+  leaving the stored bytes intact; genuine absence stays writable. This matters because
+  the ordinary save effect writes the loaded value straight back.
+- **Write order is fixed at submission, never at completion.** A Session object is
+  given its position when it is committed (`commitSession`) or, for the objects React
+  produces from a `setCurrentSession` updater, when its write is submitted — in both
+  cases before any asynchronous wait. Settlement only reads that position; it never
+  invents one, so an older snapshot whose write happens to finish later can never
+  outrank a transition committed while it was in flight. A write may only speak for a
+  transition it actually contains.
+- **One tolerance drives both the number and the words.** The effective per-side
+  tolerance reaches labels, explanations and chart reference bands across the live
+  view, the per-block history panels and the expanded session summary under Analyze,
+  so a displayed cutoff cannot contradict a displayed classification. A selection whose
+  blocks differ names no shared cutoff at all, and does not claim its rates come from a
+  representative default — they are, and always were, computed per block.
+
+### Known Stage A limitations
+
+- An asymmetric tolerance is **not** a backwards-compatible addition. Because the cloud
+  wire version follows the presence of `measurement`, a time-only block that needs an
+  asymmetric tolerance serializes as version 2 and carries exactly the same old-client
+  rollout cost as speed does. There is no way to express an asymmetric tolerance on the
+  version-1 shape, because `accuracyThresholds` is structurally a symmetric pair.
+- The same is true of an **unmaterialised plan step**: finishing a mixed plan before
+  reaching its speed (or asymmetric) step still archives that step's configuration, so
+  the archived Session is version 2 even though every block in it is legacy. This is
+  deliberate — an old client's plan validator cannot read that step — and it widens the
+  rollout gate to mixed plans, not only to trainings that recorded speed.
+- Unknown or future **template/plan storage is now protected** rather than wiped. An
+  athlete whose storage was written by a newer build sees those domains reported as
+  unreadable until that build is available again; the stored bytes are preserved and
+  unrelated domains keep working. This is a deliberate change from the previous
+  full-wipe gate, which silently discarded such data on the next save.
+- An explicit Standard/Tight threshold *comparison* override in History deliberately
+  applies symmetrically to every block, because that is what the user selected. Only
+  "original" mode preserves a block's own asymmetry — this is intended, not a gap.
+- Every template shape this app stores — seconds or m/s, symmetric or per-side — can
+  be created, selected and edited through the Stage B per-side editor. A template is
+  only ever offered where the destination can actually represent it: Variable and
+  Blind Weight keep the legacy time-only representation, which has nowhere to store a
+  per-side tolerance, so an asymmetric template is withheld there rather than applied
+  and silently collapsed.
+- Speed tolerance defaults (±0.05 / ±0.10 m/s) are adjustable product starting values,
+  **not** validated elite, scientific or federation norms.
+- **Unfixed in production:** an unhandled rejection is produced inside
+  `@supabase/supabase-js` + `@supabase/auth-js` whenever credential storage fails.
+  `createClient` subscribes via `_listenForAuthEvents()`, and `onAuthStateChange`
+  starts an IIFE it never awaits and never attaches a handler to. The adapter must keep
+  throwing (resolving instead would make the SDK report a clean "no session" over a
+  failed store), and application code holds no reference to that promise, so **at
+  runtime the rejection still escapes to the host** — a console error in a browser.
+  Nothing in this repository makes it safe. The test file
+  `credentialHealthAuthIntegration.test.ts` only stops that one known escape from
+  passing verification silently: it captures rejections for that file, judges them in
+  `afterAll` AFTER all asynchronous work has drained, requires every one to be our own
+  `CredentialStorageError`, and removes its listener in a `finally` so a failed
+  assertion cannot leak it. Any unexpected rejection — including one arriving late
+  during the drain — fails the run. **This is test interception, not production error
+  handling**, and it is not evidence of real-device behaviour.
 
 ---
 
@@ -1115,6 +1298,43 @@ device's trusted offline Profile state; the final commercial name of the paid pe
 video/sensor/AI storage entitlements, quotas and retention; the exact shared Team-result
 anonymisation and participant-notification behaviour on deletion; minor/guardian workflows;
 billing provider, pricing and market.
+
+---
+
+## Cloud sync for training plans and ongoing training
+
+**Requested feature — recorded 2026-09-29; not implemented.** Saved training plans
+should be available under the same Profile across Web and iOS, with the shared design
+also supporting a future Android app. Recorded training data should be backed up
+without requiring the user to successfully finish or archive the training first.
+
+**Current gap:** authored Training Plans and the current Training Session are stored
+locally in separate browser/app containers. Signing into the same account in the iOS
+app does not transfer them from Brave. Archived-session cloud sync does not cover
+these records. Their absence on another device is not evidence that the original
+local data was lost; the reported training's actual recoverability remains unverified.
+
+**Feature scope to specify:**
+
+- Profile-owned cloud sync and restore for saved Training Plans.
+- Cloud backup of ongoing Training Sessions, including recorded shots and plan
+  progress, while retaining offline local saving.
+- Safe adoption of existing **Profile-scoped** browser-local plans and ongoing
+  training into the cloud path, preserving the source until transfer is verified.
+  This does not reverse B0.3's retirement of disposable, identity-unscoped test data.
+- Clear distinction between data saved on this device, awaiting sync, successfully
+  synced, and affected by a sync error.
+
+**Open before implementation:** conflict rules for simultaneous edits, ownership and
+recovery when continuing a training on another device, and the migration/integrity
+model. Cloud backup alone does not authorize transferring live capture or BLE
+ownership. **P2 was answered on 2026-09-29: no browser-only-data transfer in the first
+mobile pilot** — see [Mobile App Migration §7.5](MOBILE_APP_MIGRATION.md#75-p2-answered-2026-09-29-no-browser-transfer-in-the-first-pilot).
+That answer settles the *transfer* question only. **This cloud-sync feature for authored
+plans and other local-only domains remains a separate, unscheduled backlog item** whose own
+inclusion is not decided here, and P2 neither schedules nor blocks it. P2 also does **not**
+waive the in-app engine migration (P6 / Stage M3b), and does not authorize deleting browser
+data. This backlog entry does not mark M3 or any cloud implementation stage complete.
 
 ---
 
@@ -1428,6 +1648,64 @@ remain available only for future content whose rights require an audience restri
 
 ## External timing: Brower TCi discovery stage
 
+### Immediate priority: assisted Brower training pilot (2026-09-30)
+
+**Implemented 2026-09-30 (ADR-0050); NOT hardware-accepted.** The workflow below is built
+in the installed iOS application: connect inside Training and confirm setup. Filtered
+Back–Hog values now record automatically; unfiltered contexts retain manual selection. The decoder reproduces all twenty cumulative values of the archived
+three-packet fixture and the ten CSV comparisons as automated tests, against a **fake**
+transport. **Live two-gate behaviour remains unverified** until the
+[physical-device checklist](BROWER_INTEGRATION_STATUS.md#physical-device-checklist-for-the-assisted-capture-pilot)
+passes. This does not pass Gate C, complete M4, or enable native storage. The deferred
+items below are unchanged by it.
+
+**Original approved scope:** extend the installed application, not a
+new test app. One athlete, one TCi, two light gates in CHRON; the operator reports that
+successive attempts already work without pressing New. The first pilot may require one
+tap to accept a proposed time, avoiding transcription. Automatic discrimination between
+attempts, rest intervals and accidental triggers is deferred. Connect first; require an
+explicit apparatus-ready confirmation before offering new candidates. Pause/re-arm on
+setup changes, context changes, backgrounding or disconnection. Acceptance is always
+explicit and belongs to the current training capture context.
+
+The canonical bounded exception to the full M4 prerequisites and its evidence limits are
+in [Brower Integration Status](BROWER_INTEGRATION_STATUS.md#assisted-training-pilot-decision-2026-09-30).
+Keep native-storage activation and storage diagnostics off in the training build. Use the
+existing persistence and sync path; do not reset, reinstall or migrate existing data.
+This accepts the existing WebView-storage limitation for the pilot, not a new durability
+or background-sync guarantee. Offer the existing CSV export after training.
+
+| Deferred item | Impact / current containment | Completion evidence required |
+| --- | --- | --- |
+| B-P0: live hardware acceptance of the pilot | **The pilot is implemented but unproven against the device.** Automated coverage uses a fake transport and proves application logic only. The user reports a successful two-gate training session on 2026-10-01; that is a practical use report, not a checklist pass, and no per-item outcome or observation collection was recorded. | The seven-item physical-device checklist in Brower Integration Status, on a real TCi with two gates, recorded as a new observations collection. |
+| B-P5: appendix association rests on order plus a structural check | Appendix packets carry no header. Association is arrival order after a declared count, plus a check that the packet continues the record's cumulative sequence; a failed check abandons the record. A packet that can be both a selectable base and a continuing appendix is explicitly rejected. The bounded recovery in ADR-0050 retains arming while awaiting an unambiguous full same-record snapshot; it does not resolve packet identity. Persistent ambiguity can leave times unavailable, and New during recovery requires reconnect/re-arm. The 2026-09-30 Manual Start export reproduces this at splits 8/9 and 16; light-gate behaviour is still unverified. These checks do not establish packet identity: an empty-base interpretation is not distinguishable from some legitimate appendices, and other structural mis-associations remain a protocol risk. | Live multi-split captures across both appendix boundaries, including interleaved base-packet updates, confirming the ordering assumption holds on real firmware. |
+| B-P6: baseline completeness cannot be proved | Arming requires at least one complete observation and no unfinished assembly; assemblies begun before arming cannot offer candidates. The baseline still covers only what one connection observed. A record first reported after arming cannot be proved to post-date it; setup confirmation and review/Undo are the containment; freshness is still not proved, and the panel states what the baseline holds rather than implying completeness. | Understand when the timer first notifies an existing record after a connection, then decide whether any stronger rule is warranted. |
+| B-P1: automatic shot selection and broader plausibility | Back–Hog now filters by the existing sequence Shot Type: Draw 3–5 s, Takeout 2–4 s inclusive, before automatic recording after setup confirmation. This hides out-of-range returns but can save an in-range false trigger, correctable through existing Undo/deletion. No filter is invented for Hog–Hog or unclassified Variable Weight. | Verify these windows on hardware; specify configurable ranges and remaining contexts. Automatic pairing and missed/extra-trigger recovery require separate evidence. |
+| B-P2: full protocol, record lifecycle and recovery | No automatic New, memory replay or silent rollover; bounded same-record ambiguity recovery only (ADR-0050). Reject incomplete/ambiguous records and visibly pause on reset, exhaustion or loss of continuity. Full Gate C remains partial. | Verify complete live record assembly, repeats/corrections, 20-split limit, reset/overwrite and reconnection; approve recovery policy. |
+| B-P3: background and Android capture | First pilot is foreground iOS only; pause on background/lock/disconnect. Keep transport behind a shared interface. | Decide P3, implement lifecycle support and independently test each platform on hardware. |
+| B-P8: Release Times / Auto Capture layout cleanup | Only the Brower panel was compacted on 2026-10-01 (one Details disclosure, no stacked explanatory boxes in the normal state). The surrounding Active Training screen — Auto Capture's own controls, sequence progress, the shot list and the adjacent analytics — still carries permanent explanation and competing surfaces on a ~390 px viewport. | Apply the same progressive-disclosure pass to the rest of the Release Times screen against `docs/DESIGN_SYSTEM.md`, with rendered coverage and a real-device visual check. |
+| B-P7: deletion versus capture progress | Existing Delete removes the shot but does not rewind Capture Sequence progress; Undo Last Captured Shot does rewind the last capture. Repeated packets recreate neither. | Decide and test correction of older captured shots and sequence progress without guessing historical handle/target state. |
+| B-P4: other capture contexts | Pilot is Training Capture Sequence only; no Assessment, Blind Weight or team capture integration. | Separate scoped integration through existing ownership and prediction-lock rules. |
+| S-P1: protected credential dependency | Audited candidates cannot prove missing versus failed reads. New composition stays disabled and activation unavailable. | Suitable binding with per-item absence/error evidence, tested native failure semantics and independent review. No claim that every possible dependency was exhausted. |
+| S-P2: credential-health handling | New restore path maps a latched credential fault to temporarily_unavailable; the coordinator can admit correlated trusted state as ready_offline. An authenticated session returns before that health check; the gate has no post-readiness health subscription. Native activation remains blocked. | End-to-end tests with a trusted identity and a standing fault; separate storage failure from offline eligibility; decide mid-session UX before activation. |
+| S-P3: composition exceptional paths | Credential-store construction is outside the establishment try/catch; a throw after opening the store can leave it unclosed and the ownership promise rejected. Inactive in the default build. | Inject factory throws and verify closure, contained failure and retry ownership; complete lifecycle review before activation. |
+| S-P4: verification debt | **Resolved for the suite; one production limitation stands.** The root suite exits 0 and the Playwright suite runs against the established disposable local database — neither is blocked. What remains is a real, unfixed runtime behaviour, not a test problem: `@supabase/supabase-js` subscribes via `_listenForAuthEvents()` and `@supabase/auth-js`'s `onAuthStateChange` starts an un-awaited IIFE, so a credential-storage failure produces an unhandled rejection the application holds no reference to. | Keep the fail-closed adapter as is. `credentialHealthAuthIntegration.test.ts` captures rejections for that file, judges them in `afterAll` after asynchronous work drains, requires each to be our own `CredentialStorageError`, and removes its listener in a `finally` — any unexpected or late rejection fails the run. That is test interception, not runtime handling. |
+| S-P5: lossless migration and activation | No cutover; preserve all local data. Existing M3b4 provenance/generation blockers, two-store credential transfer and interrupted commits remain open. | Close the canonical M3b4 design items, verify migration/recovery and physical-device acceptance before changing the default store. |
+| M-P1: remaining mobile delivery | Full native OAuth, background scope, production identity/distribution, Android, deferred team export and storage diagnostic removal/restriction remain in their existing stages. | Complete the respective migration acceptance gates; do not call the assisted pilot full mobile completion. |
+| C-P1: cloud coverage and refresh | Only existing synchronised domains use the current sync path. Local plans/drafts and cross-device UI refresh are not solved by BLE or SQLite. | Separate domain sync and refresh specifications, offline/reconnect and cross-device tests. |
+
+**Pilot blockers cannot be deferred:** wrong decoded values, ambiguous packet assembly,
+duplicate acceptance, attribution to another profile/session/block/sequence, hidden save
+failure, or a build that cannot preserve existing data. This table postpones unrelated
+work; it does not grant a clean review to the entire working tree.
+
+Independent check on 2026-09-30: root/mobile typechecks and lint passed; Next and default
+mobile builds passed (Next needed network access for its Google Fonts download). That
+check predates the S-P4 row above: the credential-health escape it observed is now
+contained and asserted at the test boundary, and the suite exits 0. No native rebuild,
+signing or installation was performed in that review, and the default mobile build was
+not synced to the device — **real-device acceptance is still unestablished.**
+
 **State:** Stage 0 (hardware discovery) is **implemented, development-only, and under
 way — not complete**. As of the 2026-09-25 test collection against the real timer, Gates A and B
 in `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` are **demonstrated**, Gate C is
@@ -1443,10 +1721,14 @@ and received real Athlete Data notifications, and the exported bytes support the
 Chron base-packet fields when compared against the operator's reported display values. That
 is **one test collection**, not a reproduced result.
 
-**That is evidence, not an integration.** The application still contains no decoder, no
-production transport and no capture path from the device: the analysis was done offline
-against exported files, and the diagnostic creates no `TimingResult`, Shot, Session,
-Assessment or Exercise result. See `docs/BROWER_INTEGRATION_STATUS.md` (canonical protocol,
+**That evidence is what the assisted capture pilot was built on, and it is still not a
+completed integration.** The **development-only diagnostic** described above remains
+exactly what it was: it has no decoder and creates no `TimingResult`, Shot, Session,
+Assessment or Exercise result, and its protocol analysis was done offline against exported
+files. Separately, the **assisted capture pilot** (ADR-0050) does now add a narrow CHRON
+decoder, a production BLE transport and a setup-armed capture path into Training
+Capture Sequences — implemented, covered against a fake transport, and **not
+hardware-accepted**. See `docs/BROWER_INTEGRATION_STATUS.md` (canonical protocol,
 findings and their limits), `docs/hardware/brower/observations/2026-09-25-chron/`
 (archived evidence) and `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md` (stage scope,
 desktop procedure, acceptance gates).
@@ -1529,7 +1811,8 @@ answered because the diagnostic exists:
 
   **The application's own mobile migration is now designed** in
   `docs/MOBILE_APP_MIGRATION.md` — the single canonical migration document, covering iOS
-  and Android as one shared architecture. **Nothing in it is implemented.** It records the
+  and Android as one shared architecture. M1, M2a and M3a are implemented; M3b remains
+  incomplete and disabled by default (see Mobile delivery below). It records the
   four boundaries the prototype sidestepped (API origin and trust boundary, native OAuth
   callback handling, the separate WebView storage container, offline cold start), a
   recommended build arrangement, bounded implementation stages, and five open product
@@ -1670,12 +1953,52 @@ needs to make, not something engineering can resolve by itself:
    bounded stages are in `docs/MOBILE_APP_MIGRATION.md`. **Stage M1 — the shared
    Capacitor/Vite client, the bundled asset build and a generated iOS project that launches
    as far as the real identity gate — is implemented and verified to an unsigned native
-   build; physical-device acceptance is still outstanding, and M2–M6 are not started.** No
-   file under `src/` changed and the Web build is unaffected. Five
-   product decisions remain genuinely open, each blocking a named stage:
+   build.** Stages **M2a** (configured native API origin and server CORS) and **M3a** (native
+   file export and external public links) are implemented and locally verified; full M2, M3
+   and M5 are not. Physical-device acceptance is partly user-reported and otherwise
+   outstanding.
+   **Two of the product decisions are now ANSWERED (2026-09-29):** (b) **P2 — no
+   browser→app transfer in the first pilot**; already-synchronised cloud records restore
+   through the existing path, this is not authorisation to delete browser data, and it does
+   **not** cover engine migration inside the installed native app, which remains required;
+   and **P6 — durable native local storage is adopted** behind the existing persistence
+   boundary rather than accepting `localStorage` eviction. **P6's direction is decided; its
+   implementation and acceptance gate are NOT complete** — the design is Stage M3b0 and
+   [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration
+   protocol (decision 7) is still an unresolved design** while its other decisions are
+   implemented. **Stages M3b1-M3b3 are implemented (2026-09-30):** the SQLite engine is
+   pinned, a native `RemovableStorageAdapter` exists behind the unchanged boundary, an
+   off-by-default in-app diagnostic panel exercises it against a dedicated synthetic database
+   (the user decided the evidence is gathered in the existing app, not a separate harness),
+   and — under a **second, independent** off-by-default build flag — the five composition
+   seams, identity injection, a **protected credential store** (S2: Keychain / Android
+   Keystore, decided 2026-09-30) and a readiness gate exist. **All existing local data is
+   preserved; a pilot reset is rejected; existing data must be migrated and verified before
+   cutover.** **User-reported device evidence now exists** for the configured pragmas and for
+   restart recovery, and **not** for failed/uncertain commits, reopen-after-interruption,
+   backup/restore, power-loss survival, any capacity limit or Android — so the engine is
+   settled for the adapter while **source retirement stays unjustified** and no operating
+   envelope is recorded. **Nothing is migrated and nothing is cut over:** composition asks an
+   activation authority that is unavailable, so a flag-enabled build **blocks rather than
+   mounting**, and M3b is not complete. **A SECOND barrier now stands alongside it:** the
+   credential contract requires item-specific missing-versus-failed evidence, **no audited
+   Capacitor-8 dependency supplies it** (iOS discards `KeychainSwift`'s `lastResultCode`;
+   Android reports Keystore key loss over retained ciphertext as nothing), and an earlier
+   readability-marker inference is withdrawn as invalid — so the **native credential path is
+   closed** and that requirement is explicitly NOT complete. The normalised verdict is consumed
+   by `supabaseAuthService`, which refuses to report `no_session` or a completed sign-out while
+   a credential failure stands. **Three open engineering design
+   items block the migration stage (M3b4)**: provenance reconciliation between two differing
+   installation store ids observed before activation; a pre-activation record with a missing
+   source marker, indistinguishable from later source clearing and therefore blocked
+   conservatively; and the human-authorised resolution of a blocked source-generation
+   divergence. **Two further migration requirements follow from S2** and are not additions to
+   that count: transferring the credentials already in WebView storage, and handling the
+   interruption where one of the two separate stores is written and the other is not. Cloud
+   synchronisation of
+   authored Training Plans and other local-only domains remains a separate, unscheduled
+   feature. **Three product decisions remain genuinely open**, each blocking a named stage:
    (a) long-term Web **and** mobile support versus eventual mobile-only delivery;
-   (b) whether the first mobile pilot must transfer browser-local drafts and
-   unsynchronised data — the recommendation is **no**, restore from cloud instead;
    (c) whether production measurement must continue during backgrounding or screen lock,
    which decides whether an iOS background Bluetooth mode is declared at all;
    (d) production app identity, release configuration and distribution commitments —

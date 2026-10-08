@@ -41,6 +41,23 @@ export async function goToAnalyze(page: Page) {
   await page.getByRole("tab", { name: "Training" }).waitFor();
 }
 
+/**
+ * Opens the Session Management disclosure and starts a new session.
+ *
+ * Stage B moved the infrequent management actions (export, and starting a new session
+ * without a finish summary) behind one disclosure, leaving Finish Training as the
+ * ordinary way to end a training. These helpers archive a session as test SETUP, where
+ * the no-summary path is what the following assertions expect.
+ */
+export async function openSessionManagement(page: Page) {
+  await page.getByText("Session Management").click();
+}
+
+export async function startNewSessionFromManagement(page: Page) {
+  await openSessionManagement(page);
+  await page.getByRole("button", { name: "Start New Session" }).click();
+}
+
 export async function goToSettings(page: Page) {
   await navigateTo(page, "Settings");
   await page.waitForSelector("text=Data Management");

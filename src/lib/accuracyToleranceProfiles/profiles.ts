@@ -2,7 +2,14 @@
 // validation as Training Blocks and Training Plan Steps (validateAccuracyThresholds,
 // src/lib/accuracyThresholds.ts) rather than inventing a second definition of
 // On Target/Acceptable — see docs/adr/0008-accuracy-thresholds-are-snapshotted-per-training-block.md.
-import { validateAccuracyThresholds } from "../accuracyThresholds";
+import type { MeasuredQuantity, QuantityTolerance } from "../../types";
+import { cloneQuantityTolerance } from "../measurement/quantities";
+import {
+  isSymmetricTolerance,
+  quantityUnitLabel,
+  symmetricTolerance,
+  validateQuantityTolerance,
+} from "../measurement/tolerance";
 import { err, ok, type AccuracyToleranceProfileOutcome } from "./errors";
 import type {
   AccuracyToleranceProfile,
@@ -33,8 +40,17 @@ export function validateProfileName(
 export type AccuracyToleranceProfileInput = {
   id?: string;
   name: string;
-  onTarget: number;
-  acceptable: number;
+  /** Defaults to "time" so every existing call site keeps its exact meaning. */
+  quantity?: MeasuredQuantity;
+  /**
+   * Either form may be supplied. The symmetric `onTarget`/`acceptable` pair is what
+   * the current (time-only) UI produces and keeps working unchanged; `tolerance`
+   * carries an explicit per-side template. Supplying both is a contradiction and is
+   * rejected rather than one being silently preferred.
+   */
+  onTarget?: number;
+  acceptable?: number;
+  tolerance?: QuantityTolerance;
   createdAt?: string;
 };
 
@@ -50,22 +66,97 @@ export function buildAccuracyToleranceProfile(
   const nameResult = validateProfileName(input.name);
   if (!nameResult.ok) return nameResult;
 
-  const thresholdsResult = validateAccuracyThresholds(
-    input.onTarget,
-    input.acceptable
-  );
-  if (!thresholdsResult.valid) {
-    return err("invalid_thresholds", thresholdsResult.error);
+  const suppliedSymmetric =
+    input.onTarget !== undefined || input.acceptable !== undefined;
+
+  if (suppliedSymmetric && input.tolerance !== undefined) {
+    return err(
+      "invalid_thresholds",
+      "Supply either a symmetric pair or per-side tolerances, not both."
+    );
+  }
+
+  const candidate = input.tolerance
+    ? input.tolerance
+    : symmetricTolerance(input.onTarget as number, input.acceptable as number);
+
+  const toleranceResult = validateQuantityTolerance(candidate);
+  if (!toleranceResult.valid) {
+    return err("invalid_thresholds", toleranceResult.error);
   }
 
   return ok({
     id: input.id ?? crypto.randomUUID(),
     name: nameResult.value,
-    onTarget: thresholdsResult.onTarget,
-    acceptable: thresholdsResult.acceptable,
+    quantity: input.quantity ?? "time",
+    // A deep copy, so editing or deleting the caller's object later cannot reach into
+    // the stored template — the same isolation rule block snapshots follow.
+    tolerance: cloneQuantityTolerance(toleranceResult.tolerance),
     createdAt: input.createdAt ?? now,
     updatedAt: now,
   });
+}
+
+/**
+ * Whether a template may be applied to a block measuring `quantity`. Units are never
+ * interchangeable: selecting a speed template for a time measurement (or the reverse)
+ * would silently reinterpret its numbers, so it is refused rather than converted.
+ */
+export function isProfileCompatibleWithQuantity(
+  profile: AccuracyToleranceProfile,
+  quantity: MeasuredQuantity
+): boolean {
+  return profile.quantity === quantity;
+}
+
+export function accuracyToleranceProfilesFor(
+  profiles: AccuracyToleranceProfile[],
+  quantity: MeasuredQuantity
+): AccuracyToleranceProfile[] {
+  return profiles.filter((profile) =>
+    isProfileCompatibleWithQuantity(profile, quantity)
+  );
+}
+
+/**
+ * The templates a LEGACY, one-field-per-band control can represent: time templates
+ * whose bands are symmetric. An asymmetric template is stored and preserved faithfully
+ * but is not offered by a control that could only show half of it.
+ *
+ * Stage B's per-side editor (`QuantityToleranceEditor`) represents every stored shape
+ * and applies its own compatibility rule, so it does not use this. Retained for any
+ * surface that genuinely still has one field per band.
+ */
+export function legacySelectableProfiles(
+  profiles: AccuracyToleranceProfile[]
+): AccuracyToleranceProfile[] {
+  return accuracyToleranceProfilesFor(profiles, "time").filter((profile) =>
+    isSymmetricTolerance(profile.tolerance)
+  );
+}
+
+/** The symmetric seconds pair a legacy-shaped consumer needs, or undefined. */
+export function profileSymmetricPair(
+  profile: AccuracyToleranceProfile
+): { onTarget: number; acceptable: number } | undefined {
+  if (!isSymmetricTolerance(profile.tolerance)) return undefined;
+  return {
+    onTarget: profile.tolerance.onTarget.lower,
+    acceptable: profile.tolerance.acceptable.lower,
+  };
+}
+
+/** A factual, unit-bearing one-line description of a template. */
+export function profileToleranceLabel(profile: AccuracyToleranceProfile): string {
+  const unit = quantityUnitLabel(profile.quantity);
+  const { onTarget, acceptable } = profile.tolerance;
+
+  const band = (lower: number, upper: number) =>
+    lower === upper
+      ? `±${lower.toFixed(2)}${unit}`
+      : `-${lower.toFixed(2)} / +${upper.toFixed(2)}${unit}`;
+
+  return `On Target ${band(onTarget.lower, onTarget.upper)} · Acceptable ${band(acceptable.lower, acceptable.upper)}`;
 }
 
 export function findAccuracyToleranceProfile(
@@ -111,6 +202,9 @@ export function duplicateAccuracyToleranceProfile(
     ...profile,
     id: crypto.randomUUID(),
     name: `${profile.name} (Copy)`,
+    // A spread copies the nested tolerance by REFERENCE, so editing the duplicate
+    // would silently edit the original — and anything already snapshotted from it.
+    tolerance: cloneQuantityTolerance(profile.tolerance),
     createdAt: now,
     updatedAt: now,
   };

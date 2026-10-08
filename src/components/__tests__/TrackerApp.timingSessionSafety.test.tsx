@@ -174,7 +174,7 @@ describe("TrackerApp — Timing Simulator / manual entry safety after a Session 
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add Shot" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save Shot" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(screen.queryByText("1 shot total")).toBeNull();

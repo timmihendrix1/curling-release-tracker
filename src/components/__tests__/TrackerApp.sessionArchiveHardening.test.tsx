@@ -80,7 +80,7 @@ async function startTrainingAndAddOneShot() {
   fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
     target: { value: "3.80" },
   });
-  screen.getByRole("button", { name: "Add Shot" }).click();
+  screen.getByRole("button", { name: "Save Shot" }).click();
   await waitFor(() => screen.getByText("1 shot total"));
 }
 
@@ -126,7 +126,7 @@ describe("Session archive transition — single-flight guard", () => {
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
     });
-    screen.getByRole("button", { name: "Add Shot" }).click();
+    screen.getByRole("button", { name: "Save Shot" }).click();
     await waitFor(() => screen.getByText("1 shot total"));
 
     openStartNewSessionDialog();
@@ -444,7 +444,7 @@ describe("Session archive transition — ordinary persistence still works", () =
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.90" },
     });
-    screen.getByRole("button", { name: "Add Shot" }).click();
+    screen.getByRole("button", { name: "Save Shot" }).click();
     await waitFor(() => screen.getByText("1 shot total"));
 
     await waitFor(() => expect(saveCurrentSpy).toHaveBeenCalled());

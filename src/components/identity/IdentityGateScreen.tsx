@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useIdentity } from "./IdentityProvider";
+import ExternalDocumentLink from "../platform/ExternalDocumentLink";
 
 const fieldClassName =
   "min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:bg-slate-100";
@@ -71,14 +72,16 @@ function GateFrame({ children }: { children: React.ReactNode }) {
 
 function LegalLink({ href, label, version }: { href: string; label: string; version: string }) {
   return (
-    <a
+    // `href` is the exact versioned destination trusted server metadata
+    // provided. Stage M3a only changes HOW it opens on native (the platform
+    // browser, not the app's own WebView); the destination itself is passed
+    // through untouched, so the specific document version is preserved.
+    <ExternalDocumentLink
       href={href}
-      target="_blank"
-      rel="noreferrer noopener"
       className="inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
     >
       {label} ({version})
-    </a>
+    </ExternalDocumentLink>
   );
 }
 
@@ -133,14 +136,12 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
       {privacyHref && privacyVersion && (
         <p className="text-sm text-slate-600">
           Review the current{" "}
-          <a
+          <ExternalDocumentLink
             href={privacyHref}
-            target="_blank"
-            rel="noreferrer noopener"
             className="inline-flex min-h-11 items-center font-medium underline underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
           >
             Privacy Notice ({privacyVersion})
-          </a>
+          </ExternalDocumentLink>
           {" "}before continuing.
         </p>
       )}

@@ -143,13 +143,22 @@ export default function TrainingPlanStepEditor({
       configuration: {
         name: value.name,
         mode: value.mode,
-        measurementMode: value.measurementMode,
-        targetTime: value.targetTime,
+        // Spread conditionally so a speed-only step persists NO timing interval and
+        // NO time target, rather than the explicit `undefined` keys a plain
+        // assignment would leave behind — a step that measures no time has neither.
+        ...(value.measurementMode !== undefined
+          ? { measurementMode: value.measurementMode }
+          : {}),
+        ...(value.targetTime !== undefined ? { targetTime: value.targetTime } : {}),
         variableTargetMode: value.variableTargetMode,
         blindTargetMode: value.blindTargetMode,
         smartRandomMin: value.smartRandomMin,
         smartRandomMax: value.smartRandomMax,
         accuracyThresholds: value.accuracyThresholds,
+        // Without this the step would be saved as ordinary time-only training: the
+        // athlete's Speed or Both choice, its target and its per-side tolerances would
+        // all be silently dropped between configuring the step and executing it.
+        ...(value.measurement ? { measurement: value.measurement } : {}),
       },
     });
   }
@@ -175,6 +184,10 @@ export default function TrainingPlanStepEditor({
         smartRandomMin: initialReleaseStep.configuration.smartRandomMin,
         smartRandomMax: initialReleaseStep.configuration.smartRandomMax,
         accuracyThresholds: initialReleaseStep.configuration.accuracyThresholds,
+        // Reopening an existing step must show what it actually measures. Omitting
+        // this would reset every saved Speed/Both step to Time in the editor, and
+        // saving it again would quietly convert it.
+        measurement: initialReleaseStep.configuration.measurement,
       }
     : undefined;
 

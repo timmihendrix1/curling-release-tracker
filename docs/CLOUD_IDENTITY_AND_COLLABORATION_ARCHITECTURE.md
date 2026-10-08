@@ -333,7 +333,18 @@ flowchart TD
 - `localStorage` remains the sole production local store today. Stage B0.3 scopes every
   sporting repository namespace by canonical `Profile.id`; identity-control records
   remain origin-level records governed by ADR-0025.
-- Supabase Auth provides account authentication.
+  **Stage M3b3 (2026-09-30) does not change this.** A native SQLite store and a separate
+  protected credential store (iOS Keychain / Android Keystore) can now be composed behind the
+  unchanged ADR-0013 boundary, but only under an off-by-default build flag and only after a
+  migration/activation authority reports ready — and the one production authority reports
+  unavailable, because the migration is Stage M3b4 and the cutover is Stage M3b5. A default
+  build contains none of it. See ADR-0049 and `docs/MOBILE_APP_MIGRATION.md` Stage M3b0.
+- Supabase Auth provides account authentication. **Where its session is STORED is now decided
+  (S2, 2026-09-30): a protected store, not the sporting store** — which changes only local
+  credential cleanup. Access revocation stays the durable access barrier (ADR-0025), written
+  first and independent of storage topology, and provider/server revocation stays a network
+  concern. Nothing about that is altered by Stage M3b3, and a credential — present, absent or
+  unreadable — never grants workspace access by itself.
 - PostgreSQL stores cloud records and relationships.
 - Row Level Security enforces access at the database boundary.
 - Supabase Storage may later store media and large raw sensor artefacts.

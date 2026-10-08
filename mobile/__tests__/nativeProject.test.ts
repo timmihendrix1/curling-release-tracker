@@ -64,17 +64,20 @@ describe("Capacitor configuration", () => {
 
 describe("generated iOS project", () => {
   it("declares no background mode", async () => {
-    // P3 is open. `UIBackgroundModes` changes App Review exposure and must not
-    // be declared speculatively; M1 scaffolds the foreground-only scope it
-    // actually exercises.
+    // P3 is still open, and the assisted Brower capture pilot does NOT change
+    // that: it captures in the foreground only and invalidates on backgrounding.
+    // `UIBackgroundModes` changes App Review exposure and must not be declared
+    // speculatively.
     expect(await readInfoPlist()).not.toContain("UIBackgroundModes");
   });
 
-  it("requests no Bluetooth permission", async () => {
-    // Brower capture is Stage M4. A usage-description string here would claim a
-    // capability this build never uses.
+  it("requests exactly the Bluetooth permission the assisted capture pilot uses", async () => {
+    // The pilot connects to a Brower TCi timer from the foreground (ADR-0050), so
+    // the usage description is now a capability the build genuinely exercises.
+    // The deprecated peripheral (advertising) string is still absent: this app
+    // acts only as a central.
     const plist = await readInfoPlist();
-    expect(plist).not.toContain("NSBluetoothAlwaysUsageDescription");
+    expect(plist).toContain("NSBluetoothAlwaysUsageDescription");
     expect(plist).not.toContain("NSBluetoothPeripheralUsageDescription");
   });
 

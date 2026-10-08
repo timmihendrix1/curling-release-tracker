@@ -3,6 +3,8 @@ import type { PlanExecutionState, Shot } from "../../../types";
 import {
   getActiveStepSnapshot,
   getPlanProgressSummary,
+  getPlanStepSummaries,
+  hasNextPlanStep,
   isActiveStepComplete,
   isFinalStep,
   isPlanComplete,
@@ -155,9 +157,59 @@ describe("isActiveStepComplete / isFinalStep / isPlanComplete", () => {
       shots: [shotFor("block-2", 1), shotFor("block-2", 2)],
     });
 
+    // `sessionComplete` records the final step's full planned volume but NOTHING for
+    // step 1, so the plan as a whole was not completed — reaching and finishing the
+    // last step is necessary but never sufficient (see isPlanComplete).
+    const sessionWholePlanComplete = buildSession({
+      activeBlockId: "block-2",
+      blocks: [{ id: "block-1" } as never, { id: "block-2" } as never],
+      shots: [
+        shotFor("block-1", 1),
+        shotFor("block-1", 2),
+        shotFor("block-2", 3),
+        shotFor("block-2", 4),
+      ],
+    });
+
     expect(isPlanComplete(sessionComplete, notFinal)).toBe(false);
     expect(isPlanComplete(sessionIncomplete, finalIncomplete)).toBe(false);
-    expect(isPlanComplete(sessionComplete, finalComplete)).toBe(true);
+    expect(isPlanComplete(sessionComplete, finalComplete)).toBe(false);
+    expect(isPlanComplete(sessionWholePlanComplete, finalComplete)).toBe(true);
+  });
+
+  it("a skipped earlier step prevents the whole plan from being called completed", () => {
+    const execution = planExecution({
+      activeStepIndex: 1,
+      steps: [
+        { step: buildStep({ completion: { type: "shot-count", value: 1 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 1 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
+      ],
+    });
+
+    // Step 1 was left with nothing recorded; step 2 reached its planned volume.
+    const skippedFirst = buildSession({
+      activeBlockId: "block-2",
+      blocks: [{ id: "block-1" } as never, { id: "block-2" } as never],
+      shots: [shotFor("block-2", 1)],
+    });
+    expect(isActiveStepComplete(skippedFirst, execution)).toBe(true);
+    expect(isFinalStep(execution)).toBe(true);
+    expect(isPlanComplete(skippedFirst, execution)).toBe(false);
+
+    // Step 1 ended early (below its planned volume) also prevents the claim.
+    const endedEarly = planExecution({
+      activeStepIndex: 1,
+      steps: [
+        { step: buildStep({ completion: { type: "shot-count", value: 3 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 1 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
+      ],
+    });
+    const partialFirst = buildSession({
+      activeBlockId: "block-2",
+      blocks: [{ id: "block-1" } as never, { id: "block-2" } as never],
+      shots: [shotFor("block-1", 1), shotFor("block-2", 2)],
+    });
+    expect(isPlanComplete(partialFirst, endedEarly)).toBe(false);
   });
 
   it("a deleted shot is reflected immediately (no cached count)", () => {
@@ -191,7 +243,153 @@ describe("getActiveStepSnapshot / getPlanProgressSummary", () => {
     expect(summary.currentStepNumber).toBe(1);
     expect(summary.totalSteps).toBe(2);
     expect(summary.currentStepTitle).toBe("Release Time");
-    expect(summary.currentProgressLabel).toBe("Stone 1 of 2");
+    expect(summary.currentProgressLabel).toBe("1 of 2 planned stones");
     expect(summary.completedStepCount).toBe(0);
+  });
+
+  it("keeps planned volume visible at, below and beyond the planned count", () => {
+    const block = [{ id: "block-1" } as never];
+    const label = (shots: Shot[]) =>
+      getPlanProgressSummary(
+        buildSession({ activeBlockId: "block-1", blocks: block, shots }),
+        planExecution()
+      ).currentProgressLabel;
+
+    expect(label([])).toBe("0 of 2 planned stones");
+    expect(label([shotFor("block-1", 1), shotFor("block-1", 2)])).toBe(
+      "2 of 2 planned stones"
+    );
+    expect(
+      label([shotFor("block-1", 1), shotFor("block-1", 2), shotFor("block-1", 3)])
+    ).toBe("3 of 2 planned stones");
+  });
+
+  it("counts only steps that actually reached their planned volume", () => {
+    // The athlete moved on after one of two planned stones, then recorded both in
+    // step 2. `activeStepIndex` alone would claim the first step was completed.
+    const session = buildSession({
+      activeBlockId: "block-2",
+      blocks: [{ id: "block-1" } as never, { id: "block-2" } as never],
+      shots: [shotFor("block-1", 1), shotFor("block-2", 1), shotFor("block-2", 2)],
+    });
+    const execution = planExecution({
+      activeStepIndex: 1,
+      steps: [
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
+      ],
+    });
+
+    expect(getPlanProgressSummary(session, execution).completedStepCount).toBe(1);
+  });
+});
+
+describe("hasNextPlanStep", () => {
+  it("is true while a later step exists and false on the final step", () => {
+    expect(hasNextPlanStep(planExecution({ activeStepIndex: 0 }))).toBe(true);
+    expect(hasNextPlanStep(planExecution({ activeStepIndex: 1 }))).toBe(false);
+  });
+});
+
+describe("getPlanStepSummaries", () => {
+  it("distinguishes completed, ended-early, empty and never-reached steps", () => {
+    const execution = planExecution({
+      activeStepIndex: 2,
+      steps: [
+        { step: buildStep({ completion: { type: "shot-count", value: 2 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 4 } }), runtime: { kind: "release-timing-block", blockId: "block-2" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 3 } }), runtime: { kind: "release-timing-block", blockId: "block-3" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 6 } }), runtime: undefined },
+      ],
+    });
+    const session = buildSession({
+      activeBlockId: "block-3",
+      blocks: [
+        { id: "block-1" } as never,
+        { id: "block-2" } as never,
+        { id: "block-3" } as never,
+      ],
+      shots: [
+        shotFor("block-1", 1),
+        shotFor("block-1", 2),
+        shotFor("block-2", 1),
+      ],
+    });
+
+    const summaries = getPlanStepSummaries(session, execution);
+
+    expect(summaries.map((summary) => summary.outcome)).toEqual([
+      "completed",
+      "ended-early",
+      "nothing-recorded",
+      "not-started",
+    ]);
+    expect(summaries.map((summary) => summary.volumeLabel)).toEqual([
+      "2 of 2 planned stones",
+      "1 of 4 planned stones",
+      "0 of 3 planned stones",
+      undefined,
+    ]);
+    expect(summaries[3].plannedUnits).toBe(6);
+    expect(summaries[3].actualUnits).toBe(0);
+  });
+
+  it("never reports a step the athlete never reached as completed", () => {
+    const execution = planExecution({
+      activeStepIndex: 0,
+      steps: [
+        { step: buildStep({ completion: { type: "shot-count", value: 1 } }), runtime: { kind: "release-timing-block", blockId: "block-1" } },
+        { step: buildStep({ completion: { type: "shot-count", value: 1 } }), runtime: undefined },
+      ],
+    });
+    const session = buildSession({
+      activeBlockId: "block-1",
+      blocks: [{ id: "block-1" } as never],
+      shots: [shotFor("block-1", 1)],
+    });
+
+    expect(getPlanStepSummaries(session, execution)[1].outcome).toBe("not-started");
+  });
+
+  it("reads a curated Exercise step from its own terminal status, not a stone count", () => {
+    const inProgress = createTechniqueExecution();
+    const completed = createCompletedTechniqueExecution();
+
+    const activeSession = buildSession({
+      id: FIXTURE_SESSION_ID,
+      exerciseExecutions: [inProgress],
+      activeExerciseExecutionId: inProgress.id,
+    });
+    const activeExecution: PlanExecutionState = {
+      sourcePlanId: "plan-2",
+      sourcePlanName: "Technique",
+      activeStepIndex: 0,
+      steps: [{
+        step: buildExerciseStep({ exerciseVersionSnapshot: inProgress.exerciseVersionSnapshot }),
+        runtime: { kind: "exercise-execution", exerciseExecutionId: inProgress.id },
+      }],
+    };
+    expect(getPlanStepSummaries(activeSession, activeExecution)[0].outcome).toBe(
+      "in-progress"
+    );
+
+    const completedSession = buildSession({
+      id: FIXTURE_SESSION_ID,
+      exerciseExecutions: [completed],
+    });
+    const completedExecution: PlanExecutionState = {
+      ...activeExecution,
+      steps: [{
+        step: buildExerciseStep({ exerciseVersionSnapshot: completed.exerciseVersionSnapshot }),
+        runtime: { kind: "exercise-execution" as const, exerciseExecutionId: completed.id },
+      }],
+    };
+    const summary = getPlanStepSummaries(completedSession, completedExecution)[0];
+    // A Technique Exercise records no attempts at all — its status is the only
+    // truthful source, and no planned volume is invented for it.
+    expect(summary.outcome).toBe("completed");
+    expect(summary.actualUnits).toBe(0);
+    expect(summary.plannedUnits).toBeUndefined();
+    expect(summary.volumeLabel).toBeUndefined();
   });
 });

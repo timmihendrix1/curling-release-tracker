@@ -20,6 +20,15 @@ import {
   type AccuracyToleranceProfilesState,
 } from "./persistence";
 import { migrateAccuracyToleranceProfilesState } from "./migration";
+import {
+  accuracyToleranceProfilesStateIsWritable,
+  storedAccuracyToleranceProfilesAreReadable,
+} from "./storedStateValidation";
+
+const UNREADABLE_MESSAGE =
+  "Stored tolerance templates are in a format this version cannot read.";
+const INVALID_WRITE_MESSAGE =
+  "Tolerance templates must each declare a known quantity and a valid per-side tolerance.";
 
 export interface AccuracyToleranceProfilesRepository {
   loadState(): Promise<DomainLoadResult<AccuracyToleranceProfilesState>>;
@@ -45,12 +54,32 @@ export function createAccuracyToleranceProfilesRepository(
       try {
         parsed = JSON.parse(result.value);
       } catch {
-        return loadedAbsent<AccuracyToleranceProfilesState>();
+        // Unparseable is unreadable, NOT absent: reporting absence would hand the
+        // application an empty writable state that its save effect writes straight
+        // back over the original bytes.
+        return loadFailed<AccuracyToleranceProfilesState>(
+          createEmptyAccuracyToleranceProfilesState(),
+          { kind: "unknown", message: UNREADABLE_MESSAGE }
+        );
+      }
+      // An unsupported schema version, or a template whose unit this build does not
+      // know, is PROTECTED rather than silently emptied or shortened — migration's
+      // quarantine would otherwise become permanent data loss on the next save.
+      if (!storedAccuracyToleranceProfilesAreReadable(parsed)) {
+        return loadFailed<AccuracyToleranceProfilesState>(
+          createEmptyAccuracyToleranceProfilesState(),
+          { kind: "unknown", message: UNREADABLE_MESSAGE }
+        );
       }
       return loadedValue(migrateAccuracyToleranceProfilesState(parsed));
     },
 
     async saveState(state: AccuracyToleranceProfilesState): Promise<PersistenceWriteResult> {
+      // Validated BEFORE storage is touched, so an invalid state never replaces a
+      // valid stored one.
+      if (!accuracyToleranceProfilesStateIsWritable(state)) {
+        return { ok: false, error: { kind: "unknown", message: INVALID_WRITE_MESSAGE } };
+      }
       return adapter.set(
         ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
         serializeAccuracyToleranceProfilesState(state)

@@ -23,13 +23,20 @@ import {
   TARGET_ERROR_CATEGORY_LABELS,
 } from "../lib/chartTheme";
 import { formatSigned } from "../lib/timeInput";
-import type { AccuracyThresholds, MeasurementMode } from "../types";
+import type { QuantityTolerance, AccuracyThresholds, MeasurementMode } from "../types";
 import ChartCard from "./ChartCard";
+import { asQuantityTolerance } from "../lib/measurement/tolerance";
 
 type TargetErrorChartProps = {
   points: TargetErrorByShotPoint[];
   /** Only rendered as reference bands when the whole selection shares one set. */
-  thresholds: AccuracyThresholds | null;
+  /**
+   * The tolerance the bars were ACTUALLY classified against — the historical
+   * symmetric pair or a block's own per-side tolerance. `null` when the selection's
+   * blocks disagree, in which case no band is drawn at all (a single band would imply
+   * a shared cutoff that does not exist).
+   */
+  thresholds: AccuracyThresholds | QuantityTolerance | null;
   measurementMode: MeasurementMode;
   context?: ExplanationContext;
   notices?: string[];
@@ -76,6 +83,27 @@ function ChartTooltip({
  * On Target / Acceptable / Major Miss. No per-point labels (mobile-readable
  * with many shots).
  */
+/**
+ * The exact y-axis endpoints of this chart's two reference bands, in Target Error
+ * units (measured minus target), or `null` when no single band applies.
+ *
+ * Exported so the drawn geometry can be asserted directly instead of being
+ * reimplemented by a test — the component renders these values and nothing else.
+ * A negative deviation is judged by the `lower` side and a positive one by `upper`,
+ * so the band spans [-lower, +upper]; a symmetric tolerance produces the same
+ * [-x, +x] band it always did.
+ */
+export function targetErrorBandEndpoints(
+  thresholds: AccuracyThresholds | QuantityTolerance | null
+): { onTarget: [number, number]; acceptable: [number, number] } | null {
+  if (!thresholds) return null;
+  const tolerance = asQuantityTolerance(thresholds);
+  return {
+    onTarget: [-tolerance.onTarget.lower, tolerance.onTarget.upper],
+    acceptable: [-tolerance.acceptable.lower, tolerance.acceptable.upper],
+  };
+}
+
 export default function TargetErrorChart({
   points,
   thresholds,
@@ -84,6 +112,7 @@ export default function TargetErrorChart({
   notices,
 }: TargetErrorChartProps) {
   const isEmpty = points.length === 0;
+  const bands = targetErrorBandEndpoints(thresholds);
 
   return (
     <ChartCard
@@ -103,18 +132,22 @@ export default function TargetErrorChart({
               width={44}
             />
 
-            {thresholds && (
+            {bands && (
               <>
+                {/* Endpoints are the real per-side cutoffs: a bar's colour and the
+                    band it sits in are produced from the same two numbers, so an
+                    asymmetric tolerance can never draw a band that contradicts a
+                    classification. A symmetric tolerance renders exactly as before. */}
                 <ReferenceArea
-                  y1={-thresholds.acceptable}
-                  y2={thresholds.acceptable}
+                  y1={bands.acceptable[0]}
+                  y2={bands.acceptable[1]}
                   fill={TARGET_ERROR_CATEGORY_COLORS.acceptable}
                   fillOpacity={0.06}
                   ifOverflow="extendDomain"
                 />
                 <ReferenceArea
-                  y1={-thresholds.onTarget}
-                  y2={thresholds.onTarget}
+                  y1={bands.onTarget[0]}
+                  y2={bands.onTarget[1]}
                   fill={TARGET_ERROR_CATEGORY_COLORS.on_target}
                   fillOpacity={0.1}
                   ifOverflow="extendDomain"

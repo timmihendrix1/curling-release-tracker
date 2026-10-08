@@ -1,6 +1,7 @@
 import type {
   AccuracyThresholds,
   BlindTargetMode,
+  BlockMeasurementConfiguration,
   BlockMode,
   MeasurementMode,
   Session,
@@ -9,6 +10,8 @@ import type {
   VariableTargetMode,
 } from "../types";
 import { resolveAccuracyThresholds } from "./accuracyThresholds";
+import { canonicalTrainingBlock } from "./measurement/canonicalShape";
+import { normalizeBlockMeasurementConfiguration } from "./measurement/quantities";
 import {
   DEFAULT_SMART_RANDOM_MAX,
   DEFAULT_SMART_RANDOM_MIN,
@@ -22,8 +25,11 @@ export { isSmartRandomAvailable } from "./variableTargets";
 export type NewBlockInput = {
   name: string;
   mode: BlockMode;
-  measurementMode: MeasurementMode;
-  targetTime: number;
+  // Both are required for every block that measures time, and both are genuinely
+  // absent for a speed-only Fixed Weight block. Creation validates the combination
+  // against `measurement` below rather than defaulting either one.
+  measurementMode?: MeasurementMode;
+  targetTime?: number;
   // Only relevant when mode === "variable"; defaults to "smart-random".
   variableTargetMode?: VariableTargetMode;
   // Only relevant when mode === "blind"; defaults to "fixed".
@@ -34,6 +40,11 @@ export type NewBlockInput = {
   // Snapshotted onto the created block as-is (after resolving to a safe
   // default if omitted/invalid) — see docs/adr/0008-accuracy-thresholds-are-snapshotted-per-training-block.md.
   accuracyThresholds?: AccuracyThresholds;
+  // Omitting it creates exactly the historical time-only block, byte-for-byte as
+  // before this feature existed — which is why ordinary symmetric time training is
+  // unaffected. Supplied when the block records speed, or when a time-only block
+  // needs an asymmetric tolerance. See ADR-0051.
+  measurement?: BlockMeasurementConfiguration;
 };
 
 /**
@@ -79,22 +90,82 @@ export function createTrainingBlock(input: NewBlockInput): TrainingBlock {
     ? input.blindTargetMode ?? "fixed"
     : undefined;
 
+  // A measurement configuration is only ever attached to a Fixed Weight block —
+  // Variable and Blind Weight keep their existing time-only semantics untouched —
+  // and only when it is fully valid. An invalid one is rejected rather than
+  // quietly dropped, which would silently downgrade a speed block to time-only.
+  let measurement: BlockMeasurementConfiguration | undefined;
+  if (input.measurement !== undefined) {
+    if (input.mode !== "fixed") {
+      throw new Error(
+        "Only Fixed Weight supports choosing what is measured. Variable and Blind Weight measure time."
+      );
+    }
+    // Normalization both validates strictly and returns a DEEP COPY, so the caller's
+    // object (a form value, a plan step's configuration, a saved template) can be
+    // edited or deleted afterwards without reaching into this block's snapshot — the
+    // same isolation rule ADR-0008 established for AccuracyThresholds.
+    measurement = normalizeBlockMeasurementConfiguration(input.measurement);
+    if (!measurement) {
+      throw new Error(
+        "Each measured quantity needs a target greater than zero and tolerances where Acceptable is greater than On Target on both sides."
+      );
+    }
+  }
+
+  const measuresTime = measurement
+    ? measurement.quantities.includes("time")
+    : true;
+
+  // The time target has exactly ONE authority. With a measurement configuration
+  // present, that authority is `measurement.time.target`, and `block.targetTime`
+  // becomes a derived mirror of it for legacy readers (getNextShotTarget,
+  // computeShotTarget, export, charts). The two therefore cannot disagree, so capture
+  // and explicit completion can never judge the same stone against different targets.
+  // Without a configuration, `input.targetTime` is the authority, exactly as always.
+  const resolvedTargetTime = measuresTime
+    ? measurement?.time?.target ?? input.targetTime
+    : undefined;
+
+  if (measuresTime) {
+    if (!input.measurementMode) {
+      throw new Error("Choose a timing interval for this exercise.");
+    }
+    if (resolvedTargetTime === undefined) {
+      throw new Error("Enter a target time for this exercise.");
+    }
+  } else if (input.measurementMode !== undefined || input.targetTime !== undefined) {
+    // A speed-only block measures no time, so carrying a timing interval or a
+    // time target would be fabricated state that later readers would trust.
+    throw new Error(
+      "A speed-only exercise has no timing interval and no target time."
+    );
+  }
+
+  // Field order is kept identical to the pre-feature shape so a newly created
+  // time-only block serializes exactly as it always did; the two time fields are
+  // spread in place rather than assigned afterwards.
   const block: TrainingBlock = {
     id: crypto.randomUUID(),
     name: input.name.trim() || defaultBlockName(input.mode),
     mode: input.mode,
-    measurementMode: input.measurementMode,
-    targetTime: input.targetTime,
+    ...(input.measurementMode !== undefined
+      ? { measurementMode: input.measurementMode }
+      : {}),
+    ...(resolvedTargetTime !== undefined ? { targetTime: resolvedTargetTime } : {}),
     createdAt: new Date().toISOString(),
     variableTargetMode,
     blindTargetMode,
     // Snapshotted once, at creation — never re-derived from a later change
     // to the app's default thresholds (see ADR-0008).
     accuracyThresholds: resolveAccuracyThresholds(input.accuracyThresholds),
+    ...(measurement ? { measurement } : {}),
   };
 
   const effectiveMode = getEffectiveTargetMode(block);
 
+  // NOTE: the target-source fields assigned below land after `accuracyThresholds` in
+  // insertion order, so the block is canonicalised once, at the end, rather than here.
   if (effectiveMode === "smart-random") {
     if (!isSmartRandomAvailable(input.measurementMode)) {
       throw new Error(
@@ -124,7 +195,10 @@ export function createTrainingBlock(input: NewBlockInput): TrainingBlock {
   // effectiveMode === "fixed" (or undefined, for "fixed"/other block modes):
   // no pendingTargetTime — block.targetTime is used directly, always.
 
-  return block;
+  // Emitted in the canonical persisted property order, so a block created here and
+  // the same block reconstructed by migration serialize to identical bytes — see
+  // src/lib/measurement/canonicalShape.ts.
+  return canonicalTrainingBlock(block);
 }
 
 export function getActiveBlock(session: Session): TrainingBlock | undefined {
@@ -143,11 +217,15 @@ export function getNextShotNumberInBlock(
 }
 
 /**
- * The target to use for the next shot, absent any manual override — the
+ * The TIME target to use for the next shot, absent any manual override — the
  * block's pending target for Variable/Blind blocks using Smart Random or
  * Manual, otherwise its default/fixed target.
+ *
+ * `undefined` means this block measures no time at all (a speed-only Fixed Weight
+ * block), so there is no time target to stamp onto a stone. Callers must handle
+ * that explicitly rather than substituting a default.
  */
-export function getNextShotTarget(block: TrainingBlock): number {
+export function getNextShotTarget(block: TrainingBlock): number | undefined {
   const effectiveMode = getEffectiveTargetMode(block);
 
   if (
@@ -168,7 +246,7 @@ export function getNextShotTarget(block: TrainingBlock): number {
 export function computeShotTarget(
   block: TrainingBlock,
   manualOverride?: number
-): number {
+): number | undefined {
   return manualOverride !== undefined ? manualOverride : getNextShotTarget(block);
 }
 

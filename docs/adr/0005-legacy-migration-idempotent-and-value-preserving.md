@@ -35,6 +35,14 @@ Both actually happened during this project's development and were fixed:
 2. Migration never fabricates a value it cannot know — most concretely,
    `predictedTime` is either already present or stays `undefined`; it is never invented
    to satisfy a "Blind Weight shots should have one" expectation during migration.
+   **Extended by [ADR-0051](0051-fixed-weight-measured-quantities-and-per-side-tolerances.md):**
+   this rule now also covers the measurement fields themselves. For a stone in a block
+   declaring `measurement`, migration defaults nothing at all — no `releaseTime = 0`,
+   no `targetTime = 3.75`, no substituted timing interval — so an outstanding
+   measurement stays outstanding rather than becoming a recorded zero. For a stone in a
+   legacy block (no `measurement` field), every existing repair rule below applies
+   exactly as before, unchanged. The presence of that one field is the entire
+   discriminator, which is what keeps previously stored data byte-identical.
 3. Running `migrateSession` twice on its own output must produce an identical result
    (verified by tests for every migration path: legacy blocks, missing target modes,
    Smart Random range backfill, the Hog-Hog-forced-to-Manual case, and the `blocks: []`

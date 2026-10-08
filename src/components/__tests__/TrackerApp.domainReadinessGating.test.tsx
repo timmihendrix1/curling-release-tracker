@@ -59,8 +59,11 @@ function accuracyProfile(id: string, name: string) {
   return {
     id,
     name,
-    onTarget: 0.1,
-    acceptable: 0.2,
+    quantity: "time" as const,
+    tolerance: {
+      onTarget: { lower: 0.1, upper: 0.1 },
+      acceptable: { lower: 0.2, upper: 0.2 },
+    },
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   };

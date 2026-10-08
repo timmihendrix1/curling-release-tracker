@@ -8,6 +8,7 @@ import {
   PUBLIC_EXERCISE_DIAGRAM_PATHS,
 } from "../../src/lib/exercises/restrictedAssetCatalog";
 import { MOBILE_INLINED_PUBLIC_ENV_NAMES } from "../publicEnv";
+import { DIAGNOSTIC_DATABASE_NAME } from "../src/diagnostics/syntheticFixtures";
 
 const mobileRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const repositoryRoot = path.resolve(mobileRoot, "..");
@@ -193,6 +194,137 @@ describe("mobile production bundle", () => {
     ]) {
       expect(js).not.toContain(serverOnly);
     }
+  });
+
+  it("excludes the storage diagnostics panel unless the build opted in", async () => {
+    const assets = await readdir(path.join(distRoot, "assets"));
+    const scripts = assets.filter((name) => name.endsWith(".js"));
+    const chunks = new Map<string, string>();
+    for (const name of scripts) {
+      chunks.set(name, await readDist(path.join("assets", name)));
+    }
+    const diagnosticChunks = [...chunks].filter(([, code]) =>
+      code.includes(DIAGNOSTIC_DATABASE_NAME)
+    );
+
+    if (diagnosticChunks.length === 0) {
+      // No DIAGNOSTICS in this artifact. The panel is not merely inert — it is
+      // ABSENT: the conditional import in MobileApp.tsx folds away, so no
+      // synthetic key namespace and no panel copy reaches the artifact.
+      const js = [...chunks.values()].join("\n");
+      expect(js).not.toContain("diagnostic.synthetic.");
+      expect(js).not.toContain("Native storage diagnostics");
+      expect(js).not.toContain("Write synthetic fixtures");
+      expect(assets.some((name) => name.includes("Diagnostics"))).toBe(false);
+
+      // The SQLITE PLUGIN is a separate question from the panel, because Stage
+      // M3b3's native storage composition reaches it through its own,
+      // independent opt-in. So its absence may only be asserted when THAT
+      // opt-in is off too — otherwise this check would fail on a legitimate
+      // native-storage build and say nothing about diagnostics.
+      if (!js.includes("curling-sporting-v1")) {
+        expect(js).not.toContain("CapacitorSQLite");
+        expect(assets.some((name) => name.includes("SqliteEngine"))).toBe(false);
+        // With the plugin out of the artifact entirely, its Web stub — and the
+        // `jeep-sqlite` element name with it — is gone too.
+        expect(js).not.toContain("jeep-sqlite");
+      }
+      return;
+    }
+
+    // A DIAGNOSTICS build (`npm run mobile:build:diagnostics`).
+    const js = [...chunks.values()].join("\n");
+    expect(js).toContain("Native storage diagnostics");
+    // The two opt-ins are independent: a diagnostics build composes nothing.
+    expect(js).not.toContain("curling-sporting-v1");
+    // Everything that makes an artifact a PRODUCTION artifact must still hold:
+    // the opt-in is a third axis, not a development mode.
+    expect(js).not.toContain("00000000-0000-4000-8000-000000000001");
+    expect(js).not.toContain("createUnscopedSportingRepositoriesForTests");
+    expect(js).not.toMatch(/process\s*\.\s*env/);
+
+    // The synthetic database is the only one the diagnostics code can address.
+    // Checked per chunk, because unrelated dormant code elsewhere in the bundle
+    // legitimately names other stores.
+    for (const [, code] of diagnosticChunks) {
+      expect(code).not.toContain("curling-release-tracker");
+      expect(code).not.toContain("curling.identity.");
+      expect(code).not.toContain("curling.session");
+    }
+  });
+
+  it("omits ALL native storage composition code unless the build opted in", async () => {
+    // Stage M3b3's opt-in is a separate axis from the diagnostics one above, so
+    // this check is separate too: a diagnostics build must still contain no
+    // composition, and a composition build must still contain no diagnostics.
+    const js = await bundledScript();
+    const assets = await readdir(path.join(distRoot, "assets"));
+
+    // The application database name is the single most telling marker: it exists
+    // nowhere except the composition module.
+    const composed = js.includes("curling-sporting-v1");
+
+    if (!composed) {
+      // A DEFAULT (or diagnostics-only) build. The composition is not merely
+      // inert — it is ABSENT, because the conditional import in MobileApp.tsx
+      // folds away.
+      expect(js).not.toContain("curling.credentials.v1.");
+      expect(js).not.toContain("Preparing device storage");
+      expect(js).not.toContain("migration_not_implemented");
+      expect(js).not.toContain("SecureStorage");
+      expect(js).not.toContain("capacitor-storage_");
+      expect(assets.some((name) => name.includes("NativeStorageComposition"))).toBe(false);
+      expect(assets.some((name) => name.includes("SecureStorageBinding"))).toBe(false);
+      return;
+    }
+
+    // A NATIVE-STORAGE build (`npm run mobile:build:native-storage`).
+    expect(js).toContain("Preparing device storage");
+    expect(js).toContain("curling.credentials.v1.");
+    // The barrier ships; a ready verdict does not. `nativeActivationReadyForTests`
+    // is the only constructor of one, and it is eliminated because no production
+    // module references it.
+    expect(js).toContain("migration_not_implemented");
+    expect(js).not.toContain("nativeActivationReadyForTests");
+    // The diagnostics panel and its synthetic database stay out — the two
+    // opt-ins are independent.
+    expect(js).not.toContain(DIAGNOSTIC_DATABASE_NAME);
+    expect(js).not.toContain("Native storage diagnostics");
+    // Everything that makes an artifact a PRODUCTION artifact still holds.
+    expect(js).not.toContain("00000000-0000-4000-8000-000000000001");
+    expect(js).not.toContain("createUnscopedSportingRepositoriesForTests");
+    expect(js).not.toMatch(/process\s*\.\s*env/);
+  });
+
+  it("deploys no Web SQLite ENGINE in any build, and the plugin's web stub fails closed", async () => {
+    // Unconditional, and separate from every opt-in above: the native adapter is
+    // native-only by design (ADR-0049), the Web keeps `localStorageAdapter`, and
+    // no build may carry a browser SQLite deployment.
+    //
+    // Stated precisely, because the naive check is wrong. `registerPlugin`'s
+    // loader map means importing `@capacitor-community/sqlite` at all emits the
+    // plugin's own `web.js` as a lazy chunk, and that file NAMES `jeep-sqlite`.
+    // It is a stub: it looks for a `<jeep-sqlite>` custom element in the DOM and
+    // throws when there is none. So the property to assert is that no ENGINE is
+    // deployed and nothing provides that element — not that the string is
+    // absent.
+    const assets = await readdir(path.join(distRoot, "assets"));
+    const top = await readdir(distRoot);
+    const html = await readDist("index.html");
+
+    // No WebAssembly engine, anywhere.
+    expect(assets.some((name) => name.endsWith(".wasm"))).toBe(false);
+    expect(top.some((name) => name.endsWith(".wasm"))).toBe(false);
+    const js = await bundledScript();
+    expect(js).not.toContain("sql-wasm");
+    expect(js).not.toContain("sqlite3.wasm");
+
+    // And nothing registers or renders the element the stub needs, so the Web
+    // path cannot silently start working.
+    expect(html).not.toContain("jeep-sqlite");
+    expect(js).not.toContain('define("jeep-sqlite"');
+    expect(js).not.toContain("createElement(`jeep-sqlite`)");
+    expect(js).not.toContain('createElement("jeep-sqlite")');
   });
 
   it("loads entirely from the app container", async () => {

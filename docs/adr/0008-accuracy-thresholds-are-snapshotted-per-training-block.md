@@ -4,6 +4,17 @@
 
 Accepted. Implemented.
 
+**Extended (not superseded) by [ADR-0051](0051-fixed-weight-measured-quantities-and-per-side-tolerances.md).**
+This ADR's decision — a tolerance is snapshotted per Training Block at creation and
+never re-derived from the app's current default — is unchanged and still governs.
+ADR-0051 generalizes the *shape* of that tolerance along two axes (unit: seconds or
+m/s; side: below or above target) for Fixed Weight blocks that record speed. A stored
+`AccuracyThresholds` pair keeps its exact original meaning: it is re-expressed as a
+symmetric per-side tolerance that classifies every shot identically to
+`categorizeTargetError`. Blocks described below as "every block" are, precisely, every
+block that does not carry the optional `measurement` configuration ADR-0051 adds —
+which is every block stored before that feature.
+
 ## Context
 
 Every shot already carries an immutable `targetTime` (ADR-0001), so target error

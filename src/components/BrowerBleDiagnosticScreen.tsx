@@ -14,9 +14,11 @@ import {
   type BrowerRawObservation,
 } from "../lib/brower/browerBleDiagnosticController";
 import {
-  downloadDiagnosticLog,
+  diagnosticLogExport,
   serializeDiagnosticLog,
 } from "../lib/brower/diagnosticLog";
+import { useFileExport } from "./useFileExport";
+import FileExportStatusNotice from "./FileExportStatusNotice";
 import {
   BROWER_ATHLETE_DATA_CHARACTERISTIC_UUID,
   BROWER_BYTE_ORDER_HYPOTHESES,
@@ -115,6 +117,8 @@ export default function BrowerBleDiagnosticScreen({
   // `process.env.NODE_ENV` is inlined at build time, so a production bundle takes the
   // branch below and never reaches `createBrowerBleDiagnosticController`.
   const available = isBrowerDiagnosticEnvironment(controllerOptions?.nodeEnv);
+
+  const { status: exportStatus, runExport } = useFileExport();
 
   const [controller] = useState<BrowerBleDiagnosticController | null>(() =>
     available ? createBrowerBleDiagnosticController(controllerOptions) : null
@@ -358,9 +362,11 @@ export default function BrowerBleDiagnosticScreen({
 
   const handleExportLog = () => {
     const exportedAt = new Date().toISOString();
-    downloadDiagnosticLog(
-      serializeDiagnosticLog(snapshot.log, exportedAt),
-      "brower_tci_ble_diagnostic_log.json"
+    void runExport(
+      diagnosticLogExport(
+        serializeDiagnosticLog(snapshot.log, exportedAt),
+        "brower_tci_ble_diagnostic_log.json"
+      )
     );
   };
 
@@ -778,11 +784,12 @@ export default function BrowerBleDiagnosticScreen({
             <button
               type="button"
               onClick={handleExportLog}
-              disabled={snapshot.log.entries.length === 0}
+              disabled={snapshot.log.entries.length === 0 || exportStatus.state === "working"}
               className="w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
               Export Log
             </button>
+            <FileExportStatusNotice status={exportStatus} />
             <button
               type="button"
               onClick={() => controller.clearLog()}

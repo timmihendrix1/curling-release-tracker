@@ -26,6 +26,12 @@
  * `--mode` and regardless of the ambient environment, because every artifact the
  * build produces is installable. See the note in mobile/vite.config.ts.
  *
+ * `CURLING_MOBILE_STORAGE_DIAGNOSTICS` is deliberately NOT in this list either,
+ * and for the same reason: it is a build SWITCH, not configuration. The build
+ * reads it, decides, and inlines a plain boolean literal under a define name of
+ * its own — none of the variable's value reaches the bundle. It lives in
+ * `mobile/storageDiagnosticsFlag.ts`.
+ *
  * Adding a name here makes it browser-visible. Server-only configuration
  * (APP_ORIGIN, SMTP credentials, CLOSED_BETA_EXERCISE_ASSET_TEAM_ID, any
  * Supabase secret key) must never appear in this list. It lives in its own

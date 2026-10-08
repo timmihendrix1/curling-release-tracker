@@ -10,11 +10,25 @@
 // access happens in this file — these are pure state-shape functions;
 // TrackerApp.tsx performs the actual read/write calls, following the same
 // one-effect-per-key pattern already used for Session/Assessment/Training Plan data.
+import type { MeasuredQuantity, QuantityTolerance } from "../../types";
 export type AccuracyToleranceProfile = {
   id: string;
   name: string;
-  onTarget: number;
-  acceptable: number;
+  /**
+   * Which measured quantity this template's numbers are expressed in, and therefore
+   * which unit they carry — seconds for "time", m/s for "speed". A template is only
+   * ever offered for a block measuring the SAME quantity; the two units are never
+   * interchangeable and a time preset is never reinterpreted as a speed preset
+   * (ADR-0051). Every template stored before schema version 2 is a time template.
+   */
+  quantity: MeasuredQuantity;
+  /**
+   * Per-side bands in that quantity's own unit. The single authoritative
+   * representation — there is no second symmetric pair that could disagree with it.
+   * Every template stored before schema version 2 migrates to the symmetric tolerance
+   * its seconds pair always meant, with its meaning completely unchanged.
+   */
+  tolerance: QuantityTolerance;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,7 +44,14 @@ export type AccuracyToleranceProfilesState = {
 
 export const ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY =
   "curling-release-tracker-accuracy-tolerance-profiles";
-export const ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION = 1;
+/**
+ * Version 1 stored a symmetric, unitless `{ onTarget, acceptable }` seconds pair.
+ * Version 2 stores an explicit quantity plus a per-side tolerance. Version 1 data is
+ * migrated forward losslessly (see migration.ts) — never wiped, and never
+ * reinterpreted as anything other than the time template it always was.
+ */
+export const ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION = 2;
+export const LEGACY_ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION = 1;
 
 export function createEmptyAccuracyToleranceProfilesState(): AccuracyToleranceProfilesState {
   return {

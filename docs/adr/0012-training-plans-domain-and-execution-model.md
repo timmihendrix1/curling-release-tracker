@@ -98,13 +98,18 @@ unexecutable step stays unexecutable and visible, per spec section 53.
 
 ### 5. Final-step completion is a distinct state, never a mislabeled "Continue"
 
-Two mutually exclusive, derived states once the active step's shot count is reached:
-not-final-step shows `TrainingPlanStepTransition kind="continue"`; final-step shows
-`kind="plan-complete"` with an explicit **Finish Training** action. Finish Training
-calls the *existing* `handleStartNewSession` — plan completion introduces no new
-session-archiving logic of its own. A misleading "Continue to next step" is
-structurally prevented from appearing on the final step (the two kinds are mutually
-exclusive props, not an ad hoc boolean flag).
+**Superseded by ADR-0048 for the gating rule; the structural part still holds.**
+
+Originally: two mutually exclusive, derived states *once the active step's shot count
+was reached* — not-final-step showed a "Continue" transition, final-step a "Plan
+complete" state with an explicit **Finish Training** action.
+
+What survives: **Finish Training** still reuses the *existing* session-archive
+transition and introduces no second archiving path, and a "next step" control is still
+structurally impossible on the final step (`nextStepLabel` is simply absent there, not
+a disabled button). What changed: neither control is gated on the shot count any more,
+and reaching the count no longer produces a distinct "step complete" UI state — see
+ADR-0048 and `docs/TRAINING_SYSTEM_AND_PLANS.md` section 31.
 
 ### 6. Progression is always keyed by the snapshot's stored `blockId`, never array position
 

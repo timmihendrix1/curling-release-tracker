@@ -6,6 +6,11 @@
 import type { ReleaseTimingPlanStep } from "../../types";
 import { defaultBlockName, type NewBlockInput } from "../trainingBlocks";
 
+/**
+ * Carries the step's measurement selection, targets and tolerances through
+ * verbatim. A speed-only step genuinely has no timing interval and no time target,
+ * and neither is invented here — the created block is speed-only too.
+ */
 export function mapPlanStepToTrainingBlockInput(
   step: ReleaseTimingPlanStep
 ): NewBlockInput {
@@ -21,5 +26,6 @@ export function mapPlanStepToTrainingBlockInput(
     smartRandomMin: configuration.smartRandomMin,
     smartRandomMax: configuration.smartRandomMax,
     accuracyThresholds: configuration.accuracyThresholds,
+    measurement: configuration.measurement,
   };
 }

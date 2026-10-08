@@ -1,4 +1,13 @@
 // @vitest-environment jsdom
+//
+// Stage B replaced the Standard/Tight/Custom preset row and its nested profile
+// picker with one compact tolerance summary plus a single Adjust action, whose editor
+// offers the app's built-in values and the athlete's saved templates in ONE list (see
+// docs/FIXED_WEIGHT_SPEED_AND_CAPTURE_SPECIFICATION.md, "Simplified user experience").
+// The behaviour these tests protect is unchanged: a default template seeds a brand-new
+// configuration, applying a template copies its NUMBERS (never a live reference), an
+// already-configured block is never overridden, and the submitted value is always the
+// resolved pair.
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,8 +19,11 @@ afterEach(cleanup);
 const eliteProfile: AccuracyToleranceProfile = {
   id: "elite",
   name: "Elite",
-  onTarget: 0.05,
-  acceptable: 0.1,
+  quantity: "time" as const,
+  tolerance: {
+    onTarget: { lower: 0.05, upper: 0.05 },
+    acceptable: { lower: 0.1, upper: 0.1 },
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -19,29 +31,31 @@ const eliteProfile: AccuracyToleranceProfile = {
 const myStandardProfile: AccuracyToleranceProfile = {
   id: "my-standard",
   name: "My Standard",
-  onTarget: 0.12,
-  acceptable: 0.24,
+  quantity: "time" as const,
+  tolerance: {
+    onTarget: { lower: 0.12, upper: 0.12 },
+    acceptable: { lower: 0.24, upper: 0.24 },
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
-describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
-  it("does not force Custom just because a default profile exists — Standard remains selected", () => {
-    render(
-      <TrainingSetup
-        submitLabel="Start Block"
-        onSubmit={vi.fn()}
-        accuracyToleranceProfiles={[eliteProfile]}
-        defaultAccuracyToleranceProfileId={eliteProfile.id}
-      />
-    );
+function openToleranceEditor() {
+  fireEvent.click(screen.getByRole("button", { name: "Adjust" }));
+}
 
-    expect(screen.getByRole("button", { name: "Standard" }).className).toContain(
-      "bg-slate-900"
-    );
+describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
+  it("shows the resolved tolerance in the compact summary without opening the editor", () => {
+    render(<TrainingSetup submitLabel="Start Block" onSubmit={vi.fn()} />);
+
+    expect(
+      screen.getByText(/On Target ±0.10s · Acceptable ±0.20s/)
+    ).toBeInTheDocument();
+    // The editor is a disclosure, not a permanently expanded panel.
+    expect(screen.queryByLabelText("On Target (±s)")).not.toBeInTheDocument();
   });
 
-  it("prefills a brand-new configuration's Custom values from the default profile", () => {
+  it("seeds a brand-new configuration from the default profile", () => {
     const onSubmit = vi.fn();
     render(
       <TrainingSetup
@@ -52,8 +66,9 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    expect(screen.getByText(/Elite: On Target ±0.05s/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/On Target ±0.05s · Acceptable ±0.10s/)
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Start Block" }));
     expect(onSubmit).toHaveBeenCalledWith(
@@ -63,7 +78,7 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
     );
   });
 
-  it("selecting another saved profile copies its numeric values into the submitted configuration", () => {
+  it("applying another saved template copies its numeric values into the submitted configuration", () => {
     const onSubmit = vi.fn();
     render(
       <TrainingSetup
@@ -74,12 +89,13 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    fireEvent.change(screen.getByLabelText("Accuracy Tolerance Profile"), {
+    openToleranceEditor();
+    fireEvent.change(screen.getByLabelText("Start from a saved value"), {
       target: { value: myStandardProfile.id },
     });
 
-    expect(screen.getByText(/My Standard: On Target ±0.12s/)).toBeInTheDocument();
+    expect(screen.getByLabelText("On Target (±s)")).toHaveValue("0.12");
+    expect(screen.getByLabelText("Acceptable (±s)")).toHaveValue("0.24");
 
     fireEvent.click(screen.getByRole("button", { name: "Start Block" }));
     expect(onSubmit).toHaveBeenCalledWith(
@@ -89,7 +105,7 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
     );
   });
 
-  it("switching to 'Custom for this exercise' still allows a one-off custom value", () => {
+  it("still allows a one-off value typed over an applied template", () => {
     const onSubmit = vi.fn();
     render(
       <TrainingSetup
@@ -100,11 +116,7 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    fireEvent.change(screen.getByLabelText("Accuracy Tolerance Profile"), {
-      target: { value: "" },
-    });
-
+    openToleranceEditor();
     fireEvent.change(screen.getByLabelText("On Target (±s)"), {
       target: { value: "0.15" },
     });
@@ -120,11 +132,14 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
     );
   });
 
-  it("existing Standard/Tight built-in presets still work with no profiles saved", () => {
+  it("offers the built-in Standard and Tight values in the same list, with no templates saved", () => {
     const onSubmit = vi.fn();
     render(<TrainingSetup submitLabel="Start Block" onSubmit={onSubmit} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Tight" }));
+    openToleranceEditor();
+    fireEvent.change(screen.getByLabelText("Start from a saved value"), {
+      target: { value: "built-in:tight" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Start Block" }));
 
     expect(onSubmit).toHaveBeenCalledWith(
@@ -134,12 +149,24 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
     );
   });
 
-  it("does not show a profile picker at all when no profiles are saved", () => {
-    render(<TrainingSetup submitLabel="Start Block" onSubmit={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+  it("an invalid tolerance blocks submission and reopens the editor that explains why", () => {
+    const onSubmit = vi.fn();
+    render(<TrainingSetup submitLabel="Start Block" onSubmit={onSubmit} />);
+
+    openToleranceEditor();
+    fireEvent.change(screen.getByLabelText("On Target (±s)"), {
+      target: { value: "0.30" },
+    });
+    fireEvent.change(screen.getByLabelText("Acceptable (±s)"), {
+      target: { value: "0.10" },
+    });
+
     expect(
-      screen.queryByLabelText("Accuracy Tolerance Profile")
-    ).not.toBeInTheDocument();
+      screen.getByText(/Acceptable must be greater than On Target/)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Block" }));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it("editing an existing block's stored thresholds is never overridden by a default profile", () => {
@@ -153,10 +180,8 @@ describe("TrainingSetup — Accuracy Tolerance Profiles", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    openToleranceEditor();
     expect(screen.getByLabelText("On Target (±s)")).toHaveValue("0.20");
     expect(screen.getByLabelText("Acceptable (±s)")).toHaveValue("0.40");
-    // Starts as "Custom for this exercise", not silently attributed to a profile.
-    expect(screen.getByLabelText("Accuracy Tolerance Profile")).toHaveValue("");
   });
 });

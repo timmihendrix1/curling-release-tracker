@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Apple required-reason API declaration (Stage M3a).
+
+	  @capacitor/filesystem reads file creation and modification timestamps
+	  (ios/Sources/FilesystemPlugin/IONFileStructures+Converters.swift), which is
+	  a required-reason API. The plugin ships no manifest of its own and its
+	  README directs the host app to declare it here.
+
+	  C617.1 — "Accessing the timestamp of files inside the app container" — is
+	  the reason that matches what this app actually does: it writes an export
+	  into its OWN cache container and hands it to the share sheet. It never
+	  reads timestamps of files outside the container.
+
+	  Nothing else is declared. This app collects no data through these APIs, has
+	  no tracking domains, and adds no broad file-access permission.
+	-->
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+</dict>
+</plist>

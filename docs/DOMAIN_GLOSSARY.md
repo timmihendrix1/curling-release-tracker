@@ -438,6 +438,23 @@ Completion is derived from saved Shots for Release Time or the existing terminal
 Exercise status for Technique/Shotmaking — never a separately cached flag. Team-plan
 execution remains a future context and does not reuse this personal Session boundary.
 
+Completion describes what a step achieved; it never gates progression. **Next Exercise**
+is available whenever a later step exists and **Finish Training** throughout, so a step
+may be left below, at or beyond its planned volume, or with nothing recorded at all — see
+`docs/TRAINING_SYSTEM_AND_PLANS.md` section 31 and ADR-0048. Each step's outcome
+(never started, in progress, completed, ended early, nothing recorded) is likewise
+derived from the Session's own recorded data, never from how far the plan advanced.
+
+---
+
+## Planned Volume
+
+**[Implemented — ADR-0048]** The stone count a Release Timing Plan Step configures. It is
+guidance for the athlete, not a minimum, a maximum, or a condition on moving to the next
+planned Exercise or finishing the training. Progress always shows the actual count beside
+it (`6 of 12 planned stones`); a lower actual count is a recorded fact, never an error.
+Technique and Shotmaking Plan Steps deliberately have no planned volume at all.
+
 ---
 
 ## Training Session
@@ -612,9 +629,71 @@ Measurement types remain stable even if hardware changes.
 
 ---
 
+## Measured Quantity
+
+Which measured quantity a Fixed Weight Training Block records for each stone: **Time**
+(seconds) or **Speed** (metres per second). A block records one or both.
+
+Each selected quantity has:
+
+- its own fixed Target,
+
+- its own tolerance bands, with independent lower and upper sides,
+
+- its own classification (On Target / Acceptable / Major Miss),
+
+- its own analysis denominator.
+
+The two are never combined into one score, never converted into one another, and never
+mixed in one calculation or one chart series.
+
+Distinguish carefully from three neighbouring terms:
+
+- **Measurement Type** (below) answers the same "what was measured" question at a
+  broader, hardware-facing level. Measured Quantity is the narrow, product-level choice
+  a Fixed Weight block actually offers today.
+
+- **Measurement Mode** — the *timing interval* (Backline–Hog or Hog–Hog). It only ever
+  qualifies a Time measurement and is never a quantity selector. A Speed-only block has
+  no timing interval at all.
+
+- **Metric** — a *derived* value (average, standard deviation). A Measured Quantity is
+  directly measured, never derived.
+
+Only Fixed Weight offers a choice. Variable Weight, Blind Weight, Assessments and
+curated Exercise execution measure Time.
+
+Speed is entered manually in the current release. A Speed is never inferred from a
+timing interval, and a Time is never computed from a Speed.
+
+See `docs/FIXED_WEIGHT_SPEED_AND_CAPTURE_SPECIFICATION.md` and ADR-0051.
+
+---
+
+## Missing Measurement
+
+A stone that records both quantities may legitimately carry only one of them — for
+example an accepted device time saved before its Speed was entered.
+
+A Missing Measurement is **not zero**. It is excluded only from its own quantity's
+denominator, never counted as a measurement of 0, and never exported as one.
+
+A recorded stone must always carry at least one real measurement.
+
+Completing a Missing Measurement later targets one explicitly identified stone. It
+never creates another stone, never advances the shot count or handle strategy, and is
+not permission to rewrite a measurement that was already recorded.
+
+---
+
 ## Measurement Source
 
 Describes where a measurement originated.
+
+Each Measured Quantity on one stone carries its **own** source: a Time's source is
+independent of a Speed's, so a stone whose device Time was saved before its Speed was
+entered records both accurately. A source is never recorded without the measurement it
+describes.
 
 Examples:
 
@@ -1538,8 +1617,11 @@ existing yet. See `docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md`.
 
 *Refines: Provider (above).* `TimingProvider` (`src/lib/timingProvider.ts`): the small
 contract (`type`, `start`, `stop`, `subscribe`) every timing source implements — the
-Simulator, manual entry, and (later) real hardware. **[Implemented]** for Simulator and
-Manual; **[Planned]** for real hardware (`"external"`).
+Simulator, manual entry, and real hardware. **[Implemented]** for Simulator and Manual.
+For real hardware (`"external"`), the assisted Brower capture pilot is **[Implemented]**
+and **not hardware-accepted**: it does not implement `TimingProvider`'s autonomous
+`subscribe` contract, because a device reading only becomes a Timing Result when the
+operator confirms it — see Assisted Capture Candidate below and ADR-0050.
 
 ## Timing Result
 
@@ -1548,6 +1630,26 @@ provider-agnostic reading (`id`, `receivedAt`, `source`, `measurements`, optiona
 `deviceId`/`laneId`). The one shape every `TimingProvider` produces — nothing downstream
 (Capture Sequence processing, shot saving, analytics, export) knows or needs to know
 which provider produced a given result. **[Implemented]**
+
+## Assisted Capture Candidate
+
+One interval offered to the operator by the assisted Brower capture pilot, derived from
+two adjacent cumulative splits of one timer record (the first is measured from the
+record's start). A candidate is **not** a measurement the application has accepted: it
+becomes exactly one Timing Result with `source: "external"` only when the operator taps
+it. Its identity is derived from the Capture Sequence, the timer record and the split
+**position**, so a resent packet is a duplicate while two equal times at different
+positions stay distinct. **[Implemented]**, not hardware-accepted — see ADR-0050.
+
+## Setup Arming
+
+The operator's explicit confirmation that the apparatus is set up, which starts offering
+Assisted Capture Candidates for one Training Capture Sequence. Arming snapshots everything
+the current connection has already observed as permanently ineligible, so setup triggers
+can never become shots. It reduces unwanted intake; it is **not** a hardware-side
+acquisition boundary, not proof that a later reading is fresh, and not a plausibility
+filter. Disconnect, backgrounding, screen lock, a capture-context change or loss of packet
+continuity all suspend it and require re-arming. **[Implemented]** — see ADR-0050.
 
 ## Timing Measurement
 
@@ -1589,6 +1691,36 @@ flows (ShotEntry/BlindShotEntry, outside any Capture Sequence); `"manual"` for a
 fallback reading supplied *within* an active Capture Sequence; `"simulator"` for the
 development-only Timing Simulator; `"external"` reserved for real hardware, not yet
 implemented. Never fabricated by migration. **[Implemented]**
+
+This field is, and remains, the **time** value's capture provenance. A stone's Speed
+carries its own independent `shot.speedSource` (always `"manual"` in this release) and
+`shot.speedRecordedAt`, so a stone whose device time was saved before its Speed was
+entered retains both sources accurately. **[Implemented]**
+
+## Block Measurement Configuration
+
+`block.measurement`: which Measured Quantities a Fixed Weight block records, each with
+its own target and its own per-side tolerance. Its **absence is the ordinary time-only
+block**, resolving to Time with the block's own `targetTime` and its symmetric
+`accuracyThresholds` snapshot. Migration never backfills it, which is what keeps every
+previously stored session byte-identical.
+
+It is **required** when the block records Speed, and is also **supported for a
+time-only block needing an asymmetric tolerance**, which the symmetric
+`accuracyThresholds` pair cannot express. Because the cloud wire version follows the
+presence of this field anywhere a Session persists one — including an unmaterialised
+Training Plan step snapshot — such a Session carries the same old-client rollout cost
+as Speed.
+
+`quantities` is stored in canonical order (Time before Speed). A differently ordered
+array is rejected rather than rewritten, because rewriting it would change the stored
+bytes and break the cloud reader's exact-equality check.
+
+When it includes Time, `targetTime` is a derived mirror of `measurement.time.target` —
+one target authority, and a stored mismatch is rejected rather than resolved one way.
+Only Fixed Weight may carry one. See ADR-0051. **[Implemented — Stage A (model and
+persistence) and Stage B (setup, capture and results UI); Stage B awaits independent
+review]**
 
 ## Exercise
 

@@ -6,26 +6,31 @@ import {
   setupVariableSmartRandomBlock,
 } from "./utils";
 
-test("Threshold Setup: presets show their values, Custom validates inline, and the snapshot survives into a new block", async ({
+test("Threshold Setup: the summary shows the resolved values, the editor validates inline, and the snapshot survives into a new block", async ({
   page,
 }) => {
   await freshLoad(page);
   await openReleaseTimingSetup(page);
 
-  // Standard is the default preset.
-  await expect(page.getByText("On target ±0.10s")).toBeVisible();
+  // Stage B replaced the Standard/Tight/Custom preset row with one compact summary
+  // and one Adjust action; the app's built-in values moved into the editor's single
+  // list, alongside whatever templates the athlete has saved.
+  await expect(
+    page.getByText("On Target ±0.10s · Acceptable ±0.20s")
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Tight", exact: true }).click();
-  await expect(page.getByText("On target ±0.05s")).toBeVisible();
-  await expect(page.getByText("Acceptable ±0.10s")).toBeVisible();
+  await page.getByRole("button", { name: "Adjust" }).click();
+  await page
+    .getByLabel("Start from a saved value")
+    .selectOption("built-in:tight");
+  // The same text is also the built-in option's own label inside the list, so the
+  // assertion is scoped to the compact summary that reflects the applied value.
+  await expect(
+    page.getByText("On Target ±0.05s · Acceptable ±0.10s").first()
+  ).toBeVisible();
 
-  await page.getByRole("button", { name: "Custom", exact: true }).click();
-  const onTargetInput = page
-    .getByText("On Target (±s)")
-    .locator("xpath=following-sibling::input");
-  const acceptableInput = page
-    .getByText("Acceptable (±s)")
-    .locator("xpath=following-sibling::input");
+  const onTargetInput = page.getByLabel("On Target (±s)");
+  const acceptableInput = page.getByLabel("Acceptable (±s)");
 
   // Invalid: acceptable <= onTarget.
   await onTargetInput.fill("0.2");
@@ -46,7 +51,7 @@ test("Threshold Setup: presets show their values, Custom validates inline, and t
     has: page.getByRole("heading", { name: "Add Shot" }),
   });
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
-  await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+  await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
 
   // Live Performance is intentionally collapsed by default. Once opened, its
   // metric cards reflect the custom thresholds (not the Standard default).
@@ -69,7 +74,7 @@ test("Block Analytics: deterministic shots produce the expected Bias, Average Er
   });
   for (const releaseTime of [3.8, 3.9, 4.2, 3.45]) {
     await shotEntry.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
   }
 
   await page.getByText("Live Performance").click();
@@ -95,7 +100,7 @@ test("Target Error Chart: shows the zero line, positive/negative bars, and a too
   });
   for (const releaseTime of [3.8, 3.6]) {
     await shotEntry.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
   }
 
   // Every chart is grouped under one collapsed-by-default Live Performance
@@ -121,7 +126,7 @@ test("Scatterplot: legend toggles In/Out visibility without mutating underlying 
 
   for (const releaseTime of [3.5, 4.0, 3.7]) {
     await shotEntry.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
   }
 
   await page.getByText("Live Performance").click();
@@ -161,7 +166,7 @@ test("Mobile viewport (390x844): Dashboard and charts render without horizontal 
     has: page.getByRole("heading", { name: "Add Shot" }),
   });
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
-  await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+  await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
 
   await page.getByText("Live Performance").click();
   await expect(page.getByText("Target Error by Shot")).toBeVisible();

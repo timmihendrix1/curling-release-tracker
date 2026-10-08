@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createAccuracyToleranceProfilesRepository } from "../repository";
 import {
   ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION,
+  LEGACY_ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION,
   ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY,
   createEmptyAccuracyToleranceProfilesState,
 } from "../persistence";
@@ -30,8 +31,11 @@ describe("AccuracyToleranceProfilesRepository", () => {
 
   it("resolves { status: 'value' } for a real stored profile list, distinct from absent", async () => {
     localStorage.clear();
+    // Deliberately the real STORED legacy (schema version 1) shape: a symmetric,
+    // unitless seconds pair. It must load — never be wiped by the version bump — and
+    // must come back as the time template it always was, with its numbers unchanged.
     const state = {
-      schemaVersion: ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION,
+      schemaVersion: LEGACY_ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION,
       profiles: [
         {
           id: "p1",
@@ -50,6 +54,11 @@ describe("AccuracyToleranceProfilesRepository", () => {
     expect(result.status).toBe("value");
     if (result.status === "value") {
       expect(result.value.profiles).toHaveLength(1);
+      expect(result.value.profiles[0].quantity).toBe("time");
+      expect(result.value.profiles[0].tolerance).toEqual({
+        onTarget: { lower: 0.05, upper: 0.05 },
+        acceptable: { lower: 0.1, upper: 0.1 },
+      });
       expect(result.value.defaultProfileId).toBe("p1");
     }
   });
@@ -72,12 +81,16 @@ describe("AccuracyToleranceProfilesRepository", () => {
     }
   });
 
-  it("treats unparseable JSON as absent", async () => {
+  it("treats unparseable JSON as UNREADABLE, not absent (ADR-0051)", async () => {
+    // Reporting absence would hand the application an empty but *writable* state,
+    // which its ordinary save effect writes straight back over the stored bytes.
+    // Unreadable data must be protected instead, so it stays recoverable.
     localStorage.clear();
     localStorage.setItem(ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY, "{not json");
     const repo = createAccuracyToleranceProfilesRepository(createLocalStorageAdapter());
     const result = await repo.loadState();
-    expect(result.status).toBe("absent");
+    expect(result.status).toBe("read_failed");
+    expect(localStorage.getItem(ACCURACY_TOLERANCE_PROFILES_STORAGE_KEY)).toBe("{not json");
   });
 
   it("resolves { status: 'read_failed' } on a genuine storage failure with an empty fallback", async () => {

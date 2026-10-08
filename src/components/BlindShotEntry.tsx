@@ -15,21 +15,28 @@ import {
   type BlindShotDraft,
 } from "../lib/blindWeight";
 import { formatReleaseTime, formatSigned, parseReleaseTime } from "../lib/timeInput";
-import type { Handle, ShotType } from "../types";
-import type { ShotEntryTarget } from "./ShotEntry";
+import type { Handle } from "../types";
+import type { AddShotInput, ShotEntryTarget } from "./ShotEntry";
 import { surfaceClass } from "./Surface";
 
 type BlindShotEntryProps = {
-  onAddShot: (
-    releaseTime: number,
-    handle: Handle,
-    shotType: ShotType | undefined,
-    targetTimeOverride: number | undefined,
-    predictedTime: number
-  ) => void;
+  /**
+   * The same single recording path ShotEntry uses (see ShotEntry.tsx's AddShotInput).
+   * Blind Weight measures time only, so it always supplies `releaseTime` — but it
+   * goes through the shared shape rather than a parallel signature, so there stays
+   * exactly one handler that appends a stone.
+   */
+  onAddShot: (input: AddShotInput) => boolean;
   target: ShotEntryTarget;
   onDraftStateChange: (hasUnsavedProgress: boolean) => void;
-  /** See ShotEntry.tsx's presetHandle prop — identical meaning and behavior. */
+  /**
+   * The handle this step's Handle Strategy expects for the next stone. It preselects,
+   * never locks: the athlete may still choose the other handle for one shot.
+   *
+   * This control owns its own draft and clears it the moment a stone is accepted, so
+   * the preselection simply follows the prop. `ShotEntry` has no equivalent prop — its
+   * draft is parent-owned, and the expected handle is applied when a draft is seeded.
+   */
   presetHandle?: Handle;
 };
 
@@ -144,13 +151,18 @@ export default function BlindShotEntry({
       ? (resolvedTargetTime() ?? undefined)
       : undefined;
 
-    onAddShot(
-      draft.releaseTime,
+    const accepted = onAddShot({
+      releaseTime: draft.releaseTime,
       handle,
-      undefined,
-      targetTimeOverride,
-      draft.predictedTime
-    );
+      ...(targetTimeOverride !== undefined
+        ? { targetTimeOverride }
+        : {}),
+      predictedTime: draft.predictedTime,
+    });
+
+    // A refused stone keeps the whole draft — including the locked prediction, which
+    // the athlete cannot honestly reproduce once cleared.
+    if (!accepted) return;
 
     setPredictedInput("");
     setMeasuredInput("");

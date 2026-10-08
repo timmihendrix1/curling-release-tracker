@@ -11,6 +11,73 @@ export type AccuracyThresholds = {
   acceptable: number;
 };
 
+/**
+ * Which measured quantity a Fixed Weight Training Block records for each stone.
+ * Deliberately distinct from two neighbouring concepts it must never be confused
+ * with (see docs/DOMAIN_GLOSSARY.md):
+ *   - `MeasurementMode` ("back-hog" / "hog-hog") is the *timing interval* — it only
+ *     ever qualifies a time measurement and is never a quantity selector.
+ *   - "Metric" in the glossary is a *derived* value (average, standard deviation).
+ *     A Measured Quantity is what is directly measured, not derived.
+ *
+ * Speed is measured in metres per second and is entered manually in this release.
+ * There is no conversion between seconds and m/s in either direction, and a speed
+ * is never inferred from a timing interval — see
+ * docs/FIXED_WEIGHT_SPEED_AND_CAPTURE_SPECIFICATION.md.
+ */
+export type MeasuredQuantity = "time" | "speed";
+
+/**
+ * One side of a tolerance band, in the quantity's own unit (seconds for time,
+ * m/s for speed). `lower` applies to measurements below the target, `upper` to
+ * measurements above it. Symmetric configurations simply carry the same number
+ * on both sides — symmetry is a UI presentation concern, not a separate model.
+ */
+export type ToleranceBand = {
+  lower: number;
+  upper: number;
+};
+
+/**
+ * A per-quantity, per-side replacement for the symmetric, seconds-only
+ * `AccuracyThresholds` pair. On each side independently, `acceptable` must be
+ * strictly greater than `onTarget` — the Acceptable band always contains and
+ * extends beyond On Target. Snapshotted per TrainingBlock exactly like
+ * `AccuracyThresholds` (ADR-0008) and never re-derived from a later default change.
+ */
+export type QuantityTolerance = {
+  onTarget: ToleranceBand;
+  acceptable: ToleranceBand;
+};
+
+/** The fixed target and tolerance for one measured quantity within a block. */
+export type QuantityConfiguration = {
+  target: number;
+  tolerance: QuantityTolerance;
+};
+
+/**
+ * A TrainingBlock's measurement configuration.
+ *
+ * Its **absence** is the historical representation (`targetTime` + `measurementMode`
+ * + `accuracyThresholds` with no `measurement` field at all), which is why existing
+ * stored sessions and their immutable cloud payload bytes/digests are unaffected by
+ * this feature. It is REQUIRED when the block records speed, and is also used for a
+ * time-only block needing an asymmetric tolerance, which the symmetric
+ * `accuracyThresholds` pair structurally cannot express.
+ *
+ * `quantities` is non-empty, duplicate-free, and stored in canonical order (time
+ * before speed); `time` is present exactly when `quantities` includes "time", `speed`
+ * exactly when it includes "speed". When it includes time, `measurement.time.target`
+ * is the single target authority and `targetTime` mirrors it exactly.
+ * See docs/adr/0051-fixed-weight-measured-quantities-and-per-side-tolerances.md.
+ */
+export type BlockMeasurementConfiguration = {
+  quantities: MeasuredQuantity[];
+  time?: QuantityConfiguration;
+  speed?: QuantityConfiguration;
+};
+
 export type Handle = "in" | "out";
 
 export type ShotType = "draw" | "takeout";
@@ -30,8 +97,10 @@ export type BlindTargetMode = "fixed" | "smart-random" | "manual";
 // Where a measured value originated. Shared by two boundaries that are the same
 // underlying concept: Blind Weight's `setMeasuredReleaseTime` (src/lib/blindWeight.ts)
 // and the Timing Provider / Capture Sequence boundary (src/lib/timingProvider.ts,
-// src/lib/captureSequence.ts). "external" is named ahead of time but not yet backed
-// by any real hardware, protocol, or manufacturer integration.
+// src/lib/captureSequence.ts). "external" is now produced by the assisted Brower capture
+// pilot (src/lib/brower/, ADR-0050) — implemented and NOT hardware-accepted. It always
+// means a real timing device supplied this value. Filtered Back–Hog records automatically
+// after setup confirmation; unfiltered pilot contexts retain manual selection.
 export type TimingProviderType = "simulator" | "manual" | "external";
 
 // Alias kept for existing Blind Weight call sites — same concept, same values.
@@ -62,11 +131,17 @@ export type TrainingBlock = {
   id: string;
   name: string;
   mode: BlockMode;
-  measurementMode: MeasurementMode;
-  // Default/fallback target: the single target for "fixed" blocks, the
+  // The timing interval qualifying this block's *time* measurements. Absent only
+  // for a speed-only block, which measures no time at all and therefore has no
+  // interval — never defaulted to "back-hog" to fill the gap. Always present for
+  // every block that records time, including every pre-existing stored block.
+  measurementMode?: MeasurementMode;
+  // Default/fallback *time* target: the single target for "fixed" blocks, the
   // constant target for "blind"+"fixed", and the initial seed value for
-  // "variable"/"blind" blocks using Smart Random or Manual.
-  targetTime: number;
+  // "variable"/"blind" blocks using Smart Random or Manual. Absent only for a
+  // speed-only block (whose speed target lives in `measurement.speed.target`) —
+  // never fabricated as 3.75 for a block that measures no time.
+  targetTime?: number;
   createdAt: string;
   // Set once a newer block becomes active; undefined means this block is active.
   completedAt?: string;
@@ -92,6 +167,13 @@ export type TrainingBlock = {
   // blocks created before this concept existed; migration backfills the legacy
   // default (0.10s / 0.20s) rather than leaving it undefined.
   accuracyThresholds?: AccuracyThresholds;
+  // Absent means the historical, unambiguous time-only block: quantities = ["time"],
+  // target = `targetTime`, tolerance = the symmetric seconds pair in
+  // `accuracyThresholds`. That absence is the legacy representation and is never
+  // backfilled by migration. Present when the block records speed, and also when a
+  // time-only block needs an asymmetric tolerance — see resolveBlockMeasurement in
+  // src/lib/measurement/quantities.ts and ADR-0051.
+  measurement?: BlockMeasurementConfiguration;
 };
 
 export type Shot = {
@@ -99,11 +181,33 @@ export type Shot = {
   sessionId: string;
   blockId: string;
   shotNumber: number;
-  releaseTime: number;
-  // The target that actually applied to this specific shot. Always set at
-  // creation time and never changed afterwards, even if the block's default
-  // or pending target later changes.
-  targetTime: number;
+  // The measured release time, in seconds. Absent only on a stone whose block
+  // does not record time, or on a Both stone whose time has not been supplied.
+  // Missing is NOT zero: a missing time is excluded from every time calculation
+  // and every time denominator, never counted as 0.0s. Always present on every
+  // stone recorded before this feature existed.
+  releaseTime?: number;
+  // The time target that actually applied to this specific shot. Set at creation
+  // time whenever the stone records time, and never changed afterwards, even if
+  // the block's default or pending target later changes. Absent exactly when
+  // `releaseTime` is absent — never fabricated from the block's default.
+  targetTime?: number;
+  // The measured speed, in metres per second, and the speed target that actually
+  // applied to this stone. Same immutability rule as the time pair above: both are
+  // written once and never rewritten as a side effect of a later change. A Both
+  // stone may legitimately carry only one of the two measurement pairs; it must
+  // always carry at least one. Speed is never derived from `releaseTime` and
+  // `releaseTime` is never derived from speed.
+  speed?: number;
+  targetSpeed?: number;
+  // Provenance of the *speed* value specifically, kept independent of
+  // `measurementSource` below (which is, and remains, the time value's capture
+  // provenance). In this release speed is always manually entered.
+  speedSource?: TimingProviderType;
+  // When the speed value was recorded. Differs from `createdAt` when an accepted
+  // device time was saved first and its missing speed was completed afterwards on
+  // this same, explicitly identified stone.
+  speedRecordedAt?: string;
   // The thrower's own guess at the release time, locked in before the actual
   // releaseTime is known. Required for Blind Weight shots; always undefined
   // for Fixed/Variable Weight shots — never fabricated for either.
@@ -203,6 +307,8 @@ export type CaptureSequence = {
 // For Version 1, every Release Timing Plan Step completes after a fixed number of
 // saved shots. Modeled as a discriminated completion rule (not a bare number) so a
 // future step type can use a different completion kind without redefining this one.
+// This describes what "completed" means for the step; it is deliberately NOT a gate on
+// progression — see docs/TRAINING_SYSTEM_AND_PLANS.md section 31 and ADR-0048.
 export type ShotCountCompletion = {
   type: "shot-count";
   value: number;
@@ -224,13 +330,20 @@ export type HandleStrategy =
 export type ReleaseTimingBlockConfiguration = {
   name: string;
   mode: BlockMode;
-  measurementMode: MeasurementMode;
-  targetTime: number;
+  // Absent only on a speed-only step, exactly as on TrainingBlock above. Every
+  // stored plan written before this feature carries both, unchanged.
+  measurementMode?: MeasurementMode;
+  targetTime?: number;
   variableTargetMode: VariableTargetMode;
   blindTargetMode: BlindTargetMode;
   smartRandomMin: number;
   smartRandomMax: number;
   accuracyThresholds: AccuracyThresholds;
+  // Same rule and same legacy-absence meaning as TrainingBlock.measurement: required
+  // for speed, also used for an asymmetric time-only step. Carried verbatim into the
+  // created block. A step snapshot carrying one makes its Session measurement-aware
+  // even before the step's Block exists.
+  measurement?: BlockMeasurementConfiguration;
 };
 
 // One Release Time unit inside a Training Plan. Its explicit discriminant coexists

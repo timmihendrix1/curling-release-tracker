@@ -1,6 +1,7 @@
 "use client";
 
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
+import { profileToleranceLabel } from "../lib/accuracyToleranceProfiles/profiles";
 
 export const CUSTOM_FOR_THIS_EXERCISE_VALUE = "";
 
@@ -73,8 +74,7 @@ export default function AccuracyToleranceProfileSelector({
 
       {selectedProfile ? (
         <p className="text-xs text-slate-500">
-          {selectedProfile.name}: On Target ±{selectedProfile.onTarget.toFixed(2)}s
-          {" · "}Acceptable ±{selectedProfile.acceptable.toFixed(2)}s
+          {selectedProfile.name}: {profileToleranceLabel(selectedProfile)}
         </p>
       ) : (
         <div className="grid grid-cols-2 gap-2">

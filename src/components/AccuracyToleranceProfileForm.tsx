@@ -1,15 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { validateAccuracyThresholds } from "../lib/accuracyThresholds";
 import { MAX_PROFILE_NAME_LENGTH } from "../lib/accuracyToleranceProfiles/profiles";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
-import { parseReleaseTime } from "../lib/timeInput";
+import type { MeasuredQuantity, QuantityTolerance } from "../types";
+import {
+  defaultToleranceDraft,
+  draftFromTolerance,
+  parseToleranceDraft,
+  type QuantityToleranceDraft,
+} from "../lib/measurement/toleranceDraft";
+import { quantityLabel } from "../lib/measurement/tolerance";
+import QuantityToleranceEditor from "./QuantityToleranceEditor";
 
 export type AccuracyToleranceProfileFormValue = {
   name: string;
-  onTarget: number;
-  acceptable: number;
+  /**
+   * Carried through explicitly so a save is self-describing. When EDITING, it is
+   * always the stored template's own quantity — this form cannot change what unit a
+   * template is in, because doing so would silently reinterpret its numbers rather
+   * than convert them (there is no conversion between seconds and m/s).
+   */
+  quantity: MeasuredQuantity;
+  /** The full per-side tolerance. A symmetric template simply carries equal sides. */
+  tolerance: QuantityTolerance;
 };
 
 type AccuracyToleranceProfileFormProps = {
@@ -19,10 +33,18 @@ type AccuracyToleranceProfileFormProps = {
 };
 
 /**
- * Create/edit form for one Accuracy Tolerance Profile — reuses the exact same
- * `validateAccuracyThresholds` rule as Training Block/Plan Step setup (see
- * src/lib/accuracyThresholds.ts, ADR-0008), so a profile can never be saved with
- * values that wouldn't be accepted anywhere else in the app.
+ * Create/edit form for one Accuracy Tolerance Profile.
+ *
+ * Stage B completes it: every template shape this app can store — seconds or metres
+ * per second, symmetric or per-side — can now be created and edited here, through the
+ * same `QuantityToleranceEditor` and the same `validateQuantityTolerance` rule that
+ * Training Block and Plan Step setup use (ADR-0008, ADR-0051). Before this stage a
+ * speed or asymmetric template was shown read-only, because the form had one seconds
+ * field per band and saving through it would have flattened or re-unitted the value.
+ *
+ * The one thing still deliberately immutable is a template's QUANTITY. Blocks, plan
+ * steps and history already copied this template's numbers; letting an edit relabel
+ * 0.05s as 0.05 m/s would change what every one of those copies was judged against.
  */
 export default function AccuracyToleranceProfileForm({
   initialProfile,
@@ -30,17 +52,29 @@ export default function AccuracyToleranceProfileForm({
   onCancel,
 }: AccuracyToleranceProfileFormProps) {
   const [name, setName] = useState(initialProfile?.name ?? "");
-  const [onTargetInput, setOnTargetInput] = useState(
-    (initialProfile?.onTarget ?? 0.1).toFixed(2)
+  const [quantity, setQuantity] = useState<MeasuredQuantity>(
+    initialProfile?.quantity ?? "time"
   );
-  const [acceptableInput, setAcceptableInput] = useState(
-    (initialProfile?.acceptable ?? 0.2).toFixed(2)
+  const [draft, setDraft] = useState<QuantityToleranceDraft>(() =>
+    initialProfile
+      ? draftFromTolerance(initialProfile.tolerance, initialProfile.quantity)
+      : defaultToleranceDraft("time")
   );
 
-  const thresholdsValidation = validateAccuracyThresholds(
-    parseReleaseTime(onTargetInput) ?? NaN,
-    parseReleaseTime(acceptableInput) ?? NaN
-  );
+  // Editing never offers the quantity control at all, so there is no state in which a
+  // stored template's unit can be changed from this screen.
+  const quantityIsFixed = initialProfile !== undefined;
+
+  function handleSelectQuantity(next: MeasuredQuantity) {
+    if (quantityIsFixed || next === quantity) return;
+    setQuantity(next);
+    // The NUMBERS are not carried across units — 0.10s and 0.10 m/s are unrelated
+    // values, and reusing the digits is exactly the silent reinterpretation this form
+    // refuses to perform. The new quantity's own starting values are used instead.
+    setDraft(defaultToleranceDraft(next));
+  }
+
+  const validation = parseToleranceDraft(draft);
 
   const trimmedName = name.trim();
   const nameError = !trimmedName
@@ -55,15 +89,15 @@ export default function AccuracyToleranceProfileForm({
       return;
     }
 
-    if (!thresholdsValidation.valid) {
-      // The inline error below already explains why.
+    if (!validation.valid) {
+      // The inline error inside the editor already explains why.
       return;
     }
 
     onSave({
       name: trimmedName,
-      onTarget: thresholdsValidation.onTarget,
-      acceptable: thresholdsValidation.acceptable,
+      quantity,
+      tolerance: validation.tolerance,
     });
   }
 
@@ -88,65 +122,61 @@ export default function AccuracyToleranceProfileForm({
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="e.g. Elite"
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
+            className="mt-2 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 placeholder:text-slate-400"
           />
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div>
-            <label
-              className="text-xs text-slate-500"
-              htmlFor="accuracy-tolerance-profile-on-target"
+        <div className="mt-4">
+          <span className="text-sm font-medium text-slate-700">Measurement</span>
+
+          {quantityIsFixed ? (
+            <p className="mt-1 text-xs text-slate-500">
+              {quantityLabel(quantity)} — a saved profile keeps its measurement.
+              Create a new profile for the other one.
+            </p>
+          ) : (
+            <div
+              role="radiogroup"
+              aria-label="Measurement"
+              className="mt-2 grid grid-cols-2 gap-2"
             >
-              On Target (±s)
-            </label>
-
-            <input
-              id="accuracy-tolerance-profile-on-target"
-              type="text"
-              inputMode="decimal"
-              value={onTargetInput}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (/^[0-9.,]*$/.test(value)) setOnTargetInput(value);
-              }}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-            />
-          </div>
-
-          <div>
-            <label
-              className="text-xs text-slate-500"
-              htmlFor="accuracy-tolerance-profile-acceptable"
-            >
-              Acceptable (±s)
-            </label>
-
-            <input
-              id="accuracy-tolerance-profile-acceptable"
-              type="text"
-              inputMode="decimal"
-              value={acceptableInput}
-              onChange={(event) => {
-                const value = event.target.value;
-                if (/^[0-9.,]*$/.test(value)) setAcceptableInput(value);
-              }}
-              className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
-            />
-          </div>
+              {(["time", "speed"] as MeasuredQuantity[]).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  role="radio"
+                  aria-checked={quantity === option}
+                  onClick={() => handleSelectQuantity(option)}
+                  className={`min-h-11 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                    quantity === option
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  {option === "speed" ? "Speed (m/s)" : "Time (s)"}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {thresholdsValidation.valid === false && (
-          <p className="mt-2 text-xs text-red-600">
-            {thresholdsValidation.error}
-          </p>
-        )}
+        <div className="mt-4">
+          <QuantityToleranceEditor
+            idPrefix="accuracy-tolerance-profile"
+            draft={draft}
+            onChange={setDraft}
+            // A template is itself the thing other screens pick from, so it offers no
+            // "start from a saved template" list of its own — only the app's built-in
+            // starting values, which the editor supplies.
+            profiles={[]}
+          />
+        </div>
 
         <div className="mt-5 flex gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-xl bg-slate-200 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-300"
+            className="min-h-11 flex-1 rounded-xl bg-slate-200 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-300"
           >
             Cancel
           </button>
@@ -154,7 +184,8 @@ export default function AccuracyToleranceProfileForm({
           <button
             type="button"
             onClick={handleSubmit}
-            className="flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
+            disabled={!validation.valid}
+            className="min-h-11 flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {initialProfile ? "Save Profile" : "Create Profile"}
           </button>

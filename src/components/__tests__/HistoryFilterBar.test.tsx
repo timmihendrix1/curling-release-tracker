@@ -37,6 +37,7 @@ function Harness({
       }}
       availableTrainingCategories={["fixed"]}
       availableMeasurementModes={["back-hog"]}
+      availableMeasuredQuantities={["time"]}
       sessions={[] as Session[]}
     />
   );

@@ -20,6 +20,9 @@ import type {
 } from "../lib/exercises/executionTypes";
 import { measurementUnitLabel } from "../lib/exercises/presentation";
 import { serializeOwnedTeamExerciseResultExport } from "../lib/exercises/teamResultExport";
+import type { FileExportRequest } from "../lib/platform/fileExport";
+import { useFileExport } from "./useFileExport";
+import FileExportStatusNotice from "./FileExportStatusNotice";
 import ExercisePostCompletionCorrectionEditor from "./ExercisePostCompletionCorrectionEditor";
 import { surfaceClass } from "./Surface";
 
@@ -70,14 +73,20 @@ function safeFilePart(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "exercise";
 }
 
-function downloadResult(record: OwnedTeamExerciseResultRecord): void {
-  const payload = serializeOwnedTeamExerciseResultExport(record);
-  const url = URL.createObjectURL(new Blob([payload], { type: "application/json" }));
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${safeFilePart(record.sharedExecution.exerciseVersionSnapshot.title)}-result.json`;
-  anchor.click();
-  URL.revokeObjectURL(url);
+/** Delivery request for one owned Team Exercise Result.
+ *
+ * The serialized payload is unchanged, including its existing privacy
+ * filtering: this is the athlete's OWN record and nothing about which records
+ * or identifiers it contains is affected by delivery moving behind the shared
+ * boundary (Stage M3a). */
+function teamResultExport(record: OwnedTeamExerciseResultRecord): FileExportRequest {
+  const title = record.sharedExecution.exerciseVersionSnapshot.title;
+  return {
+    displayFileName: `${safeFilePart(title)}-result.json`,
+    content: serializeOwnedTeamExerciseResultExport(record),
+    mimeType: "application/json;charset=utf-8;",
+    shareTitle: title,
+  };
 }
 
 function attemptSummary(attempt: ShotmakingExerciseAttempt): string {
@@ -269,6 +278,9 @@ function ResultDetail({
   labels: ReadonlyMap<string, string>;
   canMutate: boolean;
 }) {
+  // Keyed to the owning record so a late export completion can never write into
+  // a different result's view.
+  const { status: exportStatus, runExport } = useFileExport({ ownerKey: record.bundleId });
   const [note, setNote] = useState(record.privateNote?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -471,9 +483,10 @@ function ResultDetail({
         </div>
       </section>
 
-      <button type="button" onClick={() => downloadResult(record)} className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">
+      <button type="button" disabled={exportStatus.state === "working"} onClick={() => void runExport(teamResultExport(record))} className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50">
         Export My Raw Result
       </button>
+      <FileExportStatusNotice status={exportStatus} />
     </div>
   );
 }

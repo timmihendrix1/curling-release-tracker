@@ -4,6 +4,7 @@ import {
   goToAnalyze,
   setupFixedBlock,
   setupVariableSmartRandomBlock,
+  startNewSessionFromManagement,
 } from "./utils";
 
 /**
@@ -30,11 +31,11 @@ async function addShot(
   const panel = shotEntryPanel(page);
   await panel.getByRole("button", { name: `${handle} Handle`, exact: true }).click();
   await panel.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
-  await panel.getByRole("button", { name: "Add Shot", exact: true }).click();
+  await panel.getByRole("button", { name: "Save Shot", exact: true }).click();
 }
 
 async function startNewSession(page: import("@playwright/test").Page) {
-  await page.getByRole("button", { name: "Start New Session" }).click();
+  await startNewSessionFromManagement(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 }

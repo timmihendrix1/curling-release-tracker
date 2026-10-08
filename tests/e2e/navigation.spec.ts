@@ -10,6 +10,7 @@ import {
   primaryNavDesktop,
   setupFixedBlock,
   startAutoCapture,
+  startNewSessionFromManagement,
 } from "./utils";
 
 test.describe("First Run", () => {
@@ -136,7 +137,7 @@ test.describe("Start Training", () => {
       has: page.getByRole("heading", { name: "Add Shot" }),
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
     await expect(page.getByText("1 shot total")).toBeVisible();
 
     await goToHome(page);
@@ -410,11 +411,11 @@ test.describe("Settings", () => {
       has: page.getByRole("heading", { name: "Add Shot" }),
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
     await expect(page.getByText("1 shot total")).toBeVisible();
 
     // Ending the session moves it into history, which is what enables Export/Clear.
-    await page.getByRole("button", { name: "Start New Session" }).click();
+    await startNewSessionFromManagement(page);
     await page.getByRole("button", { name: "Start", exact: true }).click();
 
     await goToSettings(page);
@@ -485,7 +486,7 @@ test.describe("Regression", () => {
       has: page.getByRole("heading", { name: "Add Shot" }),
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
-    await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+    await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
     await expect(page.getByText("1 shot total")).toBeVisible();
 
     // Navigation — active session survives a round trip through every screen

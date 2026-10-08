@@ -14,19 +14,22 @@ import type {
   AccuracyThresholds,
   Handle,
   MeasurementMode,
+  QuantityTolerance,
   Shot,
   ShotType,
   TrainingBlock,
 } from "../types";
+import { type TargetErrorCategory } from "./accuracyThresholds";
 import {
-  categorizeTargetError,
-  type TargetErrorCategory,
-} from "./accuracyThresholds";
-import {
-  computeTargetAccuracyAnalytics,
+  computeQuantityAccuracyAnalytics,
   targetErrorForShot,
   type TargetAccuracyAnalytics,
 } from "./analytics";
+import { timeMeasuredShots } from "./measurement/quantities";
+import {
+  asQuantityTolerance,
+  categorizeDeviation,
+} from "./measurement/tolerance";
 import { blockModeLabel } from "./trainingBlocks";
 
 // --- Target Error by Shot -----------------------------------------------
@@ -54,9 +57,16 @@ export type TargetErrorByShotPoint = {
 export function prepareTargetErrorByShotData(
   shots: Shot[],
   blocksById: Map<string, TrainingBlock>,
-  thresholds: AccuracyThresholds
+  // Accepts the block's own per-side tolerance OR the historical symmetric pair. A
+  // caller holding an asymmetric tolerance must pass it through rather than flattening
+  // it, or this chart would classify a shot differently from history aggregation.
+  thresholds: AccuracyThresholds | QuantityTolerance
 ): TargetErrorByShotPoint[] {
-  return shots.map((shot) => {
+  // This is a TIME chart. A stone without a time measurement is omitted from the
+  // series rather than plotted at zero, which would draw a shot that never happened.
+  const tolerance = asQuantityTolerance(thresholds);
+
+  return timeMeasuredShots(shots).map((shot) => {
     const targetError = targetErrorForShot(shot);
     const absoluteTargetError = Math.abs(targetError);
 
@@ -71,7 +81,7 @@ export function prepareTargetErrorByShotData(
       shotType: shot.shotType,
       blockId: shot.blockId,
       blockName: blocksById.get(shot.blockId)?.name ?? "",
-      category: categorizeTargetError(absoluteTargetError, thresholds),
+      category: categorizeDeviation(targetError, tolerance),
     };
   });
 }
@@ -111,7 +121,9 @@ export function prepareTargetVsActualScatterData(
   blocksById: Map<string, TrainingBlock>,
   sessionContextByBlockId?: SessionContextByBlockId
 ): TargetVsActualPoint[] {
-  return shots.map((shot) => {
+  // Same rule as above: only stones that genuinely carry a time and its target
+  // can be placed on a target-versus-actual time scatter.
+  return timeMeasuredShots(shots).map((shot) => {
     const block = blocksById.get(shot.blockId);
 
     return {
@@ -175,6 +187,14 @@ export type ProgressBlockEntry = {
   date: string;
   measurementMode: MeasurementMode;
   thresholds: AccuracyThresholds;
+  /**
+   * The per-side tolerance actually used to classify this block's time measurements.
+   * Absent means the symmetric `thresholds` pair above is the whole truth (every
+   * legacy block). Present when the block carries its own, possibly asymmetric,
+   * tolerance — which MUST be used here, so progress, quality distribution and history
+   * aggregation can never disagree about whether one shot was a Major Miss.
+   */
+  timeTolerance?: QuantityTolerance;
   shots: Shot[];
   /** Training mode, for tooltip context only — never used to filter/group. */
   blockMode?: string;
@@ -244,16 +264,22 @@ export function prepareProgressMetricData(
   metric: ProgressMetricKey,
   rollingWindow = 3
 ): ProgressPoint[] {
-  const nonEmpty = entries.filter((entry) => entry.shots.length > 0);
+  // "Empty" means "has nothing this TIME series can plot". A block whose stones
+  // all lack a time measurement is excluded exactly like a block with no stones,
+  // rather than contributing a fabricated zero-error point.
+  const nonEmpty = entries.filter(
+    (entry) => timeMeasuredShots(entry.shots).length > 0
+  );
 
   const sorted = [...nonEmpty].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
   const points: ProgressPoint[] = sorted.map((entry) => {
-    const targetAccuracy = computeTargetAccuracyAnalytics(
+    const targetAccuracy = computeQuantityAccuracyAnalytics(
       entry.shots,
-      entry.thresholds
+      "time",
+      entry.timeTolerance ?? asQuantityTolerance(entry.thresholds)
     );
 
     return {
@@ -263,7 +289,7 @@ export function prepareProgressMetricData(
       date: entry.date,
       measurementMode: entry.measurementMode,
       thresholds: entry.thresholds,
-      shotCount: entry.shots.length,
+      shotCount: targetAccuracy.shotCount,
       targetAccuracy,
       value: progressMetricValue(targetAccuracy, metric),
       rollingAverage: null,
@@ -317,18 +343,25 @@ export type ShotQualityDistributionPoint = {
 export function prepareShotQualityDistributionData(
   entries: ProgressBlockEntry[]
 ): ShotQualityDistributionPoint[] {
-  const nonEmpty = entries.filter((entry) => entry.shots.length > 0);
+  // Same time-eligibility rule as prepareProgressMetricData.
+  const nonEmpty = entries.filter(
+    (entry) => timeMeasuredShots(entry.shots).length > 0
+  );
 
   const sorted = [...nonEmpty].sort(
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
   return sorted.map((entry) => {
-    const targetAccuracy = computeTargetAccuracyAnalytics(
+    const targetAccuracy = computeQuantityAccuracyAnalytics(
       entry.shots,
-      entry.thresholds
+      "time",
+      entry.timeTolerance ?? asQuantityTolerance(entry.thresholds)
     );
-    const shotCount = entry.shots.length;
+    // The percentages below must divide by the number of stones actually
+    // categorised, never by the raw stone count — otherwise a block containing
+    // non-time stones would silently render bars that do not add up to 100%.
+    const shotCount = targetAccuracy.shotCount;
 
     return {
       blockId: entry.blockId,

@@ -29,10 +29,7 @@ describe("Accuracy Tolerance Profiles — snapshot semantics", () => {
 
     // Simulates what TrainingSetup/TrainingPlanStepEditor do: copy the
     // profile's current numeric values into the configuration being created.
-    const stepConfigurationSnapshot = {
-      onTarget: built.value.onTarget,
-      acceptable: built.value.acceptable,
-    };
+    const stepConfigurationSnapshot = structuredClone(built.value.tolerance);
 
     // The athlete later edits the profile to stricter values.
     const edited = buildAccuracyToleranceProfile(
@@ -44,7 +41,10 @@ describe("Accuracy Tolerance Profiles — snapshot semantics", () => {
     expect(afterEdit.ok).toBe(true);
 
     // The already-copied snapshot must be completely unaffected.
-    expect(stepConfigurationSnapshot).toEqual({ onTarget: 0.05, acceptable: 0.1 });
+    expect(stepConfigurationSnapshot).toEqual({
+      onTarget: { lower: 0.05, upper: 0.05 },
+      acceptable: { lower: 0.1, upper: 0.1 },
+    });
   });
 
   it("deleting a profile never invalidates a value snapshot already copied from it", () => {
@@ -57,15 +57,15 @@ describe("Accuracy Tolerance Profiles — snapshot semantics", () => {
     let state = createEmptyAccuracyToleranceProfilesState();
     state = addAccuracyToleranceProfile(state, built.value);
 
-    const sessionBlockSnapshot = {
-      onTarget: built.value.onTarget,
-      acceptable: built.value.acceptable,
-    };
+    const sessionBlockSnapshot = structuredClone(built.value.tolerance);
 
     const afterDelete = deleteAccuracyToleranceProfile(state, built.value.id);
     expect(afterDelete.profiles).toHaveLength(0);
 
     // The Training Block's own stored thresholds remain exactly as recorded.
-    expect(sessionBlockSnapshot).toEqual({ onTarget: 0.05, acceptable: 0.1 });
+    expect(sessionBlockSnapshot).toEqual({
+      onTarget: { lower: 0.05, upper: 0.05 },
+      acceptable: { lower: 0.1, upper: 0.1 },
+    });
   });
 });

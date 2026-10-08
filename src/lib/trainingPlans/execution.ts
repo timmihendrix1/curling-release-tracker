@@ -12,6 +12,7 @@ import type {
   TrainingPlan,
 } from "../../types";
 import { cloneTrainingPlanStep } from "./steps";
+import { canonicalPlanExecution } from "../measurement/canonicalShape";
 
 /**
  * Deep-copies the plan's steps into a fresh execution snapshot — never a live
@@ -23,7 +24,8 @@ export function startPlanExecution(
   plan: TrainingPlan,
   firstRuntime: PlanStepRuntimeReference
 ): PlanExecutionState {
-  return {
+  // Canonical persisted order — see src/lib/measurement/canonicalShape.ts.
+  return canonicalPlanExecution({
     sourcePlanId: plan.id,
     sourcePlanName: plan.name,
     sourcePlanUpdatedAt: plan.updatedAt,
@@ -32,7 +34,7 @@ export function startPlanExecution(
       step: cloneTrainingPlanStep(step),
       runtime: index === 0 ? { ...firstRuntime } : undefined,
     })),
-  };
+  });
 }
 
 /**
@@ -50,11 +52,11 @@ export function advanceToNextPlanStep(
 
   const nextIndex = planExecution.activeStepIndex + 1;
 
-  return {
+  return canonicalPlanExecution({
     ...planExecution,
     activeStepIndex: nextIndex,
     steps: planExecution.steps.map((snapshot, index) =>
       index === nextIndex ? { ...snapshot, runtime: { ...newRuntime } } : snapshot
     ),
-  };
+  });
 }

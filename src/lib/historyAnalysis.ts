@@ -19,17 +19,30 @@ import type {
   AccuracyThresholds,
   BlockMode,
   Handle,
+  MeasuredQuantity,
   MeasurementMode,
+  QuantityTolerance,
   Session,
   Shot,
   ShotType,
   TrainingBlock,
 } from "../types";
+import type { TargetErrorCategory } from "./accuracyThresholds";
 import {
-  categorizeTargetError,
   resolveAccuracyThresholds,
   validateAccuracyThresholds,
 } from "./accuracyThresholds";
+import {
+  MEASURED_QUANTITIES,
+  blockTolerance,
+  resolveBlockMeasurement,
+  shotDeviation,
+  timeMeasuredShots,
+} from "./measurement/quantities";
+import {
+  categorizeDeviation,
+  toleranceFromAccuracyThresholds,
+} from "./measurement/tolerance";
 import {
   average,
   standardDeviationOfValues,
@@ -67,6 +80,14 @@ export type ThresholdComparisonMode =
 
 export type HistoryAnalysisFilters = {
   trainingCategory: TrainingCategory | null;
+  /**
+   * WHAT was measured (seconds or m/s) — deliberately distinct from
+   * `measurementMode` below, which is the timing INTERVAL that qualifies a time
+   * measurement. Conflating the two is what made speed-only training unreachable:
+   * such a block has no timing interval at all, so a defaulted Back-Hog selection
+   * silently excluded it with no control through which to get it back.
+   */
+  measuredQuantity: MeasuredQuantity | null;
   measurementMode: MeasurementMode | null;
   dateRange: DateRangeFilter;
   /** Empty means "Both" (no handle filtering applied). */
@@ -85,6 +106,7 @@ export type HistoryAnalysisFilters = {
 export function createDefaultHistoryFilters(): HistoryAnalysisFilters {
   return {
     trainingCategory: null,
+    measuredQuantity: null,
     measurementMode: null,
     dateRange: DEFAULT_DATE_RANGE,
     handles: [],
@@ -166,10 +188,43 @@ export function getAvailableMeasurementModes(
   sessions.forEach((session) =>
     session.blocks.forEach((block) => {
       if (trainingCategory && block.mode !== trainingCategory) return;
-      set.add(block.measurementMode);
+      // A block that measures no time has no timing interval to offer as a filter.
+      if (block.measurementMode) set.add(block.measurementMode);
     })
   );
   return Array.from(set);
+}
+
+/** The measured quantities present in the selectable history, in canonical order. */
+export function getAvailableMeasuredQuantities(
+  sessions: Session[],
+  trainingCategory: TrainingCategory | null
+): MeasuredQuantity[] {
+  const set = new Set<MeasuredQuantity>();
+  sessions.forEach((session) =>
+    session.blocks.forEach((block) => {
+      if (trainingCategory && block.mode !== trainingCategory) return;
+      resolveBlockMeasurement(block).quantities.forEach((quantity) =>
+        set.add(quantity)
+      );
+    })
+  );
+  return MEASURED_QUANTITIES.filter((quantity) => set.has(quantity));
+}
+
+/**
+ * Unlike the training category and the timing interval, a single available quantity
+ * is NOT force-selected. "No selection" is meaningful here and is the safe default:
+ * it means "every quantity", which keeps both a legacy Time session and a Speed
+ * session visible in the same list. Auto-selecting one would reintroduce exactly the
+ * silent exclusion this filter exists to prevent.
+ */
+export function resolveDefaultMeasuredQuantity(
+  available: MeasuredQuantity[],
+  previous: MeasuredQuantity | null
+): MeasuredQuantity | null {
+  if (previous && available.includes(previous)) return previous;
+  return null;
 }
 
 /**
@@ -236,12 +291,20 @@ export type HistoryAnalysisBlockContext = {
   shots: Shot[];
   /** Original snapshot or the active Comparison preset — never mutates the block. */
   thresholds: AccuracyThresholds;
+  /**
+   * The per-side tolerance actually used to categorize this block's time
+   * measurements. In "original" mode it is the block's own snapshot, which may be
+   * asymmetric and must not be flattened to one number per band; in "comparison"
+   * mode it is the symmetric pair the user explicitly chose to apply to everything.
+   */
+  timeTolerance: QuantityTolerance;
 };
 
 export type HistoryAnalysisContext = {
   filters: HistoryAnalysisFilters;
   availableTrainingCategories: TrainingCategory[];
   availableMeasurementModes: MeasurementMode[];
+  availableMeasuredQuantities: MeasuredQuantity[];
   /** Handles actually present among the selection's shots (after all filters). */
   availableHandles: Handle[];
   blocks: HistoryAnalysisBlockContext[];
@@ -274,6 +337,10 @@ export function buildHistoryAnalysisContext(
     sessions,
     filters.trainingCategory
   );
+  const availableMeasuredQuantities = getAvailableMeasuredQuantities(
+    sessions,
+    filters.trainingCategory
+  );
 
   const matchingBlocks: HistoryAnalysisBlockContext[] = [];
 
@@ -289,8 +356,29 @@ export function buildHistoryAnalysisContext(
       if (filters.trainingCategory && block.mode !== filters.trainingCategory) {
         continue;
       }
+
+      const blockMeasurement = resolveBlockMeasurement(block);
+
       if (
+        filters.measuredQuantity &&
+        !blockMeasurement.quantities.includes(filters.measuredQuantity)
+      ) {
+        continue;
+      }
+
+      // Time-specific filters apply only to a TIME view.
+      //
+      // The timing interval qualifies a time measurement, so it can never exclude a
+      // block that measures no time. It must also not exclude one when the athlete is
+      // looking at SPEED: the interval control is hidden in that view, so a stale
+      // value would silently remove a Both block's perfectly good speed records with
+      // nothing on screen to explain it or undo it.
+      const timeFiltersApply = filters.measuredQuantity !== "speed";
+
+      if (
+        timeFiltersApply &&
         filters.measurementMode &&
+        blockMeasurement.quantities.includes("time") &&
         block.measurementMode !== filters.measurementMode
       ) {
         continue;
@@ -305,10 +393,16 @@ export function buildHistoryAnalysisContext(
       const originalThresholds = resolveAccuracyThresholds(
         block.accuracyThresholds
       );
+      const comparisonMode = filters.thresholdComparisonMode;
       const thresholds =
-        filters.thresholdComparisonMode.type === "comparison"
-          ? filters.thresholdComparisonMode.thresholds
+        comparisonMode.type === "comparison"
+          ? comparisonMode.thresholds
           : originalThresholds;
+      const timeTolerance =
+        comparisonMode.type === "comparison"
+          ? toleranceFromAccuracyThresholds(comparisonMode.thresholds)
+          : blockTolerance(block, "time") ??
+            toleranceFromAccuracyThresholds(originalThresholds);
 
       let shots = getBlockShots(session, block.id);
 
@@ -322,16 +416,26 @@ export function buildHistoryAnalysisContext(
             filters.shotTypes.includes(shot.shotType)
         );
       }
-      if (filters.targetRange?.min !== undefined) {
+      // A Target Time range filter can only ever select stones that have a time
+      // target; one without is excluded rather than compared against undefined. It is
+      // a TIME filter, so it applies neither to a block that measures no time nor in a
+      // speed view, where a stale range would silently empty the selection.
+      const timeRangeApplies =
+        timeFiltersApply && blockMeasurement.quantities.includes("time");
+      if (timeRangeApplies && filters.targetRange?.min !== undefined) {
         const min = filters.targetRange.min;
-        shots = shots.filter((shot) => shot.targetTime >= min);
+        shots = shots.filter(
+          (shot) => shot.targetTime !== undefined && shot.targetTime >= min
+        );
       }
-      if (filters.targetRange?.max !== undefined) {
+      if (timeRangeApplies && filters.targetRange?.max !== undefined) {
         const max = filters.targetRange.max;
-        shots = shots.filter((shot) => shot.targetTime <= max);
+        shots = shots.filter(
+          (shot) => shot.targetTime !== undefined && shot.targetTime <= max
+        );
       }
 
-      matchingBlocks.push({ block, session, shots, thresholds });
+      matchingBlocks.push({ block, session, shots, thresholds, timeTolerance });
     }
   }
 
@@ -350,27 +454,38 @@ export function buildHistoryAnalysisContext(
     ])
   );
 
-  const progressEntries: ProgressBlockEntry[] = matchingBlocks.map(
-    (entry) => ({
+  // Progress is a TIME series keyed by timing interval, so a block that measures
+  // no time contributes no entry at all — it is not plotted under a substituted
+  // interval, and it is not silently merged into a Back-Hog series.
+  const progressEntries: ProgressBlockEntry[] = matchingBlocks
+    .filter(
+      (entry): entry is typeof entry & { block: { measurementMode: MeasurementMode } } =>
+        entry.block.measurementMode !== undefined
+    )
+    .map((entry) => ({
       blockId: entry.block.id,
       blockName: entry.block.name,
       sessionTitle: entry.session.title,
       date: entry.block.createdAt,
       measurementMode: entry.block.measurementMode,
       thresholds: entry.thresholds,
+      // The same per-side tolerance aggregateTargetAccuracyAcrossBlocks uses, so the
+      // progress series and the aggregate can never classify one shot differently.
+      timeTolerance: entry.timeTolerance,
       shots: entry.shots,
       blockMode: blockModeLabel(entry.block.mode),
       targetDescription:
         entry.block.mode === "fixed" ||
         (entry.block.mode === "blind" &&
           entry.block.blindTargetMode === "fixed")
-          ? `${entry.block.targetTime.toFixed(2)}s`
+          ? entry.block.targetTime !== undefined
+            ? `${entry.block.targetTime.toFixed(2)}s`
+            : undefined
           : entry.block.smartRandomMin !== undefined &&
               entry.block.smartRandomMax !== undefined
             ? `${entry.block.smartRandomMin.toFixed(2)}s–${entry.block.smartRandomMax.toFixed(2)}s`
             : undefined,
-    })
-  );
+    }));
 
   const blocksWithShots = matchingBlocks.filter(
     (entry) => entry.shots.length > 0
@@ -380,6 +495,7 @@ export function buildHistoryAnalysisContext(
     filters,
     availableTrainingCategories,
     availableMeasurementModes,
+    availableMeasuredQuantities,
     availableHandles,
     blocks: matchingBlocks,
     shots,
@@ -394,13 +510,12 @@ export function buildHistoryAnalysisContext(
     smallSampleBlockCount: blocksWithShots.filter(
       (entry) => entry.shots.length < SMALL_BLOCK_SHOT_THRESHOLD
     ).length,
+    // Judged on the EFFECTIVE per-side tolerance, not the symmetric pair alone: two
+    // blocks can share an `accuracyThresholds` pair while their real tolerances
+    // differ, and saying they agree would let one band stand for both.
     thresholdsVaryAcrossBlocks:
       filters.thresholdComparisonMode.type === "original" &&
-      !hasUniformThresholds(
-        blocksWithShots.map((entry) =>
-          resolveAccuracyThresholds(entry.block.accuracyThresholds)
-        )
-      ),
+      !hasUniformTimeTolerance(blocksWithShots),
     hasBlindCategory: matchingBlocks.some(
       (entry) => entry.block.mode === "blind"
     ),
@@ -444,11 +559,14 @@ export function aggregateTargetAccuracyAcrossBlocks(
   const majorMissAbsErrors: number[] = [];
 
   for (const entry of blocks) {
-    for (const shot of entry.shots) {
+    // Only TIME-measured stones can be judged against a time tolerance. A stone
+    // carrying no time is excluded from both the counts and the denominator below,
+    // never counted as a perfectly on-target 0.0s error.
+    for (const shot of timeMeasuredShots(entry.shots)) {
       const error = targetErrorForShot(shot);
       errors.push(error);
       const absError = Math.abs(error);
-      const category = categorizeTargetError(absError, entry.thresholds);
+      const category = categorizeDeviation(error, entry.timeTolerance);
 
       if (category === "on_target") {
         onTargetCount += 1;
@@ -488,6 +606,75 @@ export function aggregateTargetAccuracyAcrossBlocks(
 }
 
 /**
+ * The per-quantity counterpart of `aggregateTargetAccuracyAcrossBlocks`.
+ *
+ * Each block is judged against ITS OWN tolerance snapshot for that quantity and only
+ * the stones that genuinely carry it take part, so a selection spanning different
+ * tolerances is still counted the way each block was actually trained, and a stone
+ * missing that measurement never enters the denominator as a perfect zero.
+ *
+ * Seconds and metres per second are never aggregated together: this is called once per
+ * quantity, with that quantity's own tolerances.
+ */
+export function aggregateQuantityAccuracyAcrossBlocks(
+  blocks: HistoryAnalysisBlockContext[],
+  quantity: MeasuredQuantity
+): TargetAccuracyAnalytics {
+  const deviations: number[] = [];
+  const categories: TargetErrorCategory[] = [];
+
+  for (const entry of blocks) {
+    const tolerance =
+      quantity === "time"
+        ? entry.timeTolerance
+        : blockTolerance(entry.block, quantity);
+    if (!tolerance) continue;
+
+    for (const shot of entry.shots) {
+      const deviation = shotDeviation(shot, quantity);
+      if (deviation === null) continue;
+      deviations.push(deviation);
+      categories.push(categorizeDeviation(deviation, tolerance));
+    }
+  }
+
+  if (deviations.length === 0) return EMPTY_TARGET_ACCURACY;
+
+  const absolute = deviations.map((deviation) => Math.abs(deviation));
+  const majorMissAbsolute = deviations
+    .filter((_unused, index) => categories[index] === "major_miss")
+    .map((deviation) => Math.abs(deviation));
+  const count = deviations.length;
+  const onTargetCount = categories.filter((c) => c === "on_target").length;
+  const acceptableCount = categories.filter((c) => c === "acceptable").length;
+  const majorMissCount = categories.filter((c) => c === "major_miss").length;
+
+  return {
+    shotCount: count,
+    meanTargetError: average(deviations),
+    meanAbsoluteTargetError: average(absolute),
+    targetErrorStandardDeviation: standardDeviationOfValues(deviations),
+    onTargetCount,
+    onTargetRate: onTargetCount / count,
+    acceptableCount,
+    acceptableRate: acceptableCount / count,
+    majorMissCount,
+    majorMissRate: majorMissCount / count,
+    largestAbsoluteMiss: Math.max(...absolute),
+    averageMajorMiss:
+      majorMissCount > 0 ? average(majorMissAbsolute) : null,
+    positiveMajorMissCount: deviations.filter(
+      (deviation, index) =>
+        categories[index] === "major_miss" && deviation > 0
+    ).length,
+    negativeMajorMissCount: deviations.filter(
+      (deviation, index) =>
+        categories[index] === "major_miss" && deviation < 0
+    ).length,
+  };
+}
+
+/**
  * A single representative AccuracyThresholds for display purposes only (e.g.
  * "within ±0.10s" labels, Handle Analysis) when a selection's blocks don't
  * all share the same snapshot — never used to *categorize* shots (see
@@ -502,4 +689,39 @@ export function representativeThresholds(
   return hasUniformThresholds(blocks.map((entry) => entry.thresholds))
     ? blocks[0].thresholds
     : resolveAccuracyThresholds(undefined);
+}
+
+/**
+ * The per-side counterpart of `representativeThresholds`, for the one rollup that
+ * genuinely does categorize across a whole selection. When every selected block shares
+ * the same effective tolerance that tolerance is used exactly — including an
+ * asymmetric one, which the symmetric pair above cannot represent. A mixed selection
+ * has no single honest answer, so it falls back to the legacy default, same precedent
+ * as `representativeThresholds`; per-block correctness lives in
+ * `aggregateTargetAccuracyAcrossBlocks`.
+ */
+/** Whether every selected block classifies time against the same per-side tolerance. */
+export function hasUniformTimeTolerance(
+  blocks: HistoryAnalysisBlockContext[]
+): boolean {
+  if (blocks.length <= 1) return true;
+  const [first, ...rest] = blocks;
+  return rest.every(
+    (entry) =>
+      entry.timeTolerance.onTarget.lower === first.timeTolerance.onTarget.lower &&
+      entry.timeTolerance.onTarget.upper === first.timeTolerance.onTarget.upper &&
+      entry.timeTolerance.acceptable.lower === first.timeTolerance.acceptable.lower &&
+      entry.timeTolerance.acceptable.upper === first.timeTolerance.acceptable.upper
+  );
+}
+
+export function representativeTimeTolerance(
+  blocks: HistoryAnalysisBlockContext[]
+): QuantityTolerance {
+  const fallback = toleranceFromAccuracyThresholds(
+    resolveAccuracyThresholds(undefined)
+  );
+  if (blocks.length === 0) return fallback;
+
+  return hasUniformTimeTolerance(blocks) ? blocks[0].timeTolerance : fallback;
 }

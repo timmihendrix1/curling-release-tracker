@@ -16,6 +16,8 @@ import type {
   TimingResult,
   TrainingBlock,
 } from "../types";
+import { canonicalShot } from "./measurement/canonicalShape";
+import type { TimeMeasuredShot } from "./measurement/quantities";
 import {
   advanceBlockTarget,
   computeShotTarget,
@@ -189,7 +191,14 @@ export type TimingResultProcessingStatus =
 export type ProcessTimingResultOutcome =
   | {
       status: "accepted";
-      shot: Shot;
+      /**
+       * Always a TIME-measured stone: a Capture Sequence only ever turns a timing
+       * result into a release time, and the block is rejected above if it has no
+       * timing interval or no time target. Typing it this way means callers read
+       * `releaseTime`/`targetTime` directly without a fallback that could fabricate
+       * a value.
+       */
+      shot: TimeMeasuredShot;
       updatedBlock: TrainingBlock;
       updatedSequence: CaptureSequence;
       unusualValueWarning?: string;
@@ -212,7 +221,8 @@ export type ProcessTimingResultInput = {
 
 /**
  * The one place a TimingResult becomes (or doesn't become) a Shot. Simulator results,
- * manual-fallback results, and (later) real hardware results all pass through here
+ * manual-fallback results, and operator-confirmed real hardware results (the assisted
+ * Brower capture pilot, ADR-0050) all pass through here
  * identically — see docs/adr/0006. Never mutates its inputs; returns the updated
  * block/sequence/shot for the caller to apply (see TrackerApp.tsx's
  * processIncomingTimingResult, which is the only place that actually commits them).
@@ -245,6 +255,16 @@ export function processTimingResult(
     return { status: "invalid", reason: "Timing result contains no measurements." };
   }
 
+  // A block that measures no time has no timing interval to match against, so a
+  // timing result simply does not apply to it. Rejected explicitly rather than
+  // matched against a fabricated default interval.
+  if (!activeBlock.measurementMode) {
+    return {
+      status: "measurement-mode-mismatch",
+      reason: "This exercise doesn't measure time.",
+    };
+  }
+
   const matchingMeasurement = result.measurements.find(
     (measurement) => measurement.measurementMode === activeBlock.measurementMode
   );
@@ -268,9 +288,22 @@ export function processTimingResult(
   // Accepted from here on — reuse the exact same target/shot-numbering logic manual
   // entry uses, so Auto Capture can never diverge from it.
   const targetTime = computeShotTarget(activeBlock, input.manualTargetOverride);
+
+  // A measured time is only meaningful stored together with the target it was
+  // judged against. A block that measures time always has one; if it somehow does
+  // not, the result is rejected rather than saved against an invented target.
+  if (targetTime === undefined) {
+    return {
+      status: "invalid",
+      reason: "This exercise has no time target to record this result against.",
+    };
+  }
+
   const handle = computeNextCaptureHandle(sequence, input.manualHandleOverride);
 
-  const newShot: Shot = {
+  // Canonical persisted order, so a captured stone and its reloaded counterpart
+  // serialize identically — see src/lib/measurement/canonicalShape.ts.
+  const newShot: TimeMeasuredShot = canonicalShot({
     id: crypto.randomUUID(),
     sessionId: session.id,
     blockId: activeBlock.id,
@@ -285,9 +318,11 @@ export function processTimingResult(
     deviceId: result.deviceId,
     laneId: result.laneId,
     createdAt: new Date().toISOString(),
-  };
+  }) as TimeMeasuredShot;
 
-  const recentTargets = getBlockShots(session, activeBlock.id).map((shot) => shot.targetTime);
+  const recentTargets = getBlockShots(session, activeBlock.id)
+    .map((shot) => shot.targetTime)
+    .filter((target): target is number => target !== undefined);
   const updatedBlock = advanceBlockTarget(activeBlock, targetTime, recentTargets);
 
   const capturedShotCount = sequence.capturedShotCount + 1;

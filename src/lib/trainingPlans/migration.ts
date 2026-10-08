@@ -28,6 +28,7 @@ import { EXERCISE_CATALOG } from "../exercises/catalog";
 import { RELEASE_TIME_VERSION_ID } from "../exercises/content";
 import { exerciseRunnerKind, findExerciseVersion } from "../exercises/lookup";
 import type { ExerciseVersion } from "../exercises/types";
+import { normalizeBlockMeasurementConfiguration } from "../measurement/quantities";
 import { DEFAULT_SMART_RANDOM_MAX, DEFAULT_SMART_RANDOM_MIN } from "../variableTargets";
 import {
   createEmptyTrainingPlansPersistedState,
@@ -77,15 +78,41 @@ function migrateConfiguration(raw: unknown): ReleaseTimingBlockConfiguration {
       ? { onTarget: rawThresholds.onTarget, acceptable: rawThresholds.acceptable }
       : undefined;
 
+  // Same format discriminator as sessionMigration.ts: a configuration declaring
+  // `measurement` is measurement-aware and its time fields are never defaulted —
+  // a speed-only step genuinely has neither. A configuration without one is the
+  // historical time-only step and keeps its exact existing defaults.
+  const measurement = normalizeBlockMeasurementConfiguration(
+    source.measurement as ReleaseTimingBlockConfiguration["measurement"]
+  );
+  const measuresTime = measurement
+    ? measurement.quantities.includes("time")
+    : true;
+
+  const timeFields = measurement
+    ? {
+        ...(measuresTime &&
+        VALID_MEASUREMENT_MODES.includes(source.measurementMode as MeasurementMode)
+          ? { measurementMode: source.measurementMode as MeasurementMode }
+          : {}),
+        ...(measuresTime && typeof source.targetTime === "number"
+          ? { targetTime: source.targetTime }
+          : {}),
+      }
+    : {
+        measurementMode: VALID_MEASUREMENT_MODES.includes(
+          source.measurementMode as MeasurementMode
+        )
+          ? (source.measurementMode as MeasurementMode)
+          : ("back-hog" as MeasurementMode),
+        targetTime:
+          typeof source.targetTime === "number" ? source.targetTime : 3.75,
+      };
+
   return {
     name: typeof source.name === "string" ? source.name : "",
     mode,
-    measurementMode: VALID_MEASUREMENT_MODES.includes(
-      source.measurementMode as MeasurementMode
-    )
-      ? (source.measurementMode as MeasurementMode)
-      : "back-hog",
-    targetTime: typeof source.targetTime === "number" ? source.targetTime : 3.75,
+    ...timeFields,
     variableTargetMode: VALID_VARIABLE_TARGET_MODES.includes(
       source.variableTargetMode as VariableTargetMode
     )
@@ -107,6 +134,7 @@ function migrateConfiguration(raw: unknown): ReleaseTimingBlockConfiguration {
     // Never re-derived from the app's current default preset — same rule
     // sessionMigration.ts applies to TrainingBlock.accuracyThresholds (ADR-0008).
     accuracyThresholds: resolveAccuracyThresholds(parsedThresholds),
+    ...(measurement ? { measurement } : {}),
   };
 }
 

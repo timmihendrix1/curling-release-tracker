@@ -7,6 +7,7 @@ import AccuracyToleranceProfileForm, {
   type AccuracyToleranceProfileFormValue,
 } from "./AccuracyToleranceProfileForm";
 import ConfirmModal from "./ConfirmModal";
+import { profileToleranceLabel } from "../lib/accuracyToleranceProfiles/profiles";
 
 type AccuracyToleranceProfilesScreenProps = {
   profiles: AccuracyToleranceProfile[];
@@ -98,8 +99,7 @@ export default function AccuracyToleranceProfilesScreen({
                     <div>
                       <p className="font-medium text-slate-900">{profile.name}</p>
                       <p className="mt-0.5 text-sm text-slate-600">
-                        On Target ±{profile.onTarget.toFixed(2)}s · Acceptable ±
-                        {profile.acceptable.toFixed(2)}s
+                        {profileToleranceLabel(profile)}
                       </p>
                     </div>
 

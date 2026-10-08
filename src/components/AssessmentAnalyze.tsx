@@ -16,7 +16,9 @@ import {
   findProtocolCompatibleRuns,
 } from "../lib/assessment/result";
 import { formatAssessmentPercent, formatAssessmentSeconds, formatAssessmentSignedSeconds } from "../lib/assessment/resultFormatting";
-import { exportAssessmentRunsToCsv } from "../lib/assessment/export";
+import { assessmentCsvExport } from "../lib/assessment/export";
+import { useFileExport } from "./useFileExport";
+import FileExportStatusNotice from "./FileExportStatusNotice";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { ASSESSMENT_DELETE_RUN_EXPLANATION } from "../lib/assessmentResultContent";
 import AssessmentHistoryItem from "./AssessmentHistoryItem";
@@ -45,6 +47,7 @@ export default function AssessmentAnalyze({
   onGoToAssess,
   onDeleteRun,
 }: AssessmentAnalyzeProps) {
+  const { status: exportStatus, runExport } = useFileExport();
   const [pendingDeleteRunId, setPendingDeleteRunId] = useState<string | null>(null);
 
   const completedRuns = getCompletedAssessmentRuns(assessmentState);
@@ -178,12 +181,16 @@ export default function AssessmentAnalyze({
 
       {/* History is clearly secondary — never equal to the Hero above (Epic 1). */}
       <div className={surfaceClass("secondary")}>
+        <FileExportStatusNotice status={exportStatus} />
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-slate-900">Assessment History</h2>
           {allArchivedRuns.length > 0 && (
             <button
               type="button"
-              onClick={() => exportAssessmentRunsToCsv(allArchivedRuns)}
+              onClick={() => {
+                void runExport(assessmentCsvExport(allArchivedRuns));
+              }}
+              disabled={exportStatus.state === "working"}
               className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-200"
             >
               Export Assessment CSV

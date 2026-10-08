@@ -14,13 +14,21 @@ import {
   type TrainingCategory,
 } from "../lib/historyAnalysis";
 import { blockModeLabel, measurementModeLabel } from "../lib/trainingBlocks";
-import type { Handle, MeasurementMode, Session, ShotType } from "../types";
+import type {
+  Handle,
+  MeasuredQuantity,
+  MeasurementMode,
+  Session,
+  ShotType,
+} from "../types";
+import { quantityLabel } from "../lib/measurement/tolerance";
 
 type HistoryFilterBarProps = {
   filters: HistoryAnalysisFilters;
   onChange: (filters: HistoryAnalysisFilters) => void;
   availableTrainingCategories: TrainingCategory[];
   availableMeasurementModes: MeasurementMode[];
+  availableMeasuredQuantities: MeasuredQuantity[];
   sessions: Session[];
   /**
    * True while History Filters is not "ready" (still loading, or
@@ -84,6 +92,7 @@ export default function HistoryFilterBar({
   onChange,
   availableTrainingCategories,
   availableMeasurementModes,
+  availableMeasuredQuantities,
   sessions,
   disabled = false,
 }: HistoryFilterBarProps) {
@@ -107,6 +116,17 @@ export default function HistoryFilterBar({
       ? String(filters.targetRange.max)
       : ""
   );
+
+  // A view with no TIME in it: every seconds-specific control is withheld rather than
+  // shown as an inert setting that implies it governs m/s results. Covers an explicit
+  // Speed selection and the default "all measurements" view over a speed-only history,
+  // where there is no selector to narrow with in the first place. Stored values are
+  // untouched, so they return intact as soon as time data is in scope again.
+  const showsSpeedOnly =
+    filters.measuredQuantity === "speed" ||
+    (filters.measuredQuantity === null &&
+      availableMeasuredQuantities.length > 0 &&
+      !availableMeasuredQuantities.includes("time"));
 
   const appliedThresholdMode = thresholdModeOptionFor(
     filters.thresholdComparisonMode
@@ -310,6 +330,36 @@ export default function HistoryFilterBar({
             ))}
           </select>
 
+          {/* WHAT was measured, separate from the timing interval below. Offered
+              whenever the history holds more than one quantity, so a Speed session
+              can always be reached — a time-interval selection alone could only ever
+              hide it. */}
+          {availableMeasuredQuantities.length > 1 && (
+            <select
+              aria-label="Measurement"
+              className={selectClassName()}
+              value={filters.measuredQuantity ?? ""}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange({
+                  ...filters,
+                  measuredQuantity: (event.target.value ||
+                    null) as MeasuredQuantity | null,
+                })
+              }
+            >
+              <option value="">All measurements</option>
+              {availableMeasuredQuantities.map((quantity) => (
+                <option key={quantity} value={quantity}>
+                  {quantityLabel(quantity)}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* The timing interval qualifies a TIME measurement only; it is withheld
+              when the athlete has narrowed to speed, where it means nothing. */}
+          {filters.measuredQuantity !== "speed" && (
           <select
             aria-label="Measurement Mode"
             className={selectClassName()}
@@ -332,6 +382,7 @@ export default function HistoryFilterBar({
               </option>
             ))}
           </select>
+          )}
 
           <select
             aria-label="Date Range"
@@ -378,6 +429,11 @@ export default function HistoryFilterBar({
             ))}
           </select>
 
+          {/* Comparison thresholds are SECONDS. Offering them under a Speed selection
+              would imply they reclassify m/s results, which they do not — speed is
+              always judged by each exercise's own speed tolerance. The stored setting
+              is untouched, so returning to Time restores it exactly. */}
+          {!showsSpeedOnly && (
           <select
             aria-label="Threshold Comparison Mode"
             className={selectClassName()}
@@ -392,6 +448,7 @@ export default function HistoryFilterBar({
             <option value="tight">Compare: Tight (±0.05s/±0.10s)</option>
             <option value="custom">Compare: Custom…</option>
           </select>
+          )}
 
           <button
             type="button"
@@ -408,7 +465,7 @@ export default function HistoryFilterBar({
           </button>
         </div>
 
-        {thresholdModeSelection === "custom" && (
+        {!showsSpeedOnly && thresholdModeSelection === "custom" && (
           <div className="mt-3 rounded-xl bg-slate-100 p-3">
             <p className="text-xs font-medium text-slate-700">
               Comparison thresholds
@@ -562,6 +619,11 @@ export default function HistoryFilterBar({
               </label>
             </div>
 
+            {/* A Target Time range is a seconds filter and does not apply to a Speed
+                view; the specification says so, and the selection pipeline already
+                ignores it there. Showing it anyway invited the athlete to set a filter
+                that silently does nothing. */}
+            {!showsSpeedOnly && (
             <div className="grid grid-cols-2 gap-3">
               <label className="text-xs text-slate-600">
                 Target min (s)
@@ -586,6 +648,7 @@ export default function HistoryFilterBar({
                 />
               </label>
             </div>
+            )}
 
             <div className="flex gap-2">
               <button

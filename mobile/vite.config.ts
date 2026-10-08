@@ -6,6 +6,16 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import { MOBILE_INLINED_PUBLIC_ENV_NAMES } from "./publicEnv";
 import {
+  isStorageDiagnosticsRequested,
+  MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME,
+  MOBILE_STORAGE_DIAGNOSTICS_ENV_NAME,
+} from "./storageDiagnosticsFlag";
+import {
+  isNativeStorageCompositionRequested,
+  MOBILE_NATIVE_STORAGE_DEFINE_NAME,
+  MOBILE_NATIVE_STORAGE_ENV_NAME,
+} from "./nativeStorageFlag";
+import {
   PUBLIC_EXERCISE_ASSET_IDS,
   PUBLIC_EXERCISE_DIAGRAM_PATHS,
 } from "../src/lib/exercises/restrictedAssetCatalog";
@@ -103,9 +113,45 @@ export default defineConfig(({ command, mode }) => {
   // never serialised into the bundle.
   const env = loadEnv(mode, repositoryRoot, "");
 
+  // THE DIAGNOSTICS OPT-IN IS A THIRD AXIS, independent of both `mode` and
+  // NODE_ENV. It decides one thing only: whether the native storage diagnostics
+  // panel exists in the artifact. It does not relax production React semantics,
+  // does not re-enable `IS_DEV` surfaces and does not reach the
+  // `NODE_ENV === "test"` Profile-scope fallback, because those all come from
+  // the `applicationNodeEnv` pinned above and are untouched here.
+  //
+  // The variable's VALUE never reaches the bundle: it is read, compared, and
+  // replaced by a plain boolean literal, which is what lets Rollup eliminate the
+  // panel's dynamic import from a default build entirely.
+  const storageDiagnostics = isStorageDiagnosticsRequested(
+    process.env[MOBILE_STORAGE_DIAGNOSTICS_ENV_NAME]
+  );
+
+  // NATIVE STORAGE COMPOSITION IS A FOURTH AXIS, independent of `mode`,
+  // NODE_ENV and the diagnostics opt-in above. It decides one thing only:
+  // whether the artifact contains the native storage composition at all.
+  //
+  // It is NOT the same switch as diagnostics, and the two must not be merged:
+  // diagnostics drives a synthetic database and never touches application data,
+  // whereas this flag governs where the real application's data would come from.
+  //
+  // Turning it on does not cut over. The composition consults a
+  // migration/activation authority that is unavailable in this stage, so the
+  // build blocks with a preparation state rather than mounting the app against
+  // an empty store (mobile/nativeStorageFlag.ts, mobile/README.md).
+  //
+  // The variable's VALUE never reaches the bundle: it is read, compared, and
+  // replaced by a plain boolean literal, which is what lets Rollup eliminate the
+  // composition's dynamic import from a default build entirely.
+  const nativeStorage = isNativeStorageCompositionRequested(
+    process.env[MOBILE_NATIVE_STORAGE_ENV_NAME]
+  );
+
   const define: Record<string, string> = {
     // Deliberately NOT derived from `mode` — see the note above.
     "process.env.NODE_ENV": JSON.stringify(applicationNodeEnv),
+    [MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME]: JSON.stringify(storageDiagnostics),
+    [MOBILE_NATIVE_STORAGE_DEFINE_NAME]: JSON.stringify(nativeStorage),
   };
   for (const name of MOBILE_INLINED_PUBLIC_ENV_NAMES) {
     const value = env[name] ?? process.env[name];

@@ -34,16 +34,16 @@ import {
   createCallbackCaptureCell,
   type CallbackCaptureCell,
 } from "../supabase/supabaseCallbackCapture";
-import { identityBarrierRepository } from "./identityBarrierRepository";
 import { IDENTITY_BARRIER_STORAGE_KEY } from "./identityBarrier";
-import { identityBarrierResolutionRepository } from "./identityBarrierResolutionRepository";
-import { interactiveAttemptRepository } from "./interactiveAttemptRepository";
 import {
-  pendingIntentRepository,
+  DEFAULT_IDENTITY_REPOSITORY_SET,
+  type IdentityRepositorySet,
+} from "./identityRepositorySet";
+import {
   selectDeepLinkIntent,
   type PendingIntent,
+  type PendingIntentRepository,
 } from "./pendingIntentRepository";
-import { trustedDeviceRepository } from "./trustedDeviceRepository";
 import {
   createIdentityTransitionCoordinator,
   createLiveGenerationCounter,
@@ -161,7 +161,8 @@ export function createIdentityRuntime(
 
   function readyRuntime(
     coordinator: IdentityTransitionCoordinator,
-    auth: IdentityCoordinatorDeps["auth"]
+    auth: IdentityCoordinatorDeps["auth"],
+    intents: PendingIntentRepository
   ): IdentityRuntimeReady {
     let startup: Promise<StartupOutcome> | null = null;
     let deepLinkCapture: Promise<DeepLinkCaptureOutcome> | null = null;
@@ -246,7 +247,16 @@ export function createIdentityRuntime(
         return deepLinkCapture;
       },
       async loadPendingIntent(): Promise<PendingIntent | null> {
-        const loaded = await pendingIntentRepository.load();
+        // The SAME repository instance the coordinator was built with.
+        //
+        // This previously reached the imported module-level singleton directly,
+        // which was a second, independent binding to whatever adapter that
+        // singleton happened to capture at import time. Under Stage M3b3's
+        // injected ownership those two are not the same store, so the provider
+        // could have read a pending intent from one workspace while every
+        // coordinator transition wrote to another (docs/MOBILE_APP_MIGRATION.md
+        // Stage M3b0 §3 seam 4).
+        const loaded = await intents.load();
         return loaded.status === "value" ? loaded.value : null;
       },
     };
@@ -254,7 +264,7 @@ export function createIdentityRuntime(
 
   if (overrides.deps !== undefined) {
     const deps = { ...overrides.deps, onProgress: relayProgress };
-    return readyRuntime(createIdentityTransitionCoordinator(deps), deps.auth);
+    return readyRuntime(createIdentityTransitionCoordinator(deps), deps.auth, deps.intents);
   }
 
   const config = resolveCloudConfig();
@@ -265,23 +275,70 @@ export function createIdentityRuntime(
 
   const client = getSupabaseBrowserClient(config);
 
+  // The owned set, or the existing import-time singletons when nothing claimed
+  // ownership. The Web build takes the second branch and is unchanged.
+  const repositories = claimedIdentityRepositories ?? DEFAULT_IDENTITY_REPOSITORY_SET;
+
   const auth = createSupabaseAuthService(config);
   const coordinator = createIdentityTransitionCoordinator({
       auth,
       identity: createSupabaseIdentityService(client),
       capture,
-      barriers: identityBarrierRepository,
-      attempts: interactiveAttemptRepository,
-      resolutions: identityBarrierResolutionRepository,
-      trusted: trustedDeviceRepository,
-      intents: pendingIntentRepository,
+      barriers: repositories.barriers,
+      attempts: repositories.attempts,
+      resolutions: repositories.resolutions,
+      trusted: repositories.trusted,
+      intents: repositories.intents,
       liveGeneration: createLiveGenerationCounter(),
       now: browserNow,
       newId,
       resolveRedirectTarget: browserRedirectTarget,
       onProgress: relayProgress,
     });
-  return readyRuntime(coordinator, auth);
+  return readyRuntime(coordinator, auth, repositories.intents);
+}
+
+/**
+ * The identity-repository ownership slot (Stage M3b3; ADR-0049 decision 5).
+ *
+ * The five repositories are import-time singletons, so a default-adapter swap
+ * cannot reach them and a per-call parameter would let two consumers disagree
+ * about where the access barrier lives. Ownership is therefore claimed once,
+ * before the runtime is constructed, or not at all.
+ *
+ * Claiming is refused once a runtime exists — the coordinator has already
+ * captured its repositories and a later answer would split the workspace rather
+ * than move it — and refused when a DIFFERENT set was already claimed. The same
+ * set re-claimed is idempotent, so a replayed effect is not a conflict.
+ *
+ * Unclaimed means `DEFAULT_IDENTITY_REPOSITORY_SET`: the existing singletons on
+ * `localStorageAdapter`, which is the Web build and every build in this stage.
+ */
+export type IdentityRepositoryClaimResult =
+  | { ok: true }
+  | { ok: false; reason: "runtime_already_constructed" | "already_claimed" };
+
+let claimedIdentityRepositories: IdentityRepositorySet | null = null;
+
+export function claimIdentityRepositories(
+  repositories: IdentityRepositorySet
+): IdentityRepositoryClaimResult {
+  if (claimedIdentityRepositories !== null) {
+    return claimedIdentityRepositories === repositories
+      ? { ok: true }
+      : { ok: false, reason: "already_claimed" };
+  }
+  if (cachedRuntime !== null) {
+    return { ok: false, reason: "runtime_already_constructed" };
+  }
+  claimedIdentityRepositories = repositories;
+  return { ok: true };
+}
+
+/** Which set the next runtime will be built with, or `null` for the existing
+ * singletons. Exported for assertions; production code never branches on it. */
+export function claimedIdentityRepositorySet(): IdentityRepositorySet | null {
+  return claimedIdentityRepositories;
 }
 
 let cachedRuntime: IdentityRuntime | null = null;
@@ -306,4 +363,5 @@ export function getIdentityRuntime(): IdentityRuntime {
  * calls this. */
 export function resetIdentityRuntimeForTests(): void {
   cachedRuntime = null;
+  claimedIdentityRepositories = null;
 }

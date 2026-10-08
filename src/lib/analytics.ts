@@ -1,9 +1,21 @@
-import type { AccuracyThresholds, MeasurementMode, Shot } from "../types";
-import {
-  categorizeTargetError,
-  LEGACY_ACCURACY_THRESHOLDS,
-} from "./accuracyThresholds";
+import type {
+  AccuracyThresholds,
+  MeasuredQuantity,
+  MeasurementMode,
+  QuantityTolerance,
+  Shot,
+} from "../types";
+import { LEGACY_ACCURACY_THRESHOLDS } from "./accuracyThresholds";
 import { computeBoxPlotStatistics, type BoxPlotStatistics } from "./boxPlotStatistics";
+import {
+  shotDeviation,
+  timeMeasuredShots,
+  type TimeMeasuredShot,
+} from "./measurement/quantities";
+import {
+  asQuantityTolerance,
+  categorizeDeviation,
+} from "./measurement/tolerance";
 import { formatSigned } from "./timeInput";
 
 export function average(values: number[]): number {
@@ -40,19 +52,30 @@ export function standardDeviationOfValues(values: number[]): number {
  * A single shot's signed error against its own recorded target
  * (`releaseTime - targetTime`) — the one formula every Target Error
  * consumer (analytics, charts, export) must use, never re-derived locally.
+ *
+ * Takes a `TimeMeasuredShot`, so a stone that carries no time simply cannot be
+ * passed in. Callers select their input with `timeMeasuredShots` (see
+ * src/lib/measurement/quantities.ts) rather than reading `releaseTime` directly.
  */
-export function targetErrorForShot(shot: Shot): number {
+export function targetErrorForShot(shot: TimeMeasuredShot): number {
   return shot.releaseTime - shot.targetTime;
 }
 
-/** Each shot's signed error against its own recorded target. */
+/**
+ * Each TIME-measured shot's signed error against its own recorded target. Stones
+ * without a time measurement are excluded from the series entirely — never
+ * contributed as a fabricated 0.0s, which would both invent a measurement and
+ * distort every statistic computed from it.
+ */
 function targetErrors(shots: Shot[]): number[] {
-  return shots.map(targetErrorForShot);
+  return timeMeasuredShots(shots).map(targetErrorForShot);
 }
 
 /** Standard deviation of the measured release times themselves. */
 export function releaseTimeStandardDeviation(shots: Shot[]): number {
-  return standardDeviationOfValues(shots.map((shot) => shot.releaseTime));
+  return standardDeviationOfValues(
+    timeMeasuredShots(shots).map((shot) => shot.releaseTime)
+  );
 }
 
 /** Standard deviation of each shot's deviation from its own target. */
@@ -61,12 +84,10 @@ export function targetErrorStandardDeviation(shots: Shot[]): number {
 }
 
 export function averageDeviationFromTarget(shots: Shot[]): number {
-  if (shots.length === 0) return 0;
   return average(targetErrors(shots));
 }
 
 export function averageAbsoluteDeviationFromTarget(shots: Shot[]): number {
-  if (shots.length === 0) return 0;
   return average(targetErrors(shots).map((error) => Math.abs(error)));
 }
 
@@ -89,9 +110,9 @@ export function getOutliers(values: number[]): number[] {
 
 function shotsWithPrediction(
   shots: Shot[]
-): (Shot & { predictedTime: number })[] {
-  return shots.filter(
-    (shot): shot is Shot & { predictedTime: number } =>
+): (TimeMeasuredShot & { predictedTime: number })[] {
+  return timeMeasuredShots(shots).filter(
+    (shot): shot is TimeMeasuredShot & { predictedTime: number } =>
       shot.predictedTime !== undefined
   );
 }
@@ -205,7 +226,7 @@ export type TargetErrorDirectionInterpretation = {
 
 export function interpretTargetErrorDirection(
   targetError: number,
-  measurementMode: MeasurementMode
+  measurementMode: MeasurementMode | undefined
 ): TargetErrorDirectionInterpretation {
   const sign: TargetErrorDirectionInterpretation["sign"] =
     targetError < 0 ? "faster" : targetError > 0 ? "slower" : "on-target";
@@ -269,25 +290,25 @@ const EMPTY_TARGET_ACCURACY: TargetAccuracyAnalytics = {
 };
 
 /**
- * The central Target Accuracy analysis. Bias (`meanTargetError`) and
- * magnitude (`meanAbsoluteTargetError`) are deliberately separate fields —
- * never conflate a systematic bias with the average size of the error.
- * `onTargetCount`/`acceptableCount`/`majorMissCount` are mutually exclusive
- * categories (see `categorizeTargetError`); a "within acceptable overall"
- * rate is `onTargetRate + acceptableRate` (equivalently `1 - majorMissRate`),
- * computed by callers rather than duplicated as its own field.
+ * The unit-agnostic core of Target Accuracy: given a list of SIGNED deviations
+ * (measured minus target, in that quantity's own unit) and the per-side tolerance
+ * they are judged against, produce the full accuracy breakdown.
+ *
+ * Every deviation passed in must already come from a stone that genuinely carries
+ * that measurement — selection happens before this, so a missing value can never
+ * reach the denominator. Seconds and m/s deviations must never be mixed in one
+ * call; the two quantities are analysed independently, always.
  */
-export function computeTargetAccuracyAnalytics(
-  shots: Shot[],
-  thresholds: AccuracyThresholds = LEGACY_ACCURACY_THRESHOLDS
+export function computeDeviationAccuracyAnalytics(
+  deviations: number[],
+  tolerance: QuantityTolerance
 ): TargetAccuracyAnalytics {
-  if (shots.length === 0) return EMPTY_TARGET_ACCURACY;
+  if (deviations.length === 0) return EMPTY_TARGET_ACCURACY;
 
-  const errors = targetErrors(shots);
+  const errors = deviations;
   const absoluteErrors = errors.map((error) => Math.abs(error));
-  const categories = absoluteErrors.map((absError) =>
-    categorizeTargetError(absError, thresholds)
-  );
+  const categories = errors.map((error) => categorizeDeviation(error, tolerance));
+  const count = errors.length;
 
   const onTargetCount = categories.filter((c) => c === "on_target").length;
   const acceptableCount = categories.filter((c) => c === "acceptable").length;
@@ -298,16 +319,16 @@ export function computeTargetAccuracyAnalytics(
   );
 
   return {
-    shotCount: shots.length,
+    shotCount: count,
     meanTargetError: average(errors),
     meanAbsoluteTargetError: average(absoluteErrors),
     targetErrorStandardDeviation: standardDeviationOfValues(errors),
     onTargetCount,
-    onTargetRate: onTargetCount / shots.length,
+    onTargetRate: onTargetCount / count,
     acceptableCount,
-    acceptableRate: acceptableCount / shots.length,
+    acceptableRate: acceptableCount / count,
     majorMissCount,
-    majorMissRate: majorMissCount / shots.length,
+    majorMissRate: majorMissCount / count,
     largestAbsoluteMiss: Math.max(...absoluteErrors),
     averageMajorMiss:
       majorMissCount > 0
@@ -316,6 +337,53 @@ export function computeTargetAccuracyAnalytics(
     positiveMajorMissCount: majorMissErrors.filter((error) => error > 0).length,
     negativeMajorMissCount: majorMissErrors.filter((error) => error < 0).length,
   };
+}
+
+/**
+ * Target Accuracy for ONE measured quantity across a set of stones. Only the
+ * stones that actually carry that quantity take part, so each quantity has its own
+ * independent denominator — a Both stone missing its speed still counts fully
+ * towards time and simply does not appear in the speed figures.
+ */
+export function computeQuantityAccuracyAnalytics(
+  shots: Shot[],
+  quantity: MeasuredQuantity,
+  tolerance: QuantityTolerance
+): TargetAccuracyAnalytics {
+  const deviations = shots
+    .map((shot) => shotDeviation(shot, quantity))
+    .filter((deviation): deviation is number => deviation !== null);
+
+  return computeDeviationAccuracyAnalytics(deviations, tolerance);
+}
+
+/**
+ * The central Target Accuracy analysis for TIME. Bias (`meanTargetError`) and
+ * magnitude (`meanAbsoluteTargetError`) are deliberately separate fields —
+ * never conflate a systematic bias with the average size of the error.
+ * `onTargetCount`/`acceptableCount`/`majorMissCount` are mutually exclusive
+ * categories; a "within acceptable overall" rate is
+ * `onTargetRate + acceptableRate` (equivalently `1 - majorMissRate`), computed by
+ * callers rather than duplicated as its own field.
+ *
+ * `shotCount` is the number of TIME-measured stones, which is the correct
+ * denominator for every rate here — a stone carrying only a speed is not a stone
+ * this analysis can say anything about. Takes the historical symmetric seconds
+ * pair, whose meaning is unchanged; callers holding a block with an asymmetric
+ * tolerance use `computeQuantityAccuracyAnalytics` instead.
+ */
+export function computeTargetAccuracyAnalytics(
+  shots: Shot[],
+  // Accepts the block's own per-side tolerance OR the historical symmetric pair, so a
+  // caller holding an asymmetric tolerance passes it through rather than flattening
+  // it. Flattening is what let one stone read as On Target here and Major Miss in
+  // history aggregation.
+  thresholds: AccuracyThresholds | QuantityTolerance = LEGACY_ACCURACY_THRESHOLDS
+): TargetAccuracyAnalytics {
+  return computeDeviationAccuracyAnalytics(
+    targetErrors(shots),
+    asQuantityTolerance(thresholds)
+  );
 }
 
 export type HandleAccuracyComparison = {
@@ -331,7 +399,7 @@ export type HandleAccuracyComparison = {
  */
 export function computeHandleAccuracyComparison(
   shots: Shot[],
-  thresholds: AccuracyThresholds = LEGACY_ACCURACY_THRESHOLDS
+  thresholds: AccuracyThresholds | QuantityTolerance = LEGACY_ACCURACY_THRESHOLDS
 ): HandleAccuracyComparison {
   return {
     inHandle: computeTargetAccuracyAnalytics(
@@ -378,14 +446,19 @@ export function computeHandleTargetErrorBoxPlots(
  */
 export function analyzeShots(
   shots: Shot[],
-  thresholds: AccuracyThresholds = LEGACY_ACCURACY_THRESHOLDS
+  thresholds: AccuracyThresholds | QuantityTolerance = LEGACY_ACCURACY_THRESHOLDS
 ) {
-  const releaseTimes = shots.map((shot) => shot.releaseTime);
-  const inShots = shots.filter((shot) => shot.handle === "in");
-  const outShots = shots.filter((shot) => shot.handle === "out");
+  // Every figure below is a TIME figure, so the analysed set — and therefore
+  // `count`, which is the denominator the UI shows alongside them — is the
+  // time-measured subset. A stone recording only a speed is not partially
+  // counted here and is never counted as a 0.0s release.
+  const timeShots = timeMeasuredShots(shots);
+  const releaseTimes = timeShots.map((shot) => shot.releaseTime);
+  const inShots = timeShots.filter((shot) => shot.handle === "in");
+  const outShots = timeShots.filter((shot) => shot.handle === "out");
 
   return {
-    count: shots.length,
+    count: timeShots.length,
     average: average(releaseTimes),
     median: median(releaseTimes),
     min: releaseTimes.length > 0 ? Math.min(...releaseTimes) : 0,
@@ -395,10 +468,10 @@ export function analyzeShots(
     averageDeviationFromTarget: averageDeviationFromTarget(shots),
     averageAbsoluteDeviationFromTarget: averageAbsoluteDeviationFromTarget(shots),
     outliers: getOutliers(releaseTimes),
-    targetAccuracy: computeTargetAccuracyAnalytics(shots, thresholds),
-    handleAccuracy: computeHandleAccuracyComparison(shots, thresholds),
-    targetErrorBoxPlot: computeBoxPlotStatistics(targetErrors(shots)),
-    handleTargetErrorBoxPlots: computeHandleTargetErrorBoxPlots(shots),
+    targetAccuracy: computeTargetAccuracyAnalytics(timeShots, thresholds),
+    handleAccuracy: computeHandleAccuracyComparison(timeShots, thresholds),
+    targetErrorBoxPlot: computeBoxPlotStatistics(targetErrors(timeShots)),
+    handleTargetErrorBoxPlots: computeHandleTargetErrorBoxPlots(timeShots),
     byHandle: {
       in: {
         count: inShots.length,
@@ -416,11 +489,11 @@ export function analyzeShots(
       },
     },
     prediction: {
-      count: shotsWithPrediction(shots).length,
-      meanError: meanPredictionError(shots),
-      meanAbsoluteError: meanAbsolutePredictionError(shots),
-      errorStandardDeviation: predictionErrorStandardDeviation(shots),
-      correlation: predictionCorrelation(shots),
+      count: shotsWithPrediction(timeShots).length,
+      meanError: meanPredictionError(timeShots),
+      meanAbsoluteError: meanAbsolutePredictionError(timeShots),
+      errorStandardDeviation: predictionErrorStandardDeviation(timeShots),
+      correlation: predictionCorrelation(timeShots),
     },
   };
 }

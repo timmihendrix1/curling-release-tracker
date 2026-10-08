@@ -756,6 +756,36 @@ Each created Shot continues to store its own immutable `targetTime`.
 
 The step configuration becomes the source for the block's initial settings.
 
+**Measured quantities (Stage A and Stage B implemented — ADR-0051).**
+A Fixed Weight step additionally carries an optional
+`ReleaseTimingBlockConfiguration.measurement` recording which quantities the step
+measures (time, speed in m/s, or both), each with its own fixed target and its own
+per-side tolerance. Its **absence** is the ordinary time-only step, which keeps
+`measurementMode`, `targetTime` and `accuracyThresholds` with exactly their existing
+meaning. It is required when the step records speed, and is also supported for a
+time-only step needing an asymmetric tolerance. A speed-only step carries neither a
+timing interval nor a time target, and neither is fabricated for it — the step
+validator and `Session.planExecution` migration are measurement-aware, so a valid
+speed-only step is never silently dropped on reload, and a session accepted by the
+cloud writer can always be read back. When the step measures time, `targetTime` and
+`measurement.time.target` must be equal; a stored mismatch makes the step
+non-executable rather than being resolved one way.
+
+`mapPlanStepToTrainingBlockInput` carries the configuration through verbatim, so a
+created block measures exactly what its step snapshot declared. Snapshot isolation is
+unchanged: editing or deleting the source plan afterwards cannot alter an
+already-started or completed Session, including its measurement configuration.
+Plan migration applies the same discriminator as session migration — a step declaring
+`measurement` never has its time fields defaulted; a step without one keeps every
+existing default. A legacy *time* tolerance preset is never reinterpreted as a speed
+preset. Plan cloud synchronization is unchanged (there is none).
+
+Stage B adds the step editor UI. `TrainingPlanStepEditor.tsx` embeds the same
+`TrainingSetup`, so a Fixed Weight step is configured exactly like direct setup, and it
+now carries `configuration.measurement` in BOTH directions — written on save and read
+back when the step is reopened. Before Stage B it wrote neither, which silently turned
+a configured Speed step into ordinary time training with no later way to detect it.
+
 ## Variable Weight
 
 A Variable Weight step should allow configuration of:
@@ -973,14 +1003,16 @@ The picker offers only Exercises open to a new choice. A step that already refer
 Exercise since retired from discovery keeps its own snapshot selectable, so editing a
 saved plan never forces a substitution and never silently drops a step.
 
-During execution, a Release Time step completes at its configured shot count. If it is
-between two other Exercises, the active screen shows how many stones remain and then
-offers **Continue to Next Step**. **Start New Session** is hidden while any Training Plan
-is active, so it cannot replace the plan's own progression action.
+During execution, the plan offers one coherent pair of controls in both the timing and
+the curated-Exercise view: **Next Exercise** whenever a next step exists, and **Finish
+Training** throughout. Neither is gated on the planned stone count — see section 31.
+**Start New Session** is hidden while any Training Plan is active, so it cannot replace
+the plan's own progression actions.
 
-After the final step, **Finish Training** uses the existing durable session archive
-transition but presents completion-specific, non-destructive confirmation: **Finish
-Training** / **Finish**. It must never reuse the red **Start New Session** dialog copy.
+**Finish Training** uses the existing durable session archive transition but presents
+non-destructive confirmation: **Finish Training** / **Finish**. It must never reuse the
+red **Start New Session** dialog copy. It then opens the factual training summary
+described in section 34.
 
 The creation flow should be simple:
 
@@ -1448,15 +1480,16 @@ During execution, the athlete should be able to understand:
 
 - current step
 
-- current shot count
+- current actual count
 
-- required shot count
+- planned count, where the step type has one
 
 - remaining steps
 
 - total plan progress
 
-Example:
+Planned and actual volume are always shown together, so the difference between them is
+visible rather than implied:
 
 ```text
 
@@ -1464,9 +1497,12 @@ Step 2 of 3
 
 Variable Weight
 
-Shot 7 of 16
+7 of 16 planned stones
 
 ```
+
+A count below the planned figure is a recorded fact, not an error, and is never styled
+or worded as a warning. A count above it is equally normal — see section 31.
 
 Plan progress should be useful but visually secondary to active shot capture.
 
@@ -1476,7 +1512,10 @@ The athlete's immediate task remains throwing and recording the current shot.
 
 ---
 
-# 29. Automatic Step Completion
+# 29. Step Completion
+
+"Completed" describes what a step achieved. It does **not** control when the athlete may
+move on or stop — see section 31, which is the canonical statement of that rule.
 
 A Release Timing Plan Step is completed when the configured number of valid Shots has been saved for its corresponding Block.
 
@@ -1508,35 +1547,32 @@ Edited Shots remain part of the count unless the current domain model considers 
 
 The completion rule should be based on persisted valid Shots, not transient UI actions.
 
+Reaching the planned count never advances the plan by itself. It changes how the step is
+described, nothing else.
+
 ---
 
 # 30. Transition Between Steps
 
-When a step reaches its required shot count, the application should provide a clear transition.
-
-Preferred flow:
+The transition is always available, never unlocked by a count. The active screen shows
+the plan's own controls alongside — never instead of — ordinary recording:
 
 ```text
 
-Step complete
-
 Fixed Weight
 
-8 of 8 stones
+8 of 8 planned stones
 
-Next:
+Next: Variable Weight
 
-Variable Weight
+[Next Exercise]
 
-16 stones
-
-[Continue]
+[Finish Training]
 
 ```
 
-The next step should not necessarily begin automatically without acknowledgement.
-
-A deliberate Continue action gives the athlete time to:
+The next step never begins automatically. A deliberate **Next Exercise** action gives
+the athlete time to:
 
 - retrieve stones
 
@@ -1548,9 +1584,17 @@ A deliberate Continue action gives the athlete time to:
 
 - stop early if needed
 
-The transition should remain lightweight.
+Choosing **Next Exercise** ends the current step and creates the next step's runtime in
+one transition. The step being left keeps everything it recorded; nothing is invented to
+fill the gap between planned and actual, and no Exercise is reopened or rewritten. An
+Exercise that cannot legally be completed because nothing was recorded in it is kept as
+a truthful interrupted result rather than being granted a fabricated attempt.
 
-It should not feel like ending and restarting an entirely separate training session.
+The transition should remain lightweight. It should not feel like ending and restarting
+an entirely separate training session, and routine early progression must never be
+worded as a destructive abort.
+
+The **final step has no Next Exercise control at all** — it is absent, not disabled.
 
 ---
 
@@ -1570,47 +1614,41 @@ Possible needs include:
 
 - skipping a step
 
-Version 1 should define these behaviours explicitly.
+**This section is the canonical statement of flexible progression.** Every other
+section, ADR and component comment references it rather than restating the rule.
 
-Recommended minimum:
+## The planned count is guidance, not a gate
 
-## Continue after completion
+- The planned stone count is guidance. It is neither a minimum nor a maximum.
 
-Normal transition to the next step.
+- **Next Exercise** is available whenever a next step exists — before the planned count
+  is reached, at it, beyond it, and when zero stones have been recorded.
+
+- Reaching the planned count never advances the plan automatically.
+
+- Extra stones remain allowed and are recorded in the same Block.
+
+- Planned versus actual volume stays visible, for example `6 of 12 planned stones`. A
+  lower actual figure is not an error.
 
 ## End training early
 
-The current session may be completed with partial plan progress.
+**Finish Training** is available throughout an active plan — midway through an exercise
+and before the final step alike. It preserves all recorded work, ends the current
+training, and opens the factual summary described in section 34.
+
+There is no separate Save, Abort or Discard action for this workflow: recorded stones,
+attempts and notes already persist automatically as they are recorded.
 
 ## Skip step
 
-Optional for Version 1.
+Choosing **Next Exercise** with nothing recorded is how a step is skipped in practice.
+The skipped step keeps no Shots or attempts and is simply reported as having nothing
+recorded — never as completed.
 
-If implemented, the skipped step remains without Shots and is recorded as skipped or simply incomplete.
+## Return to an earlier step
 
-## Add extra shots
-
-The preferred Version 1 behaviour is:
-
-- reaching the planned count marks the step complete
-
-- the athlete may deliberately continue the block if needed
-
-- extra shots remain recorded in the same Block
-
-- progress displays planned count and actual count clearly
-
-Example:
-
-```text
-
-10 shots recorded
-
-8 planned
-
-```
-
-The plan is guidance, not a hard barrier that blocks valid training data.
+Not available. The plan only moves forward.
 
 ---
 
@@ -1682,25 +1720,38 @@ The session's actual configuration remains authoritative.
 
 # 34. Ending a Planned Session
 
-The user must be able to end the session at any time.
+The user must be able to end the session at any time — see section 31.
 
-When ending early, the app should clearly communicate:
+Confirming **Finish Training** archives the Session through the existing durable
+transition and then shows a summary of that archived Session (never of the empty
+replacement Session that follows it). The summary communicates, factually:
 
-- completed steps
+- which steps were completed
 
-- partially completed step
+- which were ended early, and with how much recorded
 
-- remaining steps
+- which were reached but recorded nothing
 
-- number of actual Shots
+- which were never reached at all
 
-- number of planned Shots
+- actual versus planned volume for each step that has a planned figure
 
-The user should be able to confirm ending the training.
+- total recorded stones and exercises
 
-An incomplete plan execution is still a valid Training Session.
+A step the athlete never reached is never presented as completed, and a step's status is
+read from what the Session actually recorded — never from how far the plan had advanced.
 
-It should not be discarded merely because the full plan was not completed.
+An incomplete plan execution is still a valid Training Session. It is not discarded
+merely because the full plan was not completed, and it appears in History and Analyze
+like any other Training Session.
+
+If nothing sporting was recorded at all, the existing empty-Session policy still applies:
+nothing is archived, and the summary says exactly that rather than implying a saved
+training. If the archive write fails, no summary is shown, the training stays exactly as
+it is, and Finish Training can be retried.
+
+The summary offers an explicit way to start new training. It is not itself persisted: it
+is dismissed by leaving Train and does not reappear after a reload.
 
 ---
 
@@ -2692,7 +2743,8 @@ Training Plans Version 1 is successful when an athlete can:
 
 19. Complete a step after the planned number of Shots.
 
-20. Continue deliberately to the next step.
+20. Move deliberately to the next planned Exercise at any point, whatever has been
+    recorded so far.
 
 21. End a planned session early without losing valid recorded data.
 
@@ -2795,23 +2847,15 @@ Confirm whether fixed strategy should ever hard-lock the selector.
 
 ## Continuing after planned shot count
 
-Preferred direction:
-
-- mark step complete
-
-- offer Continue to next step
-
-- allow optional extra shots without blocking
-
-Confirm the exact interaction.
+**Resolved — see section 31 (ADR-0048).** The planned count marks the step complete but
+gates nothing: **Next Exercise** is available throughout, reaching the count never
+advances the plan by itself, and extra stones stay recordable.
 
 ## Skipping a step
 
-Decide whether Version 1 needs:
-
-- Skip Step
-
-- or only End Session Early
+**Resolved — see section 31 (ADR-0048).** No separate Skip Step action exists. Choosing
+**Next Exercise** with nothing recorded is how a step is skipped, and the skipped step is
+reported as having nothing recorded — never as completed.
 
 ## Plan execution snapshot
 
@@ -2876,13 +2920,15 @@ To keep the first implementation focused:
 
 - Only saved Shots count.
 
-- Step transition requires a Continue action.
+- Step transition requires a deliberate **Next Exercise** action and is never automatic.
+
+- Neither Next Exercise nor Finish Training is gated on the planned count (section 31).
 
 - Extra Shots are allowed deliberately.
 
-- Early session completion is allowed.
+- Early session completion is allowed from anywhere in the plan.
 
-- Step skipping may be deferred unless easy to support safely.
+- Step skipping needs no separate action: Next Exercise with nothing recorded is it.
 
 - Custom step names are optional.
 

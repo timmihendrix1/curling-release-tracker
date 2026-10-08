@@ -1,6 +1,7 @@
 "use client";
 
 import type { Shot } from "../types";
+import { timeMeasuredShots } from "../lib/measurement/quantities";
 import { formatSigned } from "../lib/timeInput";
 import ChartCard from "./ChartCard";
 
@@ -65,11 +66,16 @@ function ChartTooltip({
 export default function ReleaseTrendChart({
   shots,
 }: ReleaseTrendChartProps) {
-  const hasPredictions = shots.some(
+  // A release-time trend can only plot stones that carry a release time and the
+  // target it was judged against. One missing a time is omitted from the series
+  // rather than drawn at zero.
+  const timeShots = timeMeasuredShots(shots);
+
+  const hasPredictions = timeShots.some(
     (shot) => shot.predictedTime !== undefined
   );
 
-  const chartData: ChartPoint[] = shots.map((shot) => ({
+  const chartData: ChartPoint[] = timeShots.map((shot) => ({
     shotNumber: shot.shotNumber,
     releaseTime: shot.releaseTime,
     targetTime: shot.targetTime,
@@ -83,7 +89,7 @@ export default function ReleaseTrendChart({
 
   // A single point has no trend to show — avoid rendering a blank/degenerate
   // chart frame (DESIGN_SYSTEM.md §22.3) below that.
-  const isEmpty = shots.length < 2;
+  const isEmpty = timeShots.length < 2;
 
   return (
     <ChartCard

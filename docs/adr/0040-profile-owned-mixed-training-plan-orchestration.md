@@ -45,6 +45,14 @@ is preserved. Abandoning an Exercise interrupts the plan rather than fabricating
 completed step. Finishing the final step still uses the existing Session archive/new-
 Session transition.
 
+**Amended by ADR-0048 (progression only).** These completion rules still define what
+*completed* means for each step type, but they no longer gate progression: the athlete
+may move to the next planned Exercise or finish the training at any point. Ending an
+active step is one domain transition — complete where the Exercise domain allows it,
+abandon where it does not — computed together with the next step's materialisation in a
+single Session commit. The separation this ADR establishes between plan orchestration
+and the domain runtimes it references is unchanged.
+
 Training Plan library schema 2 stores the new snapshots and union. Schema 1 Release
 Time plans migrate forward by attaching the curated Release Time Version that represents
 their already-existing runner. Unknown future schemas fail closed. Session migration

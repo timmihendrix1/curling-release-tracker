@@ -9,8 +9,11 @@ import {
 const VALID_PROFILE = {
   id: "p1",
   name: "Elite",
-  onTarget: 0.05,
-  acceptable: 0.1,
+  quantity: "time" as const,
+  tolerance: {
+    onTarget: { lower: 0.05, upper: 0.05 },
+    acceptable: { lower: 0.1, upper: 0.1 },
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -85,7 +88,15 @@ describe("migrateAccuracyToleranceProfilesState — malformed data fails safely"
   it("rejects a profile whose thresholds fail the shared validation rule (acceptable <= onTarget)", () => {
     const result = migrateAccuracyToleranceProfilesState({
       schemaVersion: ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION,
-      profiles: [{ ...VALID_PROFILE, onTarget: 0.2, acceptable: 0.1 }],
+      profiles: [
+        {
+          ...VALID_PROFILE,
+          tolerance: {
+            onTarget: { lower: 0.2, upper: 0.2 },
+            acceptable: { lower: 0.1, upper: 0.1 },
+          },
+        },
+      ],
       defaultProfileId: null,
     });
     expect(result.profiles).toEqual([]);

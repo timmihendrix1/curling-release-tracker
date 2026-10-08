@@ -63,8 +63,12 @@ describe("buildAccuracyToleranceProfile", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.name).toBe("Elite");
-    expect(result.value.onTarget).toBe(0.05);
-    expect(result.value.acceptable).toBe(0.1);
+    // A symmetric seconds pair keeps its exact meaning in the per-side form.
+    expect(result.value.quantity).toBe("time");
+    expect(result.value.tolerance).toEqual({
+      onTarget: { lower: 0.05, upper: 0.05 },
+      acceptable: { lower: 0.1, upper: 0.1 },
+    });
     expect(result.value.createdAt).toBe(NOW);
     expect(result.value.updatedAt).toBe(NOW);
     expect(typeof result.value.id).toBe("string");
@@ -113,8 +117,11 @@ describe("profile list operations", () => {
     const result = replaceAccuracyToleranceProfile(state, {
       id: "missing",
       name: "Ghost",
-      onTarget: 0.1,
-      acceptable: 0.2,
+      quantity: "time" as const,
+      tolerance: {
+        onTarget: { lower: 0.1, upper: 0.1 },
+        acceptable: { lower: 0.2, upper: 0.2 },
+      },
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -131,8 +138,8 @@ describe("profile list operations", () => {
     const copy = duplicateAccuracyToleranceProfile(built.value, LATER);
     expect(copy.id).not.toBe(built.value.id);
     expect(copy.name).toBe("Elite (Copy)");
-    expect(copy.onTarget).toBe(built.value.onTarget);
-    expect(copy.acceptable).toBe(built.value.acceptable);
+    expect(copy.quantity).toBe(built.value.quantity);
+    expect(copy.tolerance).toEqual(built.value.tolerance);
     expect(copy.createdAt).toBe(LATER);
 
     // Independent afterward — mutating the copy's shape must never touch the original.

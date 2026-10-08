@@ -9,6 +9,7 @@
 // value — the controller that writes it has no access to any of those. What it *does*
 // carry is the browser's device identifier and whatever raw bytes the timer sent,
 // which can include real athlete records. The exporting UI says so.
+import type { FileExportRequest } from "../platform/fileExport";
 import { formatHexBytes } from "./protocol";
 
 export const BROWER_LOG_SCHEMA_VERSION = 1;
@@ -148,23 +149,22 @@ export function serializeDiagnosticLog(
 }
 
 /**
- * Hands the serialized log to the browser as a download and releases the object URL
- * afterwards. Mirrors `src/lib/export.ts`'s `downloadCsv` mechanics rather than
- * inventing a second download convention.
+ * Delivery request for the serialized diagnostic log.
+ *
+ * The serialized CONTENT is unchanged — this touches only how the file reaches
+ * the operator, through the one shared boundary
+ * (`src/lib/platform/fileExport.ts`, Stage M3a), so a diagnostic captured on a
+ * device can actually be retrieved from it. Nothing about Brower decoding, the
+ * controller, the transport or timing interpretation is affected.
  */
-export function downloadDiagnosticLog(content: string, fileName: string) {
-  const blob = new Blob([content], { type: "application/json;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", fileName);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } finally {
-    // Released even if the click/DOM steps throw, so a failed export cannot leak the
-    // blob for the lifetime of the document.
-    URL.revokeObjectURL(url);
-  }
+export function diagnosticLogExport(
+  content: string,
+  fileName: string
+): FileExportRequest {
+  return {
+    displayFileName: fileName,
+    content,
+    mimeType: "application/json;charset=utf-8;",
+    shareTitle: "Brower TCi diagnostic log",
+  };
 }

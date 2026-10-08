@@ -3,6 +3,12 @@
 import type { HistoryAnalysisContext } from "../lib/historyAnalysis";
 import { dateRangeLabel } from "../lib/historyAnalysis";
 import { blockModeLabel, measurementModeLabel } from "../lib/trainingBlocks";
+import { quantityLabel } from "../lib/measurement/tolerance";
+import {
+  MEASURED_QUANTITIES,
+  shotMeasures,
+} from "../lib/measurement/quantities";
+import type { MeasuredQuantity } from "../types";
 import { surfaceClass } from "./Surface";
 
 type AnalysisContextSummaryProps = {
@@ -45,24 +51,62 @@ export default function AnalysisContextSummary({
 }: AnalysisContextSummaryProps) {
   const { filters } = context;
 
+  // The timing interval and the comparison thresholds are both SECONDS concepts, and
+  // this line exists to name only what actually judged the figures on screen. Which
+  // quantities those are is the deciding question: with speed in view, a seconds
+  // cutoff describes some of the results or none of them — never all of them.
+  // Derived from the stones the selection actually RECORDED, by the same rule the
+  // summary groups use — so what this line describes and what is on screen can never
+  // disagree. A Both block whose stones carry only speed shows only speed figures, and
+  // this line must not then talk about release time results that are not there.
+  const shownQuantities: MeasuredQuantity[] = filters.measuredQuantity
+    ? [filters.measuredQuantity]
+    : MEASURED_QUANTITIES.filter((quantity) =>
+        context.blocks.some((entry) =>
+          entry.shots.some((shot) => shotMeasures(shot, quantity))
+        )
+      );
+  const describesTime =
+    shownQuantities.length === 0 || shownQuantities.includes("time");
+  const describesSpeed = shownQuantities.includes("speed");
+  // Both quantities on screen: every seconds statement has to say so explicitly,
+  // because speed is classified against each block's own speed snapshot regardless.
+  const mixedQuantities = describesTime && describesSpeed;
+
   const headline = [
     filters.trainingCategory ? blockModeLabel(filters.trainingCategory) : null,
-    filters.measurementMode ? measurementModeLabel(filters.measurementMode) : null,
+    filters.measuredQuantity ? quantityLabel(filters.measuredQuantity) : null,
+    describesTime && filters.measurementMode
+      ? measurementModeLabel(filters.measurementMode)
+      : null,
   ]
     .filter(Boolean)
     .join(" · ");
 
   const notices: string[] = [];
 
-  if (context.thresholdsVaryAcrossBlocks) {
+  if (describesTime && context.thresholdsVaryAcrossBlocks) {
     notices.push(
-      "Thresholds vary across selected blocks. Select Custom comparison thresholds to evaluate all selected blocks using one shared standard."
+      mixedQuantities
+        ? "Release time thresholds vary across selected blocks. Select Custom comparison thresholds to evaluate their time results using one shared standard."
+        : "Thresholds vary across selected blocks. Select Custom comparison thresholds to evaluate all selected blocks using one shared standard."
     );
   }
-  if (context.filters.thresholdComparisonMode.type === "comparison") {
+  if (
+    describesTime &&
+    context.filters.thresholdComparisonMode.type === "comparison"
+  ) {
     const { onTarget, acceptable } = context.filters.thresholdComparisonMode.thresholds;
+    const band = `±${onTarget.toFixed(2)}s / ±${acceptable.toFixed(2)}s`;
     notices.push(
-      `All selected shots are evaluated using ±${onTarget.toFixed(2)}s / ±${acceptable.toFixed(2)}s.`
+      mixedQuantities
+        ? `Release time results are evaluated using ${band}. Speed uses each exercise's own speed tolerance.`
+        : `All selected shots are evaluated using ${band}.`
+    );
+  }
+  if (!describesTime) {
+    notices.push(
+      "Speed results use each exercise's own speed tolerance. Comparison thresholds and the timing interval apply to release time only."
     );
   }
   if (context.availableHandles.length === 1) {

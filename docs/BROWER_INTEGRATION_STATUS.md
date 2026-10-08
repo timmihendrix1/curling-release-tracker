@@ -1,8 +1,15 @@
 # Brower Integration Status
 
-**Status:** Hardware received. Official BLE documentation available. Development-only BLE diagnostic implemented. **This application has connected to a physical TCi Timer, read characteristics, and received real Athlete Data notifications** (2026-09-25, desktop Web Bluetooth). **A separate native iOS probe has since reached the same timer from a physical iPhone and received real notifications** (2026-09-28). Packet encoding is **partially** supported by evidence — the tested Chron base-packet fields now include splits 2–4, the appendix count and one appendix packet — but it is not established for the full protocol. **No production timing provider exists.**
+**Status:** Hardware received. Official BLE documentation available. Development-only BLE diagnostic implemented. **This application has connected to a physical TCi Timer, read characteristics, and received real Athlete Data notifications** (2026-09-25, desktop Web Bluetooth). **A separate native iOS probe has since reached the same timer from a physical iPhone and received real notifications** (2026-09-28). Packet encoding is **partially** supported by evidence — the tested Chron base-packet fields now include splits 2–4, the appendix count and one appendix packet — but it is not established for the full protocol. **The assisted training pilot is now implemented in the iOS application and is not hardware-accepted** (see below).
 
-**Last Updated:** 2026-09-28
+**Last Updated:** 2026-10-01
+
+**Next authorised scope:** the [assisted training pilot](#assisted-training-pilot-decision-2026-09-30)
+below. **It is now implemented and awaiting physical-device acceptance** — see
+[Implemented assisted capture](#implemented-assisted-capture-2026-09-30) and the
+[device checklist](#physical-device-checklist-for-the-assisted-capture-pilot). The earlier
+gates still describe full production readiness; the pilot exception does not declare
+Gate C passed, and **full Gate C remains partial while Gate D remains not started**.
 
 ---
 
@@ -40,7 +47,7 @@ ADR-0006).
 | Real Athlete Data notifications | **Received** — 12 unsolicited notification packets across two listening windows, plus 4 replies to memory requests (2026-09-25) |
 | A connection from a **physical iPhone** to the timer | **Demonstrated** — by the separate native iOS probe, not by this application: two GATT connections, both documented services discovered, 15 notification packets (2026-09-28) |
 | Verified packet encoding | **Partial.** Supported by evidence for the tested Chron base packet: memory location, Split 1 (four packets on desktop, three on iOS), and — new on 2026-09-28 — splits 2, 3 and 4, the appendix-count field, and one appendix packet. Session headers, splits 6–20, the start time and the second appendix packet are **not** established |
-| Production timing provider | **Does not exist** |
+| Production timing provider | **Assisted capture pilot implemented** (ADR-0050) — filtered candidates reach the existing `TimingResult` boundary from a connected timer, foreground iOS only. Filtered Back–Hog now records automatically after setup confirmation; the user reports connection, live times and working filters. Full live acceptance remains incomplete |
 
 Hardware claims in this document trace to **two observation sessions**:
 
@@ -657,7 +664,9 @@ It deliberately does **not**:
 - Decode any packet field. **This is still true after the 2026-09-25 session.** The
   diagnostic displays and exports raw bytes only; the offline analysis in "Physical
   observations" was performed against exported files, never in the application. Building a
-  decoder from a partial Gate C result would put a guess on screen as a measurement.
+  general-purpose decoder from a partial Gate C result would put a guess on screen as a
+  measurement. The later assisted-pilot decision below authorises only a bounded candidate
+  decoder; this diagnostic remains unchanged.
 - Send New Athlete (`0x0A`), clear, reset, channel or test commands, or offer a free-form
   hex console. Nothing is written automatically at any point.
 - Reconnect automatically, retry, or poll.
@@ -915,9 +924,343 @@ would still have to guess** — about where a record ends, about every field pas
 ones, and about what a repeat means — and would present those guesses as measurements. The
 diagnostic still has no decoder, and **Gate C is still not passed.**
 
-**Identified as a possible future task, not authorized here:** a narrowly scoped decoder
+**Position at the end of the 2026-09-28 manual collection (superseded only by the bounded
+2026-09-30 pilot authorisation below):** a narrowly scoped decoder
 *specification* — covering only fields that evidence supports, with an explicit
 representation for "this field is not established" — could be written once Gate C has
 reproduced across sessions **with timing gates**, which neither collection used for the
 multi-split case. Nothing in this document authorizes writing that specification or any
 decoder, and no product decision about it has been made.
+
+## Assisted training pilot decision (2026-09-30)
+
+**Initial product scope; implemented, later extended by the approved filter and automatic-recording decisions below. Full hardware acceptance remains incomplete.** Continue in the actual
+installed iOS application. The user confirms two light gates, CHRON mode, and successive
+attempts without New. One tap to accept the appropriate proposed time is sufficient for
+the first training pilot. This explicitly permits a narrow candidate decoder before
+full Gate C and before the native-storage migration. It does not permit automatic
+start/finish pairing, automatic New, background capture or inferred measurement modes.
+No separate test app is to be built.
+
+Connect and observe first; then require the operator to confirm the apparatus is ready.
+Only offer candidates while armed for the current Training Capture Sequence and its
+explicit measurement mode. Known pre-arm values and repeated packets must not become new
+candidates. Establish a complete baseline before arming; never treat receipt time as
+proof of when a trigger occurred. Delayed previously unseen data cannot be proved fresh
+from receipt alone: the pilot therefore requires operator confirmation of every candidate,
+and must expose uncertainty rather than silently attributing it to a shot. Setup arming
+reduces unwanted intake; it is not a hardware-side acquisition boundary or a complete
+plausibility filter.
+
+Show SEG candidates calculated in integer milliseconds as `split[1]` or the difference
+between adjacent cumulative splits; truncate only for the TCi-style hundredths display,
+not before subtraction. Keep both the derived interval and its cumulative context
+available. The user selects an interval; the application must not use every-other-split
+parity, a hard-coded ten-second rule or the last nonzero split as an automatic shot rule.
+An explicit acceptance emits one `TimingResult` with `source: external` through the
+existing capture path. Preserve the original millisecond precision in its seconds value.
+Operator confirmation resolves *which interval belongs to a shot*, not whether malformed
+or ambiguously assembled bytes may be trusted.
+
+Pause and invalidate pending candidates on disconnect, background, capture-context change,
+reset or loss of packet continuity. Reconnection requires a fresh baseline and explicit
+arming. Retried/repeated delivery must not create another accepted shot; equal numeric
+times at distinct split positions remain distinct candidates. No historical import,
+automatic memory request, automatic New or guessed rollover is authorised. A 20-split
+record is a known limit: surface exhaustion and require an explicit new record/re-arm
+instead of pretending capture continues indefinitely. No per-attempt New requirement
+is introduced. Real-device acceptance must cover the appendix boundaries and this limit.
+
+### Approved Back–Hog candidate filter (2026-09-30)
+
+The ranges below remain current; the later automatic-recording decision supersedes
+this section's initial per-shot confirmation requirement for filtered Back–Hog.
+
+The user reports that the installed app connects and displays live gate times, but the
+unfiltered sequence includes return intervals (3.77 s shot, 16.02 s return, 3.64 s shot).
+This is partial live evidence, not completion of the physical-device checklist.
+
+For Fixed Weight Back–Hog capture, use the existing Auto Capture Shot Type selection:
+Draw **3000–5000 ms**, Takeout **2000–4000 ms**, inclusive. This approved range filter
+supersedes the earlier blanket deferral of plausibility filtering. It only limits which
+candidates are offered; one-tap confirmation remains required and no alternating-split
+rule or automatic shot acceptance is introduced. Evaluate exact milliseconds before
+formatting. Keep every decoded cumulative split in the observation model so a hidden
+return interval cannot change the next SEG calculation. Repeats do not increase the
+filtered count. Show the active range and number excluded since arming.
+
+The sequence's Shot Type owns the filter, not the separate manual-entry selector.
+Recheck Shot Type and range when queued acceptance executes. Changing sequence/context
+requires re-arming. No range is invented for Hog–Hog or sequences without Shot Type
+(Variable Weight); those retain the existing unfiltered, explicitly confirmed candidates
+and state that no range filter applies. Configurable ranges and those additional contexts
+remain roadmap work; recorded results and manual entry are unchanged.
+
+### Approved automatic recording after range validation (2026-09-30)
+
+After confirming that the range filter works on the iPhone, the user approved direct
+recording without a confirmation tap and correction through existing shot deletion/Undo.
+This supersedes the per-shot confirmation requirement for the filtered Fixed Weight
+Back–Hog workflow above. Connection and setup confirmation remain explicit.
+
+Drain eligible candidates in original split order, one at a time through the existing
+capture boundary. Wait for local save acknowledgement before the next candidate. Recheck
+candidate liveness, training ownership and range at execution. A repeat cannot recreate
+a saved, deleted or undone result. Completion, pause, navigation, disconnection and
+backgrounding revoke pending work. Failed or unconfirmed saves stop intake, keep the
+same-shot retry, and require setup confirmation again after successful retry. Known
+pre-arm values stay excluded. In-range false triggers can still be saved: the user accepts
+manual correction, not a claim that the device identifies stones or direction.
+
+Hog–Hog and unclassified sequences have no approved range and retain manual candidate
+selection. This change does not expand automatic capture to those contexts, Blind Weight,
+Assessment or Team capture. No timer writes, background mode or persistence migration.
+
+### Additional training comparison (analysed 2026-09-30)
+
+The user supplied a later desktop memory retrieval and a manually populated Training CSV.
+Source filenames and SHA-256:
+
+- `brower_tci_ble_diagnostic_log.json`:
+  `ddf8b0bf693d706f66f59a6e4442e3a4a7f055115676ea32897ed6ce149b12fd`.
+- `Training_Session.csv` (attachment stored as `2-Training_Session.csv`):
+  `583d374a7bc703bc1f724cec8e2302a8c95fd61cdb534519da6b37f79fcc424f`.
+
+The log has 22 entries. After command `55 01 00 01 00 03 AA`, sequences 19–21
+contain these three 20-byte notifications:
+
+```text
+00 10 00 FF 00 00 00 16 CD E0 0E D6 09 16 00 A0 34 12 BD 42
+13 A2 31 CA 1C 1D 93 13 01 91 31 0E 33 BF 68 3C DE 94 8E 76
+49 D4 95 35 5C 54 43 F6 4B E2 65 A9 17 5F 62 76 DD B8 14 4B
+```
+
+Under the documented base-plus-two-appendices interpretation, these yield cumulative ms:
+
+```text
+3798, 37216, 41012, 76756, 80419, 117276, 121137, 197009,
+200931, 245608, 249321, 298614, 302409, 341340, 345151,
+412642, 416401, 483170, 486875, 529483
+```
+
+The first split and the differences ending at splits 3, 5, …, 19 yield
+`3798, 3796, 3663, 3861, 3922, 3713, 3795, 3811, 3759, 3705` ms.
+Truncated to hundredths, these match CSV rows 1–10:
+`3.79, 3.79, 3.66, 3.86, 3.92, 3.71, 3.79, 3.81, 3.75, 3.70` seconds.
+The CSV contains 32 rows; this log does not establish a match for rows 11–32.
+
+**Supported interpretation:** the manufacturer layout, including both appendices,
+produces intervals consistent with the first ten manually recorded shots. The intervening
+intervals are much longer and consistent with rests. This is additional evidence for a
+candidate decoder; it does not prove every cumulative timestamp, gate identity, automatic
+pairing, live update grouping, packet finality, rollover or complete session retrieval.
+Three notifications are interpreted as one record, not three independent athletes.
+
+The training-time iOS export `brower-ios-probe-2026-09-28T17-08-14-460Z.json`
+contains no notification events because listening was not started. It supplies no live
+two-gate packet progression. Validate the candidate decoder against a new live session
+before describing the pilot as ready for training. Full **Gate C remains partial** and
+**Gate D remains not started** until the relevant acceptance work is actually performed.
+Deferred work and review findings are tracked in the
+[roadmap pilot inventory](TECHNICAL_DEBT_AND_ROADMAP.md#immediate-priority-assisted-brower-training-pilot-2026-09-30).
+
+
+---
+
+# Implemented assisted capture (2026-09-30)
+
+**Implemented in the application. Not hardware-accepted.** The architecture decision is
+[ADR-0050](adr/0050-assisted-brower-capture-pilot.md); this section records what the code
+actually does and, more importantly, what it still does not know.
+
+## What was built
+
+| Module | Responsibility |
+| --- | --- |
+| `src/lib/brower/chronDecoder.ts` | The narrow CHRON decoder: documented base-packet fields, appendix count, both appendix packets, record assembly, coherence validation, SEG derivation |
+| `src/lib/brower/assistedCapture.ts` | Baseline, arming, candidate derivation and identity, continuity, exhaustion, and the pure acceptance-ownership rule |
+| `src/lib/brower/assistedCaptureController.ts` | Connection lifecycle, packet assembly across notifications, generation ownership, teardown |
+| `src/lib/brower/timingTransport.ts` | The platform-isolated BLE boundary — **no write operation exists on it** |
+| `src/lib/brower/capacitorTimingTransport.ts` | The one real implementation, over `@capacitor-community/bluetooth-le` |
+| `src/components/BrowerAssistedCapturePanel.tsx` | The Active Training surface: connect, confirm setup, assign or discard candidates |
+
+The operator workflow is: connect inside Training → set the apparatus up while the app
+observes at least one complete record (trigger the gates during setup if necessary) → confirm "Setup checked — start receiving measurements" → new intervals appear
+→ matching Fixed Weight Back–Hog intervals save automatically in order, using the approved
+Draw/Takeout range above. Unfiltered contexts still require a selection.
+
+Arming is unavailable until a complete baseline exists and no appendix is outstanding.
+Pause, navigation away, record change and connection/lifecycle invalidation clear candidates;
+queued acceptance rechecks both the current candidate object and its training ownership.
+Reselection waits until a retired native connection attempt and its cleanup have settled.
+
+An accepted shot first reports that it is being saved. Only a successful local repository
+acknowledgement reports it saved on this device, never cloud-confirmed. Failure or timeout
+keeps a retry available for that same shot. Session saves, retries and archival are ordered
+so an older pending save cannot overwrite a later one. This uses the existing storage;
+it does not activate SQLite or establish a stronger durability guarantee.
+
+## Decoder evidence
+
+The decoder reproduces, as automated tests:
+
+- all **twenty** cumulative values of the three-packet fixture recorded under
+  [Additional training comparison](#additional-training-comparison-analysed-2026-09-30),
+  read as **one record** across **both** appendix boundaries;
+- the **ten** independently recomputed CSV comparisons, to the hundredth;
+- the 2026-09-28 export-02 record across the first appendix boundary.
+
+Subtraction happens on millisecond values; truncation to hundredths is display-only.
+
+## What this implementation still does not know
+
+These are unchanged by the pilot existing, and none may be treated as resolved because
+code now reads these fields.
+
+- **Which interval belongs to a shot.** The range filter excludes out-of-range intervals;
+  it cannot prove that an in-range trigger was a stone. Automatic Back–Hog recording
+  accepts that limitation; the operator can correct false triggers with Undo/deletion.
+- **Record finality.** Nothing in the bytes marks a record final. A split that changes
+  value at a position already observed, or a record that shrinks, suspends capture and
+  requires a re-arm rather than choosing a value.
+- **That an appendix packet is identifiable as one.** Appendix packets carry no header.
+  The association rests on arrival order after a declared count, plus a structural check
+  that the packet actually continues the record's cumulative sequence. That check is
+  supplemented by explicit rejection when a packet is also a selectable base packet.
+  Neither check proves packet type; some appendices also admit an empty-base interpretation.
+  Ambiguity rejects the transfer and waits for an unambiguous full snapshot of the same
+  record without requiring setup again (ADR-0050 decision 3). Failed continuation or a
+  changed observed prefix still suspends capture. Recovery is not packet-type proof.
+- **That a baseline is complete.** The baseline is what *this connection* observed before
+  arming. A record first reported after arming cannot be proved to have been created
+  after it. Operator confirmation of every candidate is the mitigation, and the panel
+  states what the baseline contains rather than implying completeness.
+- **Freshness from receipt.** `receivedAt` is byte-arrival time and is never presented as
+  a measurement time.
+- **Gate identity.** Nothing maps a split to Back-Hog or Hog-Hog. The measurement mode
+  comes from the Training Block, and the accepted value is attributed to it explicitly.
+- **Anything about Android**, background capture, Assessment capture, Blind Weight,
+  Team capture, memory retrieval, New Athlete, rollover or reset recovery.
+
+Automated tests use a fake transport. They prove this application's logic and lifecycle,
+and prove **nothing** about real TCi firmware.
+
+## User-reported light-gate training session (2026-10-01)
+
+The user reports that training with two light gates **worked** on 2026-10-01.
+
+**What this is:** a successful practical use report from the athlete. It is useful
+evidence that the end-to-end path — connect, confirm setup, throw, automatic recording —
+is usable in a real training situation.
+
+**What this is not:** it is **not** a pass of the
+[physical-device checklist](#physical-device-checklist-for-the-assisted-capture-pilot).
+No per-item outcome, firmware version, gate layout or observed-byte collection was
+recorded, and no individual checklist item (setup exclusion, both appendix boundaries,
+duplicate/out-of-range exclusion, lifecycle pause, exhaustion and new-record recovery,
+restart survival) was separately verified. Gate C is not passed, Stage M4 is not
+complete, and `B-P0` in the roadmap remains open. Hardware acceptance still requires the
+recorded checklist run.
+
+## Compact panel presentation (2026-10-01)
+
+Following the training session above, the user asked for less permanent explanation in
+the Release Times training screen. `BrowerAssistedCapturePanel.tsx` now presents the
+normal automatic state as one compact block and uses one native, initially collapsed
+`<details>` disclosure labelled **Details** for technical provenance. Nothing about
+decoding, arming, candidate identity, acceptance, persistence or lifecycle changed.
+
+**Outside Details, always:** title and `InfoButton`; connection status; Connect /
+Disconnect; the setup-confirmation action with its arming blocker; a one-line filter
+summary (`Recording · Draw · 3–5 s`, without "Recording" whenever nothing can be
+received); the latest acknowledgement at unchanged precision, distinguishing applied,
+saving, locally saved and failed/unconfirmed; the retry action; the waiting-for-a-clear-
+update state; the 20-split exhaustion warning; dropped-measurement unavailability; and,
+in unfiltered contexts, every candidate time with its Use/Discard controls.
+
+**Inside Details:** timer record identifiers, baseline counts, excluded-interval and
+rejected-packet counts with the original diagnostic reason, the full protocol/recovery
+explanation, the exact suspension reason, and each offered candidate's cumulative
+provenance.
+
+Two honesty rules are implemented rather than assumed:
+
+- The panel never says *Recording* merely because Bluetooth is connected.
+  `BrowerAssistedCaptureView.awaitingUnambiguousRecord` is a read-only field derived from
+  the controller's existing recovery state (`capture.phase` deliberately stays `armed`
+  during bounded ambiguity recovery), so the surface states the waiting condition without
+  parsing notice text, adding a state machine or introducing a timeout.
+- A previous green "saved on this device" notice is rendered neutrally whenever a current
+  blocker exists (not connected, not armed, awaiting a clear update, record exhausted,
+  arming blocked, or measurements dropped). The result is never lost, and a save failure
+  is never concealed. Local saving remains distinct from cloud synchronisation.
+
+Opening or closing Details holds no React state and touches no subscription, so it cannot
+reconnect, re-arm, revoke candidates or interrupt a save. This is covered by rendered
+integration tests in `src/components/__tests__/TrackerApp.browerAssistedCapture.test.tsx`.
+
+## Physical-device checklist for the assisted capture pilot
+
+**Until every item passes, live two-gate behaviour is unverified.** Run on a physical
+iPhone with a real TCi Timer and two light gates in CHRON. The iOS Simulator has no
+Bluetooth hardware and cannot substitute for any item.
+
+1. **Setup triggers are excluded.** Connect, then deliberately break both gates several
+   times while setting up. Confirm setup. Verify that none of those setup intervals is
+   offered, and that the panel reported them as already known before you confirmed.
+2. **Several real attempts, no typing, no per-attempt New.** Throw at least six stones in
+   a row without pressing New on the timer between them. Verify a candidate appears after
+   each, that its value matches the stone just thrown, and that it saves automatically
+   with the correct target and handle without a per-shot tap.
+3. **TCi comparison across both appendix boundaries.** Keep throwing in one record past
+   split 4 and past split 12, so both appendix packets are involved. For at least three
+   stones on each side of each boundary, compare the panel's "Timer shows" value against
+   the TCi's own SEG display. They must agree exactly at hundredths resolution.
+4. **Duplicates and unwanted intervals are excluded.** Verify that a repeated packet never
+   produces a second shot. Out-of-range returns must not create a shot. Undo/delete an
+   in-range unwanted shot and verify a repeated packet does not restore it. In Back–Hog,
+   test Draw (3–5 s) and Takeout (2–4 s): a 16.02 s return is hidden and counted once,
+   while the next legitimate SEG value still matches the timer.
+5. **Lifecycle pause.** While armed with candidates pending, background the app and lock
+   the screen. Verify capture pauses, pending candidates are cleared, the reason is stated,
+   and resuming requires reconnecting and confirming setup again. Repeat by switching the
+   timer off mid-capture.
+6. **Exhaustion and new-record recovery.** Continue one record to its 20th split. Verify
+   the panel reports the limit honestly, that no further candidate appears, and that
+   any wanted final candidates can still be accepted before pressing New. New invalidates
+   pending candidates; observe the new record, then explicitly confirm setup again.
+   Verify this resumes capture. New is needed at the record limit, not per attempt.
+7. **Saved results survive restart and export correctly.** Force-quit and relaunch the
+   app. Verify every accepted shot is still present with its exact value, and that the
+   existing CSV export contains those values unchanged.
+
+Record the outcome, the firmware version and the physical gate layout in a new
+observations directory under `docs/hardware/brower/observations/`, in the same discipline
+as the existing collections: observed bytes, reported display values, and what was and was
+not covered.
+
+### Manual TCi ambiguity reproduction and bounded recovery (2026-09-30)
+
+The user supplied `brower-ios-probe-2026-09-30T16-48-03-219Z.json`: 85 entries,
+39 notifications, zero dropped entries or truncated payloads. This was **Manual Start**,
+not a light-gate acceptance run. The user explicitly pressed **New**; automatic rollover
+was not observed. Record 001 reaches 20 splits and is repeated unchanged; record 002
+then starts empty and grows to nine splits. Record 002's final cumulative value is
+27385 ms and its last SEG is 3318 ms, matching the photograph's 27.38 and 3.31 after
+truncation. Record 001's split 13 is 63877 ms, SEG 2269 ms, matching the earlier photo.
+
+Replaying the actual classifier reproduces dual interpretations at entry 52 (record
+001 split 16) and entries 80/82 (record 002 splits 8/9). These are distinct from the
+20-split limit. In record 001, entry 55 supplies a later unambiguous complete snapshot.
+The controller tests use the exact raw packets around that recovery; the rendered-app
+regression checks that setup stays confirmed, no shot comes from ambiguous bytes, and
+entry 58's later clear snapshot saves the eligible 3072 ms interval once.
+
+The implemented mitigation rejects ambiguous transfers and retains arming while waiting
+for the same base header and a complete unambiguous snapshot. Existing cumulative-prefix,
+context, range, duplicate and local-save checks still apply. Waiting can delay results;
+if no clear snapshot follows, they remain unavailable. The end of record 002 in this
+export is still ambiguous and therefore yields no automatic recovery. New during this
+waiting state requires disconnect/reconnect and a fresh setup baseline; this can exclude
+unsaved times. No inferred header flags or plausible time range chooses between packet
+interpretations. Hardware acceptance and light-gate rollover remain open.

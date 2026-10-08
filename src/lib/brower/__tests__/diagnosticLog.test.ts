@@ -8,7 +8,7 @@ import {
   buildDiagnosticLogExport,
   buildLogPayload,
   createEmptyDiagnosticLog,
-  downloadDiagnosticLog,
+  diagnosticLogExport,
   serializeDiagnosticLog,
   type BrowerDiagnosticLog,
 } from "../diagnosticLog";
@@ -135,37 +135,25 @@ describe("buildDiagnosticLogExport", () => {
   });
 });
 
-describe("downloadDiagnosticLog", () => {
-  it("downloads through an object URL and revokes it afterwards", () => {
-    const createObjectURL = vi.fn(() => "blob:mock-url");
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+describe("diagnosticLogExport", () => {
+  // Delivery mechanics now belong to the shared boundary
+  // (src/lib/platform/fileExport.ts), which owns the object-URL lifetime on Web
+  // and the write-then-share sequence on native, and is tested there. What
+  // matters here is that this module still hands over exactly the serialized
+  // bytes, under a JSON name — the diagnostic's CONTENT is unchanged.
+  it("passes the serialized content through untouched", () => {
+    const content = serializeDiagnosticLog(logWith(2), "2026-09-29T10:00:00.000Z");
 
-    downloadDiagnosticLog("{}", "log.json");
+    const request = diagnosticLogExport(content, "brower_tci_ble_diagnostic_log.json");
 
-    expect(createObjectURL).toHaveBeenCalledTimes(1);
-    expect(click).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
-    expect(document.querySelectorAll("a")).toHaveLength(0);
-
-    vi.unstubAllGlobals();
+    expect(request.content).toBe(content);
+    expect(request.displayFileName).toBe("brower_tci_ble_diagnostic_log.json");
+    expect(request.mimeType).toContain("application/json");
   });
 
-  it("still revokes the object URL when the click throws", () => {
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal("URL", {
-      ...URL,
-      createObjectURL: vi.fn(() => "blob:mock-url"),
-      revokeObjectURL,
-    });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
-      throw new Error("synthetic download failure");
-    });
-
-    expect(() => downloadDiagnosticLog("{}", "log.json")).toThrow();
-    expect(revokeObjectURL).toHaveBeenCalledWith("blob:mock-url");
-
-    vi.unstubAllGlobals();
+  it("carries a share subject without altering the payload", () => {
+    const request = diagnosticLogExport("{}", "log.json");
+    expect(request.shareTitle).toBe("Brower TCi diagnostic log");
+    expect(request.content).toBe("{}");
   });
 });

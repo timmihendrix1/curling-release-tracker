@@ -1,12 +1,16 @@
 // The provider-neutral timing boundary. A `TimingProvider` is anything that can
 // eventually produce a `TimingResult` — the Simulator today, a manual fallback entry,
-// and (later) real hardware, all through the exact same shape. Nothing downstream of
+// and real hardware (the assisted Brower capture pilot, src/lib/brower/ — ADR-0050),
+// all through the exact same shape. Nothing downstream of
 // this file (capture sequence processing, shot saving, analytics, export) knows or
 // needs to know which provider produced a given result.
 //
 // Deliberately NOT a large plugin framework: one small interface, no registry, no
-// dynamic loading, no per-manufacturer configuration. A future real adapter is just
-// another implementation of `TimingProvider` — see docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md.
+// dynamic loading, no per-manufacturer configuration. A real adapter is just another
+// producer of `TimingResult` — see docs/EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md. The
+// Brower pilot deliberately does NOT implement the `subscribe` contract below: a device
+// reading reaches the same result boundary via its own setup-armed queue: filtered
+// Back–Hog is automatic, while unfiltered contexts retain manual confirmation.
 import type { MeasurementMode, TimingMeasurement, TimingProviderType, TimingResult } from "../types";
 
 /**

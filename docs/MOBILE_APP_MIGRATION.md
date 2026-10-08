@@ -308,8 +308,13 @@ it.
 `src/lib/brower/diagnosticLog.ts` has a third, explicitly mirroring `downloadCsv`.
 
 **Consequence:** four call sites, one mechanism. On both native platforms an anchor
-download does not produce a file the user can keep. This needs one small adapter, applied
-at one place, not four.
+download does not produce a file the user can keep.
+
+> **Resolved by Stage M3a.** Delivery now goes through `src/lib/platform/fileExport.ts`.
+> Each call site builds a typed request (`sessionCsvExport`, `historyCsvExport`,
+> `assessmentCsvExport`, the Team-result and diagnostic-log builders) and the boundary
+> delivers it. **Serialization is untouched** — same columns, same field semantics, same
+> privacy filtering.
 
 ## 2.8 Server-authored links point at the Web origin
 
@@ -464,8 +469,8 @@ code**, which is a different and stricter thing.
 | **Callback ingestion, addressing and arming** | A native callback arrives as a delivered URL and must be addressed to the attempt that owns it, with no page reload (§6.4) | **No.** `CallbackUrlAccess` is injected, but the cell is page-scoped, has no "ingest this URL" operation, Phase 0 admission exists only inside `startUp()`, and `consumeAdmittedContinuation` reaches its cell through the coordinator's closure rather than an ownership binding |
 | **Authentication browser** | Native must open the authorization URL outside the app WebView (§6.3) | No — `navigateToAuthorizationUrl` currently assigns `window.location` |
 | **Storage engine** | Possibly, pending **P6** — see §7.1 | **Yes** — `StorageAdapter`. This is ADR-0013's sanctioned extension point, and swapping the engine behind it changes no authority |
-| **File export** | An anchor download yields no keepable file on either platform (§2.7) | No — four call sites share `downloadCsv`'s mechanics |
-| **External links** | `target="_blank"` must open the system browser | No — five `target="_blank"` sites |
+| **File export** | An anchor download yields no keepable file on either platform (§2.7) | **Yes — IMPLEMENTED in Stage M3a.** `src/lib/platform/fileExport.ts`: Web keeps the anchor; native writes a UTF-8 file into an app-owned export cache and presents the share sheet |
+| **External links** | `target="_blank"` must open the system browser | **Yes — IMPLEMENTED in Stage M3a.** `src/lib/platform/externalLink.ts` + `components/platform/ExternalDocumentLink.tsx`, applied at the audited sites only |
 | **App lifecycle** | Foreground/background transitions have no Web equivalent the app currently uses | No |
 | **Hardware back** | Android only; no Web or iOS equivalent | No — navigation is in-memory `ActiveView` |
 
@@ -495,19 +500,31 @@ it does today.
 
 ---
 
-# 4. Open product decisions
+# 4. Product decisions — open and settled
 
-Each is genuinely unresolved. **None is settled by this document.** For each, the stage it
+**P2 and P6's direction were settled by the user on 2026-09-29** and are recorded as answers
+below; their rows are a decision record, not a proposal. **P1, P3, P4, P5 and P7 remain
+genuinely unresolved**, and none of those is settled by this document. For each, the stage it
 blocks is named; work before that stage proceeds without it.
+
+**P6's direction being settled does not make it designed, implemented or verified** — see
+Stage M3b0. The decision it depended on, **where the provider session is stored (§10 M3b0 §4),
+is now SETTLED (user decision, 2026-09-30): S2 — a Keychain/Keystore-backed protected
+store**, and Stage M3b3's composition is implemented on that basis. **Two things are settled
+with it and must not be re-opened as questions:** all existing local iPhone application data
+is **preserved** — no pilot reset, uninstall/reinstall, storage clearing or discarding of
+unsynchronised work is authorised — and existing local data must be **migrated and verified
+before** any production storage cutover. **Cutover itself is still not implemented**
+(Stage M3b5), and the migration it depends on is Stage M3b4.
 
 | # | Decision | Blocks | Why it blocks that stage |
 | --- | --- | --- | --- |
 | **P1** | **Long-term Web plus mobile support, versus eventual mobile-only delivery.** | **Nothing before M6.** | The migration is non-regressive either way. It becomes load-bearing only when distribution commitments and long-term Web maintenance are budgeted. Recorded so that no stage silently assumes the Web app is disposable. |
-| **P2** | **Must the first mobile pilot transfer browser-local drafts and unsynchronised data?** | **M3's data-transfer scope and acceptance criteria.** | If **no**, M3's data scope is "install, sign in, restore successfully-synchronised cloud records" — existing code. If **yes**, M3 must additionally design a cross-container transfer with its own authority, authorisation, integrity and failure model. §7.5 gives a **recommendation**; **no stage may proceed as though it were the answer.** Independent M3 work that does not depend on it may proceed. |
+| **P2** | ~~Must the first mobile pilot transfer browser-local drafts and unsynchronised data?~~ **DECIDED (2026-09-29): NO for the first pilot.** Data existing only inside Brave or another browser is **not** transferred. Already-synchronised cloud records continue to restore through the existing cloud path. This is **not** authorisation to delete browser data, and it does **not** cover migration between storage engines inside the installed native app — a different operation that **remains required** (P6). Cloud synchronisation of authored Training Plans and other local-only domains stays a separate, unscheduled feature. | Was M3's data-transfer scope. **Now settled**; M3's remaining scope is engine migration (Stage M3b), not browser import. | The recommendation in §7.5 is now the recorded answer. A browser→app transfer path would need its own integrity, authorisation and Profile-ownership model; that scope is deliberately out of the first pilot. |
 | **P3** | **Must production measurement continue during backgrounding or screen lock?** | **M4** (Brower production capture), and the **`Info.plist` / manifest** content from M1 onward. | `UIBackgroundModes: bluetooth-central` changes Apple review exposure, and Android background BLE has an entirely different model. **M1 scaffolds foreground-only and declares no background mode** — the currently exercised scope. That is a reversible starting point, not an answer: adding a background mode later is a configuration and review change, whereas declaring one speculatively is an unjustified capability claim. Nothing in M1 implies approval. |
 | **P4** | **Production app identity, release configuration and distribution commitments** — bundle identifier / application id, app name, **the callback domain**, store accounts, and whether App Store and/or Google Play distribution is committed. **The API origin is NOT part of this any more: it is confirmed as `https://curling.evolane.me`** and configured through `NEXT_PUBLIC_NATIVE_API_ORIGIN` (Stage M2a, [ADR-0047](adr/0047-configured-native-api-origin-boundary.md)). Confirming it settles the API destination only. | **M1** uses explicit development placeholders; **M2's HTTPS callback path** cannot be completed without the callback domain; **M6** needs all of it. | A bundle identifier is baked into provisioning, Universal Link / App Link association and the Supabase redirect allow list. **No remaining value is invented here.** See §6.2 and §10 M2 for what an unresolved domain means in practice, and what the explicitly supported fallback would require. |
 | **P5** | **Does the required alternative login satisfy Apple guideline 4.8?** | **M6** (distribution readiness); influences **M2**. | Guideline 4.8 requires an app using Google Sign-In for the primary account to also offer a login service that limits collection to name and email, **allows the user to keep their email address private**, and does not collect interactions for advertising without consent. Email OTP collects only an email address, but it does not offer an email-privacy relay. Whether that satisfies the second bullet, or whether Sign in with Apple must be added, is a product and review-risk decision. **Do not resolve it by removing Google sign-in** — §1 preserves existing sign-in options. |
-| **P6** | **How is native local persistence made durable enough to accept?** — option A, B, C or D in §7.1, or a combination. | **M3.** The first usable offline milestone cannot be *claimed* without it. | Capacitor documents that WebView LocalStorage **"must be considered transient"** and that the OS reclaims it under storage pressure. This is not a risk a device test can retire. Accepting the current engine is a legitimate answer, but it is an **explicit product acceptance of possible silent loss of drafts and unsynchronised work**, not a default. Choosing a native adapter is a design change needing its own ADR. |
+| **P6** | ~~How is native local persistence made durable enough to accept?~~ **DIRECTION DECIDED (2026-09-29): Option B — adopt durable native local storage behind the existing persistence boundary.** WebView `localStorage` is **not** retained as the native production store by merely accepting its eviction risk. Both iOS and Android are designed for, with shared application logic. Data already inside the installed iOS app is preserved through a **controlled migration**. Existing Profile ownership, repository boundaries and cloud-synchronisation logic are kept. **Engine evidence is gathered IN THE EXISTING APP (user decision, 2026-09-30), not in a separate harness application.** **Two further points are now DECIDED (2026-09-30): ALL existing local application data is PRESERVED — a pilot reset is rejected — and existing local data must be migrated and verified BEFORE production cutover.** | **M3.** The direction is settled; the **implementation and its acceptance gate are NOT complete**. | **Decision made ≠ designed ≠ implemented ≠ verified.** The design is Stage M3b0 (§10) and [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration design remains unresolved** (three open items, §7). The M3b1 adapter and in-app diagnostic panel exist, **user-reported device evidence now exists within the stated limits** (M3b1 status in §10), and **Stage M3b3's composition is implemented behind an off-by-default build flag**. Still absent: **no migration, no cutover, and therefore no native production path** — a flag-enabled build blocks rather than mounting. |
 
 | **P7** | **What does the identity gate offer after an ambiguous authentication-browser dismissal?** — a visible "Cancel sign-in" control, an automatic timeout, or nothing beyond "try again". | **M2's gate behaviour only.** The architecture does not wait on it: §6.7's cancellation seam is specified and testable (§6.9 B4, B5, B19, B20) whichever answer is chosen, and it does not block M1. | The chosen plugin may report only that its sheet closed, without distinguishing cancellation from completion (§6.3), so dismissal cannot itself be treated as failure. Something must nevertheless let a user abandon an attempt, because retry alone does not make a cancelled attempt's late callback inadmissible. **This document specifies the seam and does not choose the UI.** An implementation must not present an incomplete flow as complete while this is open. |
 
@@ -1436,7 +1453,7 @@ database is added.** They are the options a dedicated stage must choose between.
 | Option | What it means | Notes |
 | --- | --- | --- |
 | **A. Keep `localStorage`, accept the risk, make it visible** | No engine change. The app must surface unsynchronised work prominently and encourage connectivity before it matters | Cheapest. Accepts silent loss of drafts and pending writes under storage pressure. **Requires an explicit product decision to accept**, not a default |
-| **B. A native `StorageAdapter` implementation behind the existing interface** | A new adapter backed by the Capacitor Preferences API or SQLite, selected per platform | **Recommended direction.** See below for why this is not a second authority |
+| **B. A native `StorageAdapter` implementation behind the existing interface** | A new adapter backed by the Capacitor Preferences API or SQLite, selected per platform | **CHOSEN (2026-09-29).** See §10 Stage M3b0 and [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md). Option A — keeping `localStorage` and merely accepting the eviction risk — was **explicitly rejected** |
 | **C. Reduce exposure by synchronising more eagerly** | Shrink the window in which work exists only locally | Complementary to A or B, not a substitute — drafts are by definition not yet synchronisable |
 | **D. Request persistent storage where available** | Android's persisted-storage API for IndexedDB | Partial, Android-only, and not applicable to `localStorage` |
 
@@ -1559,18 +1576,27 @@ Therefore:
 - `retireLegacyUnscopedSportingData()` runs on a fresh container and finds nothing —
   content-blind and idempotent, so this is a no-op, not a special case.
 
-## 7.5 P2 is unanswered, and no stage may assume an answer
+## 7.5 P2 answered (2026-09-29): no browser transfer in the first pilot
 
-**P2 — must the first mobile pilot transfer browser-local drafts and unsynchronised data? —
-is open.**
+**P2 is decided.** For the first mobile pilot, data that exists **only** inside Brave or
+another browser is **not** transferred into the app. The user approved this on 2026-09-29.
 
-This document's **recommendation** is: no transfer for the first pilot; sign in, restore
-successfully-synchronised cloud records, and state plainly which local-only items do not
-follow. The reason is that a transfer path needs its own integrity, authorisation and
-Profile-ownership model, which is a larger scope than the rest of M3.
+What follows from it, stated precisely because three different operations are easy to
+conflate:
 
-**A recommendation is not an answer, and proceeding as though it were is not safe.** It
-changes what M3 must deliver and what "usable" means, so:
+- **Browser → app transfer: deferred.** Sign in, restore successfully-synchronised cloud
+  records, and state plainly which local-only items do not follow. The reason is unchanged:
+  a transfer path needs its own integrity, authorisation and Profile-ownership model.
+- **This is not authorisation to delete browser data.** Nothing in this decision removes,
+  clears or retires anything in a browser profile.
+- **Engine migration *inside* the installed native app is a DIFFERENT operation, and it
+  remains REQUIRED.** Moving existing on-device data from WebView `localStorage` to the
+  durable native store is P6's work (Stage M3b), not P2's. Deferring browser import does
+  not defer that.
+- **Cloud synchronisation of authored Training Plans and other local-only domains remains a
+  separate feature**, neither scheduled nor implied by this decision.
+
+The historical framing below is kept because it explains why the answer is what it is:
 
 - Independent M3 work that does not depend on the answer **may proceed** — the export
   adapter, the external-link adapter, the storage-durability decision of 7.1, the offline
@@ -1619,14 +1645,14 @@ a **device check**, not an assumption.
 
 | Behaviour | Where | Native impact |
 | --- | --- | --- |
-| CSV / JSON export via anchor download | `src/lib/export.ts` (`downloadCsv`), `src/lib/assessment/export.ts`, `ExerciseTeamResultsScreen.tsx`, `src/lib/brower/diagnosticLog.ts` | **Broken on both platforms.** Needs the export adapter |
+| CSV / JSON export | `src/lib/export.ts`, `src/lib/assessment/export.ts`, `ExerciseTeamResultsScreen.tsx`, `src/lib/brower/diagnosticLog.ts` | **RESOLVED in Stage M3a.** All four build a typed request delivered by `src/lib/platform/fileExport.ts`: anchor on Web, file + share sheet on native |
 | `next/font/google` (Geist) | `src/app/layout.tsx` only | Not available in the mobile entry. CSS already falls back; self-hosting is optional |
 | Public exercise diagrams | `exerciseAssets.ts`, `public/exercise-diagrams/` (67 files) | Bundled. Relative fetch resolves against the local origin |
 | Restricted diagrams | `createAuthorizedRestrictedAssetResolver` | No production call site today. Would need the §5.2 API origin if revived |
 | Safe areas | `globals.css` `.app-content-clearance`, `layout.tsx` `viewportFit: "cover"` | **Already correct** — but the mobile HTML shell must reproduce `viewport-fit=cover` or the insets resolve to 0 |
 | Keyboard | numeric entry throughout training/assessment | Native keyboard overlays differ. Needs device verification, possibly the Keyboard plugin's resize behaviour |
 | Navigation | in-memory `ActiveView` (ADR-0009) | No router to reconcile. **Android's hardware back button has no mapping today** and needs an explicit decision |
-| External links | five `target="_blank"` sites: `SettingsScreen.tsx` ×2, `IdentityGateScreen.tsx` ×2, `PrivacyNotice.tsx` | Must open the system browser, not navigate the app WebView away |
+| External links | five sites: `SettingsScreen.tsx` ×2, `IdentityGateScreen.tsx` ×2, `PrivacyNotice.tsx` | **RESOLVED in Stage M3a** via `ExternalDocumentLink`: Web keeps the ordinary anchor, native opens the platform browser instead of navigating the app WebView away |
 | App lifecycle | none used today | Needed for the bootstrap delivery owner — launch URL **and** `appUrlOpen` (§6.6) — and, later, for capture invalidation (§10 M4) |
 | `crypto.randomUUID` | `identityRuntime.browserIdSource()`, `createManualTimingResult` | Returns `null` → runtime unusable if absent. **Verify on device**; do not assume |
 | Status bar / splash | — | Cosmetic, but a splash that never dismisses is a launch failure. Include in M1 |
@@ -1638,10 +1664,10 @@ here**; they are resolved and locked when the stage that needs them is implement
 
 | Plugin | Why | Position |
 | --- | --- | --- |
-| `@capacitor/app` | `appUrlOpen`, `getLaunchUrl`, foreground/background state, Android back button | Required by M2 |
+| `@capacitor/app` | `appUrlOpen`, `getLaunchUrl`, foreground/background state, Android back button | **Adopted at 8.1.1 for the assisted capture pilot's foreground/background boundary** (ADR-0050). `appUrlOpen`/`getLaunchUrl` remain required by, and unimplemented until, M2 |
 | An authentication-browser plugin — **unselected** | Open the authorization URL outside the app WebView | Required by M2, and **the selection is a Stage M2 decision with its own verification.** **`@capacitor/browser` uses `SFSafariViewController` on iOS; it is *not* `ASWebAuthenticationSession`**, and its `browserFinished` event does not distinguish cancellation from completion. Whichever plugin is chosen, its **documented return and cancellation mechanism** must be recorded before it is adopted — see §6.3, whose design deliberately does not depend on a trustworthy cancellation signal |
 | `@capacitor/filesystem` + `@capacitor/share` | Export adapter: write the file, then offer the share sheet | Required by M3. Already exercised together in the probe (`export_shared`, and a distinct `export_cancelled`, in the archived evidence) |
-| `@capacitor-community/bluetooth-le` | Brower transport | **M4 only.** Documented 8.x ↔ Capacitor 8.x. Bluetooth is **unavailable in the iOS Simulator** |
+| `@capacitor-community/bluetooth-le` | Brower transport | **Adopted at 8.3.0 for the assisted capture pilot** (ADR-0050); full production M4 unchanged. Documented 8.x ↔ Capacitor 8.x. Bluetooth is **unavailable in the iOS Simulator** |
 | `@capacitor/keyboard`, `@capacitor/status-bar`, `@capacitor/splash-screen` | Presentation | Optional; adopt only where a device check shows a real problem |
 | `@capacitor/preferences`, or a SQLite plugin | A **native `StorageAdapter` implementation** — see §7.1 option B | **Candidate, pending P6.** Capacitor's storage guide names these as the recommended stores for data that must not be lost. Adopting one **behind the existing `StorageAdapter` interface** changes the engine, not the authority: the repository boundary, Profile scoping, the outbox and the single sync engine are unchanged. It is **not** a second storage mechanism alongside the contract, and **not** an activation of the retired IndexedDB migration. It still needs its own ADR and its own data-migration design |
 
@@ -1682,11 +1708,11 @@ evidence about Android.
 | Build | ✅ **implemented** (M1) — one Vite build → one asset bundle | ✅ consumes it | consumes it — **no Android project exists** |
 | **Dependency compatibility** | Capacitor 8.5.2 family | **Verified on this machine** for the probe's plugin set, and for the application shell itself — M1's generated project compiles unsigned for `generic/platform=iOS` | **Untested** — no Android project exists |
 | **Build / signing** | — | Xcode 26.0+, SPM default. Unsigned compilation **verified**; signing team still required for device install (a free personal Apple ID suffices for development) | **Untested.** Android Studio / Gradle SDK not installed. Release signing key required, and its SHA-256 is an App Links input |
-| **Permissions** | — | `NSBluetoothAlwaysUsageDescription` (M4 only) | Runtime Nearby-devices permissions (M4 only) — see §8.3 |
+| **Permissions** | — | `NSBluetoothAlwaysUsageDescription` **declared** for the assisted capture pilot; no background mode | Runtime Nearby-devices permissions (Android, not implemented) — see §8.3 |
 | **Auth callbacks** | shared PKCE, classifier and **pure `decideOAuthIntake`**; new attempt-scoped cell and warm continuation (§6.4) | Universal Link (recommended) or, if P4 forces it, the explicitly designed custom-scheme path of §6.2 Option 2 | App Link, same fallback. Association needs the **release signing** SHA-256, which ties it to M6 |
 | **Local persistence / offline restart** | shared `StorageAdapter`, Profile-scoped keys, one authority | **Durability is a documented platform limitation, not an untested unknown** (§7.1). Capacity is measurable (T-a) | Same transience warning; Android-only persisted-storage API is a partial mitigation for IndexedDB, not `localStorage` |
 | **File export** | one adapter interface | Filesystem + share sheet. **Both a completed share and a cancellation** are evidenced in the probe's own export | **Untested** |
-| **BLE and lifecycle** | one transport interface (M4) | Connection, discovery, notifications and foreground lifecycle **evidenced** (2026-09-28, probe only). Background-while-listening **not** evidenced | **Untested in every respect** |
+| **BLE and lifecycle** | one transport interface, **implemented** for the pilot (ADR-0050), with no write operation | Connection, discovery, notifications and foreground lifecycle **evidenced** (2026-09-28, probe only). The pilot's own live two-gate behaviour is **not yet evidenced**; background-while-listening **not** evidenced and not attempted | **Untested in every respect** |
 | **Required physical-device verification** | — | **M1:** launch, safe areas, external links, `crypto.randomUUID`. **M2:** email OTP and Google, warm and cold, plus the §6.9 scenarios. **M3:** offline cold start and export. **M4:** BLE | **All of the above, independently.** A passing iOS check is never evidence for Android |
 
 **Stage attribution in this matrix, stated explicitly so it cannot be read as M1 scope.**
@@ -2034,8 +2060,25 @@ in any test.
 | CORS helper | exact matching, `"null"`, wildcard, suffix/prefix/subdomain/port/scheme/case variants, no credentials header, `Vary` merge, status/body/cache preserved |
 | Every route | preflight for both native origins, method/header limits, disallowed and `"null"` origins, **no auth lookup / RPC / file read / email send during preflight**, unapproved origin refused **before** the handler body, matching Origin + no bearer still denied, CORS headers on error responses, no-Origin and same-origin Web unchanged |
 
-**Physical-device acceptance for M2a — NOT performed.** No on-device sign-in and no
-on-device API call has been made. (M1's *visible* launch and layout checks are separately
+**Physical-device acceptance for M2a — PARTLY user-reported, not agent-executed.**
+
+On **2026-09-29** the user reported, from the app installed on their iPhone:
+
+- email login works;
+- a training recorded and completed on iOS appears in the Brave Web app;
+- an offline cold start, recording and saving a short training, another offline restart,
+  and subsequent cloud synchronisation all worked in their test;
+- the receiving Web app had to be closed and reopened before the new training appeared in
+  History and Analyze.
+
+**These are user-reported device observations, recorded as such.** No agent executed them,
+no log or measurement was produced here, and they are not a substitute for the acceptance
+matrix. In particular they do **not** establish storage-pressure durability (P6), every
+M2a acceptance case, new-account onboarding, account-switch isolation, or offline
+exercise-diagram behaviour — and the last item is a known Web-side refresh gap that Stage
+M3a deliberately does **not** address (no refresh-on-focus, no realtime subscription).
+
+No on-device Team API call has been made. (M1's *visible* launch and layout checks are separately
 user-reported — see the M1 block above — which says nothing about OTP, API access or
 `crypto.randomUUID`.) The manual procedure is in `mobile/README.md`. It covers `crypto.randomUUID`, requesting and entering a code, existing-
 account login and new-account onboarding, sign-out and account switch with no residual
@@ -2051,19 +2094,23 @@ mutates a production account or touches hosted settings.
 
 **Prerequisites.** M2 or M2-partial.
 
-**P2 is open, and this stage may not assume an answer.** §7.5 gives a recommendation ("no
-transfer"). **Proceeding as though that were the answer is not safe**, because it fixes what
-M3 delivers and what "usable" means. Therefore:
+**P2 is ANSWERED (§7.5).** No browser→app transfer in the first pilot; already-synchronised
+cloud records restore through the existing path. M3's data scope is therefore settled, and
+the §11 acceptance criteria no longer wait on it. **Engine migration inside the installed
+native app is a separate, still-required operation** and belongs to Stage M3b below.
 
-- **May proceed now:** the export adapter, the external-link adapter, the P6 storage
-  decision, the offline cold-start acceptance, the capacity measurement.
-- **May not be fixed until P2 is answered:** M3's data-transfer scope and the corresponding
-  §11 acceptance criteria.
-
-**P6 is a completion gate, not a risk to note.** §7.1's durability decision — accept option
-A explicitly, or implement option B behind the existing `StorageAdapter` — must be **made**
-before this stage can be called complete, and if option B is chosen it is its own sub-stage
-with its own ADR and its own data-migration design.
+**P6's DIRECTION is decided; its implementation and acceptance gate are NOT complete.**
+Option B — a durable native `StorageAdapter` implementation — is chosen (§7.1). Its design is
+**Stage M3b0** below, recorded in
+[ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration design
+is still unresolved**. As of 2026-09-30 Stage M3b1's adapter and opt-in in-app diagnostic
+panel exist, **user-reported device evidence exists within the limits stated under Stage M3b0
+§7**, and **Stage M3b3's composition is implemented behind its own off-by-default build
+flag**. What is still absent is the part that would change anything for a user:
+**nothing is migrated and nothing is cut over**, so **no build has a working native
+production path** — with the flag on, the application deliberately does not mount. This stage
+cannot be called complete until M3b4 and M3b5 are implemented, independently reviewed and
+accepted on a device (M3b6).
 
 **Expected scope.** The export adapter, applied at the one shared mechanism (§8.1). The
 external-link adapter. The capacity measurement (T-a). Possibly bypassing the diagram
@@ -2101,9 +2148,1386 @@ this stage claims about data transfer.
 
 **Rollback.** Adapters revert to the Web implementations.
 
+### Stage M3a — native file export and external public links (implemented)
+
+**Status:** **Implemented and verified by automated tests and an unsigned native build.**
+**M3a does not complete M3.** P2's first-pilot transfer scope and P6's storage-durability
+decision are untouched and remain open, no capacity measurement (T-a) was taken, and no
+M3a physical-device test has been performed.
+
+**What it implements.**
+
+| Piece | Where |
+| --- | --- |
+| The one file-delivery boundary, Web + iOS/Android | `src/lib/platform/fileExport.ts` |
+| The component surface: progress, outcome, retry, unmount/account-switch safety | `src/components/useFileExport.ts`, `FileExportStatusNotice.tsx` |
+| Delivery requests replacing four ad-hoc download mechanisms | `src/lib/export.ts`, `src/lib/assessment/export.ts`, `ExerciseTeamResultsScreen.tsx`, `src/lib/brower/diagnosticLog.ts` |
+| Public-document links that do not replace the app WebView | `src/lib/platform/externalLink.ts`, `src/components/platform/ExternalDocumentLink.tsx` |
+| Apple required-reason declaration for Filesystem | `ios/App/App/PrivacyInfo.xcprivacy` (`NSPrivacyAccessedAPICategoryFileTimestamp`, reason `C617.1`) |
+
+Plugins added: `@capacitor/filesystem@8.1.3`, `@capacitor/share@8.0.2`,
+`@capacitor/browser@8.0.4` — all Capacitor 8.x, no framework upgrade, no existing
+dependency version changed.
+
+**Serialization is untouched.** Every CSV and JSON payload, its columns, its field
+semantics and its existing privacy filtering are exactly what they were; only delivery
+moved. No export gained an additional athlete record or identifier.
+
+**Outcomes are distinguished, and none of them overclaims.** `shared` means the plugin
+resolved, and what that *means* differs by platform: on **iOS** the chosen activity finished
+with the items it was given, while on **Android** the **chooser returned**, which says
+nothing about whether the recipient has read the `FileProvider` URI yet. **Neither is proof
+that the receiving app durably saved anything**, which no platform reports — the difference
+between them is exactly why the file lifetime below is platform-specific. Web reports
+`unconfirmed`, because a browser download exposes no completion signal at all.
+`cancelled` is used **only** on the Share plugin's own
+exact `"Share canceled"` rejection (identical on iOS `SharePlugin.swift` and Android
+`SharePlugin.java`); an empty `activityType` is an ordinary documented result and is never
+read as cancellation, and an unknown error is `share_failed`, never "you cancelled".
+`write_failed`, `share_unavailable`, `busy` and `unsupported_platform` are separate.
+
+**Attempt ownership.** Every export attempt carries a non-revivable ownership identity.
+Unmount and a Profile switch **retire** it, and the boundary revalidates ownership after
+each asynchronous preparation step and once more immediately before the irreversible
+`share()`. A retired attempt never opens a share sheet and its unshared file is discarded.
+Ownership rides a **monotonic generation**, not the owner value, so A → B → A cannot revive
+A's earlier attempt. Callers that pass no `ownerKey` are covered too: the Profile-keyed
+remount unmounts them, and unmount alone retires the attempt. A late completion can neither
+update another owner's screen nor release a newer attempt's guard.
+
+**One native attempt at a time.** The share claim is taken **synchronously, before the
+first `await`**, and released in a single finalizer that runs after cleanup. Checking a flag
+before an await and setting it afterwards left a window in which two independent callers
+both passed and two share sheets opened. Every terminal path — loader failure, sharing
+unavailable, write failure, cancellation, share failure, retirement, failed cleanup —
+releases its own claim, and only its own: a stale completion cannot clear a newer one.
+
+**Resource protection.** An attempt's directory is registered **before** it is created, not
+after the write resolves, so no sweep can reach a file that is still being written.
+
+**Temporary-file lifetime is platform-specific, because the two plugins report different
+things.**
+
+| Platform | Mechanism | Policy |
+| --- | --- | --- |
+| iOS | `UIActivityViewController.completionWithItemsHandler` fires with `completed == true` only once the chosen activity has finished with the items (`SharePlugin.swift`) | Delete this attempt's directory as soon as `share()` settles |
+| Android | `FileProvider.getUriForFile` + `FLAG_GRANT_READ_URI_PERMISSION` + `Intent.createChooser` + `startActivityForResult`; `activityResult` reports that the **chooser returned** (`SharePlugin.java`) | **Retain.** The callback is not a consumption receipt — a mail client that queues a draft, or a cloud app uploading in the background, reads the content URI after our activity has resumed |
+
+**An Android `activityResult` is not evidence that the receiving activity finished its work
+or saved anything**, and nothing in the implementation or the UI says otherwise. See
+<https://developer.android.com/training/secure-file-sharing/share-file>.
+
+Every export directory carries its creation time in its name, so a later sweep can
+distinguish an abandoned directory from one still inside the retention window. **The
+threshold is measured from that creation timestamp, not from settlement of the share
+promise** — by the time a sweep runs, the attempt that shared the file is gone, and the
+creation stamp is the only age recoverable without a second source of truth. The sweep is
+bounded, confined to `curling-exports/`, skips any directory a live attempt owns, skips any
+still within the Android retention window, and refuses to delete a directory whose name
+carries no parsable age rather than guessing. **A subsequent export respects retained
+siblings.**
+
+**Residual limits, stated rather than engineered away.** The retention window
+(`ANDROID_RECIPIENT_RETENTION_MS`, 24 h) is a bounded guess, not a guarantee that a
+recipient has finished: a recipient that takes longer will find the file gone. Because the
+window runs from directory creation rather than from the share settling, the time a
+recipient actually gets is **shorter than the nominal 24 h** by however long the share sheet
+stayed open before a target was chosen. These files live in the OS-managed **cache**
+container, so iOS or Android may evict them sooner under storage pressure — the app cannot
+prevent that and does not claim to. Deleting before `share()` settles is never correct on
+either platform.
+
+**Known limitation — revocation.** Once the operating system has presented a share sheet it
+**cannot be revoked**: no plugin exposes that. Retirement therefore stops an attempt only
+*before* `share()` is invoked; past that point the attempt runs to completion and only its
+on-screen claim is dropped. A second export is refused with `busy` rather than stacking
+sheets.
+
+**Native links.** App-relative legal routes resolve against the configured public HTTPS
+origin (ADR-0047) — never `capacitor://localhost` and never the local bundle, which serve
+no legal documents. Absolute destinations pass the application's existing
+`parseSafeLegalUrl` validator, so the **exact versioned document** trusted metadata supplied
+is preserved rather than replaced by a generic page. `javascript:`, `data:`, `file:`,
+`blob:`, `mailto:`, plain `http:` and malformed values are refused without invoking the
+browser. A launch failure is shown next to the link and the application does not navigate
+away. No token, authorization code or private state is ever attached to a destination.
+**This is public-document browsing only — it is not an authentication session and not an
+OAuth flow.**
+
+**Android readiness.** The shared implementation dispatches on the same trusted platform
+signal and is covered by automated Android-dispatch assertions. That is **adapter evidence,
+not Android device verification**: no Android project exists and Android remains M5.
+
+**Automated verification.** `npm test` 207 files / 3439 tests; `npm run mobile:test` 6
+files / 59 tests; `npm run test:e2e` 108 passed; `npm run build` and `npm run mobile:build`
+succeeded; unsigned `xcodebuild` for `generic/platform=iOS` **BUILD SUCCEEDED**, with the
+privacy manifest present in the built app, all three plugin classes linked, bundled assets
+matching `mobile/dist` apart from Capacitor's shims, and **no** background mode, Bluetooth
+permission, URL type, ATS exception, file-sharing flag or entitlement added.
+
+**Physical-device acceptance for M3a — PARTLY reported by the user, not agent-executed.**
+On **2026-09-29** the user reported, from the app on their iPhone:
+
+- **CSV export works**, including in airplane mode;
+- the **Privacy Notice opens in the native Safari browser surface**, after rebuilding with
+  the configured public API origin.
+
+**Team JSON export is explicitly deferred** because no Team results are available to export.
+
+**Nothing else from the M3a procedure has been reported**, and nothing else may be described
+as passing: Terms of Service, share-sheet cancellation, retry, the double-tap guard and
+return-to-app state preservation are all **still unperformed**. The remaining steps are in
+`mobile/README.md`.
+
+---
+
+### Stage M3b0 — durable native persistence: design and staged plan (this stage)
+
+**Status: DESIGN.** This section is the design; what has been BUILT from it is listed under
+§7's stage table and M3b1/M3b3 status entries, and the two must not be read as the same
+thing. As of 2026-09-30 the adapter (M3b1/M3b2), the in-app diagnostics panel and the
+**composition, identity injection, protected credential store and readiness gate (M3b3)**
+exist; the **migration (M3b4) and the cutover (M3b5) do not**, and §5's protocol therefore
+remains an unimplemented design with three open items (§7).
+**Decision made ≠ designed ≠ implemented ≠ verified** still applies, per stage rather than to
+the whole of M3b.
+
+#### 1. Storage inventory
+
+Audited against the working tree, not assumed. Every sporting key is written **whole-document
+as one JSON string per key** through `StorageAdapter`; `SESSION_HISTORY_STORAGE_KEY` and the
+sync record have **no size cap**, which is the decisive sizing fact below.
+
+| Data category | Physical key / namespace | Owner | Reader / writer today | Proposed store | Migration policy |
+| --- | --- | --- | --- | --- | --- |
+| Sporting data — the **closed allow-list** `PROFILE_SCOPED_SPORTING_STORAGE_KEYS` (the 10 `SPORTING_STORAGE_KEYS`, plus `ASSESSMENT_DRAFT_STORAGE_KEY`, `ASSESSMENT_HISTORY_STORAGE_KEY` and the sync key) | `curling.sporting.profile.v1.<profileId>.<key>` | Profile | 7 repositories via `createProfileScopedSportingStorageAdapter` | **Native key/value** | **Migrate — allow-list only.** Eligibility is `<prefix>.<canonical-UUID>.<key ∈ allow-list>`. **Importing every suffix under the broad prefix is NOT authorised**: an unrecognised suffix is an unknown key (see below) |
+| Profile-scoped cloud sync state **and outbox** | the sync key **inside** that same Profile namespace, schema 6 | Profile | `createSportingSyncStateRepository` + sync manager | **Native key/value** | **Migrate. Highest priority** — outbox entries are completed work the cloud has never seen |
+| Identity continuity — **5 fixed keys**: `curling.identity.trustedDevice.v1`, `.accessBarrier.v1`, `.interactiveAttempt.v1`, `.pendingIntent.v1`, `.intentCleanup.v1` | device-global, **not** Profile-scoped | Device | 5 repositories, each an **import-time singleton bound to `localStorageAdapter`** | **Native key/value** | **Migrate.** Losing these forces a re-sign-in, which needs a network |
+| Identity continuity — **dynamic family**: `curling.identity.accessBarrierResolution.<barrierId>.v1`, one key per barrier | device-global | Device | `identityBarrierResolutionRepository` | **Native key/value** | **Migrate by MEMBERSHIP TEST, not by a fixed list.** `isResolutionStorageKey` (prefix + `.v1` suffix + **canonical-UUID middle**) is the only admissible test; `resolutionStorageKeyFor` constructs them. A previous version of this table said "6 keys" and was **wrong** — the count is unbounded |
+| Provider session (refresh/access tokens) | Supabase SDK default keys | Supabase SDK | `createClient(...)` with **no `storage` option** → `window.localStorage` | **Explicit decision required — see §4** | **Not a plain copy.** Confidentiality and deletion semantics differ |
+| Public exercise-diagram data-URL cache | `curling-performance-public-exercise-diagram-v1.<assetId>` | Device | `createPublicExerciseAssetResolver` in `exerciseAssets.ts`, via the **default** adapter | **Unchanged — stays on `localStorageAdapter`** | **Do not migrate** — disposable and re-derivable from the bundle. **But skipping migration does NOT stop it refilling the native store:** the resolver re-fetches and calls `saveCachedDiagram` on every miss. **DECIDED for Stage M3b3: option (a)** — it keeps its existing path. `TrackerApp` calls `createPublicExerciseAssetResolver()` with no adapter, which defaults to `localStorageAdapter`, and Stage M3b3 changes **no** global default, so the cache is untouched by composition rather than excluded by a special case. The diagrams are bundled locally, so the cache buys little on native anyway, and keeping 67 base64 data URLs out of the native store keeps them out of its sizing too. **Revisiting this belongs to whichever stage measures the native store's real load, not to composition.** |
+| Legacy unscoped retirement marker | `curling.sporting.legacy-unscoped-retired.v1` | Device | `retireLegacyUnscopedSportingData` | **Native key/value** | **Migrate the marker itself**, so retirement is not re-run |
+| Retired legacy unscoped sporting keys | the 10 bare keys | — | nothing reads them in production | **Do not create** | **Never adopt.** ADR-0026 retires them content-blind; migration must not resurrect or reassign them to the current Profile |
+| **Unrelated unknown keys** — no recognised shape, owned by nothing this app persists | — | unknown | — | not migrated | **Not imported, not deleted, recorded.** Safe to omit precisely because **no repository will ever hydrate them**, so omission cannot produce a default-over-data write. Classification is by **key shape only**; no user record is inspected |
+| **Known application-owned keys whose CONTENT is unsupported or malformed** | any allow-listed sporting key, identity key or the sync key | Profile / Device | the owning repository | **Native — copied VERBATIM** | **Never skipped.** Migration copies bytes and does not parse domain payloads, so an unsupported *domain record version* is not a migration concept. The owning repository's existing validation/quarantine policy applies after cutover, unchanged. This is deliberately **not** the same thing as an unsupported **activation-record** version, which blocks (M3b0 §5.4 rows A3/A4) |
+
+**Disposable vs irreplaceable.** Only the diagram cache is disposable. Everything else is
+either irreplaceable (drafts, plans, preferences, outbox) or costly to lose (identity
+continuity, provider session).
+
+#### 2. Engine choice — write semantics first, then shape
+
+**The earlier version of this section evaluated API shape and size and concluded
+`@capacitor/preferences`. That conclusion was wrong for the migration's needs, and is
+corrected here.** The decisive question is not "does the API fit" but "can this engine tell
+us a write reached disk?" — because the migration deletes the source afterwards.
+
+**Primary-source findings — `@capacitor/preferences` 8.0.1** (inspected from the published
+tarball; paths are inside that package):
+
+| Finding | Evidence |
+| --- | --- |
+| Android writes use `SharedPreferences.Editor.apply()` | `android/src/main/java/com/capacitorjs/plugins/preferences/Preferences.java`, `executeOperation` → `editor.apply()` |
+| `apply()` updates memory immediately and writes to disk **asynchronously**, returning `void` — it reports no failure | Android `SharedPreferences.Editor` documentation: <https://developer.android.com/reference/android/content/SharedPreferences.Editor#apply()> |
+| iOS writes call `UserDefaults.standard.set(...)` | `ios/Sources/PreferencesPlugin/Preferences.swift` (`set(_:for:)`) |
+| The iOS plugin method **resolves unconditionally** after that call — it has no failure path at all | `ios/Sources/PreferencesPlugin/PreferencesPlugin.swift` (`@objc func set` → `call.resolve()`) |
+| `UserDefaults` persists asynchronously; `synchronize()` is deprecated and is not a durability tool | <https://developer.apple.com/documentation/foundation/userdefaults> |
+| Reads come from the same in-memory representation | iOS `defaults.string(forKey:)`; Android reads the loaded map |
+
+**Four properties that must not be conflated:**
+
+1. **API acknowledgement** — `await Preferences.set()` resolved. **Provided.**
+2. **Immediate read-back** — a subsequent `get` returns the value. **Provided, and
+   worthless as durability evidence**: it can be served from the in-memory cache of a write
+   that has not reached disk.
+3. **Disk persistence with observable failure** — the write is on stable storage, and a
+   failure is reported. **NOT provided by this plugin on either platform.**
+4. **Restart recovery** — the value survives process death and reboot. **Not established by
+   (1) or (2).**
+
+**Consequence, stated plainly: the "copy → read back → mark complete → delete source"
+protocol is unsound on Preferences.** Read-back cannot establish the *durable complete* that
+source retirement depends on. A power loss between `apply()`/`set` and the OS flush can leave
+a marker that says "verified" while the copied values are gone.
+
+**This is not fixable by a delay, by the deprecated `synchronize()`, by a benchmark, or by
+softer wording.** Three technically honest resolutions exist:
+
+| Resolution | What it gives | Cost |
+| --- | --- | --- |
+| **R1. SQLite with an explicit transaction** (`@capacitor-community/sqlite` 8.1.1) | A real commit acknowledgement. A key/value repository can use **internal** transactions — §5.1's checkpointed batches plus a separate activation transaction, not one all-or-nothing transaction — without exposing SQL or multi-key transactions through `StorageAdapter`; the interface stays exactly as it is. **A native-only adapter needs no Web SQLite deployment; Web stays on `localStorageAdapter`.** | A larger dependency and a connection lifecycle to own |
+| **R2. Preferences + never retire the source** | Durability improves for *new* writes; the migration never deletes anything, so the unsound step is simply not taken | Two copies persist indefinitely; the source keeps consuming the quota the migration exists to escape, and "which is authoritative" must still be answered |
+| **R3. Preferences + a plugin-level durable-commit acknowledgement** | Would make the original protocol sound | Requires a fork or upstream change; **not available today** |
+
+**Recommendation: R1 — SQLite for the native adapter**, precisely because the migration
+requires a commit acknowledgement that Preferences does not offer. The earlier "no query
+workload, so no SQL" argument is still true about *queries* — but it was answering the wrong
+question. The engine is chosen for its **write semantics**, and the repository above it
+remains a plain key/value store.
+
+**Device evidence now exists for the CONFIGURATION and for restart recovery, and not for the
+transaction semantics the migration needs.** The user-reported iPhone measurement (2026-09-30,
+recorded under §7) confirms the pragmas are actually in force and that written values survive
+a process restart offline. That is sufficient for **composition** — it establishes that the
+adapter opens, configures and reads back as designed — and it is **not** sufficient for
+**migration**: what the plugin reports on a **failed or uncertain commit**, and how the store
+behaves on **reopen after an interrupted commit**, are still unmeasured, and those are exactly
+the properties §5.1's checkpointed model rests on. R1 therefore stands for the adapter, while
+**source retirement remains unjustified until that transactional evidence exists.**
+
+**If R1 is not accepted, activation stays blocked.** Under R2, `StorageAdapter` may be backed
+by Preferences and **source retirement must not be implemented at all**; the migration then
+has no "delete" phase and the design's preservation guarantee is met by never removing
+anything. **What must not happen is keeping Preferences and deleting the source anyway.**
+
+**Operating envelope and the escalation gate.** Session history and the sync/outbox record are
+**uncapped single values**. Stage M3b1 measures representative **synthetic** datasets and
+records a concrete envelope. **"Escalate to SQLite" is an engineering gate, not a runtime
+capability**: no runtime engine switching exists or is proposed. If an installation later
+exceeds the recorded envelope, that is a **separately specified migration** (engine → engine,
+reusing this same protocol), not something the app does by itself. Under R1 the envelope
+question largely dissolves, which is a further argument for it.
+
+#### 3. Composition and contracts
+
+**IMPLEMENTED in Stage M3b3 (2026-09-30), behind an off-by-default build flag.** Everything
+in this subsection is now built and tested; what it does NOT do is cut over — see the M3b3
+status entry in §7 for exactly what exists, and for the barrier that keeps a flag-enabled
+build from mounting.
+
+- **Initialisation** happens in the mobile composition (`mobile/src/MobileApp.tsx`, via the
+  lazily-imported `mobile/src/storage/NativeStorageCompositionRoot.tsx`) **before** the
+  application tree mounts, not inside a component effect that a mounted consumer could race.
+- **Readiness gating:** hydration, identity startup, provider-session restoration and the
+  sync manager must all observe a single *storage-ready* verdict. The existing identity gate
+  already refuses to mount the sporting shell before a correlated ready verdict; storage
+  readiness composes **in front of** it. **Nothing may read a default while storage is still
+  preparing.**
+- **Platform selection** reuses the trusted `detectRuntimePlatform()` signal (ADR-0047) —
+  never a user-agent string. **Web keeps `localStorageAdapter` byte-for-byte.** An
+  unrecognised native platform **fails closed** rather than silently using the Web adapter.
+- **Reaching every consumer is the hard part, and swapping one default does not do it.**
+  **Five** distinct seams exist. Each is now wired through one owned composition
+  (`src/lib/persistence/storageComposition.ts`), and the three sporting ones are handed to
+  `ProfileScopedSportingPersistence` as a single `SportingStorageSeams` object
+  (`src/lib/persistence/storageSeams.ts`) precisely so they cannot be chosen independently
+  and one of them forgotten:
+  1. the 7 sporting repositories — `createProfileScopedSportingRepositories(profileId,
+     adapter)`, reached from `ProfileScopedSportingPersistence.tsx`;
+  2. the **separate sync-state adapter** — `ProfileScopedSportingPersistence.tsx` builds a
+     *second* adapter with `createProfileScopedSportingStorageAdapter(profileId)` **and no
+     adapter argument**, then hands it to `createSportingSyncStateRepository`. Missing this
+     seam would leave the outbox on `localStorage` while everything else moved;
+  3. the **legacy-retirement call** — the same component calls
+     `retireLegacyUnscopedSportingData()` with no argument. After cutover it must target the
+     store that actually holds the legacy keys, or it will "retire" nothing and re-run forever;
+  4. the **5 identity repositories** — `export const …Repository = create…()` evaluated **at
+     import time**, so a default swap cannot reach them; they need explicit injection at
+     startup, which is a real, reviewable code change and a named stage prerequisite.
+     Implemented as `createIdentityRepositorySet(adapter)` plus a one-time
+     `claimIdentityRepositories()` ownership slot in `identityRuntime.ts`.
+     **One concrete defect was found and fixed here:** `identityRuntime.loadPendingIntent()`
+     reached the imported module-level singleton directly, separately from the coordinator's
+     own `intents` dependency — under injected ownership those are two different stores, so
+     the provider could have read a pending intent from one workspace while every coordinator
+     transition wrote to another. It now uses the same injected repository the coordinator
+     was built with;
+  5. the **Supabase SDK session** — `createClient` passed no `storage` option. Implemented as
+     a one-time `claimBrowserAuthStorage()` slot, claimed **before** any client exists,
+     because the SDK reads storage from its own constructor. ADR-0025 Decision 10's three
+     options are unchanged; `storage` is added and nothing else. See §4.
+
+- **Key enumeration does not exist on the current interface, and must be added narrowly.**
+  Neither `StorageAdapter` nor `RemovableStorageAdapter` exposes any way to list keys, and
+  **`Preferences.keys()` enumerates the TARGET, not the WebView source.** Migration therefore
+  needs a **migration-only** capability, specified as:
+  `interface EnumerableStorageSource { listKeys(): Promise<{status:"value"; keys: readonly string[]} | {status:"read_failed"; error: PersistenceReadError}> }`.
+  **Owner:** the source-side adapter only (`localStorageAdapter`), implemented over
+  `localStorage.length`/`localStorage.key(i)`. **It is not added to `StorageAdapter`**, no
+  repository may depend on it, and a `read_failed` enumeration **fails the migration attempt
+  closed** — it must never be read as "the source is empty".
+- **Contracts are unchanged.** `get`/`set`/`remove` keep their normalised results;
+  `{status:"value", value:null}` still means absence at the raw layer and each repository
+  still translates it to its own `absent`. **`read_failed` stays distinct from `absent` and
+  never authorises writing a default** — the existing `write_protected` hydration state is
+  the mechanism and is not weakened.
+- **Profile identity of a write is preserved** because
+  `createProfileScopedSportingStorageAdapter` has no mutable "current profile" pointer; a
+  delayed write started by Profile A keeps A's physical key. The native adapter must not
+  introduce one.
+- **One authoritative store per datum after cutover.** No permanent dual writes, no parallel
+  sync engine, and **no silent fallback to stale `localStorage` after activation**.
+- **The retired IndexedDB activation/migration path stays retired** (ADR-0015–0018). It is
+  not revived, and its dormant files are not deleted either.
+- **Multi-key atomicity is named and bounded.** `StorageAdapter` does not promise it and
+  still does not. The **migration alone** uses a transaction, **internally**, over the native
+  engine's own connection inside the migration module (M3b0 §5.1's checkpointed model): each
+  checkpoint commits a batch of rows together with its progress entry. **No repository sees
+  it and the public contract is unchanged.** The earlier claim that the migration "needs none
+  — it relies on a single durable marker written last" is **withdrawn**: a bare marker cannot
+  keep committed progress and committed data in step.
+
+#### 4. Provider session and credentials
+
+Durable storage is **not** automatically secure credential storage, and **not** a backup.
+
+**A previous claim here was wrong and is withdrawn.** It said co-locating the session with the
+identity records makes their coherence "structural", and framed the choice as "one deletion
+path versus two deletions that must both succeed". **Neither is true.** The Supabase SDK and
+the identity coordinator perform **independent operations regardless of where their bytes
+live**; a shared store does **not** make separate writes atomic, and asking for approval on
+that basis would be asking on a false premise.
+
+**What the existing protocol actually guarantees** (`identityTransitionCoordinator.signOut`,
+ADR-0025):
+
+1. the **access barrier is established FIRST** — before any intent mutation, any trusted-state
+   removal and **zero provider calls**;
+2. ordinary pending intents are deleted (required);
+3. trusted state is removed (required);
+4. non-current attempt cleanup (best effort);
+5. checkpoint C8a;
+6. **the provider call is LAST**, and `supabaseAuthService.signOut` uses `scope: "local"` and
+   **reports failure honestly — a failed provider sign-out has not deleted the local session**;
+7. checkpoint C8b.
+
+**The barrier, not the provider call, is the latch. This authority rule is preserved unchanged
+under every storage topology below.** Three concerns must therefore be kept apart:
+
+| Concern | Mechanism today | Affected by storage choice? |
+| --- | --- | --- |
+| **Access revocation** | the durable barrier (step 1) | **No.** It is written first and denies regardless of what follows |
+| **Local credential cleanup** | `signOut({scope:"local"})` deleting the SDK's stored session | **Yes** — this is where the session's bytes live |
+| **Provider/server revocation** | the same call, server-side | **No** — a network concern, already best-effort |
+
+##### Candidates against the same failure cases
+
+**S1 — session in the native app-private store, beside identity.**
+**S2 — session in a Keychain/Keystore-backed store.**
+**S3 — session stays in WebView `localStorage`.**
+
+| Failure case | S1 | S2 | S3 |
+| --- | --- | --- | --- |
+| Credential storage **inaccessible** (read failed — presence unknown) | Must **fail closed** on the readiness gate. Never reported as signed out, never treated as absence | Same; a locked device is one concrete cause | Same |
+| Credentials **established as absent** (storage read successfully, no session) | Coherent with identity records, which share the same store and durability profile: the gate re-authenticates | Identity records may persist while the secure store holds nothing | `localStorage` eviction produces this state |
+| Storage temporarily inaccessible | Startup **fails closed** on the readiness gate; nothing is reported as signed out | Same, plus a locked-device window where Keychain reads fail | Same as S1 |
+| Interrupted / failed sign-out | Barrier already denies. Session bytes may remain until a later successful cleanup | Same, and the residue is in the secure store | Same |
+| Backup/restore carrying part of the state | Both halves are in the same app-private store, so both travel or neither — **subject to the chosen file/backup attributes, not to the technology alone** | Depends on the item's accessibility/`kSecAttrSynchronizable` configuration; can travel **without** identity records | Depends on WebView backup behaviour |
+| Reinstall with retained credential material | Not applicable: app-private data is removed on uninstall | On iOS a Keychain item **can survive**. **This does not sign anyone in** — the identity gate still admits, and the trusted-device record and barrier are gone, so the outcome is a stale credential with no identity context, which the gate must handle explicitly | Not applicable |
+| Offline startup | Best: local records and session share one durable store | Works, unless the secure store is locked | **Worst** — an evicted session forces a re-sign-in, which needs a network, defeating part of P6 |
+
+**DECIDED BY THE USER (2026-09-30): S2.** Provider credentials live in a **separate protected
+store** — iOS Keychain, and on Android encrypted app-private storage whose keys are protected
+by the Android Keystore — behind **one shared application-facing contract**. Native sporting
+data and identity continuity records use the **SQLite** boundary instead.
+
+**The earlier S1 recommendation below is SUPERSEDED and is retained only as the reasoning the
+decision was made against.**
+
+~~Recommendation: S1.~~ **SUPERSEDED.** Not because it makes anything
+atomic — it does not — and **not because it removes any class of outcome**: writes to
+credentials and to identity records are still separate, unordered and individually failable,
+so a state where one is present and the other is not remains reachable under S1 and every
+startup path must still handle it. The narrower, supportable claim is that S1 gives the two
+halves the **same durability, backup and uninstall profile**, so they are not subject to
+*different* eviction and restore rules. **No claim is made here about how often any of these
+states occurs**; this document has no measurement to support a frequency comparison. S2's
+stronger at-rest protection is real, and so is its survives-uninstall asymmetry.
+
+**What S2 costs, stated rather than implied.** Every one of these is a consequence of the
+decision, not an objection to it:
+
+- **Separate stores are not one transaction.** The SDK's credential write and the
+  coordinator's identity write remain separate, unordered and independently failable. S2 does
+  not change that, and neither did S1 — the "structural coherence" claim was withdrawn above.
+- **SQLite does not encrypt credentials**, and the protected store is not a durability
+  guarantee. A resolved write is the platform's acknowledgement of a call, never proof the
+  bytes survived a power loss.
+- **The two halves now have DIFFERENT backup and uninstall profiles**, which is the one thing
+  S1 would have avoided. Concretely: an iOS Keychain item can survive an uninstall while
+  app-private data cannot. The chosen configuration narrows this deliberately —
+  `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, which Apple documents as **not migrating
+  to a new device**, so a restored backup on different hardware has no credential. **What is
+  NOT claimed:** that the item is absent from every local or encrypted backup artefact, or that
+  it cannot survive a same-device restore — Apple's wording is about device migration, and this
+  repository has performed **no backup/restore measurement**, so backup behaviour remains
+  unverified against the selected configuration. A reinstall on the same device can still leave
+  credential material behind that no identity record matches. **That admits nobody:**
+  the identity gate still decides, the trusted-device record and the barrier are gone, and the
+  outcome is a stale credential with no identity context. It is **not** automatically erased
+  either, which would be a broad deletion this stage does not authorise.
+- **A locked device is a real failure mode.** `afterFirstUnlock` means reads fail only before
+  the first unlock after a boot, which is narrower than `whenUnlocked` would have been — and
+  when it does fail, it **fails closed**, never as a signed-out user.
+- **Android key loss is a FAILURE, not an absence.** A restored Android backup carries the
+  encrypted `SharedPreferences` rows but **not** the Keystore keys, and the plugin's `getEntry`
+  returns null for a missing alias. That is **retained unreadable data**: the row is there and
+  cannot be decrypted. An earlier revision called treating it as absence "the honest outcome" —
+  that was wrong and contradicted the approved contract. It must fail closed, and the installed
+  plugin's inability to distinguish it is part of why the native credential path is closed
+  (see the implementation finding below).
+
+**IMPLEMENTATION FINDING — the native credential path is CLOSED, and the requirement is NOT
+complete.** The contract requires **item-specific missing-versus-failed evidence**: only a
+positively established absence may become the `null` the SDK reads as "no session". No audited
+Capacitor-8 dependency supplies it.
+
+- **iOS discards the evidence.** `KeychainSwift.getData` records
+  `SecItemCopyMatching`'s `OSStatus` in `lastResultCode`, and `KeychainSwift.get` additionally
+  sets `errSecInvalidEncoding` for non-UTF-8 bytes; both then return `nil`. The installed
+  plugin's `internalGetItem` calls `getData(withKey:)` — `keychain.get(key) as Any` — and
+  **never reads `lastResultCode`**, so `errSecItemNotFound`, a locked keychain and invalid
+  encoding all arrive identically. `tryKeychainOp` cannot help: it only surfaces a THROWN
+  error, and `getData` never throws.
+- **Android reports key loss as nothing.** `SecureStorage.java`'s `decryptString` returns
+  **null** when the ciphertext row exists but its Keystore entry does not — the
+  restored-backup case, since `SharedPreferences` is restored and Keystore keys are not. That
+  is **retained unreadable data, not an established missing entry**, and an earlier revision of
+  this document wrongly blessed treating it as absence and calling re-authentication "the
+  honest outcome". It is not: it is a failure the application must not convert into a clean
+  signed-out state.
+
+**An earlier "readability marker" is WITHDRAWN as an invalid inference.** It read a separate
+marker key and, if that succeeded, treated an ambiguous empty read of a DIFFERENT key as
+established absence. Reading one key successfully establishes nothing about another key: an
+item-specific read or decoding failure, or a transient failure followed by a successful marker
+read, produces the identical observation. No global probe, timing delay or speculative retry
+replaces it, and none may: a prefix enumeration is not item-specific evidence, returns empty on
+its own failure, and on Android enumerates Keystore aliases rather than ciphertext rows.
+
+**Consequently:** the binding reports `no_absence_evidence`, the store turns that into a
+failure, establishment cannot conclude anything, and a native composition **cannot become ready
+on a real device**. That is a second, independent barrier alongside the activation authority,
+and it is reported rather than worked around. **What would close it:** an implementation that
+surfaces, per read, either the iOS `OSStatus` (or a boolean derived from `errSecItemNotFound`)
+or an Android `sharedPreferences.contains(key)` check distinguished from a decryption failure.
+
+**Alternatives audited and rejected.** `capacitor-secure-storage-plugin` 0.13.0 (Capacitor 8,
+ships `Package.swift`) is **materially worse**: its iOS `get` tests `hasValue(forKey:)` — the
+same conflation — then resolves `keychainwrapper.string(forKey: key) ?? ""`, **fabricating an
+empty string** when a read fails; absence and failure are both rejections separable only by
+message text; its Android helper catches every `GeneralSecurityException`, prints it and
+returns null; and it reads/writes `KeychainWrapper.standard`, a service outside this app's
+namespace, with `.afterFirstUnlock` and no `ThisDeviceOnly`.
+`@evva/capacitor-secure-storage-plugin` 4.0.4 peers on `@capacitor/core: ^7.0.1` and does not
+accept the installed 8.5.2. Custom cryptography and a plugin fork remain prohibited.
+
+**Two write/removal properties, recorded so nothing claims more than the platform does.**
+
+- `KeychainSwift.set` calls `deleteNoLock(key)` **before** `SecItemAdd`, so a replacement that
+  fails at the add step has **already removed the value it was replacing**. A failed write
+  therefore reports `previousValueMayBeLost`, and no code or document may say the previous
+  bytes are intact.
+- Android's `removeAlias` returns false **without removing the retained ciphertext** when the
+  alias is already missing, and `SharedPreferences.apply()` returns `void` with no disk-failure
+  acknowledgement. A removal reports what the platform CLAIMED —
+  `deleted_reported` or `nothing_to_delete_reported` — and **neither confirms physical
+  deletion or a disk flush**.
+
+**The normalised failure verdict is CONSUMED, not merely exposed.**
+`supabaseAuthService` reads it and refuses to report `no_session` — the one place a clean
+"nobody is signed in" is produced — or a completed sign-out while a credential failure stands.
+That closes the two SDK absorption paths named above, neither of which a getter alone would
+have closed.
+
+**Still required, and NOT done by Stage M3b3: transferring the EXISTING credentials.** The
+provider session of an already-installed app is in WebView `localStorage` today. Composition
+points the SDK at the protected store; it does **not** copy what is already there, so a
+flag-enabled build would present as signed out if it mounted at all. Secure credential
+transfer — and what happens when one of the two stores is written and the other is not, since
+they are separate and the pair is not atomic — is a **migration-stage requirement** (M3b4),
+listed with the other open items in §7.
+
+**Inaccessible is not absent.** A failed read of credential storage means presence is
+**unknown** and must fail closed; only a *successful* read showing no session establishes
+absence and authorises re-authentication. Conflating the two would sign a person out on a
+transient storage error.
+
+**The user-visible policy choice that needs approval:** under **S1**, refresh tokens become as
+durable as training data and are carried by device backups subject to the configured backup
+attributes; under **S2**, at-rest protection is stronger but a reinstall can leave credential
+material behind that no identity record matches; under **S3**, nothing new is exposed but
+eviction silently signs the user out and recovery requires a network.
+
+**Backup and reinstall behaviour must be verified against the SELECTED configuration**, not
+assumed from the storage technology — that verification belongs to the dependent composition
+stage, not to isolated engine evidence.
+
+**The provider-session storage policy is SETTLED (S2)**, which is what unblocked the
+dependent **composition** stage (M3b3). It was never a prerequisite of the engine-evidence
+stage (M3b1). Adding a `storage` option touches **ADR-0025 Decision 10** (`flowType: "pkce"`,
+`detectSessionInUrl: false`, `appendPkceFlowIdToRedirects`); those three are unchanged,
+**Web auth behaviour and the existing compatibility assertions are preserved unchanged** —
+the Web claims nothing, so its client is byte-for-byte the client it was — and no native
+OAuth is implemented.
+
+**The SDK uses more keys than its session key, and the integration must accept all of them.**
+Audited in the installed `@supabase/auth-js` 2.112.3: besides `<storageKey>` it addresses
+`<storageKey>-code-verifier`, `<storageKey>-flows-code-verifier`, **one
+`<storageKey>-flow-<flowId>-code-verifier` slot per PKCE flow** (unbounded in name,
+ring-evicted in count), and `<storageKey>-user` — which `_removeSession` removes even though
+`userStorage` is not configured. Hard-coding one assumed session key would silently drop the
+verifier slots and break Google sign-in, so keys pass through unmodified under the fixed
+application-owned namespace, byte-for-byte, with no JSON normalisation.
+
+**Rejecting from `getItem` is necessary but NOT sufficient, so the failure also travels on an
+application-owned channel.** The SDK converts a storage fault into a clean "no session" in two
+ways: `getItemAsync` treats a resolved falsy value — or one that fails `JSON.parse` — as
+absence with no error at all, and `initialize()` catches everything `_initialize()` throws and
+returns it as a result this application never reads. (`_emitInitialSession` is started from the
+constructor and awaited by nobody, so a storage failure there surfaces as an unhandled
+rejection.) The integration therefore never resolves `null` for a failure **and** latches a
+normalised verdict that **`supabaseAuthService` consults** — refusing to report `no_session`,
+the one place a clean "nobody is signed in" is produced, or a completed sign-out, while a
+credential failure stands. That is the consumer; a verdict nothing read would not have closed
+either absorption path.
+
+#### 5. Migration of an existing native installation — authority protocol
+
+Applies to an installed iOS app upgrading in place. **Browser→app transfer is out of scope
+(P2); this is the in-app engine migration P2 explicitly does not waive.**
+
+Two earlier rules were unsafe and are **withdrawn**:
+
+> **W1 — "unreadable or corrupt marker ⇒ not complete ⇒ re-run".** Resurrects deleted data:
+> activate → cleanup interrupted (or an older build recreates source keys) → the user deletes
+> a record → the record corrupts → additive re-import restores the obsolete value.
+>
+> **W2 — "skip an unsupported or vanished key and carry on".** Produces an *apparently
+> complete* workspace: the key is absent in the target, ordinary hydration reads `absent`, and
+> the domain writes its **default** over data that still exists in the source. Silent loss
+> disguised as a clean install.
+
+##### 5.1 Transaction and recovery model — CHECKPOINTED (the one canonical model)
+
+Earlier text asserted three incompatible things (copy+activation atomic; copy+verified atomic;
+"no multi-key atomicity needed") while also assuming per-key progress survived a crash. **One
+model is chosen:**
+
+- **Unit of commit = one checkpoint transaction.** Each transaction writes a **batch of
+  key/value rows AND the updated `copied` set of the activation record together**. Progress is
+  therefore never out of step with data: there is no committed state in which progress claims
+  a key that is not present, or a key is present that progress does not know about.
+- **What survives process death:** exactly the **last committed checkpoint**. Nothing else.
+- **What rolls back:** an interrupted checkpoint rolls back **entirely** — its rows *and* its
+  progress entry. There is no partial batch.
+- **Activation is a separate, final transaction** that re-validates the evidence (5.3) and sets
+  `phase = "active"`. **A validated committed activation — not the return of any single API
+  call — is the authority switch.**
+- **Migration needs multi-key atomicity INTERNALLY; `StorageAdapter` still promises none.**
+  The transaction lives inside the migration module over the native engine's own connection.
+  No repository sees it, and the public interface is unchanged. The old "a single marker means
+  no atomicity is needed" claim is **withdrawn**.
+- **Only a validated `active` state (§5.4 row B4) mounts the ordinary identity, sync and
+  sporting consumers.** A blocked state renders the failure/recovery interface per §6 **and
+  nothing else**. Nothing mounts mid-migration.
+- **Source cleanup may begin only after a committed `active`**, and only under 5.5's
+  re-verification rule.
+
+**SQLite does not imply an unconditional power-loss guarantee**, and this document does not
+claim one. Durability depends on configuration, and **Stage M3b1 must verify, not assume**:
+`journal_mode` and `synchronous` (see <https://sqlite.org/pragma.html#pragma_synchronous> —
+`FULL` vs `NORMAL` differ precisely in whether a commit is proven on stable storage before
+returning), the commit/error semantics the plugin surfaces, and **reopen behaviour after an
+interrupted or uncertain commit**. Whole-document JSON serialization, bridge payload size and
+memory/write cost remain in the envelope tests — **SQLite removes none of those costs.**
+
+**Package status:** `@capacitor-community/sqlite` 8.1.1 ships `Package.swift`
+(`platforms: [.iOS(.v15)]`) and exposes `beginTransaction` / `commitTransaction` /
+`rollbackTransaction` / `isTransactionActive`. That is **candidate compatibility only — not a
+passed native build and not verified durability.**
+
+##### 5.2 Activation record and store provenance
+
+One versioned JSON document in the **target**:
+
+| Field | Purpose |
+| --- | --- |
+| `schemaVersion` | Of the **activation record**. Never conflated with a domain record's version |
+| `phase` | `enumerating` \| `copying` \| `verified` \| `active` |
+| `migrationId` | One attempt. A restarted enumeration gets a new id |
+| `storeIdentity` | See below |
+| `manifest` | Eligible keys **with a content fingerprint captured at enumeration** |
+| `copied` | Keys committed so far (updated in the same transaction as their rows) |
+| `activatedAt` | Written only by the activation transaction |
+| `sourceRetirement` | `not_started` \| `in_progress` \| `complete`, plus keys already removed |
+
+**Provenance is created, not merely named** — but it is a **pre-activation** device, and it
+must not become a permanent dependency on evictable storage.
+
+At the first enumeration a UUID `installationStoreId` is generated and written **twice**: into
+the target activation record, and into a dedicated **source marker key**. Naming
+`sourceId`/`targetId` without this creation-and-comparison step would establish nothing.
+
+**The two writes are to different stores and are NOT atomic.** Each observation below gets one
+action; **two of them are conservative blocks over an ambiguity this protocol cannot resolve**,
+not reconciliations:
+
+| Observed | Interpretation | Action |
+| --- | --- | --- |
+| Neither marker, target empty, source readable and empty | Fresh installation | Proceed (M3b0 §5.4 row D1) |
+| **Source marker only, and the target is empty** | Nothing was ever committed to the target, so no record can be contradicted | **Adopt it**: reuse that id when writing the target record. (A marker with a *non-empty* target is D2 — blocked — before this row is reached) |
+| **Both present, ids match** | Established pair | Proceed |
+| **Both present, ids differ** | Not the pair this record describes | **BLOCKED** before activation (M3b0 §5.4 row E1) |
+| **Target record present and pre-`active`, source marker absent** | **AMBIGUOUS — see below** | **BLOCKED** (one conservative action) |
+
+**After a validated committed activation the source marker is no longer consulted at all.**
+Three phases must be kept apart:
+
+1. **Provenance establishment and validation — pre-activation only.** Both markers matter here.
+2. **Target authority — post-activation.** A validated `active` record in an internally
+   consistent target is the authority **on its own**. **A missing, cleared or unreadable source
+   never blocks ordinary access**, because the source is exactly the evictable storage this
+   whole stage exists to stop depending on. (Otherwise clearing WebView storage after a
+   successful migration would lock the user out of their own migrated data — the failure mode
+   this correction removes.)
+3. **Source retirement — optional.** It *may* be prevented by a missing or unreadable source:
+   nothing can be verified before deletion, so nothing is deleted. Retirement stalls; access
+   does not.
+
+**Fail-closed handling is retained for genuinely ambiguous or invalid TARGET state** — an
+unreadable, malformed, wrong-version or internally inconsistent activation record still blocks,
+regardless of what the source looks like.
+
+**Two named PROVENANCE blockers, not solved problems** — the two of §7's three open M3b4 items
+that arise here. **This protocol does NOT claim every interleaving is resolved, and differing
+ids are not the only case that blocks.**
+
+**Blocker P-1 — the missing source marker is ambiguous.** "Target record written, marker write
+never landed" and "marker written, then the source was later cleared" produce the **identical
+observation**: a pre-`active` record with no marker. The protocol records nothing that
+distinguishes them — the marker's own absence is the only evidence, and it is the same in both
+histories. Writing a fresh marker from the record would therefore be a **guess**, and if the
+true cause was source clearing it would manufacture provenance for a source whose generation
+evidence is already untrustworthy. **The one conservative action is to block**, and this
+document does not pretend to distinguish the causes. Making this case recoverable requires
+evidence the protocol does not currently record, and designing that evidence is an **open
+engineering blocker for Stage M3b4**.
+
+**Blocker P-2 — two different ids before activation.** It may be a reinstall over a foreign
+store, or a restored backup pairing. This design **blocks** rather than guessing; automatic
+resolution is likewise an **open M3b4 blocker**.
+
+**Neither blocker affects an activated installation.** Both are pre-activation only, so the
+established invariant stands unchanged: **after a validated committed activation, losing the
+old source — marker included — never blocks ordinary access** (§5.4 rows B2/B4). Blocking here
+withholds only the migration itself, which has not yet happened.
+
+##### 5.3 What is copied, and what "verified" means
+
+**Migration never parses a domain payload.** It copies **bytes**. Therefore:
+
+- A **known application-owned key whose content is an unsupported or malformed domain record
+  is copied verbatim**, unchanged. The repository's existing validation, quarantine and
+  repair policy then applies after cutover exactly as it does today. This is the chosen
+  non-destructive policy: **preserve verbatim under unchanged repository rules.** No domain
+  repair rule is invented here, and **no known key is ever skipped** — which is what closes
+  W2.
+- An **unsupported `schemaVersion` on the ACTIVATION RECORD** is a different thing entirely
+  and **blocks** (5.4 rows A3/A4).
+
+**Evidence.** Each manifest entry carries the source fingerprint; each committed row is
+written in the same transaction as its progress entry. Activation re-reads the target rows and
+requires every `manifest` key to be present and to match its fingerprint.
+
+**Durability caveat that gates retirement:** fingerprint matching proves *what* was written,
+not that it reached stable storage. **Source retirement additionally requires the engine's
+committed-transaction acknowledgement** (5.1). On an engine that cannot give one, retirement
+is **not implemented at all** and the source is simply kept.
+
+##### 5.4 State and transition table
+
+Evaluated **in order; the first matching row wins**, and the order is chosen so that specific
+invariant failures are tested **before** the generic phase rows that would otherwise mask them.
+Every row states one unambiguous action. **Phase is never trusted on its own**: record
+metadata and manifest well-formedness are checked explicitly, staging progress is checked
+against staged rows **before activation only** (E0), and a row that depends on the record
+being valid is only reached after Group A has passed.
+
+**Group A — target activation-record integrity, evaluated first.** Nothing below interprets
+`phase` until every row here has passed. **Group A inspects the activation record only.** It
+never asserts that a particular application key still exists or still holds a particular value
+— that check is confined to pre-activation staging (Group E, row E0).
+
+| # | Condition | Action |
+| --- | --- | --- |
+| A1 | Record unreadable (storage error) | **BLOCKED**, retry later. Never re-import |
+| A2 | Record malformed / unparseable, or `phase` not one of the four valid values | **BLOCKED.** Quarantine the raw bytes, never overwrite |
+| A3 | `schemaVersion` **higher** than supported | **BLOCKED.** This build is too old. Never downgrade the record |
+| A4 | `schemaVersion` **lower** than supported | **BLOCKED** unless an explicit reviewed upgrade exists for that version. None exists today |
+| A5 | `manifest` malformed, or absent while `phase ∈ {copying, verified, active}` | **BLOCKED** |
+| A6 | `copied` is not a subset of `manifest` | The record contradicts itself — **BLOCKED**. This is a check on the **record**, not on application data |
+
+**Group B — `phase: active`, specific failures before the general case.** Reached only with a
+Group-A-valid record.
+
+| # | Condition | Action |
+| --- | --- | --- |
+| B1 | `active`, and the **target is failing now** (read or write errors against the native store) | **Report the failure.** **No fallback to the source.** Normal consumers do **not** mount |
+| B2 | `active`, target healthy, `sourceRetirement` incomplete, source **missing or unreadable** | **Access is unaffected.** Retirement is **stalled, not failed**: record it and continue at B4 |
+| B3 | `active`, target healthy, `sourceRetirement` incomplete, source readable | Resume retirement under §5.5's re-verification rule, then continue at B4 |
+| B4 | `active`, target healthy | **Authoritative.** Mount normal consumers. Never re-import. **The source is not consulted for access** |
+
+**Group C — source access classification.** Reached only when Group A left a non-`active`
+state. **A failed read is never an empty store.**
+
+| # | Condition | Action |
+| --- | --- | --- |
+| C1 | Source enumeration **failed** (`read_failed`) | **BLOCKED — source unavailable.** Retry later. Never read as "source empty", which would activate over a store that still holds data |
+| C2 | Source enumeration **succeeded and returned no eligible keys** | Genuinely empty source. Continue |
+
+**Group D — no activation record yet** (Group C passed):
+
+| # | Condition | Action |
+| --- | --- | --- |
+| D1 | No record, target empty, source readable and empty (C2) | Fresh install. Commit `active`. Nothing to migrate |
+| D2 | No record, **target not empty** | Lost record, or a foreign store. **BLOCKED.** No import, no delete |
+| D3 | No record, target empty, eligible source keys exist | Enumerate → checkpointed copy → validate → activate |
+
+**Group E — pre-activation phases. Provenance and conflict are checked BEFORE any resume**, so
+neither `copying` nor `verified` can mask them:
+
+| # | Condition | Action |
+| --- | --- | --- |
+| E0 | **Staging progress and staged data disagree, in either direction**: a key in `copied` with no committed target row, **or** a committed target row for a manifest key absent from `copied` | The checkpoint invariant — rows and progress commit together — was violated. **BLOCKED.** Nothing is deleted or re-copied to "repair" it |
+| E1 | `storeIdentity` missing or mismatched (§5.2) | **BLOCKED** |
+| E2 | A **manifest key already exists in the target with a value that does not match the committed copy** | Unresolved authority — **BLOCKED.** Overwrite neither side. Checked for `enumerating`, `copying` **and** `verified` |
+| E3 | `phase: enumerating` | Nothing was staged, so nothing is deleted: **abandon the attempt record and re-enumerate** under a new `migrationId` |
+| E4 | `phase: copying`, eligible-set-and-content validation passes (§5.5) | Resume: remaining = `manifest` − `copied` |
+| E5 | `phase: copying`, validation **fails** | **BLOCKED — source generation changed.** §5.5 states what is preserved and what a human may authorise. **Nothing is deleted automatically** |
+| E6 | `phase: verified`, validation passes | Re-validate evidence, then commit the activation transaction |
+| E7 | `phase: verified`, validation **fails** | **BLOCKED**, exactly as E5. A `verified` record is **not** exempt from re-validation |
+
+**Reachability.** Each row is reachable with one unambiguous action, because the masking
+orderings were removed: B1 and B2 are tested **before** B4's general "active" case, E0–E2
+**before** E3–E7, and C1 **before** anything may conclude "nothing to migrate". **Blocked
+states never delete anything and never make source data authoritative.**
+
+**The manifest is migration evidence, not a permanent constraint on application data — this is
+the canonical statement, referenced rather than repeated elsewhere.** The checkpoint invariant
+(a batch's rows and its progress commit together) governs **staging, before activation**, and
+E0 is the only row that enforces it. **After a validated committed activation the manifest
+becomes a historical record of what was copied.** It is *not* an existence or content
+constraint: the migrated keys are ordinary mutable application records, and every repository
+keeps its existing contract to write, overwrite, remove and create keys freely. A migrated key
+that a repository later removes, changes or adds is **not** evidence of a failed migration and
+must never block, be re-imported, or be restored from the source.
+
+The concrete case this rule exists for: `curling.identity.trustedDevice.v1` is a migrated
+identity key, and `identityTransitionCoordinator`'s sign-out protocol legitimately calls
+`trustedDeviceRepository.remove()` on it. A relaunch afterwards sees an `active` record, a
+healthy target, and a `copied` key with no row — **ordinary, correct state, reaching B4.** No
+repository is asked to maintain migration progress, and **no new domain-write protocol is
+introduced**: nothing above the migration module is aware the manifest exists.
+
+What still applies after activation is unchanged: **activation-record metadata validation**
+(A1–A6) and **real storage failures** (B1).
+
+**Completeness is claimed only for the cases specified here.** An observation matching no row
+is itself a defect in this specification and must **block**, not fall through to a default.
+
+**Mounting rule.** **Only B4 — a Group-A-valid `active` record over a healthy target — permits
+mounting the normal identity, sync and sporting consumers.** Every blocked state may render the
+failure/recovery interface **and nothing else**; no blocked or pre-activation state may mount
+ordinary consumers against a partial or unvalidated target.
+
+##### 5.5 Eligible-set validation, disappearance, and the detection boundary
+
+**A key list does not freeze values, and a manifest does not freeze the key SET.** The earlier
+check compared only keys already in the manifest, so a **newly eligible source key** could be
+added after enumeration and be silently omitted while every recorded fingerprint still matched.
+
+**Required validation — on every pre-activation resume path, including `verified`:**
+
+1. **Re-enumerate the complete eligible key set** from the source (by the M3b0 §1 allow-list and
+   membership tests).
+2. **Set equality:** the enumerated set must equal the manifest's key set. A **new** eligible
+   key, or a **missing** one, fails validation.
+3. **Content equality:** every manifest key's current source fingerprint must match the
+   recorded one.
+
+Failing any of the three ⇒ E5/E7 (**blocked**), never a silent skip.
+
+**What prevents change between validation and activation — stated honestly.** Writer exclusion
+(M3b0 §5.4's mounting rule plus §5.6) means no in-app writer runs during migration, so within a
+single uninterrupted run the window between validation and the activation transaction contains
+no application writes. **It does not exclude another process or a different build**; the design
+does not claim a lock it cannot take. Re-validating immediately before activation narrows the
+window; it does not eliminate it, and that residual is a stated limit, not a guarantee.
+
+**Disappearance is NOT self-resolving, and nothing is deleted automatically.**
+
+- **A copied key that disappears from the source.** The committed staged target row may be the
+  **last surviving copy** of that value. It is therefore **never discarded**. The run blocks
+  (E5/E7) with the staged data intact and recoverable.
+- **An uncopied key that disappears.** It cannot be copied and it must not vanish from the
+  record: re-enumeration alone would simply produce a manifest without it, which is exactly the
+  silent omission this rule exists to prevent. The run **blocks**, retaining the original
+  manifest entry as evidence that the key was once eligible.
+- **Disappearance is never read as an intentional user deletion**, and **source-access failure
+  is never read as disappearance** (C1 vs C2).
+
+**The earlier "discard this attempt's target rows and re-enumerate" rule is withdrawn.** It
+contradicted the same section's "blocked never deletes anything", and it could destroy the only
+remaining copy of a value. Re-enumeration is permitted **only** from E3 (`enumerating`, nothing
+staged). **Re-enumeration alone never proves a coherent generation or the absence of omission**
+— set-plus-content validation does, and only when it passes.
+
+**Recovery boundary.** A blocked E5/E7 state is **recoverable, not terminal**: the staged target
+rows and the original manifest are preserved, and the failure/recovery interface reports what
+diverged. Resolving a divergence — accepting the staged copy, or restarting from a fresh
+enumeration and discarding staged rows — is a **human-authorised** action and an **open design
+item**; this document does not automate it.
+
+**Uncertain commit results.** **An uncertain result is not proof of rollback.** A checkpoint
+whose outcome is unknown is resolved by **reopening the store and inspecting durable state**:
+read the committed activation record's `copied` set and the corresponding target rows.
+
+- Both present and consistent ⇒ **the batch committed.** Do not replay it.
+- Neither present ⇒ the batch did not commit. Replay it.
+- Inconsistent (progress without rows, or rows without progress) ⇒ the rows-plus-progress
+  atomicity invariant was violated ⇒ **E0, blocked.** (This is a staging check, so it applies
+  before activation; A6 is a different row, covering a `copied` entry outside the manifest.)
+
+This forbids blind replay (which could overwrite newer committed state) and duplicate
+activation: activation itself is only attempted from E6, after re-validation, and a record
+already `active` is never re-activated.
+
+**Cleanup, and the honest detection boundary.** "The source is never read again" means: **the
+source is never read as an authority for application data after activation.** Retirement *does*
+read it, for one purpose — before deleting a key it re-computes the fingerprint and compares it
+to the manifest:
+
+- match → safe to delete;
+- **differ → do not delete.** The source holds a value the target never saw. Record and surface
+  it (§6);
+- **source missing or unreadable → delete nothing** (B2): retirement stalls, access is
+  unaffected.
+
+**This is the entire detection mechanism, and it is bounded.** It detects an older-build write
+only for manifest keys, and only while retirement still runs. Once `sourceRetirement` is
+`complete`, nothing reads the source and later writes are **undetected**. Downgrade is
+**unsupported**, no merge is offered, and no detection is promised that cannot be performed.
+
+##### 5.6 Traces
+
+**T1 — post-activation record corruption.** Activate → user deletes session S → record
+corrupts → relaunch. **A2: blocked.** No import. S stays deleted. (W1 would have restored it.)
+
+**T2 — a copied current-session value changes before restart.** 14 keys enumerated, 9 copied
+including `currentSession`; an older build rewrites `currentSession`; relaunch. Content
+validation fails → **E5: blocked**, **staged rows preserved, nothing discarded**. There is no
+mixed-generation snapshot, and the earlier "discard and re-enumerate" response is withdrawn:
+the staged copy may be the only remaining copy of the pre-change value.
+
+**T3 — an uncopied outbox value disappears before restart.** The sync key is in the manifest,
+not yet copied, and is gone on resume → set-equality fails → **E5: blocked**, not "skip" and
+not re-enumerated. Re-enumeration would produce a manifest that simply lacks the key, which is
+precisely the silent omission this rule prevents. **Nothing is omitted and no deletion is
+inferred.**
+
+**T3b — a newly eligible source key appears after enumeration.** Every recorded fingerprint
+still matches, so a content-only check would pass. Set equality fails → **E5: blocked**; the
+key cannot be left out of the migrated generation.
+
+**T4 — a known outbox key contains a future schema.** Copied **verbatim** (5.3). Migration
+does not parse it; after cutover the sync repository applies its existing unsupported-version
+policy unchanged. **It is never skipped**, so hydration never sees `absent` and never writes a
+default over it. This is deliberately unlike an unsupported **activation-record** schema, which
+blocks (A3/A4).
+
+**T5 — identity records change between interrupted attempts.** A new barrier/resolution is
+written to the source between attempts. Set/content validation diverges → **E5: blocked**, and
+the divergence is reported rather than absorbed. The dynamic
+`accessBarrierResolution.<uuid>.v1` family is enumerated by membership test, so a barrier
+created since the last attempt is seen — as a set difference, not as a silent inclusion.
+
+**T6 — retirement meets changed source data.** After activation, retirement finds
+`sessionHistory` whose source fingerprint no longer matches the manifest → **it is not
+deleted**, and the situation is surfaced. A newer value is never destroyed merely because its
+key was once copied.
+
+**T7 — enumeration failure.** `listKeys` returns `read_failed` → **C1**: the attempt aborts and
+is retried. It is **never** read as "the source is empty", which would have written `active`
+over a store that still held data.
+
+**T8 — an activated install whose old WebView storage was cleared.** The `active` record and
+target rows are consistent; the source and its marker are gone. **B2 then B4: ordinary access
+proceeds.** Retirement is unavailable and is recorded as stalled (B2). **The source is not
+consulted for access at any point after a validated activation.**
+
+**T9 — interruption between the two provenance writes.** The writes are to different stores and
+were never atomic, so both orders are reachable and neither is inferred from the other. Source
+marker written, **no target record and an empty target** → the id is adopted into the new
+record; nothing was staged, so nothing can be contradicted. Target record written, **marker
+missing** → **blocked (P-1)**: this observation is indistinguishable from a marker written and
+the source later cleared, so the marker is not recreated. **Blocking is the conservative
+action, not a resolution**, and it applies only before activation.
+
+**T10 — uncertain checkpoint commit.** The plugin returns an ambiguous result. The store is
+reopened and durable state inspected: progress **and** rows present → the batch committed and
+is **not replayed**; neither present → replayed once; one without the other → **E0: blocked**.
+The uncertain result is never itself taken as proof of rollback.
+
+##### 5.7 Limits of the guarantee
+
+A passing mocked write proves control flow, not survival of power loss; that is what M3b1's
+pragma/reopen tests are for. Native storage does not survive uninstall and does not make an
+unsynchronised record recoverable from another device. **Downgrade is unsupported, no merge is
+offered, and post-retirement source writes are undetectable.** Nothing here is implemented.
+
+#### 6. User-visible readiness and failure states
+
+Using the existing truthful status conventions — **local save success is not cloud success**:
+
+| Condition | Observable behaviour |
+| --- | --- |
+| Storage preparing / migrating | A blocking readiness state **before** the sporting shell mounts. Never an empty workspace that looks complete |
+| Storage unavailable or migration failed | An honest blocking message with **retry**, and **no silent reset**. Existing data is not touched |
+| Saved on this device only | The existing device-only wording; explicitly **not** "backed up" |
+| Synchronised | The existing synchronised state, unchanged |
+| Pending / failed synchronisation | The existing pending/failed states, unchanged and still distinct from local-save success |
+
+No navigation redesign, no new cloud record types.
+
+#### 7. Implementation stages and acceptance gates
+
+**The earlier stage order was unsafe: M3b3 activated native consumers in production before
+M3b4 supplied migration, which would have run an existing installation's normal hydration
+against an empty new engine.** Corrected below: **production cutover happens in M3b5 and
+nowhere earlier.** Every stage before it is inert in production.
+
+| Stage | Prerequisite | Allowed code | Production effect | Completion criteria |
+| --- | --- | --- | --- | --- |
+| **M3b1 — engine evidence** | M3b0 reviewed | the native adapter module and an **opt-in, off-by-default diagnostic panel inside the existing app**; **no production composition** | **None** | Which of R1/R2/R3 (§2) is adopted, decided on measured evidence; synthetic sizing and a recorded operating envelope; the diagram-cache policy (§1) decided. Scope below. **Adapter and panel implemented 2026-09-30. Device evidence now exists for the PRAGMAS and RESTART RECOVERY (status below); the commit/uncertain-commit and reopen-after-interruption measurements the migration depends on are STILL NOT TAKEN, and no operating envelope is recorded.** The diagram-cache policy is decided (§1) |
+| **M3b2 — native adapter** | M3b1; engine chosen | new adapter module + its tests | **None by itself — it is selected only by M3b3's flag** | Implements `RemovableStorageAdapter` with unchanged result contracts; real-engine integration tests; unsupported platform fails closed. **The module is written and unit-tested (2026-09-30) and now runs against the real engine on a device for reads, writes and restart recovery. The row is still NOT complete: the transactional evidence source retirement depends on is unmeasured** |
+| **M3b3 — composition, behind an off switch** | M3b2; **§4 session decision APPROVED (S2, 2026-09-30)** | all five seams in §3, identity injection, protected credential store, readiness gate | **None: the native adapter is selected only under an explicit off-by-default build flag, and even then the application does not mount** — see the barrier below. Existing installs keep `localStorageAdapter` | Every seam demonstrably reaches the selected adapter; hydration/identity/sync all wait on readiness; **no default written while preparing**. **IMPLEMENTED 2026-09-30** |
+| **M3b4 — migration** | M3b3 | migration module, activation record, source enumeration | **None — still behind the flag** | The M3b0 §5.4 table and M3b0 §5.1 model implemented; every trace in M3b0 §5.6 and every acceptance case below green |
+| **M3b5 — production cutover** | M3b4 reviewed | flag default flip only | **THIS is the cutover** | Migration runs before the shell mounts; blocked states surface per §6. **Not yet performed — this row is a criterion, not a result** |
+| **M3b6 — device acceptance** | M3b5 | none | — | The iPhone procedure below passes and is **reported by the user**. Android remains M5 |
+
+**Engine-evidence scope (M3b1) — decided by the user on 2026-09-30: IN THE EXISTING APP.**
+
+An earlier revision of this section required a **third installed application** with its own
+identifier (e.g. `local.dev.curlingstorageharness`), so that engine evidence could not touch
+either the user app (`local.dev.curlingperformance`) or the Brower BLE probe
+(`local.dev.browerbleprobe`). **The user has superseded that requirement**: the evidence is
+gathered directly in the existing iOS app, because a separate application would exercise a
+different container, a different build configuration and a different plugin integration from
+the one that will actually ship — which is the thing being measured. **Android must remain
+supported by the shared design** (Stage M5 still owns Android verification).
+
+Isolation is therefore achieved by DATABASE and by BUILD, not by application identity:
+
+- a **fixed, dedicated synthetic database** (`curling-storage-diagnostics-synthetic`), never
+  an application database and never derived from configuration, a Profile or user input;
+- **synthetic data only**, generated deterministically. The panel never reads, writes, copies,
+  clears or migrates a real local record, and never uploads anything;
+- **no production composition.** The adapter is not selected by any repository, the sync-state
+  adapter, the legacy-retirement call, the identity repositories or the SDK session. Normal
+  application data keeps using its existing storage;
+- an **explicit build-time opt-in, off by default** (`CURLING_MOBILE_STORAGE_DIAGNOSTICS=1`).
+  It is a third axis: it does **not** relax `NODE_ENV`, production React semantics, the
+  `IS_DEV` developer surfaces or any identity guard, and there is **no** URL parameter and
+  **no** stored preference that can reach it. A default build does not contain the panel at
+  all;
+- the **normal app stays reachable** in a diagnostics build — the panel is an overlay behind
+  one button, not a replacement shell.
+
+**What this changes and what it does not.** It supersedes the separate-app requirement only.
+It does **not** authorise deleting or resetting existing local data, does **not** replace
+normal application storage, and does **not** settle where provider credentials are stored.
+**Whether existing local data is preserved or an explicitly authorised pilot reset is
+performed remains an open user decision**, and no code here assumes either answer.
+
+**M3b1 implementation status — 2026-09-30. This is the canonical statement; other documents
+reference it rather than restating it.**
+
+*Implemented:*
+
+- `@capacitor-community/sqlite` **8.1.1 pinned** as a dependency. Its peer range
+  (`@capacitor/core >= 8.0.0`) accepts the installed 8.5.2, its `Package.swift` targets
+  iOS 15 and its shipped API (`createConnection`/`open`/`execute`/`run`/`query`/`close`,
+  plus `begin/commit/rollbackTransaction`) was inspected in the published tarball before use.
+  No other dependency was changed.
+- `src/lib/persistence/nativeSqliteAdapter.ts` — a `RemovableStorageAdapter` over a two-column
+  key/value table, with one FIFO-serialised connection owner, bound parameters everywhere,
+  fixed safe error messages, fail-closed platform gating through `detectRuntimePlatform`
+  (ADR-0047) and shared iOS/Android dispatch. `src/lib/persistence/capacitorSqliteEngine.ts`
+  is the one file that names the plugin.
+- An opt-in mobile diagnostic panel under `mobile/src/diagnostics/`, driving that adapter
+  against the synthetic database above.
+- Automated tests: adapter contract, failure classification, hostile thrown values, ordering,
+  close/reopen ownership, platform gating, isolation and build-default behaviour — including a
+  **plugin-faithful** engine that reproduces the installed plugin's own per-platform statement
+  preprocessing, rather than a fake that agrees with the adapter about what a statement means.
+
+*Corrected on independent review (2026-09-30), all three found by reading the installed plugin
+sources rather than by testing against an agreeable fake:*
+
+- **Bulk deletion silently deleted nothing on iOS.** `UtilsSQLCipher.execute` splits any SQL
+  containing "DELETE FROM" on ";" and drops the last component, so an unqualified
+  `DELETE FROM records` became the empty string; `sqlite3_exec` succeeded and diagnostic
+  cleanup reported success over records that were still there. It now goes through `run`,
+  which compiles one statement with no such rewriting, and the test asserts **row
+  disappearance**, not that the call resolved.
+- **The durability pragmas were sent as one `"; "`-joined line.** Android's
+  `UtilsSQLite.getStatementsArray` splits on `";\n"`, so that line was not split and reached
+  `execSQL`, which executes exactly one statement — **the database would not have opened on
+  Android at all**, while iOS's `sqlite3_exec` ran both and hid the defect. Each pragma is now
+  its own single-statement call, in the shape matching whether it returns rows.
+- **A malformed query response was read as absence.** `{ values: [null] }` produced a
+  successful `value: null`, which is exactly what authorises a hydrating repository to write a
+  default over data that still exists. Only a valid, genuinely empty result now establishes
+  absence; every malformed envelope, invalid row and non-string value fails closed.
+
+**Android device behaviour remains unverified.** The plugin-faithful tests are still mock
+evidence about statement handling; no Android project exists (Stage M5).
+- **Compilation evidence:** an unsigned `xcodebuild` of the existing iOS app with the plugin
+  linked (`SQLCipher.framework` embedded, `CapacitorSQLitePlugin` present in the binary) and
+  the diagnostics bundle copied into the app container.
+
+**Device evidence — USER-REPORTED, 2026-09-30, from the in-app diagnostic panel on the
+existing iPhone application.** This is the `device` evidence class and it is reported by the
+user, not measured by an agent. What it establishes:
+
+| Observation | What it establishes |
+| --- | --- |
+| `journal_mode = wal` | The requested journal mode is **actually in force**, not merely requested |
+| `synchronous = 2` | `FULL` — the strongest setting SQLite offers — is **actually in force** (0 OFF, 1 NORMAL, 2 FULL, 3 EXTRA) |
+| `page_size = 4096`, `sqlite_version = 3.53.4` | The engine and page size actually in use, recorded rather than assumed |
+| "Verify after app restart" succeeded **in airplane mode** | Written values survive **process death**, with no network involved |
+| All five synthetic fixtures matched, **994,669 bytes** total | Whole-document round-trip is byte-exact at that size, across the bridge |
+| The never-written key was **absent** | A missing key reads as absence and not as a fabricated value — the case that would otherwise authorise hydration to write a default over data |
+| Reported verification took **55 ms** | One measured latency for that operation at that size |
+
+**What it does NOT establish, and must not be reported as establishing:**
+
+- **Nothing about Android.** No Android project exists (Stage M5), and shared design is not
+  Android evidence.
+- **Nothing about power-loss survival.** A successful write and a successful restart are not
+  proof that a commit reached stable storage before returning. `synchronous = FULL` being in
+  force is a configuration fact, not a tested outcome.
+- **Nothing about failed or UNCERTAIN commits**, and nothing about **reopen after an
+  interrupted commit**. These are precisely what §5.1's checkpointed model rests on, so
+  **source retirement stays unjustified** and M3b4 stays blocked on them.
+- **No capacity limit.** 994,669 bytes is one measured point, not a ceiling, and **no
+  operating envelope is recorded**.
+- **Nothing about backup or restore behaviour**, for either the SQLite store or the Keychain
+  item — that must be verified against the SELECTED configuration and has not been.
+- **Nothing about transactions.** The panel exercises reads, writes, removals and restart
+  recovery; it does not exercise `beginTransaction`/`commitTransaction`.
+
+**M3b3 implementation status — 2026-09-30.**
+
+*Implemented:*
+
+- `@aparajita/capacitor-secure-storage` **8.0.1 pinned**, audited from the published tarball
+  (not its README) before use: `Package.swift` targets iOS 15, depends on `capacitor-swift-pm`
+  `from: "8.0.0"` — satisfied by the root project's `exact: "8.5.2"` pin — plus
+  `keychain-swift` 21.0.0. iOS stores Keychain generic passwords; Android stores AES/GCM
+  ciphertext in the app-private `WSSecureStorageSharedPreferences` with per-key AES keys in the
+  `AndroidKeyStore`. Both match what S2 names. `cap sync ios` integrates it as one of the
+  project's Capacitor plugins; its transitive `@capacitor/keyboard` is **not** integrated,
+  because the CLI resolves plugins from the app's own manifest only — pinned by a test rather
+  than trusted. (`@capacitor/app` is now integrated, but as a **direct** dependency this
+  application declares for the assisted capture pilot, not as an inherited transitive one.)
+- `src/lib/persistence/secureCredentialStore.ts` (the shared contract and platform-gated
+  native store), `capacitorSecureStorageBinding.ts` (the one file naming the package), and
+  `src/lib/supabase/providerCredentialStorage.ts` (the SDK-facing integration, the readability
+  marker and the application-owned failure channel).
+- `src/lib/persistence/storageComposition.ts` — the one owned composition; `storageSeams.ts` —
+  the three sporting seams plus the **unchanged** Web default;
+  `src/lib/identity/identityRepositorySet.ts` — all five identity repositories over one
+  adapter; two one-time ownership slots (`claimBrowserAuthStorage`,
+  `claimIdentityRepositories`) that reject late and conflicting configuration.
+- `src/components/persistence/StorageCompositionGate.tsx` — the readiness gate, wrapping the
+  whole provider tree so that "no hydration, no identity startup, no sync initialisation, no
+  legacy retirement before readiness" holds because there is no child to do any of them.
+- A **separate** off-by-default build flag, `CURLING_MOBILE_NATIVE_STORAGE=1`
+  (`mobile/nativeStorageFlag.ts`, `npm run mobile:build:native-storage`). It is a fourth axis:
+  not `--mode`, not `NODE_ENV`, and **not** the storage-diagnostics flag — merging those two
+  would mean anyone gathering engine evidence had also opted their real training data into a
+  different store. There is no URL parameter and no stored preference.
+- **Compilation evidence:** unsigned `xcodebuild` for `generic/platform=iOS` **BUILD
+  SUCCEEDED**, with `SecureStorage`/`KeychainSwift` and `CapacitorSQLitePlugin` genuinely
+  linked and `Security.framework` present. No entitlements file, no `NSFaceIDUsageDescription`,
+  no `UIBackgroundModes`, no `CFBundleURLTypes`.
+
+***THE BARRIER: a flag-enabled build cannot cut over, and does not mount.***
+`composeNativeStorage` consults a `NativeActivationAuthority` **before** it constructs an
+adapter, opens a database or touches the Keychain, and the one production authority reports
+`unavailable / migration_not_implemented` unconditionally. So a flag-enabled build shows a
+concise blocking preparation state and **the application does not mount at all**. That
+ordering is the safety property: mounting an existing installation against a fresh, empty
+native store would have every domain read `absent`, write its documented default, and produce
+an apparently clean workspace over data that still exists — §5's withdrawn rule W2 exactly.
+There is **no force-ready switch, no synthetic activation record, no "fresh install"
+assumption and no test-profile bypass**; a ready verdict is constructible only by a factory
+named `nativeActivationReadyForTests`, which no production module may reference (asserted) and
+which is eliminated from the built artifact (asserted against the real bundle).
+
+*NOT implemented, and not claimed:*
+
+- **The transactional device measurements above are still missing**, so **the engine choice is
+  settled for the ADAPTER but source retirement remains unjustified**, and no operating
+  envelope is recorded.
+- **No migration.** Nothing enumerates, copies, activates or retires anything; the §5 protocol
+  is unimplemented and its three open design items still block M3b4.
+- **No cutover.** M3b5 has not happened. Existing installs keep `localStorageAdapter`, and a
+  default build contains no composition code at all.
+- **No transfer of existing credentials.** Composition points the SDK at the protected store;
+  copying the session that is in WebView `localStorage` today, and handling the case where one
+  of the two separate stores is written and the other is not, is M3b4 work (§4).
+- **No change to cloud synchronisation** and **no background-sync guarantee** of any kind. In
+  particular, nothing here makes an upload happen while iOS has suspended or closed the app.
+- **No native OAuth or deep-link work** (M2), no BLE integration (M4), no biometric prompt and
+  no app-lock feature.
+- **Android is designed for, not verified.** No Android project exists (Stage M5).
+
+What the diagnostic panel must actually measure, beyond size: `journal_mode`/`synchronous` behaviour
+(<https://sqlite.org/pragma.html#pragma_synchronous>), what the plugin reports on a failed or
+**uncertain** commit, **reopen-after-interruption** behaviour, and whole-document
+serialization, bridge-payload and memory cost at representative synthetic sizes.
+
+Evidence classes stay separate and are never substituted: **mock** (unit), **engine** (real
+plugin, synthetic data, the in-app diagnostic panel), **compilation** (unsigned native build),
+**device** (user-reported). **As of 2026-09-30 the mock and compilation classes are satisfied,
+and the device class is PARTIALLY satisfied**: the user has reported the effective pragmas and
+a successful restart recovery (see the device-evidence table above). **What is still missing is
+the TRANSACTION evidence** — what the plugin reports on a failed or uncertain commit, and how
+the store behaves on reopen after an interrupted one — which is what source retirement depends
+on, so no operating envelope is recorded and retirement stays unjustified.
+
+**Two different kinds of readiness, and they must not be conflated.**
+
+| | **Evidence-stage readiness (M3b1)** | **Migration and activation readiness (M3b4/M3b5)** |
+| --- | --- | --- |
+| What it asserts | The isolated synthetic diagnostic surface is specifiable and may be built | The production migration protocol is safe to implement and then to cut over |
+| Depends on the §4 provider-session decision? | **No** | M3b3 did, and it is now SETTLED (S2); M3b5 inherits it |
+| Depends on the §5 protocol passing review? | **No** — the diagnostic panel migrates nothing | **Yes** |
+| Status today | **Gathered, partially.** Pragmas and restart recovery are user-reported; commit semantics and reopen-after-interruption are not | **NOT ready.** Three open design items remain — see the inventory below — plus the secure-credential transfer and cross-store interruption cases named in §4 |
+| Production effect | None | M3b5 is the cutover |
+
+**Credential-policy approval was a prerequisite for Stage M3b3 (composition), not for M3b1,
+and it is now SATISFIED (S2, 2026-09-30).** Isolated synthetic engine evidence never depended
+on it, and gathering that evidence asserts nothing about the migration protocol.
+
+**This document does not claim that the production migration protocol has passed review.** It
+is a design under review. **The canonical inventory of open engineering items — three, all
+blockers for M3b4 and none for M3b1 — is:**
+
+1. **P-1 — missing pre-activation source marker** (§5.2): indistinguishable from later source
+   clearing; blocked conservatively.
+2. **P-2 — differing provenance ids before activation** (§5.2): blocked rather than guessed.
+3. **Source-generation divergence recovery** (§5.5): resolving a blocked divergence is
+   human-authorised and unspecified.
+
+Other documents reference this inventory rather than restating it. **The count is still
+three**: the two items below are not additions to it but **explicit migration-stage
+requirements** that Stage M3b3 established and did not perform.
+
+*Named migration requirements arising from the S2 credential decision (§4), due in M3b4:*
+
+Plus one genuinely **open product question**, deliberately not settled by Stage M3b3 and due
+with the cutover (M3b5):
+
+- **What a mounted application should do about a credential failure that happens
+  MID-SESSION.** Composition already refuses to become ready over an unusable credential
+  store, so nothing starts from a broken one, and the failure verdict is sticky and readable
+  (`OwnedStorageComposition.credentialFailure()`). What is not decided is the behaviour: a
+  sticky historical latch should probably not blank a working workspace, and silently ignoring
+  it would be dishonest. Nothing is implemented in either direction, and no code guesses.
+
+
+- **Secure credential transfer.** The provider session of an already-installed app is in
+  WebView `localStorage`. Composition points the SDK at the protected store and copies
+  nothing, so the existing session must be transferred as part of the migration — under a
+  protocol of its own, because credentials are not domain bytes and the copy has different
+  confidentiality and deletion semantics from a sporting key (§1).
+- **Cross-store interruption.** The credential store and the SQLite target are **two stores
+  and not one transaction**. A state where one has been written and the other has not is
+  reachable, is not detectable from either side alone, and must be handled explicitly rather
+  than assumed away. S1 would not have removed this class either — only given both halves the
+  same lifecycle (§4).
+
+**Required acceptance cases — FUTURE IMPLEMENTATION REQUIREMENTS, not results.** None of
+these has been written or run. They are stated as executable future scenarios against the
+checkpointed model (M3b0 §5.1), and they become due with the stage named beside each group.
+Unit/model, real-engine integration and device evidence stay separate and are never
+substituted for one another.
+
+*Authority and recovery (M3b0 §5.4) — due in M3b4*
+
+1. D1 — no record, target empty, source readable and empty → activates; nothing migrated.
+2. **D2 — readable-empty source with a POPULATED target and no activation evidence → BLOCKED**,
+   no import, no delete. (The case D1 must not absorb.)
+3. **C1 vs C2 — failed source enumeration is not an empty source**: with no `active` record the
+   run blocks and retries; it never proceeds as "nothing to migrate".
+4. **E3 — interrupted enumeration** → attempt record abandoned, re-enumerated under a new
+   `migrationId`; nothing was staged, so nothing is deleted.
+5. A1/A2/A3/A4/A5 — unreadable record, malformed record, invalid `phase`, `schemaVersion`
+   higher **and** lower than supported, malformed manifest → blocked; never downgraded, never
+   overwritten.
+6. **A6 — a `copied` entry outside the manifest** (a self-contradictory record) → blocked.
+6b. **E0 — staging progress and staged data disagree PRE-ACTIVATION, in both directions**: a
+    `copied` key with no committed target row, **and** a committed row for a manifest key absent
+    from `copied` → blocked in each direction; no repair by deletion or re-copy.
+7. E1 — `storeIdentity` missing or mismatched → blocked.
+
+*Provenance markers (M3b0 §5.2) — due in M3b4*
+
+8. **Valid activated target with a missing, cleared or unreadable old source → ordinary access
+   proceeds.** The absent source marker does **not** block; retirement is recorded as stalled
+   (B2). This is the regression the earlier both-markers rule would have caused.
+9. **Source marker written, no target record, target empty** → the id is adopted into the new
+   record and the run continues. No atomicity between the two stores is assumed.
+10. **Target record present and pre-`active` with no source marker → BLOCKED (blocker P-1).**
+    The marker is **not** recreated, and the two possible causes — an interrupted write, or a
+    marker written and the source later cleared — are **not** distinguished, because the
+    protocol records nothing that separates them.
+11. Both markers present and equal → proceeds. Both present and **different** while pre-`active`
+    → **blocked** (blocker P-2), not silently resolved.
+
+*Generation coherence (M3b0 §5.5) — due in M3b4*
+
+12. **A newly added eligible source key appears after enumeration** → set-equality validation
+    fails and the run blocks. It must **not** pass merely because every recorded fingerprint
+    still matches.
+13. **A copied value changes before restart** → blocked; **no discard**, no mixed-generation
+    snapshot, staged rows preserved.
+14. **A copied value disappears from the source** → blocked with the staged target row
+    **retained**, on the explicit ground that it may be the last surviving copy. No deletion,
+    no inference of user intent.
+15. **An uncopied value disappears** → blocked, with the original manifest entry retained as
+    evidence; it must **not** silently vanish from a re-enumerated manifest.
+16. **Source changes after `verified` but before activation** → E7: `verified` is re-validated
+    on resume and blocks. A `verified` record is not exempt.
+17. **Identity records change between attempts**, including a new
+    `accessBarrierResolution.<uuid>.v1` → the membership test sees it as a set difference, so
+    validation fails and the run blocks. Within a single enumeration the dynamic family is
+    captured as one coherent generation.
+
+*Content policy (M3b0 §5.3) — due in M3b4*
+
+18. **A known outbox key holds a future/unsupported domain schema** → copied **verbatim**, never
+    skipped; the repository's existing validation applies after cutover; **hydration never sees
+    `absent` and never writes a default over it.**
+19. Unrelated unknown keys → not imported, not deleted, recorded; no repository hydrates them.
+20. The distinction holds in both directions: an unsupported **domain** value is copied, while
+    an unsupported **activation-record** schema blocks (A3/A4).
+
+*Transaction and durability (M3b0 §5.1) — model cases due in M3b4; engine cases in M3b1*
+
+21. Crash mid-checkpoint → that batch's rows **and** its progress entry are both absent on
+    reopen; the last committed checkpoint is authoritative.
+22. **Uncertain commit, reopen shows the batch COMMITTED** (progress and rows both present and
+    consistent) → **not replayed**. Blind replay would overwrite committed state.
+23. **Uncertain commit, reopen shows NO commit** (neither progress nor rows) → replayed exactly
+    once.
+24. **Uncertain commit, reopen shows an inconsistent half** → E0, blocked; never repaired by
+    guessing.
+25. An uncertain **activation** commit is resolved the same way, and a record already `active`
+    is never re-activated.
+26. Configured `journal_mode`/`synchronous` behave as assumed — measured by the M3b1 in-app panel,
+    never assumed from documentation.
+
+*Post-activation mutability (M3b0 §5.4) — due in M3b4*
+
+26b. **A migrated key is legitimately REMOVED after activation, then the app restarts** — the
+     concrete case being `curling.identity.trustedDevice.v1` deleted by
+     `identityTransitionCoordinator`'s sign-out protocol via `trustedDeviceRepository.remove()`.
+     The run reaches **B4 and mounts normally**. It must **not** block, must **not** re-import
+     the value from the old source, and must **not** restore it from the manifest.
+26c. **A migrated key's value is legitimately CHANGED after activation, then restart** → B4;
+     the manifest fingerprint is historical and is never compared against live application data.
+26d. **A NEW key that was never in the manifest is written after activation, then restart** →
+     B4; an unmigrated key is not an anomaly.
+26e. **No repository is required to record migration progress**, and no domain write path gains
+     a migration step. A test asserting that the repositories are unchanged is part of this.
+
+*Target failure and mounting (M3b0 §5.4) — due in M3b4/M3b5*
+
+27. **B1 — `active` record but the target is failing now** → the failure is reported, normal
+    consumers do **not** mount, and there is **no fallback to the source**.
+28. **Mounting rule** — every blocked state renders the failure/recovery interface only; no
+    blocked state mounts identity, sync or sporting consumers against a partial target.
+
+*Cleanup (M3b0 §5.5) — due in M3b4*
+
+29. **Retirement meets changed source data** → that key is **not deleted**, and it is surfaced.
+30. Interrupted retirement resumes for `copied` keys only, never beyond.
+31. Retirement is **not attempted at all** on an engine without a committed-transaction
+    acknowledgement.
+
+*Identity, credentials and Web — due with the stage that touches each*
+
+32. **Sign-out with provider failure → durable denial preserved**: the barrier is written first,
+    a failing `signOut({scope:"local"})` neither restores access nor is reported as success.
+33. A→B account switch with a delayed A operation → A's write keeps A's physical key.
+34. Offline identity continuity, restart, later synchronisation.
+35. Outbox preserved; existing idempotent replay unchanged.
+36. **Web behaviour unchanged**, including the ADR-0025 Decision 10 compatibility assertions.
+37. **Inaccessible credential storage is not established absence**: a failed read fails closed
+    and never presents a signed-out state. **Covered as of Stage M3b3 at the CONTRACT level** —
+    only a positively established absence becomes an SDK `null`, and `supabaseAuthService`
+    refuses to report `no_session` or a completed sign-out while a credential failure stands,
+    which closes both SDK absorption paths. **NOT covered, and reported as a blocker:** no
+    audited dependency supplies the item-specific evidence the contract requires, so the
+    binding reports `no_absence_evidence` and the **native credential path is closed** (§4).
+    **Also still not covered:** transferring the EXISTING credentials out of WebView storage,
+    and the interruption case where one of the two separate stores is written and the other is
+    not — both M3b4 (§4).
+
+*Staging and isolation — 40–41 due in M3b1; 38–39 in M3b5*
+
+38. **Attempted cutover before migration readiness** → refuses; never hydrates against an empty
+    engine. **Covered as of Stage M3b3 for the composition half**: the flag-enabled production
+    path cannot become ready without an activation authority, and it opens nothing while
+    asking. The M3b5 half — a flag default flip that must still refuse — is unperformed,
+    because the flip has not happened.
+39. Missing native plugin / unsupported platform → fails closed. **Covered as of Stage
+    M3b3**, for the storage adapter, the protected credential store and the composition
+    itself, with **no fallback to `localStorage` or memory** in any of the three.
+40. **Diagnostic isolation** — a fixed dedicated synthetic database distinct from every
+    application database; no application key is read or written; the opt-in is build-time and
+    off by default, with no URL parameter or stored preference able to enable it; a default
+    build contains no diagnostics code. *(Implemented and covered by automated tests,
+    2026-09-30. The superseded separate-app requirement is recorded above.)*
+41. Representative **synthetic** dataset sizes, bridge payload and write costs.
+
+**iPhone acceptance procedure (M3b6, not yet performed).** Install the previous build, record
+a session and leave work unsynchronised; upgrade in place; confirm the app reports migration
+and then shows the same history, plans and preferences; confirm the outbox still syncs when
+online; force-quit mid-migration and relaunch; confirm no data loss and no duplicates; delete
+a record after migration, relaunch, and confirm it **stays** deleted. **Android
+implementation and device verification remain Stage M5 — shared design is not Android
+evidence.**
+
 ---
 
 ## Stage M4 — Production Brower capture
+
+**2026-09-30 priority exception: assisted training pilot.** The user approved a bounded
+foreground iOS integration in the existing application before full M3b and M4: two
+light gates in CHRON and explicit setup arming into the existing Training Capture
+Sequence. The later approved Back–Hog Draw/Takeout filter now records matching times
+automatically; unfiltered contexts retain one-tap acceptance. Gate-direction inference
+is still deferred. This does not enable native storage, authorise data loss,
+pass Gate C, or complete M4. The [canonical pilot decision and evidence limits](BROWER_INTEGRATION_STATUS.md#assisted-training-pilot-decision-2026-09-30)
+govern this exception; [the debt inventory](TECHNICAL_DEBT_AND_ROADMAP.md#immediate-priority-assisted-brower-training-pilot-2026-09-30)
+records the postponed work and activation blockers. Full production M4 retains the
+prerequisites below.
+
+**The pilot is now implemented (2026-09-30, [ADR-0050](adr/0050-assisted-brower-capture-pilot.md))
+and is NOT hardware-accepted.** `@capacitor-community/bluetooth-le` 8.3.0 and
+`@capacitor/app` 8.1.1 are now direct, exactly pinned dependencies, integrated into the
+iOS project, and `NSBluetoothAlwaysUsageDescription` is declared. **`UIBackgroundModes` is
+still not declared, so open decision P3 is untouched** — capture is foreground-only and
+invalidates on backgrounding. This does **not** pass Gate C, complete M4, enable native
+storage, or make any claim about Android. Live two-gate behaviour is unverified until the
+[device checklist](BROWER_INTEGRATION_STATUS.md#physical-device-checklist-for-the-assisted-capture-pilot)
+passes.
 
 **Resulting behaviour.** Measured release times reach the application from the timer,
 through the existing provider boundary.
@@ -2203,11 +3627,11 @@ Delivered by **Stage M3**. All of the following must pass on a physical iPhone:
 | 6 | **Export** data to a file the user can actually retrieve | |
 | 7 | **Switch accounts** without exposing another Profile's workspace | |
 
-**Scope not yet fixed:** whether the milestone must also carry browser-local drafts,
-authored plans or preferences across from the Web app is **P2**, unanswered. §7.5's "no
-transfer" is a recommendation, and criterion 5 is written for that case; if P2 answers
-otherwise, criterion 5 and M3's scope both change. **Do not treat this table as final until
-P2 is answered.**
+**Scope FIXED by P2's answer (2026-09-29):** the milestone does **not** carry browser-local
+drafts, authored plans or preferences across from the Web app. Criterion 5 is written for
+exactly that case and now stands as final on this point. **Separately, engine migration
+inside the installed native app is still required** (P6 / Stage M3b) and criterion 5 must
+hold across it — an upgrade must not lose local-only work.
 
 ## Acceptance cases the milestone must cover
 
@@ -2255,5 +3679,7 @@ place.
 - It does not change the existing Web application, the Web backend, or any API route.
 - It does not promote Brower acceptance Gate C or Gate D.
 - It does not assert any Android behaviour.
-- It does not decide P1–P7. In particular it does **not** answer P2, and §7.5's "no
-  transfer" is a **recommendation** that no stage may treat as the answer.
+- It does not decide P1, P3, P4, P5 or P7. **P2 and P6's direction WERE decided by the user
+  on 2026-09-29** and are recorded in §4, §7.1 and §7.5 — those entries are the decision
+  record, not this document's own recommendation. P6's implementation and acceptance gate
+  remain incomplete.

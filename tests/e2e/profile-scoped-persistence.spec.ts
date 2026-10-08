@@ -57,7 +57,7 @@ test("sign-out and account switching hide the previous Profile workspace and res
   const profileA = await currentProfileId(page);
   await setupFixedBlock(page);
   await page.getByPlaceholder("3.75 or 375").fill("3.80");
-  await page.getByRole("button", { name: "Add Shot" }).click();
+  await page.getByRole("button", { name: "Save Shot" }).click();
   await expect(page.getByText("1 shot total")).toBeVisible();
 
   await goToHome(page);

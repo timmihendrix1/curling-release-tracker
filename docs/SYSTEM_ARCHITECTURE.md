@@ -496,21 +496,23 @@ configuration. Ending one block and starting the next never mutates the old bloc
 | Field | Meaning |
 |---|---|
 | `mode: "fixed" \| "variable" \| "blind"` | **Training mode** — see below |
-| `measurementMode: "back-hog" \| "hog-hog"` | **Measurement mode** — what the release time actually measures |
-| `targetTime: number` | The block's default/fallback target — see "Target model" below; its exact meaning depends on `mode` |
+| `measurementMode?: "back-hog" \| "hog-hog"` | **Measurement mode** (the timing interval) — what the release time actually measures. Present for every block that records time, which is every block stored before ADR-0051; absent **only** on a speed-only Fixed Weight block, which measures no time and therefore has no interval. Never defaulted to `"back-hog"` to fill that gap |
+| `targetTime?: number` | The block's default/fallback **time** target — see "Target model" below; its exact meaning depends on `mode`. Absent on the same condition as `measurementMode`, and never fabricated as 3.75s |
 | `variableTargetMode?: "smart-random" \| "manual"` | **Target source**, only set when `mode === "variable"` |
 | `blindTargetMode?: "fixed" \| "smart-random" \| "manual"` | **Target source**, only set when `mode === "blind"` (has one more option than Variable Weight — see ADR-0004) |
 | `smartRandomMin?`, `smartRandomMax?: number` | The configured Smart Random range, only set when the resolved target source is `"smart-random"` |
 | `pendingTargetTime?: number` | The target to show/use for the *next* shot when the resolved target source is `"smart-random"` or `"manual"` — see "Target model" |
 | `completedAt?: string` | Set once a newer block takes over; `undefined` means this is the active block |
-| `accuracyThresholds?: { onTarget, acceptable }` | **Target Accuracy** tolerance, snapshotted once at block creation from whichever preset/custom pair was selected — never re-derived from the app's current default afterward. See ADR-0008 and `src/lib/accuracyThresholds.ts`. |
+| `accuracyThresholds?: { onTarget, acceptable }` | **Target Accuracy** tolerance in seconds, symmetric, snapshotted once at block creation from whichever preset/custom pair was selected — never re-derived from the app's current default afterward. See ADR-0008 and `src/lib/accuracyThresholds.ts`. |
+| `measurement?: BlockMeasurementConfiguration` | **Measured quantities** — which of time (s) and speed (m/s) this block records, each with its own fixed target and its own per-side tolerance. Its **absence is the legacy time-only representation** (quantities `["time"]`, target `targetTime`, tolerance = the symmetric pair in `accuracyThresholds`), and migration never backfills it, which is what keeps every existing session's stored bytes and cloud digest unchanged. It is **required** when the block records speed, and also **supported for a time-only block that needs an asymmetric tolerance**, which `accuracyThresholds` structurally cannot express. Because the cloud wire version follows the presence of this field **anywhere the session persists one — including an embedded plan-step snapshot whose Block has not been created yet** — an asymmetric time-only block, and a mixed plan finished before reaching its speed step, both serialize as version 2 and carry the same old-client rollout cost as speed. Neither is a free addition. When present and including time, `targetTime` is a derived mirror of `measurement.time.target`: there is exactly one target authority and a stored mismatch is rejected, never resolved one way. Only Fixed Weight may carry one. See ADR-0051 and `src/lib/measurement/`. |
 
-**Do not conflate four different concepts that all live near each other on this type:**
+**Do not conflate five different concepts that all live near each other on this type:**
 
 1. **Training mode** (`mode`) — *what kind of training is this block* (Fixed / Variable / Blind).
 2. **Target source** (`variableTargetMode` / `blindTargetMode`) — *how is the target for the next shot determined* (Fixed / Smart Random / Coach-Manual). Only Variable and Blind blocks have one; Fixed Weight blocks are implicitly target-source "fixed".
-3. **Measurement mode** (`measurementMode`) — *what the release time physically measures* (Back-Hog / Hog-Hog). Orthogonal to both of the above — any training mode can (in principle) use either measurement mode, though Smart Random is currently only available for Back-Hog.
-4. **Shot classification** (`shot.shotType`) — *draw or takeout*, a property of the individual shot, not the block. Fixed and Variable Weight shots have one; Blind Weight shots do not (see "Shot" below).
+3. **Measured quantity** (`measurement.quantities`) — *what is measured at all* (time in seconds, speed in m/s, or both). Only Fixed Weight can choose; every other block measures time. **This is not a timing interval and not a derived Metric** — see `DOMAIN_GLOSSARY.md`.
+4. **Measurement mode** (`measurementMode`) — *what the release time physically measures* (Back-Hog / Hog-Hog). This is the **timing interval**, orthogonal to all of the above; it only ever qualifies a time measurement and is **never** read as a quantity selector. Any training mode can (in principle) use either measurement mode, though Smart Random is currently only available for Back-Hog.
+5. **Shot classification** (`shot.shotType`) — *draw or takeout*, a property of the individual shot, not the block. Fixed and Variable Weight shots have one; Blind Weight shots do not (see "Shot" below).
 
 `trainingBlocks.ts`'s `getEffectiveTargetMode(block)` is the one place that reads
 `variableTargetMode`/`blindTargetMode` and normalizes them into a single
@@ -524,8 +526,11 @@ once against that normalized concept instead of branching on `mode` repeatedly.
 |---|---|
 | `blockId` | The block this shot belongs to (shots are flat on the session, not nested) |
 | `shotNumber` | 1-based, sequential **within its block** — deleting a shot renumbers only the remaining shots of that same block |
-| `releaseTime: number` | The measured release time — always required |
-| `targetTime: number` | **The target that actually applied to this specific shot.** Always required, always a plain number captured at save time. Never recomputed, never touched again — even if the block's default target, Smart Random range, or pending target later change. This is what makes Variable/Blind Weight's changing targets historically safe: a block-level change can never retroactively alter what an already-recorded shot was judged against |
+| `releaseTime?: number` | The measured release time in seconds. Present on every shot recorded before ADR-0051 and on every shot of a time-measuring block. Absent **only** when the block does not record time, or when a Both stone's time has not been supplied. **Missing is not zero**: an absent value is excluded from every time calculation and every time denominator, never counted as 0.0s |
+| `targetTime?: number` | **The time target that actually applied to this specific shot.** A plain number captured at save time whenever the stone records a time. Never recomputed, never touched again — even if the block's default target, Smart Random range, or pending target later change. This is what makes Variable/Blind Weight's changing targets historically safe: a block-level change can never retroactively alter what an already-recorded shot was judged against. Absent exactly when `releaseTime` is absent, and never back-filled from the block's current target |
+| `speed?`, `targetSpeed?: number` | The measured speed in m/s and the speed target it was judged against, under the same immutability rule as the time pair. A Both stone may legitimately carry only one of the two pairs, but **must carry at least one**. Speed is never derived from `releaseTime`, and `releaseTime` is never derived from speed |
+| `speedSource?: TimingProviderType` | Provenance of the **speed** specifically, kept independent of `measurementSource` (which is, and remains, the time value's capture provenance). Always `"manual"` in this release |
+| `speedRecordedAt?: string` | When the speed was recorded. Differs from `createdAt` when an accepted device time was saved first and its missing speed was completed afterwards on that same, explicitly identified stone |
 | `predictedTime?: number` | The player's own guess, locked in **before** `releaseTime` was known. Present **only** for Blind Weight shots; always `undefined` for Fixed/Variable Weight, and never fabricated during migration |
 | `handle: "in" \| "out"` | Required for every shot, including Blind Weight |
 | `shotType?: "draw" \| "takeout"` | **Optional.** Required in practice for Fixed/Variable Weight (the UI always sets one); genuinely absent for Blind Weight, which trains perception rather than shot execution. A missing `shotType` is a real, valid state — it is never defaulted to `"draw"` by the app itself. (Migration *does* fold truly-legacy garbage values like the removed `"guard"`/`"other"` into `"draw"`, since those were real historical classifications that no longer have a matching type — see "Persistence and migration") |
@@ -541,6 +546,129 @@ once against that normalized concept instead of branching on `mode` repeatedly.
 - Shot type (draw/takeout) is required, same as it always has been.
 - Analytics run unmodified: `analyzeShots` always compares each shot to its own
   `targetTime`, which is trivially correct here.
+- **Measured quantities (Stage A and Stage B implemented — ADR-0051).**
+  Fixed Weight is the only training mode that can choose *what* it measures: time
+  (seconds), manually entered speed (m/s), or both. Each selected quantity has its own
+  fixed target, its own per-side tolerance and its own independent classification —
+  there is no combined score and no conversion between seconds and m/s in either
+  direction. Both measurements belong to **one** stone with one identity, handle, shot
+  type and progress count; a Both stone may carry only one of the two, and completing
+  the missing one later targets that specific stone without creating or counting
+  another. The selection is recorded in `block.measurement`, whose **absence** is the
+  ordinary time-only block.
+
+  Stage B makes this reachable. `TrainingSetup.tsx` offers **Measures** (Time / Speed
+  (m/s) / Both) for Fixed Weight only, with the applicable targets, the timing interval
+  for time alone, and one compact tolerance summary whose single **Adjust** action opens
+  a per-quantity editor (`QuantityToleranceEditor.tsx`) carrying the app's built-in
+  starting values and the athlete's saved templates in one list. A configuration is
+  written to `block.measurement` ONLY when it is genuinely needed — the block records
+  speed, or its time tolerance is asymmetric — so an ordinary symmetric time-only setup
+  still produces exactly the block it always did. `ShotEntry.tsx` records the applicable
+  measurements in one capture area through a single structured `AddShotInput`, routed
+  into Stage A's `buildMeasuredShot`; speed is parsed by
+  `src/lib/measurement/speedInput.ts`, which deliberately does NOT share
+  `timeInput.ts`'s hundredths shorthand. `MissingMeasurementPanel.tsx` completes one
+  explicitly selected stone — from any block of the CURRENT training — through
+  `completeShotMeasurement`, with the full session/block/shot/quantity identity the
+  athlete selected carried into execution and validated there against current
+  ownership. Results render through `MeasuredShotSummary.tsx` and a quantity-aware
+  `TargetAccuracyDashboardCards`, which never mix the two units.
+
+  **Draft and submission ownership.** Measurement drafts are owned by `TrackerApp`,
+  keyed by what they were typed for: the manual-entry draft by profile/session/block,
+  each completion draft by session/block/shot/quantity. The manual draft carries the
+  whole recording intent — measurements plus handle, shot type and any editable target
+  — so a retained value cannot be recorded against the wrong handle after a remount.
+
+  Each accepted submission is its own OPERATION, carrying an id, an owner, the stone it
+  created and — when it came from the shared draft — the REVISION it was produced from.
+  Revisions are monotonic and bumped by every athlete edit. That model is what makes an
+  acknowledgement settle only the revision it describes, lets two stones be in flight
+  with independent statuses and retries, and keeps a repeated press of the same unedited
+  draft idempotent across a remount — none of which a control-local guard can do, since
+  it is lost when the control unmounts. Two successive stones with identical values
+  remain possible, because typing them is an edit. A caller that owns its own draft
+  lifecycle (`BlindShotEntry`) omits `usesSharedDraft` and carries no revision rather
+  than a shared default, so its second stone is never mistaken for a repeat of its
+  first.
+
+  **A draft's measurements and its metadata have separate lifecycles.** `revision`
+  identifies a SUBMISSION; a separate `retainedRevision` records which submission the
+  measurement text currently in the fields came from, or `null` when those fields hold
+  input for the stone being composed. The two cannot be collapsed: choosing a handle is
+  an edit, so it mints a new revision while saying nothing about the numbers already on
+  screen. Reading "these values are already submitted" out of the revision alone
+  therefore stopped being true the moment any metadata was touched, and the next
+  measurement the athlete entered was recorded together with the previous stone's
+  untouched sibling value.
+
+  - *New.* Seeded from the current expected handle and whatever target applies. Nothing
+    re-applies those afterwards, so no parent state is written during a child's render.
+  - *Unsubmitted.* Its whole intent is the athlete's. An unrelated stone arriving from a
+    device changes the plan's expected handle and may regenerate the target, but must
+    not rewrite a draft already in progress.
+  - *Submitted, not yet settled.* Its MEASUREMENTS stay on screen so a failure is
+    recoverable and nothing is called saved early. Until the athlete touches it,
+    everything describing the NEXT stone — handle, applicable target — is seeded fresh,
+    so a second stone started before the first write acknowledges follows the plan's
+    progression instead of inheriting the recorded stone's handle.
+  - *Submitted, with metadata chosen since.* A handle, shot type or target picked for
+    the next stone is kept, and the recovery values are kept with it — a selection
+    discards nothing. Those values stay marked as the submitted stone's: entering a
+    measurement now clears whichever side was not touched, and Save Shot records nothing
+    while every measurement in the fields is still retained, so that stone's own Retry
+    stays the only thing that saves it. Re-entering a measurement clears the retained
+    marking, so two successive stones with identical values remain possible.
+
+  A durable write settles the draft against its own owner and revision: retired whole
+  when it is still exactly what that operation submitted, and reduced to the explicit
+  metadata — recovery values dropped, now that they are durable — when only metadata
+  has changed since.
+
+  Acceptance and durability are separate states throughout: a stone or completion stays
+  visible and retryable until a write that genuinely covers it is acknowledged, and
+  retry re-persists the current authoritative session rather than re-running the domain
+  operation (which would duplicate a stone, or be refused as `already_recorded`).
+  Outstanding operations and confirmations are scoped to their originating session and
+  block. `settleSessionSaveWaiters` additionally reconciles FAILED operations against
+  any successful write that genuinely contains their data — their own waiter was
+  consumed by the failure, so without this a stone made durable by a later write kept
+  showing a Retry button. That reconciliation performs the SAME settlement a direct
+  acknowledgement performs, including settling the matching draft and
+  recording a truthful acknowledgement; dropping the failure row alone removed the very
+  thing that stopped the retained values being recorded a second time. It reads
+  `manualSubmissionsRef`/`pendingCompletionsRef` — authoritative mirrors written
+  synchronously by every mutation (ADR-0007) — because a `setState` updater may run
+  twice and must not cause side effects. A newer draft revision is untouched, and
+  older, unrelated or non-covering writes settle nothing. A successful archive
+  reconciles everything still outstanding against the session it wrote.
+
+  `ShotSaveStatus` renders pending/failed/acknowledged state and the per-operation
+  retry, and is mounted by every runner branch alongside `MissingMeasurementPanel` —
+  outstanding work belongs to the training, not to whichever exercise is running. Entry
+  availability follows the active block's capabilities rather than a remembered
+  selection, so a speed-only block always exposes manual entry.
+
+  **History selection** separates the measured QUANTITY from the timing INTERVAL
+  (`HistoryAnalysisFilters.measuredQuantity` vs `measurementMode`), and the selected
+  quantity governs the whole pipeline — figures, units, targets, deviations,
+  classifications, denominators and tolerance labels, not merely which blocks are
+  included. `aggregateQuantityAccuracyAcrossBlocks` judges each block against its own
+  snapshot for that quantity, so a selection spanning different tolerances is still
+  counted the way each block was trained. The seconds-specific controls — timing
+  interval, Target Time range and the comparison-threshold override — are withheld in a
+  Speed view and do not apply there, while their stored values survive for Time. Under
+  Speed no weight tendency is derived, the time-only charts and handle comparison are
+  withheld rather than relabelled, and the context line names only what actually
+  governed the figures — and where BOTH quantities are shown it says so explicitly,
+  since a seconds comparison override describes the time results and never the speed
+  ones. The quantity filter defaults to "all" and is never
+  auto-selected; that default view renders one summary group per quantity actually
+  present, so a speed-only history reports speed without a selector and no empty time
+  figures are fabricated. Session-level aggregates use
+  `aggregateQuantityAccuracyAcrossBlocks`, so blocks trained under different bands keep
+  their results even when no shared cutoff can be named.
 
 ### Variable Weight
 
@@ -794,10 +922,17 @@ Read raw JSON from localStorage
   → migrateSession(raw)
       → migrateBlocks — normalize mode/measurementMode/target sources; fabricate a
         single "Legacy Block" ONLY when `blocks` is entirely absent (not when it's an
-        empty array — see the migration invariant below)
-      → migrateShots — backfill missing shot.targetTime from the shot's block; never
-        invent predictedTime; fold legacy/garbage shotType values to "draw", but leave a
-        genuinely absent shotType absent
+        empty array — see the migration invariant below).
+        A block carrying `measurement` is measurement-aware (ADR-0051): its time fields
+        are passed through exactly as stored and are NEVER defaulted, because a
+        speed-only block legitimately has neither a timing interval nor a time target.
+        A block without `measurement` keeps every existing repair rule unchanged.
+      → migrateShots — for a stone in a LEGACY block, backfill missing shot.targetTime
+        from the shot's block exactly as before; for a stone in a measurement-aware
+        block, default nothing at all (no releaseTime=0, no targetTime=3.75) so an
+        outstanding measurement stays outstanding rather than becoming a recorded zero;
+        never invent predictedTime; fold legacy/garbage shotType values to "draw", but
+        leave a genuinely absent shotType absent
       → backfillPendingTargets — ensure variable/blind blocks have a valid
         pendingTargetTime and (for Smart Random) a valid range; force Hog-Hog Smart
         Random blocks to Manual (never fabricate a Hog-Hog range)
@@ -809,9 +944,13 @@ Read raw JSON from localStorage
 ```text
 Session or session history
   → buildSessionCsv / buildHistoryCsv (pure string builders, no DOM access)
-      → join each shot with its block (name, mode, target source, measurement mode, range)
+      → join each shot with its block (name, mode, target source, measurement mode,
+        range, measured quantities)
       → compute prediction_error / absolute_prediction_error (blank if no predictedTime)
-      → compute target_error / absolute_target_error (always present)
+      → compute target_error / absolute_target_error (blank when the stone carries no
+        time — never 0, which a spreadsheet would average as a real measurement)
+      → compute speed / target_speed / speed_error / speed_error_category and the four
+        per-side speed tolerance columns (blank when the stone carries no speed)
       → round every computed error to 3 decimals
   → exportSessionToCsv / exportHistoryToCsv — wrap the string in a Blob and trigger a download
 ```
@@ -823,7 +962,26 @@ All in `src/lib/analytics.ts`, operating on whatever `Shot[]` is handed to
 metric described here is already filter-aware without analytics needing to know about
 filters at all.
 
-**Release-time metrics** — plain statistics of `shot.releaseTime`, no target involved:
+**Measurement eligibility (Implemented, ADR-0051).** Everything in this section is a
+**time** figure, so every function here first selects the time-measured subset through
+`timeMeasuredShots` (`src/lib/measurement/quantities.ts`) rather than reading
+`shot.releaseTime` directly. Consequences, which hold throughout analytics, charts,
+history, progress and export:
+
+- A stone is time-measured only when it carries **both** a release time and the target
+  it was judged against. A value without its own target is excluded rather than
+  judged against the block's current target, which would rewrite history.
+- `analysis.count` and `targetAccuracy.shotCount` are the **time-measured** count, not
+  the raw stone count — that is the only correct denominator for a time rate. Speed has
+  its own, independent denominator via `computeQuantityAccuracyAnalytics(shots,
+  "speed", tolerance)`. A Both stone missing its speed still counts fully towards time.
+- A missing measurement is **never** contributed as `0`, and no figure is ever `NaN`:
+  an input with nothing time-measured returns the same empty analysis an input with no
+  shots at all returns.
+- Seconds and m/s never meet in one calculation or one chart series.
+
+**Release-time metrics** — plain statistics of `shot.releaseTime` over the
+time-measured subset, no target involved:
 `average`, `median`, `min`, `max`, `releaseTimeStandardDeviation`.
 
 **Target metrics** — every shot judged against its own `shot.targetTime`:
@@ -861,8 +1019,13 @@ whichever shots in the input happen to have a `predictedTime`:
 ### Target Accuracy (Implemented, ADR-0008)
 
 A second target-related lens, added alongside the plain target-deviation metrics above
-— judges each shot against a resolved `AccuracyThresholds` snapshot rather than just
-computing a raw error. `analyzeShots(shots, thresholds?)` takes an optional threshold
+— judges each shot against a resolved tolerance snapshot rather than just computing a
+raw error. Since ADR-0051 the classification core is unit-agnostic and per side
+(`computeDeviationAccuracyAnalytics` + `categorizeDeviation`): it takes signed
+deviations and a `QuantityTolerance` with independent `lower`/`upper` bands.
+`computeTargetAccuracyAnalytics` is the time-specific wrapper that still accepts the
+historical symmetric `AccuracyThresholds` pair, re-expressing it losslessly — a legacy
+pair classifies every shot exactly as it always did. `analyzeShots(shots, thresholds?)` takes an optional threshold
 parameter (defaulting to the legacy/Standard preset for backward compatibility with
 every pre-existing call site) and exposes:
 
@@ -2015,6 +2178,31 @@ calling either twice in a row changes nothing further). This means:
 - Verified directly at the provider level by a dedicated unit test simulating the exact
   Strict Mode mount→cleanup→remount sequence (`simulatorTimingProvider.test.ts`).
 
+### Assisted Brower capture (Implemented; not hardware-accepted)
+
+The first real external timing source reaches the application through this exact boundary,
+without a parallel shot-save path. Filtered Back–Hog candidates become TimingResults
+automatically after setup confirmation, in split order with local-save acknowledgement
+between them. Unfiltered contexts retain manual selection. It does not implement the
+generic TimingProvider subscription contract.
+
+- `src/lib/brower/chronDecoder.ts` decodes only the documented CHRON fields and validates
+  record assembly; an incomplete or incoherent assembly yields no selectable measurement.
+- `src/lib/brower/assistedCapture.ts` holds the baseline/arming rules, candidate identity
+  and the pure acceptance-ownership rule. Fixed Weight Back–Hog candidates use the
+  existing sequence Shot Type (Draw 3–5 s, Takeout 2–4 s inclusive). Raw cumulative
+  splits remain intact; filtering only affects offers, never saved history.
+- `src/lib/brower/assistedCaptureController.ts` owns the connection lifecycle and packet
+  assembly; `timingTransport.ts` is the platform-isolated BLE boundary and has **no write
+  operation**, so no command can be sent to the timer.
+- `src/components/BrowerAssistedCapturePanel.tsx` renders the Active Training surface, and
+  `TrackerApp.tsx` accepts one candidate through the same `captureQueueRef` every other
+  result uses, re-verifying profile, session, block, sequence, measurement mode, Shot Type
+  and its candidate range at execution time.
+
+Scoped to non-Blind Training Capture Sequences, foreground iOS only. See ADR-0050 and
+`docs/BROWER_INTEGRATION_STATUS.md`.
+
 ### Contract for a future real Timing Provider (Planned, formally specified now)
 
 Any future non-simulator, non-manual `TimingProvider` implementation must satisfy:
@@ -2098,9 +2286,11 @@ application. No `TimingResult`, Shot, Session, Assessment or Exercise result is 
 it, and no production transport, capture integration or automatic save behaviour has been
 added.
 
-**No production external timing provider exists**, and this diagnostic is not a step
-toward one by reuse — a future Brower provider must enter the app through the
-provider-neutral boundary described above (ADR-0006), not through this controller. The
+**This diagnostic is not part of the assisted capture pilot and was not reused by it.**
+The pilot (ADR-0050) enters the app through the provider-neutral boundary described above,
+with its own decoder, transport and controller; this development-only controller is
+unchanged and still creates nothing. The separate pilot automatically records filtered
+Back–Hog measurements after setup confirmation; other contexts retain manual selection. The
 canonical protocol and status reference is `docs/BROWER_INTEGRATION_STATUS.md` — including
 what the hardware evidence does and does not support, and why acceptance Gate C is still
 only partial; the archived exports live in
@@ -2137,6 +2327,110 @@ bundle**. The build carries all 67 registered public Exercise diagrams, inlines 
 explicitly allow-listed set of build-time literals (`mobile/publicEnv.ts` is the authority),
 and declares no `server.url`, no background mode, no Bluetooth permission and no URL scheme
 or associated domain.
+
+**Stage M3a then made two things work that a WebView cannot do on its own.** File export
+now goes through one shared boundary (`src/lib/platform/fileExport.ts`): Web keeps its
+anchor download unchanged, while iOS and Android write a UTF-8 file into an app-owned
+export cache and present the native share sheet — an anchor download produces no keepable
+file on either platform. **Serialization is untouched**; only delivery moved, so every CSV
+and JSON payload, its columns and its existing privacy filtering are exactly what they
+were. Outcomes are distinguished honestly: a completed share is never reported as the
+recipient having saved anything, a Web download is reported as unconfirmed, and
+cancellation is claimed only on the Share plugin's own exact signal. Each attempt carries a
+non-revivable ownership identity — unmount or a Profile switch retires it, and the boundary
+revalidates before the irreversible `share()` — and one native attempt is admitted at a
+time, claimed synchronously before the first await. **Temporary-file lifetime is
+platform-specific:** iOS deletes once `share()` settles, because its completion handler
+fires only after the chosen activity finished with the items; Android **retains** for a
+bounded window, because its `activityResult` reports that the chooser returned and is not a
+receipt that the recipient consumed the FileProvider URI. Files live in the OS-managed cache
+and may be evicted sooner. Public/legal links go
+through `src/lib/platform/externalLink.ts` and open in the platform browser, because
+following them inside the WebView would replace the running application; app-relative legal
+routes resolve against the configured public origin and absolute destinations keep the
+exact versioned document trusted metadata supplied. **M3a does not complete M3.** **P2 and P6's direction were
+decided by the user on 2026-09-29** — no browser→app transfer in the first pilot, and durable
+native storage adopted behind the existing persistence boundary rather than accepting
+`localStorage` eviction. **P6's implementation and acceptance gate are not complete:** the
+design is Stage M3b0 in the migration document and
+[ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration
+protocol (decision 7) remains an unresolved design** even though its other decisions are now
+implemented.
+
+**Stages M3b1-M3b3 are implemented (2026-09-30).** The `@capacitor-community/sqlite` engine is
+pinned, a native `RemovableStorageAdapter` sits behind the unchanged ADR-0013 contract, an
+**off-by-default, build-time-opt-in diagnostic panel inside the existing mobile app** drives it
+against a dedicated **synthetic** database, and — under a **second, independent** off-by-default
+build flag — `src/lib/persistence/storageComposition.ts` is the one owned boundary that selects
+the adapter, constructs the five identity repositories over it, binds a **protected credential
+store** and publishes a single readiness verdict that hydration, identity startup, provider
+restoration, sync initialisation and legacy retirement all wait behind.
+
+**Provider credentials were decided on 2026-09-30: S2** — iOS Keychain, and on Android
+encrypted app-private storage with keys in the Android Keystore, behind one shared contract.
+Sporting data and identity continuity records use the SQLite boundary. Separate stores do
+**not** make two writes atomic, SQLite does **not** encrypt credentials, and a resolved write
+is **not** proof of power-loss survival. **All existing local data is preserved** — a pilot
+reset is rejected — and **existing data must be migrated and verified before cutover**.
+
+**Absence must be POSITIVELY ESTABLISHED, and that requirement is NOT met by any audited
+dependency — so the native credential path is CLOSED.** Only a platform-reported "no such
+item" may become the `null` the Supabase SDK reads as "no session"; an unreadable entry, a lost
+Android Keystore key over retained ciphertext, a locked keychain and a malformed bridge response
+are all failures. The installed plugin cannot supply that evidence — iOS discards
+`KeychainSwift`'s `lastResultCode`, Android reports key loss as nothing — and an earlier
+"readability marker" inference is **withdrawn as invalid**, because reading one key
+successfully establishes nothing about another. No global probe replaces it. The binding
+therefore reports "no absence evidence", which blocks composition: a **second barrier**
+alongside the unavailable activation authority. The normalised failure verdict is **consumed by
+`supabaseAuthService`**, which refuses to report `no_session` or a completed sign-out while a
+credential failure stands — exposing a getter would not have closed the SDK's own absorption
+paths.
+
+**Nothing is cut over, and a flag-enabled build does not mount.** Composition consults a
+migration/activation authority **before** it opens a database or touches the Keychain, and the
+one production authority reports unavailable because the migration does not exist. **Ownership
+is one document-lifetime lifecycle** — unstarted, in-flight (concurrent callers join a single
+attempt rather than racing to claim twice), ready, or **disposed, which is terminal** because
+the claimed identity repository set is closed over an adapter that has since been closed.
+A blocked attempt leaves the document free to retry; a call carrying a different activation
+authority is refused rather than answered with an unrelated composition. So the
+flag-enabled build shows a blocking preparation state; a **default** build contains no
+composition code at all and every repository resolves to `localStorageAdapter`. No cloud-sync
+behaviour changed and no background-sync guarantee was added — in particular nothing makes an
+upload happen while iOS has suspended or closed the app. The disposable exercise-diagram cache
+deliberately keeps its existing `localStorageAdapter` path.
+
+**Device evidence now exists, within stated limits.** The user reported (2026-09-30) that
+`journal_mode = wal` and `synchronous = 2` (FULL) are actually in force, that written values
+survive a restart in airplane mode, and that a never-written key reads as absent rather than as
+a fabricated value. **Still unmeasured:** failed and uncertain commit reporting,
+reopen-after-interruption, backup/restore, power-loss survival, any capacity limit, and
+anything about Android. So the engine is settled for the **adapter** while **source retirement
+stays unjustified**. The canonical status statements are the M3b1 and M3b3 implementation status
+entries in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
+
+The protocol selects the engine on **write semantics** — `@capacitor/preferences` gives no
+durable-commit acknowledgement, so SQLite is chosen and source retirement is otherwise not
+authorised — uses a **checkpointed** transaction model with a fail-closed versioned activation
+record rather than a bare marker — committed progress and committed data always agree, and a
+validated committed activation is the authority switch — never skips a known application-owned
+key (so an incomplete migration cannot become an apparently complete workspace), and places
+**production cutover in one named stage (M3b5)**. After a validated committed activation the
+native target is authoritative, so a cleared or unreadable old WebView store blocks nothing and
+only stalls retirement. **Three engineering design items remain open and block the migration
+stage (M3b4):** reconciling two differing installation store ids observed before activation;
+a pre-activation record whose source marker is missing, which the protocol cannot distinguish
+from later source clearing and therefore conservatively blocks; and the human-authorised
+resolution of a blocked source-generation divergence. **Two further migration requirements
+follow from S2:** transferring the credentials that already exist in WebView storage, and
+handling the interruption where one of the two separate stores is written and the other is not.
+**The migration protocol has not passed review.** Migration of existing on-device data
+between storage engines remains required and is distinct from the deferred browser import.
+For M3a itself the user reported on 2026-09-29 that CSV export works on iPhone including in
+airplane mode, and that the Privacy Notice opens in the native Safari browser surface after
+rebuilding with the configured public API origin; Team JSON export is deferred for want of
+Team results, and the remaining M3a device checks are unperformed.
 
 **Stage M2a then gave the native client an API it can actually reach.** A native build loads
 from a local app scheme, so `authorizedFetch.ts`'s "this app's own origin" named the WebView
@@ -2238,12 +2532,12 @@ resolve, each verified against this working tree, are:
   `paused`. Only the live capture machinery (the provider subscription, `captureQueueRef`)
   and the Blind Weight draft are genuinely in-memory. Cross-device continuation of an
   in-progress sequence is a separate, unapproved question.
-- **Platform services.** Export is a DOM anchor download at one shared mechanism and needs
-  one adapter; external links, app lifecycle and Android's hardware back button need
-  explicit handling.
+- **Platform services.** Export and external links are **resolved by Stage M3a** (see the
+  Mobile delivery section above). App lifecycle and Android's hardware back button still
+  need explicit handling.
 
-Nothing above is implemented. Do not treat the migration document as a description of
-current behaviour.
+Except where a stage above is explicitly marked implemented (M1, M2a, M3a), nothing here is
+implemented. Do not treat the migration document as a description of current behaviour.
 
 ## Platform Navigation (Implemented for Home/Train/Assess/Analyze/Settings)
 
@@ -2480,9 +2774,9 @@ this: ".../`metrics.ts`'s functions are cheap and pure enough to recompute on de
   `localStorage` access.
 - `src/lib/assessment/export.ts` — a dedicated Assessment CSV builder
   (`buildAssessmentCsv`/`exportAssessmentRunsToCsv`), one row per attempt (valid and
-  invalid), never merged with Training's `export.ts` CSV. `export.ts`'s `downloadCsv`
-  is now exported so this module reuses the same download mechanics rather than
-  duplicating it.
+  invalid), never merged with Training's `export.ts` CSV. Since Stage M3a it builds a
+  delivery request (`assessmentCsvExport`) handed to the one shared boundary,
+  `src/lib/platform/fileExport.ts`, rather than carrying its own download mechanics.
 - `AssessmentResultScreen.tsx` (plus its `Assessment*.tsx` sub-components — see the
   components table below) is a read-only view over one already-terminal
   `AssessmentRun`: it never calls `updateAssessmentState` to mutate the run itself, only
@@ -2616,21 +2910,38 @@ scoped fields, converting its `TrainingSetupValue` output to/from the domain's
 `ReleaseTimingBlockConfiguration` locally — the persisted type is never derived from
 the component's form-value export, see ADR-0012 Decision 3 — plus Number of Stones and
 a Handle Strategy selector), `TrainingPlanStartReview.tsx` (pre-start summary),
-`TrainingPlanProgress.tsx` (compact focus-appropriate step progress, visually secondary to
-active capture), and `TrainingPlanStepTransition.tsx` (two mutually exclusive states —
-"Continue to next step" mid-plan, or a distinct "Plan complete" / Finish Training once
-the final step's own completion transition is reached; the latter reuses the existing
-`handleStartNewSession` session-archiving path, introducing no new completion logic —
-ADR-0012 Decision 5). An incomplete Release Time step instead shows its remaining
-configured stones at the bottom of the active runner. `Start New Session` and `New
-Training Block` are hidden while a plan owns progression, so a middle timing step cannot
-strand or silently abandon the following Exercise.
+`TrainingPlanProgress.tsx` (compact focus-appropriate step progress — "Step X of Y", the
+current Exercise, and its actual-versus-planned volume, e.g. `6 of 12 planned stones` —
+visually secondary to active capture), `TrainingPlanStepTransition.tsx` (the plan's own
+controls: **Next Exercise** whenever a next step exists and **Finish Training**
+throughout, neither gated on the planned count; the final step simply has no next-step
+control rather than a disabled one, and Finish Training reuses the existing session
+archive transition, introducing no second archiving path — ADR-0048), and
+`TrainingPlanFinishSummary.tsx` (the factual close of a finished training, rendered for
+the Session that was actually archived). `Start New Session` and `New Training Block` are
+hidden while a plan owns progression — in the curated-Exercise runner as well as the
+timing runner — so the plan's own controls are the single end-of-training path and a
+middle timing step cannot strand or silently abandon the following Exercise.
 
-`ShotEntry.tsx`/`BlindShotEntry.tsx` gained one optional prop, `presetHandle?: Handle`
-(undefined ⇒ unchanged behavior): when present, a render-time state-adjustment (same
-pattern already used for the editable-target input, not a `useEffect`) resyncs the
-locally-selected handle whenever the prop changes — the athlete may still override it
-for one shot; the next shot's preselect follows the plan's own sequence regardless.
+Advancing is enqueued onto the same `captureQueueRef` every `TimingResult` and the
+Session archive transition use (ADR-0007/0014), behind a synchronous single-flight ref,
+and revalidates the Session id and step index the click was bound to. Ending the
+outgoing runtime (`endActivePlanStepRuntime` in `src/lib/trainingPlans/stepTransition.ts`
+— complete where the Exercise domain allows it, abandon where it does not, and cancel
+only the leaving step's own Capture Sequence), materialising the next runtime, and
+stamping the advanced plan reference happen in one Session commit. Step outcomes shown in
+the summary (`not-started` / `in-progress` / `completed` / `ended-early` /
+`nothing-recorded`) are derived from the Session's recorded data by
+`getPlanStepSummaries`, never stored and never inferred from `activeStepIndex`.
+
+The handle a step's strategy expects for the next stone is `resolveExpectedHandle`'s
+result. `BlindShotEntry.tsx` takes it as `presetHandle?: Handle` (undefined ⇒ unchanged
+behavior) and preselects it, since that control owns its own draft and clears it on
+acceptance. `ShotEntry.tsx` holds no handle state at all: its whole draft is
+parent-owned, and the expected handle is applied when a draft is SEEDED rather than
+re-applied while one is in progress (see "Draft and submission ownership" above). The
+athlete may still override it for one shot; the next stone's preselect follows the
+plan's own sequence regardless.
 
 ### Scope (Version 1)
 
@@ -3142,17 +3453,19 @@ renderer's notice is the second line of defence.
 
 A small, independent persisted domain (`src/lib/accuracyToleranceProfiles/`) letting
 an athlete save reusable, named Accuracy Tolerance values (`AccuracyToleranceProfile:
-{ id, name, onTarget, acceptable, createdAt, updatedAt }`) and select one wherever
-Custom Accuracy Tolerance is already configured, instead of retyping the same On
-Target / Acceptable pair for every Training Block, Training Plan Step, or Release Time
-Exercise setup. See "Accuracy Tolerance Profile" and "Default Profile" in
-`docs/DOMAIN_GLOSSARY.md`.
+{ id, name, quantity, tolerance, createdAt, updatedAt }`, schema 2 — ADR-0051) and
+apply one wherever a tolerance is configured, instead of retyping the same values for
+every Training Block, Training Plan Step, or Release Time Exercise setup. A template
+carries its own **quantity** (seconds or m/s) and a full per-side `QuantityTolerance`,
+so a symmetric seconds template is simply the case where both sides are equal. See
+"Accuracy Tolerance Profile" and "Default Profile" in `docs/DOMAIN_GLOSSARY.md`.
 
 **Core principle — a profile helps select, it never becomes a live dependency.**
-Selecting a profile copies its current `onTarget`/`acceptable` values into whichever
-`TrainingSetupValue`/`ReleaseTimingBlockConfiguration`/`TrainingBlock.accuracyThresholds`
-is being built at that moment (a plain `{ onTarget, acceptable }` object, same shape
-`AccuracyThresholds` already uses) — no persisted type anywhere stores a profile id or
+Applying a profile copies its current values into whichever
+`TrainingSetupValue`/`ReleaseTimingBlockConfiguration`/`TrainingBlock` is being built at
+that moment — into `accuracyThresholds` when the result is a symmetric seconds pair, and
+into the block's `measurement` configuration when it is a speed or per-side tolerance
+that the legacy pair cannot express — and no persisted type anywhere stores a profile id or
 any other live reference back to a profile. This is a stricter version of the same
 discipline ADR-0008 already established for `TrainingBlock.accuracyThresholds` itself:
 editing or deleting a profile can never retroactively change an already-configured
@@ -3161,10 +3474,13 @@ analytics, because nothing downstream ever re-reads the profile after the values
 copied.
 
 **Domain and validation (`src/lib/accuracyToleranceProfiles/profiles.ts`)** — reuses
-`validateAccuracyThresholds` from `src/lib/accuracyThresholds.ts` directly (no second
-definition of a valid On Target/Acceptable pair): `buildAccuracyToleranceProfile`
-validates both the profile name (non-empty, ≤40 characters) and the thresholds before
-ever constructing a profile. `duplicateAccuracyToleranceProfile` generates a new id and
+`validateQuantityTolerance` from `src/lib/measurement/tolerance.ts` directly (no second
+definition of a valid On Target/Acceptable band, and the same per-side rule Training
+Blocks enforce): `buildAccuracyToleranceProfile` validates both the profile name
+(non-empty, ≤40 characters) and the tolerance before ever constructing a profile.
+`isProfileCompatibleWithQuantity`/`accuracyToleranceProfilesFor` are the one place that
+decides whether a template may be offered for a given quantity — units are never
+interchangeable, and a template is withheld rather than converted. `duplicateAccuracyToleranceProfile` generates a new id and
 an athlete-visible "(Copy)" name suffix; `deleteAccuracyToleranceProfile` removes a
 profile and, if it was the current default, clears `defaultProfileId` to `null` rather
 than silently promoting another saved profile to default (the athlete must explicitly
@@ -3185,22 +3501,38 @@ field-by-field repair); a `defaultProfileId` that no longer resolves to a surviv
 profile is cleared to `null`. Malformed profile data can never invalidate a Session or
 Training Plan, since this module never reads or writes either of their storage keys.
 
-**UI integration** — `AccuracyToleranceProfileSelector.tsx` is the one shared "pick a
-saved profile, or enter a one-off Custom value" control, rendered inside
-`TrainingSetup.tsx`'s existing Custom Accuracy Tolerance branch. Because the Release
+**UI integration (Stage B)** — `QuantityToleranceEditor.tsx` is the one shared tolerance
+editor. It renders one quantity's bands in that quantity's own unit, symmetric by
+default with an explicit per-side option, and offers the app's built-in starting values
+and the athlete's unit-compatible saved templates in ONE list — no "Custom" step has to
+be found first. `TrainingSetup.tsx` shows a compact summary of the resolved tolerance
+with a single **Adjust** action that opens it (one editor per measured quantity), which
+replaced the former Standard/Tight/Custom preset row and the nested
+`AccuracyToleranceProfileSelector`. Where the surrounding form cannot persist a per-side
+tolerance — Variable and Blind Weight, which keep their legacy time-only representation —
+the asymmetric option is withheld and the draft is collapsed, rather than accepted and
+then flattened on save. Because the Release
 Time Exercise setup (`TrackerApp.tsx`), New Training Block (`NewTrainingBlock.tsx`), and the Training Plan
 Step Editor's Release Time branch (`TrainingPlanStepEditor.tsx`) all render
 `TrainingSetup.tsx` unmodified (see "Training Plans" above and ADR-0012), adding the two new
 `accuracyToleranceProfiles`/`defaultAccuracyToleranceProfileId` props to `TrainingSetup`
 and threading them down from `TrackerApp` covers all three surfaces without any
-per-surface logic. A default profile only prefills a **brand-new** configuration's
-Custom fields (never an already-configured block/step being edited, and never the
-top-level Standard/Tight/Custom choice itself — see "Default Profile" in the glossary).
+per-surface logic. A default profile only seeds a **brand-new** configuration, and only
+the quantity it belongs to — a speed default seeds the speed fields and leaves the
+seconds fields at the app's own values (never an already-configured block/step being
+edited — see "Default Profile" in the glossary).
 Settings > Accuracy Tolerances (`AccuracyToleranceProfilesScreen.tsx` +
-`AccuracyToleranceProfileForm.tsx`, opened from a new section in `SettingsScreen.tsx`) is
+`AccuracyToleranceProfileForm.tsx`, opened from a section in `SettingsScreen.tsx`) is
 the main management location: create/edit/duplicate/delete/set-default, following the
 same full-screen-modal convention `NewTrainingBlock.tsx`/`TrainingPlanStepEditor.tsx`
-already use, with delete confirmed via the existing shared `ConfirmModal`.
+already use, with delete confirmed via the existing shared `ConfirmModal`. Stage B's
+form can create and edit **every** template shape this app stores (seconds or m/s,
+symmetric or per-side), through the same `QuantityToleranceEditor`. The one thing it
+cannot change is a saved template's **quantity**: blocks, plan steps and history already
+copied its numbers, and relabelling 0.05s as 0.05 m/s would change what each of those
+copies was judged against. That invariant is enforced twice — the editor shows no
+quantity control at all while editing, and `handleUpdateAccuracyToleranceProfile` takes
+the quantity from the STORED template rather than from the submitted form value.
 
 **Deferred (see `docs/TECHNICAL_DEBT_AND_ROADMAP.md`):** Assessment setup
 (`AssessmentThresholdSelector.tsx`/`AssessmentOverview.tsx`/`AssessScreen.tsx`) already
@@ -3792,8 +4124,9 @@ local component state.
 | `TrainingPlanEditor.tsx` | Create/edit a plan — name, optional description, ordered step list with Move Up/Down/Duplicate/Delete, "Add Step" |
 | `TrainingPlanExercisePicker.tsx` / `TrainingPlanStepEditor.tsx` | Searchable Technique/Shotmaking/Measured catalogue with descriptive cards and inline setup/diagram preview, shared by create/edit; snapshots the exact selected Exercise Version, while only Release Time wraps `TrainingSetup.tsx` and adds Number of Stones plus Handle Strategy |
 | `TrainingPlanStartReview.tsx` | Profile-owned pre-start summary of ordered mixed steps and any planned Release Time volume + Start Training |
-| `TrainingPlanProgress.tsx` | Compact focus-aware "Step X of Y" and current Exercise/stone progress during execution — visually secondary to active capture |
-| `TrainingPlanStepTransition.tsx` | "Continue to next step" mid-plan, or a distinct "Plan complete" + Finish Training on the final step — never both at once; Release Time displays remaining stones until this transition becomes reachable |
+| `TrainingPlanProgress.tsx` | Compact focus-aware "Step X of Y", current Exercise and actual-versus-planned volume during execution — visually secondary to active capture |
+| `TrainingPlanStepTransition.tsx` | The plan's always-available controls — Next Exercise (absent, not disabled, on the final step) and Finish Training — never gated on the planned stone count (ADR-0048) |
+| `TrainingPlanFinishSummary.tsx` | Factual close of a finished training: the archived Session's per-step outcome and actual-versus-planned volume, plus Start New Training; states plainly when nothing was recorded and so nothing was saved |
 | `identity/IdentityProvider.tsx` | The one application-level identity owner. Mounts `TrackerApp` only for a reducer-accepted ready session; otherwise renders the global gate |
 | `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |
 | `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |

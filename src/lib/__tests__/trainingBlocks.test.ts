@@ -61,7 +61,8 @@ describe("Variable Weight — Smart Random", () => {
     });
 
     const usedTarget = getNextShotTarget(block);
-    const advanced = advanceBlockTarget(block, usedTarget, []);
+    expect(usedTarget).toBeDefined();
+    const advanced = advanceBlockTarget(block, usedTarget as number, []);
 
     expect(advanced.pendingTargetTime).toBeDefined();
     // The block's own record of "what target was used" never changes
@@ -171,7 +172,8 @@ describe("Smart Random — per-block configurable range", () => {
 
     for (let i = 0; i < 20; i++) {
       const used = getNextShotTarget(block);
-      const advanced = advanceBlockTarget(block, used, []);
+      expect(used).toBeDefined();
+      const advanced = advanceBlockTarget(block, used as number, []);
       expect(advanced.pendingTargetTime).toBeGreaterThanOrEqual(2.5);
       expect(advanced.pendingTargetTime).toBeLessThanOrEqual(2.7);
     }
@@ -394,7 +396,8 @@ describe("shot target immutability", () => {
 
     // Shot 1 uses the initial pending target.
     const shot1Target = computeShotTarget(block, undefined);
-    const blockAfterShot1 = advanceBlockTarget(block, shot1Target, []);
+    expect(shot1Target).toBeDefined();
+    const blockAfterShot1 = advanceBlockTarget(block, shot1Target as number, []);
 
     // Coach changes the target before shot 2 — this must not be able to
     // reach back and change shot1Target, which is already a plain number

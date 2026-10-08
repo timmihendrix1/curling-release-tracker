@@ -49,6 +49,11 @@ is a Measured Exercise in the same Library.
    completion rule. The active screen shows the remaining stones, hides `Start New
    Session`, and replaces that status with `Continue to Next Step` when the count is
    reached. This works when Release Time is between two other Exercise steps.
+   **Superseded in part by ADR-0048:** the shot count is still the step's completion
+   *rule*, but it no longer gates progression. The remaining-stones notice and the
+   count-gated `Continue to Next Step` control are replaced by one always-available
+   `Next Exercise` / `Finish Training` pair; hiding `Start New Session` while a plan is
+   active is unchanged.
 
 ## Consequences
 

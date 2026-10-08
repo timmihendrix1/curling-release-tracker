@@ -1,10 +1,15 @@
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { surfaceClass } from "./Surface";
+import ExternalDocumentLink from "./platform/ExternalDocumentLink";
+import FileExportStatusNotice from "./FileExportStatusNotice";
+import type { FileExportStatus } from "./useFileExport";
 
 type SettingsScreenProps = {
   hasHistory: boolean;
   onExportHistoryCsv: () => void;
+  /** Visible result of the last export attempt (Stage M3a). */
+  exportStatus?: FileExportStatus;
   onClearHistory: () => void;
   /**
    * True while the Session domain isn't "ready" (docs/PERSISTENCE_BOUNDARY_DESIGN.md
@@ -47,6 +52,7 @@ type SettingsScreenProps = {
 export default function SettingsScreen({
   hasHistory,
   onExportHistoryCsv,
+  exportStatus,
   onClearHistory,
   clearHistoryDisabled = false,
   accuracyToleranceProfiles,
@@ -173,11 +179,12 @@ export default function SettingsScreen({
         <button
           type="button"
           onClick={onExportHistoryCsv}
-          disabled={!hasHistory}
+          disabled={!hasHistory || exportStatus?.state === "working"}
           className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
           Export History CSV
         </button>
+        {exportStatus !== undefined && <FileExportStatusNotice status={exportStatus} />}
 
         {!hasHistory && (
           <p className="mt-3 text-xs text-slate-500">
@@ -198,22 +205,18 @@ export default function SettingsScreen({
             training and Assessment drafts stay on this device.
           </p>
           <div className="mt-2 flex flex-wrap gap-x-4">
-            <a
+            <ExternalDocumentLink
               href="/privacy"
-              target="_blank"
-              rel="noreferrer noopener"
               className="inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
             >
               Read the Privacy Notice
-            </a>
-            <a
+            </ExternalDocumentLink>
+            <ExternalDocumentLink
               href="/terms"
-              target="_blank"
-              rel="noreferrer noopener"
               className="inline-flex min-h-11 items-center rounded px-1 text-sm font-medium text-slate-700 underline decoration-slate-400 underline-offset-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
             >
               Read the Terms of Service
-            </a>
+            </ExternalDocumentLink>
           </div>
         </div>
       </div>

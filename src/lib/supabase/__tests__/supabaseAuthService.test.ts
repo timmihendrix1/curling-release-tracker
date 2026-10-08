@@ -42,6 +42,12 @@ const { fakeClient, getSupabaseBrowserClientMock } = vi.hoisted(() => {
 
 vi.mock("../supabaseClient", () => ({
   getSupabaseBrowserClient: getSupabaseBrowserClientMock,
+  // Stage M3b3's credential-health slot. `null` is the unclaimed state — the
+  // Web build and every build in this stage — so these tests exercise the
+  // service's behaviour exactly as it was before that slot existed. The
+  // claimed-verdict behaviour has its own suite
+  // (`credentialHealthAuthIntegration.test.ts`).
+  claimedBrowserCredentialHealth: () => null,
 }));
 
 // Vitest hoists the vi.mock call above this static import too, so

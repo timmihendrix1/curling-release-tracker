@@ -161,8 +161,11 @@ describe("SettingsScreen", () => {
           {
             id: "p1",
             name: "Elite",
-            onTarget: 0.05,
-            acceptable: 0.1,
+            quantity: "time" as const,
+            tolerance: {
+              onTarget: { lower: 0.05, upper: 0.05 },
+              acceptable: { lower: 0.1, upper: 0.1 },
+            },
             createdAt: "2026-01-01T00:00:00.000Z",
             updatedAt: "2026-01-01T00:00:00.000Z",
           },

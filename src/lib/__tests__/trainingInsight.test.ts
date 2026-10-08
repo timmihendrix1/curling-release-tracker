@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Session, Shot, TrainingBlock } from "../../types";
 import { STANDARD_ACCURACY_THRESHOLDS } from "../accuracyThresholds";
 import type { HistoryAnalysisBlockContext } from "../historyAnalysis";
+import { toleranceFromAccuracyThresholds } from "../measurement/tolerance";
 import { buildTrainingInsight } from "../trainingInsight";
 
 let idCounter = 0;
@@ -62,6 +63,7 @@ function entry(
     session,
     shots,
     thresholds: STANDARD_ACCURACY_THRESHOLDS,
+    timeTolerance: toleranceFromAccuracyThresholds(STANDARD_ACCURACY_THRESHOLDS),
   };
 }
 

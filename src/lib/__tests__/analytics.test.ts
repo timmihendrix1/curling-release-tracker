@@ -38,7 +38,12 @@ describe("analyzeShots — Fixed Weight (single shared target)", () => {
   ];
 
   it("matches a plain single-target calculation", () => {
-    const releaseTimes = shots.map((s) => s.releaseTime);
+    // This fixture is entirely time-measured; narrowing here keeps the
+    // comparison against the raw values exact.
+    const releaseTimes = shots.map((s) => {
+      if (s.releaseTime === undefined) throw new Error("fixture must be time-measured");
+      return s.releaseTime;
+    });
     const analysis = analyzeShots(shots);
 
     expect(analysis.average).toBeCloseTo(average(releaseTimes), 10);

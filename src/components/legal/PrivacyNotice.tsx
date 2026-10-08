@@ -1,3 +1,4 @@
+import ExternalDocumentLink from "../platform/ExternalDocumentLink";
 export const PRIVACY_NOTICE_VERSION = "privacy-2026-08-28";
 export const PRIVACY_NOTICE_EFFECTIVE_DATE = "28 August 2026";
 export const PRIVACY_NOTICE_CANONICAL_PATH = "/legal/privacy/2026-08-28";
@@ -179,14 +180,12 @@ export default function PrivacyNotice() {
               info@evolane.swiss
             </a>
             . We may need to confirm your identity. You may also contact the{" "}
-            <a
+            <ExternalDocumentLink
               className="font-medium text-slate-900 underline underline-offset-4"
               href="https://www.edoeb.admin.ch/en"
-              rel="noreferrer noopener"
-              target="_blank"
             >
               Swiss Federal Data Protection and Information Commissioner
-            </a>
+            </ExternalDocumentLink>
             , or your competent local supervisory authority where applicable.
           </p>
         </section>

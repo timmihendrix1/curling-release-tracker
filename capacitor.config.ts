@@ -21,10 +21,10 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * guarantee in src/lib/supabase/authorizedFetch.ts into an accident of where the
  * document happened to be loaded from. The bundle is local.
  *
- * No `UIBackgroundModes`, no Bluetooth permission string, no OAuth scheme, no
- * Associated Domains entitlement and no deep-link registration are declared.
- * Background measurement is open decision **P3**; native identity is M2; Brower
- * capture is M4. M1 declares only what it exercises.
+ * The iOS target declares Bluetooth permission for the assisted Brower pilot.
+ * No `UIBackgroundModes`, OAuth scheme, Associated Domains entitlement or deep-link
+ * registration is declared. Background measurement remains open decision **P3**;
+ * native OAuth and full production Brower integration retain their separate gates.
  */
 const config: CapacitorConfig = {
   appId: "local.dev.curlingperformance",

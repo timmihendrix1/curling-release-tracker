@@ -676,14 +676,23 @@ export default function ExerciseSoloExecutionScreen({
           >
             Complete Exercise
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmAbandon(true)}
-            disabled={!writable}
-            className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-red-700 underline disabled:opacity-50"
-          >
-            Abandon Exercise
-          </button>
+          {/* Inside a Training Plan the plan's own controls (Next Exercise / Finish
+              Training) are the single end-of-training path — the same rule the
+              "Back to Exercise Library" action below already follows. Abandoning
+              discards the Exercise Execution the active plan step is bound to, which
+              would strand the plan with no navigation at all, so it is not offered
+              here. Leaving a step early is already supported, non-destructively, by
+              Next Exercise and Finish Training (ADR-0048). */}
+          {!withinTrainingPlan && (
+            <button
+              type="button"
+              onClick={() => setConfirmAbandon(true)}
+              disabled={!writable}
+              className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-red-700 underline disabled:opacity-50"
+            >
+              Abandon Exercise
+            </button>
+          )}
         </div>
       ) : !withinTrainingPlan ? (
         <button
@@ -695,7 +704,10 @@ export default function ExerciseSoloExecutionScreen({
         </button>
       ) : null}
 
-      {(!withinTrainingPlan || active) && (
+      {/* Within a Training Plan the plan's own controls (Next Exercise / Finish
+          Training) are the single end-of-training path — no second, red discard-style
+          action competes with them. */}
+      {!withinTrainingPlan && (
         <button
           type="button"
           onClick={onStartNewSession}

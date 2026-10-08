@@ -2,6 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
+import { MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME } from "./storageDiagnosticsFlag";
+import { MOBILE_NATIVE_STORAGE_DEFINE_NAME } from "./nativeStorageFlag";
 
 const mobileRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -18,6 +20,15 @@ const mobileRoot = path.dirname(fileURLToPath(import.meta.url));
  */
 export default defineConfig({
   plugins: [react()],
+  // These checks run against a DEFAULT build's semantics: BOTH storage opt-ins
+  // are off, exactly as they are for anyone who did not set the environment
+  // variables. The names come from the same modules the production build reads,
+  // so they cannot drift. A test that needs the flag-enabled tree renders the
+  // composition root directly rather than flipping a define.
+  define: {
+    [MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME]: "false",
+    [MOBILE_NATIVE_STORAGE_DEFINE_NAME]: "false",
+  },
   test: {
     root: mobileRoot,
     include: ["__tests__/**/*.test.ts", "__tests__/**/*.test.tsx"],

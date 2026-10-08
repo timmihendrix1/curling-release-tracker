@@ -10,8 +10,11 @@ afterEach(cleanup);
 const eliteProfile: AccuracyToleranceProfile = {
   id: "elite",
   name: "Elite",
-  onTarget: 0.05,
-  acceptable: 0.1,
+  quantity: "time" as const,
+  tolerance: {
+    onTarget: { lower: 0.05, upper: 0.05 },
+    acceptable: { lower: 0.1, upper: 0.1 },
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -26,7 +29,7 @@ function selectReleaseTime() {
 }
 
 describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
-  it("passes saved profiles through to the embedded TrainingSetup, reachable under Custom", () => {
+  it("passes saved templates through to the embedded TrainingSetup's tolerance editor", () => {
     render(
       <TrainingPlanStepEditor
         onSave={vi.fn()}
@@ -37,9 +40,17 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
     );
 
     selectReleaseTime();
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    expect(screen.getByLabelText("Accuracy Tolerance Profile")).toBeInTheDocument();
-    expect(screen.getByText(/Elite: On Target ±0.05s/)).toBeInTheDocument();
+    // The default template seeds the step without the editor having to be opened.
+    expect(
+      screen.getByText(/On Target ±0.05s · Acceptable ±0.10s/)
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Adjust" }));
+    expect(
+      within(screen.getByLabelText("Start from a saved value")).getByRole("option", {
+        name: /Elite/,
+      })
+    ).toBeInTheDocument();
   });
 
   it("stores the resolved numeric values (not a profile id) in the saved step configuration", () => {
@@ -54,7 +65,6 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
     );
 
     selectReleaseTime();
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
     fireEvent.click(screen.getByRole("button", { name: "Add Step" }));
 
     expect(onSave).toHaveBeenCalledWith(
@@ -69,9 +79,11 @@ describe("TrainingPlanStepEditor — Accuracy Tolerance Profiles", () => {
   it("works with no profiles passed at all (default props)", () => {
     render(<TrainingPlanStepEditor onSave={vi.fn()} onCancel={vi.fn()} />);
     selectReleaseTime();
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
-    expect(
-      screen.queryByLabelText("Accuracy Tolerance Profile")
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Adjust" }));
+
+    // Only the app's own built-in starting values are offered.
+    const list = screen.getByLabelText("Start from a saved value");
+    expect(within(list).getByRole("option", { name: /Standard/ })).toBeInTheDocument();
+    expect(within(list).getByRole("option", { name: /Tight/ })).toBeInTheDocument();
   });
 });

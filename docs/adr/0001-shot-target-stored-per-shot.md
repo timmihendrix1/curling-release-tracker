@@ -4,6 +4,16 @@
 
 Accepted. Implemented.
 
+**Refined (not superseded) by [ADR-0051](0051-fixed-weight-measured-quantities-and-per-side-tolerances.md).**
+The rule below is unchanged and still governs: a measured value is stored together with
+the target that actually applied to it, once, and is never recomputed afterwards.
+ADR-0051 only makes the *pairing* explicit in both directions — a shot carries
+`targetTime` exactly when it carries `releaseTime`, and a speed carries `targetSpeed`
+exactly when it carries `speed`. A stone that records no time therefore has neither
+time field; a value found without its own target is treated as not measured rather
+than judged against the block's current target, which is precisely the silent
+reinterpretation this ADR exists to prevent.
+
 ## Context
 
 Early in the project, a "target time" existed only at the session level. Once training

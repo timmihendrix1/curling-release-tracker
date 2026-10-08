@@ -54,7 +54,14 @@ function snapToStep(value: number, step: number = SMART_RANDOM_STEP): number {
  * model was built to avoid. Coach / Manual remains the only option for
  * Hog-Hog until real values are supplied.
  */
-export function isSmartRandomAvailable(measurementMode: MeasurementMode): boolean {
+/**
+ * Smart Random only has a documented target profile for Back-Hog. `undefined` — a
+ * block that measures no time at all and therefore has no timing interval — is
+ * likewise unavailable rather than silently treated as Back-Hog.
+ */
+export function isSmartRandomAvailable(
+  measurementMode: MeasurementMode | undefined
+): boolean {
   return measurementMode === "back-hog";
 }
 

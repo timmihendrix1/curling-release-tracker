@@ -3,7 +3,8 @@
 // docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md section 20). One row
 // per attempt (valid and invalid), across one or more runs, so the exported
 // file is the raw evidence itself — never only derived metrics.
-import { downloadCsv } from "../export";
+import { CSV_MIME_TYPE } from "../export";
+import type { FileExportRequest } from "../platform/fileExport";
 import { absoluteError, signedError } from "./metrics";
 import { getAllPlannedShots } from "./progress";
 import type { AssessmentRun } from "./types";
@@ -88,6 +89,17 @@ export function buildAssessmentCsv(runs: AssessmentRun[]): string {
   return [ASSESSMENT_CSV_HEADER, ...rows].join("\n");
 }
 
-export function exportAssessmentRunsToCsv(runs: AssessmentRun[], fileName = "assessment_history.csv") {
-  downloadCsv(buildAssessmentCsv(runs), fileName);
+/** Delivery request for one or more Assessment Runs. The CSV itself — one row
+ * per attempt, valid and invalid — is unchanged; only delivery moved behind the
+ * shared boundary (Stage M3a). */
+export function assessmentCsvExport(
+  runs: AssessmentRun[],
+  fileName = "assessment_history.csv"
+): FileExportRequest {
+  return {
+    displayFileName: fileName,
+    content: buildAssessmentCsv(runs),
+    mimeType: CSV_MIME_TYPE,
+    shareTitle: "Assessment export",
+  };
 }

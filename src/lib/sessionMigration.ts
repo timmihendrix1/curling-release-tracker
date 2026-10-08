@@ -28,6 +28,12 @@ import { RELEASE_TIME_VERSION_ID } from "./exercises/content";
 import { exerciseRunnerKind, findExerciseVersion } from "./exercises/lookup";
 import type { ExerciseVersion } from "./exercises/types";
 import { validateSessionExerciseState } from "./exercises/sessionIntegration";
+import {
+  canonicalPlanExecution,
+  canonicalShot,
+  canonicalTrainingBlock,
+} from "./measurement/canonicalShape";
+import { normalizeBlockMeasurementConfiguration } from "./measurement/quantities";
 import { getEffectiveTargetMode } from "./trainingBlocks";
 import {
   DEFAULT_SMART_RANDOM_MAX,
@@ -131,7 +137,7 @@ function parseRawAccuracyThresholds(
 }
 
 function createLegacyBlock(raw: Record<string, unknown>): TrainingBlock {
-  return {
+  return canonicalTrainingBlock({
     id: crypto.randomUUID(),
     name: "Legacy Block",
     mode: "fixed",
@@ -142,7 +148,7 @@ function createLegacyBlock(raw: Record<string, unknown>): TrainingBlock {
     // No accuracyThresholds could ever have existed on genuinely legacy,
     // pre-block data — resolves to the legacy default (0.10s / 0.20s).
     accuracyThresholds: resolveAccuracyThresholds(undefined),
-  };
+  });
 }
 
 /**
@@ -173,15 +179,43 @@ function migrateBlocks(raw: Record<string, unknown>): TrainingBlock[] {
             (typeof rawBlock.targetTime === "number" ? "fixed" : "manual")
           : undefined;
 
-      return {
+      // A block declaring `measurement` is measurement-aware (ADR-0051). Its time
+      // fields are passed through exactly as stored and are NEVER defaulted: a
+      // speed-only block legitimately has neither, and inventing "back-hog" or
+      // 3.75s for it would manufacture a timing interval and a target that were
+      // never chosen. A block without `measurement` is the historical time-only
+      // block and keeps its existing repair rules, unchanged, below.
+      const measurement = normalizeBlockMeasurementConfiguration(
+        rawBlock.measurement as TrainingBlock["measurement"]
+      );
+      const measuresTime = measurement
+        ? measurement.quantities.includes("time")
+        : true;
+
+      const timeFields = measurement
+        ? {
+            ...(measuresTime && VALID_MEASUREMENT_MODES.includes(
+              rawBlock.measurementMode as MeasurementMode
+            )
+              ? { measurementMode: rawBlock.measurementMode as MeasurementMode }
+              : {}),
+            ...(measuresTime && typeof rawBlock.targetTime === "number"
+              ? { targetTime: rawBlock.targetTime }
+              : {}),
+          }
+        : {
+            measurementMode: normalizeMeasurementMode(rawBlock.measurementMode),
+            targetTime:
+              typeof rawBlock.targetTime === "number"
+                ? rawBlock.targetTime
+                : DEFAULT_TARGET_TIME,
+          };
+
+      return canonicalTrainingBlock({
         id: typeof rawBlock.id === "string" ? rawBlock.id : crypto.randomUUID(),
         name: typeof rawBlock.name === "string" ? rawBlock.name : "Block",
         mode,
-        measurementMode: normalizeMeasurementMode(rawBlock.measurementMode),
-        targetTime:
-          typeof rawBlock.targetTime === "number"
-            ? rawBlock.targetTime
-            : DEFAULT_TARGET_TIME,
+        ...timeFields,
         createdAt:
           typeof rawBlock.createdAt === "string"
             ? rawBlock.createdAt
@@ -213,7 +247,8 @@ function migrateBlocks(raw: Record<string, unknown>): TrainingBlock[] {
         accuracyThresholds: resolveAccuracyThresholds(
           parseRawAccuracyThresholds(rawBlock.accuracyThresholds)
         ),
-      };
+        ...(measurement ? { measurement } : {}),
+      });
     });
   }
 
@@ -238,20 +273,51 @@ function migrateShots(
         ? rawShot.blockId
         : fallbackBlockId;
 
-    const targetTime =
-      typeof rawShot.targetTime === "number"
-        ? rawShot.targetTime
-        : blockById.get(blockId)?.targetTime ?? DEFAULT_TARGET_TIME;
+    // The stone's own block decides which format it is in. In a measurement-aware
+    // block nothing is defaulted: a missing time stays genuinely missing rather
+    // than becoming releaseTime=0 / targetTime=3.75, which would turn an
+    // outstanding measurement into a recorded one. In a legacy block the original
+    // fallbacks below apply exactly as they always have.
+    const block = blockById.get(blockId);
+    const measurementAware = block?.measurement !== undefined;
 
-    return {
+    const measurementFields = measurementAware
+      ? {
+          ...(typeof rawShot.releaseTime === "number"
+            ? { releaseTime: rawShot.releaseTime }
+            : {}),
+          ...(typeof rawShot.targetTime === "number"
+            ? { targetTime: rawShot.targetTime }
+            : {}),
+          ...(typeof rawShot.speed === "number" ? { speed: rawShot.speed } : {}),
+          ...(typeof rawShot.targetSpeed === "number"
+            ? { targetSpeed: rawShot.targetSpeed }
+            : {}),
+          ...(VALID_TIMING_PROVIDER_TYPES.includes(
+            rawShot.speedSource as TimingProviderType
+          )
+            ? { speedSource: rawShot.speedSource as TimingProviderType }
+            : {}),
+          ...(typeof rawShot.speedRecordedAt === "string"
+            ? { speedRecordedAt: rawShot.speedRecordedAt }
+            : {}),
+        }
+      : {
+          releaseTime:
+            typeof rawShot.releaseTime === "number" ? rawShot.releaseTime : 0,
+          targetTime:
+            typeof rawShot.targetTime === "number"
+              ? rawShot.targetTime
+              : block?.targetTime ?? DEFAULT_TARGET_TIME,
+        };
+
+    return canonicalShot({
       id: typeof rawShot.id === "string" ? rawShot.id : crypto.randomUUID(),
       sessionId,
       blockId,
       shotNumber:
         typeof rawShot.shotNumber === "number" ? rawShot.shotNumber : index + 1,
-      releaseTime:
-        typeof rawShot.releaseTime === "number" ? rawShot.releaseTime : 0,
-      targetTime,
+      ...measurementFields,
       predictedTime:
         typeof rawShot.predictedTime === "number"
           ? rawShot.predictedTime
@@ -281,7 +347,7 @@ function migrateShots(
           : undefined,
       deviceId: typeof rawShot.deviceId === "string" ? rawShot.deviceId : undefined,
       laneId: typeof rawShot.laneId === "string" ? rawShot.laneId : undefined,
-    };
+    });
   });
 }
 
@@ -461,7 +527,9 @@ function backfillPendingTargets(
 
       const min = block.smartRandomMin ?? DEFAULT_SMART_RANDOM_MIN;
       const max = block.smartRandomMax ?? DEFAULT_SMART_RANDOM_MAX;
-      const recentTargets = blockShots.map((shot) => shot.targetTime);
+      const recentTargets = blockShots
+        .map((shot) => shot.targetTime)
+        .filter((target): target is number => target !== undefined);
 
       const pendingWithinRange =
         block.pendingTargetTime !== undefined &&
@@ -506,17 +574,51 @@ function isValidShotCountCompletion(value: unknown): value is ShotCountCompletio
   );
 }
 
+/**
+ * A plan step's stored configuration, validated for all three measurement
+ * configurations (ADR-0051).
+ *
+ * The time fields are required exactly when the step actually measures time — which is
+ * always true for a legacy step with no `measurement`, and is read from the declared
+ * quantities otherwise. Requiring them unconditionally would silently discard the whole
+ * `planExecution` of a valid speed-only plan on every reload, and would make the cloud
+ * boundary accept a session it could not read back. Dummy time fields are never
+ * inserted to satisfy this check.
+ */
 function isValidReleaseTimingBlockConfiguration(
   value: unknown
 ): value is ReleaseTimingBlockConfiguration {
   if (!isRecord(value)) return false;
   if (!isRecord(value.accuracyThresholds)) return false;
 
+  let measuresTime = true;
+  if (value.measurement !== undefined) {
+    const measurement = normalizeBlockMeasurementConfiguration(value.measurement);
+    if (!measurement) return false;
+    // Only Fixed Weight may declare what it measures.
+    if (value.mode !== "fixed") return false;
+    measuresTime = measurement.quantities.includes("time");
+
+    if (measuresTime) {
+      // One target authority: the two representations must agree exactly.
+      if (value.targetTime !== measurement.time?.target) return false;
+    } else if (
+      value.measurementMode !== undefined ||
+      value.targetTime !== undefined
+    ) {
+      return false;
+    }
+  }
+
+  const timeFieldsValid = measuresTime
+    ? VALID_MEASUREMENT_MODES.includes(value.measurementMode as MeasurementMode) &&
+      typeof value.targetTime === "number"
+    : value.measurementMode === undefined && value.targetTime === undefined;
+
   return (
     typeof value.name === "string" &&
     VALID_BLOCK_MODES.includes(value.mode as BlockMode) &&
-    VALID_MEASUREMENT_MODES.includes(value.measurementMode as MeasurementMode) &&
-    typeof value.targetTime === "number" &&
+    timeFieldsValid &&
     VALID_VARIABLE_TARGET_MODES.includes(
       value.variableTargetMode as VariableTargetMode
     ) &&
@@ -682,7 +784,7 @@ function migratePlanExecution(
     steps.push({ step, runtime });
   }
 
-  return {
+  return canonicalPlanExecution({
     sourcePlanId: rawExecution.sourcePlanId,
     sourcePlanName: rawExecution.sourcePlanName,
     sourcePlanUpdatedAt:
@@ -691,7 +793,7 @@ function migratePlanExecution(
         : undefined,
     steps,
     activeStepIndex,
-  };
+  });
 }
 
 export function migrateSession(raw: unknown): Session {

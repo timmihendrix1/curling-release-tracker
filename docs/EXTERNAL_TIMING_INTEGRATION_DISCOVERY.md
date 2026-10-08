@@ -2,6 +2,18 @@
 
 ## Status (2026-09-28)
 
+**2026-09-30 scope update:** the user authorised an assisted foreground iOS training
+pilot inside the existing app, with setup arming and explicit acceptance of each candidate
+time. **That pilot is now implemented (ADR-0050) and is not hardware-accepted.** It is a
+bounded exception to the full-production sequencing below, and **completes neither Gate C
+nor Gate D**: Gate C stays **partial** and Gate D stays **not started**, because no live
+two-gate capture has been performed — see the
+[device checklist](BROWER_INTEGRATION_STATUS.md#physical-device-checklist-for-the-assisted-capture-pilot).
+See also the [canonical pilot decision](BROWER_INTEGRATION_STATUS.md#assisted-training-pilot-decision-2026-09-30)
+and [deferred-work inventory](TECHNICAL_DEBT_AND_ROADMAP.md#immediate-priority-assisted-brower-training-pilot-2026-09-30).
+The discovery instrument and its scope remain unchanged; the pilot does not replace or
+extend the development-only diagnostic.
+
 - **Hardware: available.** A Brower TCi Timer has been received.
 - **Protocol documentation: available.** Brower supplied an official BLE specification,
   now in this repository. See `docs/BROWER_INTEGRATION_STATUS.md`, which is the canonical
@@ -374,8 +386,10 @@ must not describe A or B as if it were C or D.
   nibble order, truncation to hundredths, and big-endian memory-request addressing on the
   tested ranges. That is not the gate. Most of the packet is still unverified,
   little-endian was never sent, and there is exactly one test collection, so nothing has
-  reproduced across separate collections. **Do not restate this gate as passed, and do not write a decoder against
-  it.** See `docs/BROWER_INTEGRATION_STATUS.md` for exactly what is and is not supported.
+  reproduced across separate collections in that initial evidence set. **Do not restate
+  this gate as passed.** The later manual and memory-retrieval evidence and the bounded
+  candidate-decoder exception are recorded in `docs/BROWER_INTEGRATION_STATUS.md`;
+  they do not authorise a general production decoder.
 - **Gate D — Production capture integration. Not started.** A real `TimingProvider`
   delivering `TimingResult` values into the Capture Sequence boundary. Outside the scope of
   the diagnostic stage. No production transport, provider, capture integration or automatic
@@ -524,8 +538,9 @@ Support for more than one active thrower/sheet/device at a time, with readings r
 to the correct person's draft. Requires the multi-unit discovery questions above to be
 answered first.
 
-These stages describe a possible future, not a commitment or a schedule. Do not begin
-Stage 2 work before Stage 0 has produced verified encoding evidence (Gate C) — a real
+These stages describe full production integration. Apart from the explicitly approved
+assisted pilot linked above, do not begin Stage 2 work before Stage 0 has produced
+verified encoding evidence (Gate C) — a real
 device being *in hand* is no longer the constraint, and neither is a real device being
 *reachable*: both are now demonstrated. A real device being **understood** is, and Gate C
 is still only partial.

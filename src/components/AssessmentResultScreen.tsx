@@ -15,7 +15,9 @@ import {
 import { validateThresholdValues, type ThresholdValidationResult } from "../lib/assessment/thresholds";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { ASSESSMENT_DELETE_RUN_EXPLANATION, ASSESSMENT_RESULT_RECORDED_TIMES_UNCHANGED_NOTE } from "../lib/assessmentResultContent";
-import { exportAssessmentRunsToCsv } from "../lib/assessment/export";
+import { assessmentCsvExport } from "../lib/assessment/export";
+import { useFileExport } from "./useFileExport";
+import FileExportStatusNotice from "./FileExportStatusNotice";
 import { parseReleaseTime } from "../lib/timeInput";
 import { accuracyThresholdSetLabel } from "../lib/assessment/result";
 import AssessmentBlockResults from "./AssessmentBlockResults";
@@ -59,6 +61,7 @@ export default function AssessmentResultScreen({
   onBack,
   onDeleteRun,
 }: AssessmentResultScreenProps) {
+  const { status: exportStatus, runExport } = useFileExport();
   const [analysisMode, setAnalysisMode] = useState<AnalysisThresholdMode>("original");
   const analysisCustom = useThresholdInputs({
     onTarget: run.thresholdSnapshot.values.onTarget.toFixed(2),
@@ -294,10 +297,14 @@ export default function AssessmentResultScreen({
         </details>
       )}
 
+      <FileExportStatusNotice status={exportStatus} />
       <div className="flex flex-col gap-2 sm:flex-row">
         <button
           type="button"
-          onClick={() => exportAssessmentRunsToCsv([run], `assessment_${run.id}.csv`)}
+          onClick={() => {
+            void runExport(assessmentCsvExport([run], `assessment_${run.id}.csv`));
+          }}
+          disabled={exportStatus.state === "working"}
           className="flex-1 rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
         >
           Export Assessment CSV

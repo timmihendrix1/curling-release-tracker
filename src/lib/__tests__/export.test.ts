@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildSessionCsv } from "../export";
+import {
+  CSV_MIME_TYPE,
+  buildHistoryCsv,
+  buildSessionCsv,
+  historyCsvExport,
+  sessionCsvExport,
+} from "../export";
 import type { Session } from "../../types";
 
 function baseSession(overrides: Partial<Session> = {}): Session {
@@ -401,5 +407,39 @@ describe("buildSessionCsv — Accuracy Threshold columns", () => {
 
     const col = csvColumns(buildSessionCsv(session));
     expect(col("target_error_category")).toBe("on_target");
+  });
+});
+
+describe("export delivery requests (Stage M3a)", () => {
+  // The refactor moved DELIVERY behind the shared platform boundary. The
+  // regression risk is that the content or the user-visible filename silently
+  // changed along the way, so both are pinned here against the same builders
+  // the rest of this file already covers.
+  it("keeps the session filename and the exact session CSV", () => {
+    const session = baseSession({ title: "Draw practice" });
+    const request = sessionCsvExport(session);
+
+    expect(request.displayFileName).toBe(`${session.title.replace(/\s+/g, "_")}.csv`);
+    expect(request.content).toBe(buildSessionCsv(session));
+    expect(request.mimeType).toBe(CSV_MIME_TYPE);
+  });
+
+  it("keeps the history filename and the exact history CSV", () => {
+    const sessions = [baseSession({ title: "Draw practice" })];
+    const request = historyCsvExport(sessions);
+
+    expect(request.displayFileName).toBe("curling_session_history.csv");
+    expect(request.content).toBe(buildHistoryCsv(sessions));
+  });
+
+  it("adds no athlete records or identifiers beyond the serialized content", () => {
+    const request = historyCsvExport([baseSession({ title: "Draw practice" })]);
+    // The request carries the CSV and nothing else that could travel with it.
+    expect(Object.keys(request).sort()).toEqual([
+      "content",
+      "displayFileName",
+      "mimeType",
+      "shareTitle",
+    ]);
   });
 });

@@ -41,46 +41,49 @@ describe("TrainingPlansRepository", () => {
     }
   });
 
-  it("treats unparseable JSON as absent", async () => {
+  it("treats unparseable JSON as UNREADABLE, not absent (ADR-0051)", async () => {
+    // Absence hands the application an empty but writable library, which its ordinary
+    // save effect writes straight back — replacing bytes that may still be
+    // recoverable (a truncated write, a partially synced file) with an empty library.
     localStorage.clear();
     localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, "{not json");
     const repo = createTrainingPlansRepository(createLocalStorageAdapter());
     const result = await repo.loadPlans();
-    expect(result.status).toBe("absent");
+    expect(result.status).toBe("read_failed");
+    expect(localStorage.getItem(TRAINING_PLANS_STORAGE_KEY)).toBe("{not json");
   });
 
-  it("full-wipes to [] on a schemaVersion mismatch, still as 'value'", async () => {
+  it("protects an unsupported schemaVersion instead of full-wiping it (ADR-0051)", async () => {
+    // The previous full-wipe gate returned an empty but *writable* library, which the
+    // ordinary save effect then wrote back — permanently discarding plans a newer
+    // build had written. Unreadable storage is now a protected failure, and the
+    // stored bytes are left exactly as they were.
     localStorage.clear();
-    localStorage.setItem(
-      TRAINING_PLANS_STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 999, plans: [buildPlan()] })
-    );
+    const stored = JSON.stringify({ schemaVersion: 999, plans: [buildPlan()] });
+    localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, stored);
     const repo = createTrainingPlansRepository(createLocalStorageAdapter());
     const result = await repo.loadPlans();
-    expect(result.status).toBe("value");
-    if (result.status === "value") {
-      expect(result.value).toEqual([]);
-    }
+    expect(result.status).toBe("read_failed");
+    expect(localStorage.getItem(TRAINING_PLANS_STORAGE_KEY)).toBe(stored);
   });
 
-  it("drops a single structurally broken plan without invalidating the rest of the list", async () => {
+  it("protects the library when a stored plan is structurally unreadable (ADR-0051)", async () => {
+    // A plan object with no identity, name or step list is not something migration may
+    // quietly repair into a fabricated plan, nor something the loader may shorten the
+    // library by dropping: either outcome is then written back over the original.
     localStorage.clear();
     const goodPlan = buildPlan();
-    localStorage.setItem(
-      TRAINING_PLANS_STORAGE_KEY,
-      JSON.stringify({
-        schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
-        plans: [goodPlan, { garbage: true }],
-      })
-    );
+    const stored = JSON.stringify({
+      schemaVersion: TRAINING_PLANS_SCHEMA_VERSION,
+      plans: [goodPlan, { garbage: true }],
+    });
+    localStorage.setItem(TRAINING_PLANS_STORAGE_KEY, stored);
+
     const repo = createTrainingPlansRepository(createLocalStorageAdapter());
     const result = await repo.loadPlans();
-    expect(result.status).toBe("value");
-    if (result.status === "value") {
-      // migratePlan repairs field-by-field rather than dropping — confirm both survive
-      // in some form (repair, not discard, for this domain's plan-level policy).
-      expect(result.value).toHaveLength(2);
-    }
+
+    expect(result.status).toBe("read_failed");
+    expect(localStorage.getItem(TRAINING_PLANS_STORAGE_KEY)).toBe(stored);
   });
 
   it("resolves { status: 'read_failed' } on a genuine storage failure with an empty fallback", async () => {

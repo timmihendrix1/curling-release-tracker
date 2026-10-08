@@ -123,3 +123,21 @@ export function categorizeTargetError(
   }
   return "major_miss";
 }
+
+/**
+ * The reader-facing name of one Target Error category.
+ *
+ * "Major Miss" here is the fachlicher category defined by the block's own tolerance —
+ * deliberately distinct from a statistical boxplot outlier (see
+ * src/lib/boxPlotStatistics.ts), which this label is never used for.
+ */
+export function targetErrorCategoryLabel(category: TargetErrorCategory): string {
+  switch (category) {
+    case "on_target":
+      return "On Target";
+    case "acceptable":
+      return "Acceptable";
+    case "major_miss":
+      return "Major Miss";
+  }
+}

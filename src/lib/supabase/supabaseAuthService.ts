@@ -31,7 +31,11 @@ import {
   type AuthChangeEvent,
   type Session,
 } from "@supabase/supabase-js";
-import { getSupabaseBrowserClient } from "./supabaseClient";
+import {
+  claimedBrowserCredentialHealth,
+  getSupabaseBrowserClient,
+  type BrowserCredentialHealth,
+} from "./supabaseClient";
 import type { ConfiguredCloudConfig } from "./config";
 import type {
   AccountIdentity,
@@ -343,6 +347,10 @@ function redirectTargetIsRequestedPlusSelector(
 export type SupabaseAuthServiceOverrides = {
   navigate?: (url: string) => void;
   resolveAppOrigin?: () => string | null;
+  /** Test seam for the Stage M3b3 credential-health verdict. Production passes
+   * none and the claimed accessor is used, which is `null` unless a native
+   * composition claimed a protected credential store. */
+  credentialHealth?: BrowserCredentialHealth;
 };
 
 function defaultAppOrigin(): string | null {
@@ -362,6 +370,34 @@ export function createSupabaseAuthService(
   const client = getSupabaseBrowserClient(config);
   const resolveAppOrigin = overrides.resolveAppOrigin ?? defaultAppOrigin;
   const navigate = overrides.navigate ?? defaultNavigate;
+  /**
+   * The credential-storage health verdict (Stage M3b3), or `null` when nothing
+   * claimed a custom store — the Web build and every build in this stage, where
+   * this adds no behaviour at all.
+   *
+   * Consulted because the SDK cannot be relied on to surface a storage fault:
+   * `initialize()` catches everything `_initialize()` throws and returns it as a
+   * result nobody reads, `_emitInitialSession` is awaited by nobody, and
+   * `getItemAsync` treats a resolved falsy value as absence with no error. Any
+   * of those can leave `getSession()` reporting `{ session: null, error: null }`
+   * from a store that simply failed.
+   *
+   * `credentialHealth` is deliberately read at CALL time, not captured, so a
+   * failure recorded after this service was constructed is still seen.
+   */
+  const credentialHealth: BrowserCredentialHealth | null =
+    overrides.credentialHealth ?? claimedBrowserCredentialHealth();
+
+  /** True when an unresolved credential-storage failure stands. */
+  function credentialStorageFailed(): boolean {
+    if (credentialHealth === null) return false;
+    try {
+      return credentialHealth() !== null;
+    } catch {
+      // A health accessor that throws is itself not a clean bill of health.
+      return true;
+    }
+  }
 
   // ---------------------------------------------------------------------
   // The INITIAL_SESSION race (ADR-0025 Decision 2).
@@ -516,6 +552,14 @@ export function createSupabaseAuthService(
         // nor an invented identity. Structurally distinct from the absent case
         // below, so neither can be reached by accident.
         if (reduction.kind === "unusable") return { kind: "restore_failed" };
+        // THE ONE PLACE A CLEAN "NOBODY IS SIGNED IN" IS PRODUCED, and therefore
+        // the place a credential-storage fault must not reach. An unresolved
+        // failure means the absence of a session was never established, so this
+        // reports a transient unavailability instead — which the identity gate
+        // treats as "cannot decide", not as "signed out". Deliberately NOT
+        // `invalid_session`: that would be a definitive verdict, and it triggers
+        // the SDK's own session cleanup.
+        if (credentialStorageFailed()) return { kind: "temporarily_unavailable" };
         return { kind: "no_session" };
       } finally {
         restoresInFlight -= 1;
@@ -616,6 +660,14 @@ export function createSupabaseAuthService(
           // Never reported as success. An offline sign-out that failed has not
           // deleted the local provider session, and saying otherwise would be
           // a false claim the caller cannot detect.
+          return authFailed(normalizedAuthError("sign_out_failed"));
+        }
+        // The SDK resolved without an error, which is not the same as the local
+        // credential actually having been removed: `_removeSession`'s removals
+        // go through the claimed storage, and a failure there is exactly what
+        // the health verdict records. Reporting success here would be the false
+        // durable-sign-out claim this boundary exists to prevent.
+        if (credentialStorageFailed()) {
           return authFailed(normalizedAuthError("sign_out_failed"));
         }
         return authOk(undefined);

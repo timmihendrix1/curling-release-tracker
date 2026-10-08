@@ -10,7 +10,16 @@
  * variant ever states an automatic diagnosis ("this proves...") — only
  * "may indicate" framing.
  */
-import type { MeasurementMode } from "../types";
+import type {
+  AccuracyThresholds,
+  MeasuredQuantity,
+  MeasurementMode,
+  QuantityTolerance,
+} from "../types";
+import {
+  asQuantityTolerance,
+  toleranceBandLabel,
+} from "./measurement/tolerance";
 import type { ProgressMetricKey } from "./chartData";
 
 export type AnalyticsExplanation = {
@@ -26,7 +35,41 @@ export type AnalyticsExplanation = {
 
 export type ExplanationContext = "current" | "history";
 
-type ThresholdContext = { onTarget: number; acceptable: number };
+/**
+ * Either representation of a tolerance. Explanations describe what the calculation
+ * actually used, so an asymmetric tolerance must reach them intact rather than being
+ * flattened into a "±" figure that matches neither side.
+ */
+type ThresholdContext = AccuracyThresholds | QuantityTolerance | null;
+
+/** Named when one tolerance really does apply to everything shown; otherwise not. */
+const VARYING = "the tolerance each exercise was trained under";
+
+/**
+ * `quantity` decides the UNIT every band label is rendered in. Defaulting to "time"
+ * keeps every existing caller's meaning unchanged; a speed caller must pass "speed",
+ * or the dialog would describe a m/s tolerance in seconds — naming a cutoff that does
+ * not exist and contradicting the classification the athlete is reading.
+ */
+function bandLabels(
+  thresholds: ThresholdContext,
+  quantity: MeasuredQuantity = "time"
+): {
+  onTarget: string;
+  acceptable: string;
+} {
+  if (!thresholds) return { onTarget: VARYING, acceptable: VARYING };
+  const tolerance = asQuantityTolerance(thresholds);
+  return {
+    onTarget: toleranceBandLabel(tolerance.onTarget, quantity),
+    acceptable: toleranceBandLabel(tolerance.acceptable, quantity),
+  };
+}
+
+/** How a measured value is named in prose, per quantity. */
+function measuredValueNoun(quantity: MeasuredQuantity): string {
+  return quantity === "speed" ? "speed" : "time";
+}
 
 const BACK_HOG_BIAS_NOTE =
   "For Back–Hog timing, a lower time usually means more weight and a longer result. A higher time usually means less weight and a shorter result.";
@@ -35,7 +78,7 @@ const BACK_HOG_TARGET_ERROR_NOTE =
   "For Back–Hog timing, lower times generally mean more weight and a longer result. Higher times generally mean less weight and a shorter result.";
 
 export function biasExplanation(
-  measurementMode: MeasurementMode
+  measurementMode: MeasurementMode | undefined
 ): AnalyticsExplanation {
   return {
     id: "bias",
@@ -52,14 +95,15 @@ export function biasExplanation(
   };
 }
 
-export function averageErrorExplanation(): AnalyticsExplanation {
+export function averageErrorExplanation(
+  quantity: MeasuredQuantity = "time"
+): AnalyticsExplanation {
+  const noun = measuredValueNoun(quantity);
   return {
     id: "averageError",
     title: "Average Error",
-    shortDescription:
-      "Average absolute difference between actual and target time. Lower is better.",
-    whatItShows:
-      "Average absolute difference between actual and target time. Direction is ignored.",
+    shortDescription: `Average absolute difference between actual and target ${noun}. Lower is better.`,
+    whatItShows: `Average absolute difference between actual and target ${noun}. Direction is ignored.`,
     howToRead: [
       "This is the same as Mean Absolute Error (MAE) — it is not the same as Bias, which keeps the direction of the error.",
     ],
@@ -84,27 +128,29 @@ export function consistencyExplanation(): AnalyticsExplanation {
 }
 
 export function onTargetExplanation(
-  thresholds: ThresholdContext
+  thresholds: ThresholdContext,
+  quantity: MeasuredQuantity = "time"
 ): AnalyticsExplanation {
   return {
     id: "onTarget",
     title: "On Target",
-    shortDescription: `Percentage of shots within ±${thresholds.onTarget.toFixed(2)}s of target.`,
-    whatItShows: `Percentage of shots within the selected On Target tolerance (±${thresholds.onTarget.toFixed(2)}s).`,
+    shortDescription: `Percentage of shots within ${bandLabels(thresholds, quantity).onTarget} of target.`,
+    whatItShows: `Percentage of shots within the selected On Target tolerance (${bandLabels(thresholds, quantity).onTarget}).`,
     howToRead: [],
     betterMeans: ["Higher is better."],
   };
 }
 
 export function acceptableExplanation(
-  thresholds: ThresholdContext
+  thresholds: ThresholdContext,
+  quantity: MeasuredQuantity = "time"
 ): AnalyticsExplanation {
   return {
     id: "acceptable",
     title: "Acceptable",
     shortDescription:
       "Shots outside On Target but still within the broader tolerance.",
-    whatItShows: `Percentage of shots outside On Target (±${thresholds.onTarget.toFixed(2)}s) but still inside the broader Acceptable tolerance (±${thresholds.acceptable.toFixed(2)}s).`,
+    whatItShows: `Percentage of shots outside On Target (${bandLabels(thresholds, quantity).onTarget}) but still inside the broader Acceptable tolerance (${bandLabels(thresholds, quantity).acceptable}).`,
     howToRead: [
       "A shift from Major Misses to Acceptable shots can already represent meaningful progress, even before the On-Target rate rises strongly.",
     ],
@@ -113,13 +159,14 @@ export function acceptableExplanation(
 }
 
 export function majorMissExplanation(
-  thresholds: ThresholdContext
+  thresholds: ThresholdContext,
+  quantity: MeasuredQuantity = "time"
 ): AnalyticsExplanation {
   return {
     id: "majorMiss",
     title: "Major Misses",
-    shortDescription: `Shots outside ±${thresholds.acceptable.toFixed(2)}s of target.`,
-    whatItShows: `Shots outside the selected Acceptable tolerance (±${thresholds.acceptable.toFixed(2)}s).`,
+    shortDescription: `Shots outside ${bandLabels(thresholds, quantity).acceptable} of target.`,
+    whatItShows: `Shots outside the selected Acceptable tolerance (${bandLabels(thresholds, quantity).acceptable}).`,
     howToRead: [
       "This is a coaching/tolerance category, not a statistical one — it is not the same as a boxplot's statistical outlier.",
     ],
@@ -139,7 +186,7 @@ export function largestMissExplanation(): AnalyticsExplanation {
 }
 
 export function targetErrorByShotExplanation(
-  measurementMode: MeasurementMode,
+  measurementMode: MeasurementMode | undefined,
   context: ExplanationContext
 ): AnalyticsExplanation {
   return {

@@ -10,12 +10,10 @@ import {
   type ReactNode,
 } from "react";
 import {
-  createProfileScopedSportingRepositories,
   createUnscopedSportingRepositoriesForTests,
-  retireLegacyUnscopedSportingData,
   type SportingRepositories,
 } from "../lib/persistence/profileScopedSportingPersistence";
-import { createProfileScopedSportingStorageAdapter } from "../lib/persistence/profileScopedSportingPersistence";
+import { useSportingStorageSeams } from "./persistence/storageCompositionContext";
 import { createSportingSyncStateRepository } from "../lib/cloudSporting/syncStateRepository";
 import {
   SportingCloudSyncManager,
@@ -100,12 +98,23 @@ function ProfileScopedSportingPersistenceInstance({
   profileId,
   children,
 }: ProfileScopeProps) {
+  // The three sporting seams — the seven repositories, the SEPARATE sync-state /
+  // outbox adapter, and the legacy-retirement call — all come from one object
+  // (docs/MOBILE_APP_MIGRATION.md Stage M3b0 §3 seams 1-3). With no composition
+  // mounted this is `WEB_DEFAULT_SPORTING_SEAMS`, which is byte-for-byte what
+  // these three call sites did before Stage M3b3, so the Web build is unchanged.
+  //
+  // They are read as ONE value on purpose. Three independent calls is how the
+  // outbox gets left on `localStorage` while everything else moves — the exact
+  // omission §3 warns about, and the one that would strand completed work the
+  // cloud has never seen.
+  const seams = useSportingStorageSeams();
   const baseRepositories = useMemo(
-    () => createProfileScopedSportingRepositories(profileId),
-    [profileId]
+    () => seams.createSportingRepositories(profileId),
+    [profileId, seams]
   );
   const manager = useMemo(() => {
-    const adapter = createProfileScopedSportingStorageAdapter(profileId);
+    const adapter = seams.createSportingSyncStateAdapter(profileId);
     const config = resolveCloudConfig();
     const client = config.status === "configured" ? getSupabaseBrowserClient(config) : null;
     const service = client ? createSupabaseSportingCloudService(client) : null;
@@ -118,20 +127,20 @@ function ProfileScopedSportingPersistenceInstance({
       teamService,
       profileId
     );
-  }, [baseRepositories, profileId]);
+  }, [baseRepositories, profileId, seams]);
   const repositories = useMemo(() => manager.decorateRepositories(), [manager]);
   const [syncSnapshot, setSyncSnapshot] = useState<SportingSyncSnapshot>(manager.getSnapshot());
   const [attempt, setAttempt] = useState(0);
   const [retirementState, setRetirementState] = useState<
     "retiring" | "ready" | "failed"
   >("retiring");
-  const retirementPromiseRef = useRef<ReturnType<typeof retireLegacyUnscopedSportingData> | null>(
-    null
-  );
+  const retirementPromiseRef = useRef<ReturnType<
+    typeof seams.retireLegacyUnscopedData
+  > | null>(null);
 
   useEffect(() => {
     let active = true;
-    retirementPromiseRef.current ??= retireLegacyUnscopedSportingData();
+    retirementPromiseRef.current ??= seams.retireLegacyUnscopedData();
     void retirementPromiseRef.current.then(async (result) => {
       if (!active) return;
       if (!result.ok) {
@@ -144,7 +153,7 @@ function ProfileScopedSportingPersistenceInstance({
     return () => {
       active = false;
     };
-  }, [attempt, manager]);
+  }, [attempt, manager, seams]);
 
   useEffect(() => manager.subscribe(() => setSyncSnapshot(manager.getSnapshot())), [manager]);
 

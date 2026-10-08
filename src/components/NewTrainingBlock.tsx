@@ -2,7 +2,17 @@
 
 import { resolveAccuracyThresholds } from "../lib/accuracyThresholds";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
-import { analyzeShots } from "../lib/analytics";
+import {
+  analyzeShots,
+  average,
+  computeQuantityAccuracyAnalytics,
+} from "../lib/analytics";
+import {
+  resolveBlockMeasurement,
+  speedMeasuredShots,
+} from "../lib/measurement/quantities";
+import { toleranceFromAccuracyThresholds } from "../lib/measurement/tolerance";
+import { formatMeasuredSpeed } from "../lib/measurement/format";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import { formatReleaseTime, formatSigned } from "../lib/timeInput";
 import type { Shot, TrainingBlock } from "../types";
@@ -78,25 +88,62 @@ type BlockSummaryCardsProps = {
 };
 
 function BlockSummaryCards({ block, shots }: BlockSummaryCardsProps) {
-  const thresholds = resolveAccuracyThresholds(block.accuracyThresholds);
-  const analysis = analyzeShots(shots, thresholds);
+  // What this block actually measured, and the tolerance snapshot it was actually
+  // judged against. The legacy symmetric pair cannot express an asymmetric tolerance,
+  // so using it here would let the outgoing summary classify a stone differently from
+  // every other surface in the app (ADR-0008/ADR-0051).
+  const measurement = resolveBlockMeasurement(block);
+  const measuresTime = measurement.quantities.includes("time");
+  const timeTolerance =
+    measurement.time?.tolerance ??
+    toleranceFromAccuracyThresholds(resolveAccuracyThresholds(block.accuracyThresholds));
+  const analysis = analyzeShots(shots, timeTolerance);
   const hasEnoughPredictionData = analysis.prediction.count >= 2;
   const notEnough = "Not enough shots";
 
+  const speedTolerance = measurement.speed?.tolerance;
+  const speedValues = speedMeasuredShots(shots).map((shot) => shot.speed);
+  const speedAccuracy = speedTolerance
+    ? computeQuantityAccuracyAnalytics(shots, "speed", speedTolerance)
+    : null;
+
   return (
     <div className="mt-3 grid grid-cols-2 gap-2">
+      {/* The stone count, which is not the same as the number of recorded values for
+          any one quantity — a Both stone may carry only one of the two. */}
       <DashboardCard label="Shots" value={String(shots.length)} />
 
-      <DashboardCard
-        label="Average Actual"
-        value={formatReleaseTime(analysis.average)}
-      />
+      {/* Withheld entirely for a block that recorded no time: an average over an empty
+          set renders as "0.00s", which a reader cannot tell from a real measurement. */}
+      {measuresTime && analysis.targetAccuracy.shotCount > 0 && (
+        <>
+          <DashboardCard
+            label="Average Actual"
+            value={formatReleaseTime(analysis.average)}
+          />
 
-      <TargetAccuracyDashboardCards
-        targetAccuracy={analysis.targetAccuracy}
-        measurementMode={block.measurementMode}
-        thresholds={thresholds}
-      />
+          <TargetAccuracyDashboardCards
+            targetAccuracy={analysis.targetAccuracy}
+            measurementMode={block.measurementMode}
+            thresholds={timeTolerance}
+          />
+        </>
+      )}
+
+      {speedAccuracy && speedAccuracy.shotCount > 0 && (
+        <>
+          <DashboardCard
+            label="Average Speed"
+            value={formatMeasuredSpeed(average(speedValues))}
+          />
+
+          <TargetAccuracyDashboardCards
+            quantity="speed"
+            targetAccuracy={speedAccuracy}
+            thresholds={speedTolerance ?? null}
+          />
+        </>
+      )}
 
       {block.mode === "blind" && (
         <>

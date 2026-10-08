@@ -8,6 +8,7 @@ import type {
   TrainingPlan,
   TrainingPlanStep,
 } from "../../types";
+import { normalizeBlockMeasurementConfiguration } from "../measurement/quantities";
 import { isSmartRandomAvailable, validateSmartRandomRange } from "../variableTargets";
 import { err, ok, type TrainingPlanOutcome } from "./errors";
 import {
@@ -51,6 +52,32 @@ export function isStepExecutable(step: TrainingPlanStep): boolean {
 
   if (!Number.isInteger(completion.value) || completion.value <= 0) return false;
 
+  // What the step measures gates everything below. An absent `measurement` is the
+  // historical time-only step; a present one must be fully valid, Fixed Weight
+  // only, and must agree with the presence of the step's time fields.
+  const measurement = normalizeBlockMeasurementConfiguration(configuration.measurement);
+  if (configuration.measurement !== undefined && !measurement) return false;
+  if (measurement && configuration.mode !== "fixed") return false;
+
+  const measuresTime = measurement ? measurement.quantities.includes("time") : true;
+
+  // One target authority: when both representations are present they must agree
+  // exactly, or a created block and a recorded stone could be judged differently.
+  if (measurement && measuresTime && configuration.targetTime !== measurement.time?.target) {
+    return false;
+  }
+
+  if (!measuresTime) {
+    // A speed-only step has no timing interval, no time target and no target
+    // source to resolve — carrying either time field would be fabricated state.
+    return (
+      configuration.measurementMode === undefined &&
+      configuration.targetTime === undefined
+    );
+  }
+
+  if (configuration.measurementMode === undefined) return false;
+
   const mode = effectiveTargetMode(configuration);
 
   if (mode === "smart-random") {
@@ -62,7 +89,11 @@ export function isStepExecutable(step: TrainingPlanStep): boolean {
     return range.valid;
   }
 
-  return Number.isFinite(configuration.targetTime) && configuration.targetTime > 0;
+  return (
+    configuration.targetTime !== undefined &&
+    Number.isFinite(configuration.targetTime) &&
+    configuration.targetTime > 0
+  );
 }
 
 export function isPlanExecutable(plan: TrainingPlan): boolean {

@@ -7,6 +7,12 @@ import {
   isSessionExerciseCloudEligible,
   validateSessionExerciseState,
 } from "./exercises/sessionIntegration";
+import {
+  preserveStoredSessionHistoryOrder,
+  preserveStoredSessionOrder,
+  sessionMeasurementStateIsRestorable,
+} from "./measurement/canonicalSession";
+import { validateSessionMeasurementState } from "./measurement/validation";
 import { createNewSession, migrateSession, migrateSessionHistory } from "./sessionMigration";
 import { localStorageAdapter } from "./persistence/localStorageAdapter";
 import type {
@@ -27,6 +33,22 @@ function hasValidExerciseState(value: unknown): boolean {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return true;
   const record = value as Record<string, unknown>;
   const sessionId = typeof record.id === "string" ? record.id : "";
+  // Malformed measurement-aware state is REJECTED here rather than repaired by
+  // migration, so unreadable new-format data surfaces as a read failure (which
+  // preserves the stored bytes for recovery) instead of being silently rewritten
+  // into something that looks like valid legacy time-only training. See ADR-0051.
+  if (!validateSessionMeasurementState(record).valid) return false;
+  // Backstop for anything structural validation does not name explicitly: if
+  // migration would change any part of a measurement-aware session, repairing it
+  // would rewrite the athlete's stored data.
+  //
+  // "Restorable", not "canonical": a Capture Sequence that is still RUNNING is
+  // perfectly valid local state, and migration deliberately pauses it on load
+  // (ADR-0006). Requiring byte-identical restoration here would refuse to save an
+  // active training — which would either lose accepted results or defer their
+  // persistence until capture stopped. Only that one intentional transition is
+  // tolerated; everything else is rejected exactly as strictly as before.
+  if (!sessionMeasurementStateIsRestorable(record)) return false;
   return validateSessionExerciseState(record, sessionId).valid;
 }
 
@@ -141,11 +163,19 @@ export function createSessionRepository(
           message: INVALID_EXERCISE_STATE_MESSAGE,
         });
       }
-      return loadedValue(migrateSession(parsed));
+      // Restored in the property order it was stored in, so re-serializing it
+      // reproduces the same bytes — which is what keeps an already-uploaded record
+      // from being reported as a conflict after a reload. Values always come from
+      // migration, so repairs and recovery transitions still apply.
+      return loadedValue(preserveStoredSessionOrder(migrateSession(parsed), parsed));
     },
 
     async saveCurrent(session: Session): Promise<PersistenceWriteResult> {
       if (!hasValidExerciseState(session)) return invalidExerciseStateWrite();
+      // Written exactly as the Session stands. The order it already carries is the
+      // authoritative one — either the order it was restored in, or the order its
+      // producers chose on first write — and reordering here would rewrite an
+      // authoritative payload. See preserveStoredSessionOrder.
       return adapter.set(CURRENT_SESSION_STORAGE_KEY, JSON.stringify(session));
     },
 
@@ -172,7 +202,9 @@ export function createSessionRepository(
           message: INVALID_EXERCISE_STATE_MESSAGE,
         });
       }
-      return loadedValue(migrateSessionHistory(parsed));
+      return loadedValue(
+        preserveStoredSessionHistoryOrder(migrateSessionHistory(parsed), parsed)
+      );
     },
 
     async saveHistory(history: Session[]): Promise<PersistenceWriteResult> {

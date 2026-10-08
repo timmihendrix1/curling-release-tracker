@@ -10,8 +10,11 @@ afterEach(cleanup);
 const eliteProfile: AccuracyToleranceProfile = {
   id: "elite",
   name: "Elite",
-  onTarget: 0.05,
-  acceptable: 0.1,
+  quantity: "time" as const,
+  tolerance: {
+    onTarget: { lower: 0.05, upper: 0.05 },
+    acceptable: { lower: 0.1, upper: 0.1 },
+  },
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 };
@@ -68,10 +71,17 @@ describe("AccuracyToleranceProfilesScreen", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Create Profile" }));
 
+    // Stage B's form emits the full per-side tolerance, which is the one shape that
+    // can express every template this app stores. A symmetric template simply carries
+    // equal sides. `quantity` is carried explicitly so an edit can never silently
+    // change a template's unit (ADR-0051).
     expect(props.onCreate).toHaveBeenCalledWith({
       name: "Elite",
-      onTarget: 0.05,
-      acceptable: 0.1,
+      quantity: "time",
+      tolerance: {
+        onTarget: { lower: 0.05, upper: 0.05 },
+        acceptable: { lower: 0.1, upper: 0.1 },
+      },
     });
   });
 
@@ -88,8 +98,11 @@ describe("AccuracyToleranceProfilesScreen", () => {
 
     expect(props.onUpdate).toHaveBeenCalledWith("elite", {
       name: "Elite",
-      onTarget: 0.05,
-      acceptable: 0.12,
+      quantity: "time",
+      tolerance: {
+        onTarget: { lower: 0.05, upper: 0.05 },
+        acceptable: { lower: 0.12, upper: 0.12 },
+      },
     });
   });
 

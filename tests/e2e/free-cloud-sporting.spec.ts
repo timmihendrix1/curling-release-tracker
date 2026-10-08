@@ -7,6 +7,7 @@ import {
   goToSettings,
   readCloudSportingRecords,
   setupFixedBlock,
+  startNewSessionFromManagement,
 } from "./utils";
 
 test("completed training history restores from Free cloud and a clear tombstone prevents resurrection", async ({
@@ -19,9 +20,9 @@ test("completed training history restores from Free cloud and a clear tombstone 
     has: page.getByRole("heading", { name: "Add Shot" }),
   }).last();
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
-  await shotEntry.getByRole("button", { name: "Add Shot", exact: true }).click();
+  await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
 
-  await page.getByRole("button", { name: "Start New Session" }).click();
+  await startNewSessionFromManagement(page);
   await page.getByRole("button", { name: "Start", exact: true }).click();
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 

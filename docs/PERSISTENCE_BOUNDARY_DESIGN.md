@@ -377,12 +377,12 @@ key with a smaller/empty value — never a key removal.
 
 | # | Storage key | Owning module | Persisted type | Read path | Write path | Delete/reset path | Schema version | Migration/validation function | Test coverage |
 |---|---|---|---|---|---|---|---|---|---|
-| 1 | `curling-release-tracker-current-session` | `src/lib/sessionRepository.ts`, `src/lib/sessionMigration.ts` | `Session`, optionally including one active Technique/Shotmaking `ExerciseExecution` (ADR-0029) | `SessionRepository.loadCurrent` | `SessionRepository.saveCurrent` | Rewritten via Start New Session, archiving into history — see Section 6 | No root version; embedded Exercise Executions carry their own schema version | `migrateSession` plus strict `validateSessionExerciseState`; corrupt Exercise state fails closed | `sessionMigration.test.ts`, `sessionRepository.test.ts` |
+| 1 | `curling-release-tracker-current-session` | `src/lib/sessionRepository.ts`, `src/lib/sessionMigration.ts` | `Session`, optionally including one active Technique/Shotmaking `ExerciseExecution` (ADR-0029) | `SessionRepository.loadCurrent` | `SessionRepository.saveCurrent` | Rewritten via Start New Session, archiving into history — see Section 6 | No root version; embedded Exercise Executions carry their own schema version | `migrateSession` plus strict `validateSessionExerciseState` **and `validateSessionMeasurementState`** (ADR-0051). The stored representation is also the authority on its own PROPERTY ORDER: `loadCurrent`/`loadHistory` restore each Session in the order it was stored in (`preserveStoredSessionOrder`), so re-serializing it reproduces exactly the bytes it came from. Writes impose no ordering, so an existing authoritative payload is never re-sorted or re-hashed; a brand-new Session's producer order becomes authoritative on first write and is preserved thereafter, which is what keeps an already-uploaded terminal record's payload and digest stable across later transitions and reloads. Only order comes from the stored shape — values always come from migration, so repairs, recovery transitions and genuine edits still change the content; corrupt Exercise state and malformed measurement-aware state both fail closed, leaving the stored bytes intact for recovery rather than repairing them into legacy-looking data | `sessionMigration.test.ts`, `sessionRepository.test.ts`, `measurement/__tests__/persistence.test.ts`, `measurement/__tests__/compatibility.test.ts` |
 | 2 | `curling-release-tracker-session-history` | same | `Session[]`; embedded Exercise state must be terminal | `SessionRepository.loadHistory` | `SessionRepository.saveHistory` / `archiveAndReplace` | Clear History rewrites `"[]"`, never removes the key | Same as current Session | `migrateSessionHistory` plus strict terminal Exercise-state validation | same files |
 | 3 | `curling-release-tracker-history-filters` | `TrackerApp.tsx:226-227` (key), `src/lib/historyAnalysis.ts` (sanitize) | `HistoryAnalysisFilters` | `TrackerApp.tsx:793-795`, wrapped in try/catch (`:797-804`) | `TrackerApp.tsx:911-916`, effect on `[historyFilters]`, **unguarded** | None | None | `sanitizeHistoryFilters(raw)` — `historyAnalysis.ts:139-149`, merges onto `createDefaultHistoryFilters()` (`:85-96`); `sanitizeThresholdComparisonMode` (`:107-130`) repairs one sub-field | Indirect, via History/Analyze component tests — no dedicated migration test file |
 | 4 | `curling-release-tracker-assessment-data` | `src/lib/assessment/persistence.ts:11` | `AssessmentPersistedState` (`persistence.ts:20-24`: `{schemaVersion, currentRun?, history: AssessmentRun[]}`) | `TrackerApp.tsx:807`, own try/catch (`:808-813`) | `TrackerApp.tsx:927-930`, effect on `[assessmentState]`, guarded by `if (!assessmentState) return;` | `deleteAssessmentRunFromHistory` (`persistence.ts:123-131`) — removes one run from the in-memory array; key is always rewritten, never removed | `ASSESSMENT_PERSISTENCE_SCHEMA_VERSION = 1` (`persistence.ts:12`); each `AssessmentRun` also independently carries `ASSESSMENT_RUN_SCHEMA_VERSION = 1` (`assessment/types.ts:220`) | `migrateAssessmentPersistedState(raw)` — `assessment/migration.ts:420`; root version gate at `:423`; per-run validation `validatePersistedAssessmentRun` — `migration.ts:173`, version gate `:178` | `assessment/__tests__/migration.test.ts`, `.../persistence.test.ts` |
-| 5 | `curling-release-tracker-training-plans` | `src/lib/trainingPlans/persistence.ts:12` | `TrainingPlansPersistedState` (`persistence.ts:15-18`: `{schemaVersion, plans: TrainingPlan[]}`) | `TrackerApp.tsx:860` | `TrackerApp.tsx:933-939`, effect on `[trainingPlans]`, **unguarded** | `deletePlan` (`persistence.ts:57-62`) — filters the in-memory array; key always rewritten | `TRAINING_PLANS_SCHEMA_VERSION = 1` (`persistence.ts:13`); each `TrainingPlan` also carries its own `schemaVersion` (`types/index.ts:260`), but `migratePlan` unconditionally overwrites it (`migration.ts:147`) rather than checking it — this per-plan field is currently decorative, not load-bearing | `migrateTrainingPlans(raw)` — `trainingPlans/migration.ts:157-176`; **root-level mismatch is a full-wipe gate** (`:159-161`); within a matching root version, each plan is repaired field-by-field via `migratePlan` (`:134-149`) | `trainingPlans/__tests__/migration.test.ts`, `.../persistence.test.ts` |
-| 6 | `curling-release-tracker-accuracy-tolerance-profiles` | `src/lib/accuracyToleranceProfiles/persistence.ts:31-32` | `AccuracyToleranceProfilesState` (`persistence.ts:25-29`: `{schemaVersion, profiles, defaultProfileId}`) | `TrackerApp.tsx:870-872` | `TrackerApp.tsx:941-946`, effect on `[accuracyToleranceProfilesState]`, **unguarded** | No dedicated delete key-path; profile removal is a state-list filter, key always rewritten | `ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION = 1` (`persistence.ts:33`) | `migrateAccuracyToleranceProfilesState(raw)` — `accuracyToleranceProfiles/migration.ts:52`; unknown version/invalid shape → empty state; per-profile quarantine via `migrateProfile` (`:18`); dangling `defaultProfileId` cleared to `null` | `accuracyToleranceProfiles/__tests__/migration.test.ts` |
+| 5 | `curling-release-tracker-training-plans` | `src/lib/trainingPlans/persistence.ts:12` | `TrainingPlansPersistedState` (`persistence.ts:15-18`: `{schemaVersion, plans: TrainingPlan[]}`) | `TrackerApp.tsx:860` | `TrackerApp.tsx:933-939`, effect on `[trainingPlans]`, **unguarded** | `deletePlan` (`persistence.ts:57-62`) — filters the in-memory array; key always rewritten | `TRAINING_PLANS_SCHEMA_VERSION = 1` (`persistence.ts:13`); each `TrainingPlan` also carries its own `schemaVersion` (`types/index.ts:260`), but `migratePlan` unconditionally overwrites it (`migration.ts:147`) rather than checking it — this per-plan field is currently decorative, not load-bearing | `migrateTrainingPlans(raw)` — **root-level mismatch is a full-wipe gate**; within a matching root version, each plan is repaired field-by-field via `migratePlan`. **Additionally gated on both read and write (ADR-0051) by strict `validateTrainingPlansMeasurementState`, and by an unsupported-schema guard that returns a PROTECTED read failure instead of the previous empty-library full-wipe — an emptied library would be written straight back by the ordinary save effect, permanently discarding plans a newer build wrote**: malformed measurement-aware step configuration is a protected failure, never repaired by migration's legacy defaults into executable Back-Hog / 3.75s time training, and the stored bytes are left intact for recovery | `trainingPlans/__tests__/migration.test.ts`, `.../persistence.test.ts` |
+| 6 | `curling-release-tracker-accuracy-tolerance-profiles` | `src/lib/accuracyToleranceProfiles/persistence.ts:31-32` | `AccuracyToleranceProfilesState` (`persistence.ts:25-29`: `{schemaVersion, profiles, defaultProfileId}`) | `TrackerApp.tsx:870-872` | `TrackerApp.tsx:941-946`, effect on `[accuracyToleranceProfilesState]`, **unguarded** | No dedicated delete key-path; profile removal is a state-list filter, key always rewritten | `ACCURACY_TOLERANCE_PROFILES_SCHEMA_VERSION = 2` (version 1 — a symmetric, unitless seconds pair — migrates forward losslessly to an explicit quantity plus a per-side tolerance; it is never wiped and never reinterpreted as a speed preset, ADR-0051). An unsupported schema version, or a template whose unit this build does not know, is a PROTECTED read failure rather than an empty or shortened state, and writes are validated before storage is touched | `migrateAccuracyToleranceProfilesState(raw)` — `accuracyToleranceProfiles/migration.ts:52`; unknown version/invalid shape → empty state; per-profile quarantine via `migrateProfile` (`:18`); dangling `defaultProfileId` cleared to `null` | `accuracyToleranceProfiles/__tests__/migration.test.ts` |
 | 7 | `curling-release-tracker-smart-random-profiles` | `src/lib/smartRandomProfiles/persistence.ts:42-43` | `SmartRandomProfilesState` (`persistence.ts:36-40`) | `TrackerApp.tsx:886-888` | `TrackerApp.tsx:948-953`, effect on `[smartRandomProfilesState]`, **unguarded** | Same pattern as #6 | `SMART_RANDOM_PROFILES_SCHEMA_VERSION = 1` (`persistence.ts:44`) | `migrateSmartRandomProfilesState(raw)` — `smartRandomProfiles/migration.ts:66`; same quarantine style as #6, plus a domain check dropping any profile whose Measurement Mode doesn't support Smart Random | `smartRandomProfiles/__tests__/migration.test.ts` |
 | 8 | `curling-release-tracker-assessment-show-introduction` | `src/lib/assessmentPreferences.ts:11` | raw string `"true"`/`"false"` | `getShowAssessmentIntroductionPreference()` (`:16-21`), called from `AssessScreen.tsx:301` | `setShowAssessmentIntroductionPreference()` (`:23-25`), called from `AssessScreen.tsx:508,512` | None | None (single scalar) | Inline default: `raw === null → true` (`:19`) | `src/lib/__tests__/assessmentPreferences.test.ts` |
 | 9 | `curling-release-tracker-assessment-last-threshold-preset` | `assessmentPreferences.ts:12` | raw string, `AccuracyThresholdPreset` | `getLastAssessmentThresholdPreset()` (`:30-36`), called from `AssessScreen.tsx:119` | `setLastAssessmentThresholdPreset()` (`:38-40`), called from `AssessScreen.tsx:379` | None | None | Inline whitelist check against `VALID_PRESETS`, fallback `"standard"` (`:27,33-35`) | same test file |
@@ -463,8 +463,10 @@ guarded against premature writes" needs an explicit carve-out for these three (S
 
 ### 2.3 Import/export behavior
 
-`src/lib/export.ts` provides pure CSV builders (`buildSessionCsv`, `buildHistoryCsv`) and
-a DOM-touching `downloadCsv` helper, reused by `src/lib/assessment/export.ts`. This is
+`src/lib/export.ts` provides pure CSV builders (`buildSessionCsv`, `buildHistoryCsv`) and,
+since Stage M3a, delivery-request builders (`sessionCsvExport`, `historyCsvExport`) handed
+to the one platform delivery boundary `src/lib/platform/fileExport.ts`;
+`src/lib/assessment/export.ts` does the same. The CSV content itself is unchanged. This is
 **export only** — there is no import/restore-from-CSV or restore-from-backup path
 anywhere in the codebase. No persisted domain has an export function beyond Session/
 Session History and Assessment; Training Plans, Accuracy Tolerance Profiles, and Smart
@@ -1842,6 +1844,71 @@ requirement that a successful stored value and normal absence be distinguishable
 repository contract level, not just at the adapter's raw string layer.
 
 ## 9. Adapter and transactions
+
+> **Stage M3b: the adapter and the COMPOSITION now exist; nothing is cut over.** On native
+> the adapter implementation — not this contract — is planned to change from WebView
+> `localStorage` to a durable native key/value store, because Capacitor documents that mobile
+> OSs may periodically clear `localStorage`.
+>
+> As of 2026-09-30, `src/lib/persistence/nativeSqliteAdapter.ts` implements
+> `RemovableStorageAdapter` over SQLite, and `src/lib/persistence/storageComposition.ts` is the
+> one owned boundary that can select it, construct the five identity repositories over it and
+> bind the protected credential store — behind its own off-by-default build flag
+> (`CURLING_MOBILE_NATIVE_STORAGE=1`), and **only** after a migration/activation authority
+> reports a valid ready verdict. **In this stage that authority is unavailable, so a
+> flag-enabled build blocks instead of mounting**, production cutover remains Stage M3b5, and
+> **a DEFAULT build resolves every repository to `localStorageAdapter` on every platform** — in
+> fact it contains no composition code at all. Web is unchanged and claims nothing.
+>
+> **Every guarantee in this section is preserved unchanged:** `get`/`set`/`remove` keep their
+> normalised results, `read_failed` stays distinct from `absent` and still never authorises
+> writing a default, and **no multi-key atomicity is added or claimed by this interface**.
+> The one-time migration will use a transaction **internally**, over the native engine's own
+> connection inside the migration module; no repository sees it and this contract is
+> unchanged.
+>
+> **The five seams**, which a default swap does not reach, are now wired — and the three
+> sporting ones are handed over as ONE `SportingStorageSeams` object
+> (`src/lib/persistence/storageSeams.ts`) precisely so they cannot be selected independently
+> and one of them forgotten:
+>
+> 1. the seven sporting repositories;
+> 2. the **separate sync-state / outbox adapter**, previously built with the default in
+>    `ProfileScopedSportingPersistence.tsx` — missing it would have left completed work the
+>    cloud has never seen behind on the old store;
+> 3. the **legacy-retirement call** in the same component, which now targets the
+>    **authoritative** store, because the retirement marker is one of the keys the migration
+>    copies and pointing it at the old source would make it re-run forever. It is **not**
+>    source retirement — removing the ten bare legacy keys from the OLD store is the migration
+>    stage's own `sourceRetirement` phase — and readiness gating is what guarantees it never
+>    runs before activation;
+> 4. the five identity repositories (import-time singletons), via
+>    `createIdentityRepositorySet(adapter)` and a one-time ownership claim. The **dynamic**
+>    `accessBarrierResolution.<uuid>.v1` family and the pending-intent cleanup key travel with
+>    it. `identityBarrierRepository` still takes the BASE contract and still cannot remove a
+>    barrier (ADR-0025 Decision 6);
+> 5. the Supabase SDK's provider-session storage, claimed once **before** any client exists,
+>    because the SDK reads storage from its own constructor. Credentials go to a **separate
+>    protected store** (Keychain / Android Keystore), **not** to this adapter — see
+>    `src/lib/persistence/secureCredentialStore.ts`. Separate stores do **not** make the two
+>    writes atomic, and SQLite does **not** encrypt credentials. That store has a **stricter
+>    absence rule than `StorageAdapter`**: only a platform-reported "no such item" is absence,
+>    and it is **not met by any audited dependency**, so the native credential path is closed
+>    (ADR-0049). Its normalised failure verdict is consumed by `supabaseAuthService`, which
+>    refuses to report `no_session` or a completed sign-out while a failure stands.
+>
+> **The disposable exercise-diagram cache deliberately stays on `localStorageAdapter`**, on
+> native included. Composition changes no global default and `TrackerApp` passes no adapter, so
+> the cache is untouched rather than excluded by a special case.
+>
+> Migration additionally needs a **migration-only source-key enumeration** capability — this
+> interface exposes none, and it is deliberately **not** added to `StorageAdapter`. See
+> [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md) — decisions 1–6 accepted
+> and implemented, **decision 7's migration protocol still unresolved** with three open design
+> items — and Stage M3b0 in `docs/MOBILE_APP_MIGRATION.md`. Once that migration has committed a
+> validated activation, the native store is authoritative for these keys and the old WebView
+> store is never read as an authority again; losing it does not affect reads. The retired
+> IndexedDB activation track (ADR-0015–0018) is **not** revived.
 
 ```typescript
 /**
