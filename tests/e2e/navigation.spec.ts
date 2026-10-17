@@ -19,34 +19,32 @@ test.describe("First Run", () => {
   }) => {
     await freshLoad(page);
 
-    await expect(page.getByRole("heading", { name: "Curling Performance" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your training." })).toBeVisible();
     await expect(
       page.getByText("Train, assess and understand your performance.")
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(page.getByText("Curling Release Tracker")).toHaveCount(0);
 
-    await expect(page.getByText(/^Good (morning|afternoon|evening)$/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your training." })).toBeVisible();
 
-    await expect(page.getByText("No scheduled session.")).toBeVisible();
-    await expect(page.getByText("Start whenever you're ready.")).toBeVisible();
+    await expect(page.getByText("Technique, shotmaking or assessment.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your training." })).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Start Training" })
     ).toBeVisible();
 
-    await expect(page.getByText("Training Overview")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent training" })).toBeVisible();
     await expect(page.getByText("Performance Snapshot")).toHaveCount(0);
     await expect(page.getByText("No training completed yet.")).toBeVisible();
-    await expect(
-      page.getByText("Start your first training to build your performance history.")
-    ).toBeVisible();
-    await expect(page.getByRole("button", { name: "View Analyze" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "See all" })).toBeVisible();
 
     await expect(page.getByText("Quick Access")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Open Analyze" })).toHaveCount(0);
 
-    await expect(page.getByText("Manual Timing")).toBeVisible();
+    await page.getByText("Teams & devices", { exact: true }).click();
+    await expect(page.getByRole("button", { name: "Manage devices" })).toBeVisible();
     await expect(
-      page.getByText("External timing systems will be supported here.")
+      page.getByText("Manage timing devices in Settings.")
     ).toBeVisible();
     await expect(
       page.getByText("External timing systems will appear here when connected.")
@@ -57,7 +55,7 @@ test.describe("First Run", () => {
     await expect(
       page.getByText("Create a Team, invite athletes and manage shared training access.")
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
 
     // Only genuinely future capabilities remain under "Coming next".
     await expect(page.getByRole("heading", { name: "Coming next" })).toBeVisible();
@@ -87,7 +85,7 @@ test.describe("Navigation", () => {
     );
 
     await goToAnalyze(page);
-    await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "See your progress." })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Training" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Assessments" })).toBeVisible();
     await expect(page.getByRole("tab", { name: "Exercises" })).toBeVisible();
@@ -99,24 +97,24 @@ test.describe("Navigation", () => {
     ).toHaveAttribute("aria-current", "page");
 
     await goToSettings(page);
-    await expect(page.getByText("Data Management")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Make it yours." })).toBeVisible();
     await expect(
       primaryNav(page).getByRole("button", { name: "Settings" })
     ).toHaveAttribute("aria-current", "page");
 
     await goToHome(page);
-    await expect(page.getByText("No scheduled session.")).toBeVisible();
+    await expect(page.getByText("Technique, shotmaking or assessment.")).toBeVisible();
     await expect(primaryNav(page).getByRole("button", { name: "Home" })).toHaveAttribute(
       "aria-current",
       "page"
     );
   });
 
-  test("Assess is a real, reachable navigation tab", async ({ page }) => {
+  test("Assessments are reachable within Train", async ({ page }) => {
     await freshLoad(page);
-    await expect(primaryNav(page).getByRole("button", { name: "Assess" })).toBeVisible();
+    await expect(primaryNav(page).getByRole("button", { name: "Assess" })).toHaveCount(0);
     await goToAssess(page);
-    await expect(primaryNav(page).getByRole("button", { name: "Assess" })).toHaveAttribute(
+    await expect(primaryNav(page).getByRole("button", { name: "Train" })).toHaveAttribute(
       "aria-current",
       "page"
     );
@@ -138,14 +136,14 @@ test.describe("Start Training", () => {
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
     await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
-    await expect(page.getByText("1 shot total")).toBeVisible();
+    await expect(page.getByText("1 stone recorded")).toBeVisible();
 
     await goToHome(page);
-    await expect(page.getByText("Active Training Block", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Current exercise", { exact: true })).toHaveCount(0);
 
     await goToTrain(page);
-    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
-    await expect(page.getByText("1 shot total")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
+    await expect(page.getByText("1 stone recorded")).toBeVisible();
   });
 });
 
@@ -161,7 +159,7 @@ test.describe("Active Capture", () => {
     // second simulator subscription (see docs/adr/0007 and 0009).
     await goToHome(page);
     await goToTrain(page);
-    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
 
     await startAutoCapture(page, { count: 3, handleMode: "Fixed In" });
 
@@ -220,18 +218,19 @@ test.describe("Mobile", () => {
     await freshLoad(page);
 
     await expect(page.getByTestId("primary-nav-mobile")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Curling Performance" })).toBeVisible();
-    await expect(page.getByText("Train, assess and understand your performance.")).toBeVisible();
-    await expect(page.getByText("Today's Plan")).toBeVisible();
-    await expect(page.getByText("Training Overview")).toBeVisible();
-    await expect(page.getByRole("button", { name: "View Analyze" })).toBeVisible();
-    await expect(page.getByText("Manual Timing")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your training." })).toBeVisible();
+    await expect(page.getByText("Train, assess and understand your performance.")).toHaveCount(0);
+    await expect(page.getByTestId("house-home")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent training" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "See all" })).toBeVisible();
+    await page.getByText("Teams & devices", { exact: true }).click();
+    await expect(page.getByRole("button", { name: "Manage devices" })).toBeVisible();
     await expect(
-      page.getByText("External timing systems will be supported here.")
+      page.getByText("Manage timing devices in Settings.")
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Coming next" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Schedule", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Coach", exact: true })).toBeVisible();
     await expect(page.getByText("Plan and repeat training sessions.")).toBeVisible();
@@ -308,6 +307,7 @@ test.describe("Narrow Mobile", () => {
     );
     expect(hasHorizontalOverflow).toBe(false);
 
+    await page.getByText("Teams & devices", { exact: true }).click();
     for (const [title, description] of [
       ["Teams", "Create a Team, invite athletes and manage shared training access."],
       ["Schedule", "Plan and repeat training sessions."],
@@ -347,13 +347,14 @@ test.describe("Desktop", () => {
 
     await expect(primaryNavDesktop(page)).toBeVisible();
     await expect(page.getByTestId("primary-nav-mobile")).toBeHidden();
-    await expect(page.getByRole("heading", { name: "Curling Performance" })).toBeVisible();
-    await expect(page.getByText("Train, assess and understand your performance.")).toBeVisible();
-    await expect(page.getByText("Today's Plan")).toBeVisible();
-    await expect(page.getByText("Training Overview")).toBeVisible();
-    await expect(page.getByText("Manual Timing")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your training." })).toBeVisible();
+    await expect(page.getByText("Train, assess and understand your performance.")).toHaveCount(0);
+    await expect(page.getByTestId("house-home")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent training" })).toBeVisible();
+    await page.getByText("Teams & devices", { exact: true }).click();
+    await expect(page.getByRole("button", { name: "Manage devices" })).toBeVisible();
     await expect(
-      page.getByText("External timing systems will be supported here.")
+      page.getByText("Manage timing devices in Settings.")
     ).toBeVisible();
 
     // Coming next's two future items sit side by side at desktop width — they
@@ -363,7 +364,7 @@ test.describe("Desktop", () => {
     const coachTile = page.getByRole("heading", { name: "Coach", exact: true });
     const teamsHeading = page.getByRole("heading", { name: "Teams", exact: true });
     await expect(teamsHeading).toBeVisible();
-    await expect(page.getByRole("button", { name: "Manage" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Manage", exact: true })).toBeVisible();
     await expect(scheduleTile).toBeVisible();
     await expect(coachTile).toBeVisible();
 
@@ -382,7 +383,7 @@ test.describe("Desktop", () => {
     await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
 
     await primaryNavDesktop(page).getByRole("button", { name: "Analyze" }).click();
-    await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "See your progress." })).toBeVisible();
   });
 });
 
@@ -393,7 +394,7 @@ test.describe("Settings", () => {
     await freshLoad(page);
     await goToSettings(page);
 
-    await expect(page.getByText("Data Management")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Make it yours." })).toBeVisible();
     await expect(page.getByText("Privacy & Terms")).toBeVisible();
     await expect(page.getByText("About", { exact: true })).toHaveCount(0);
     await expect(
@@ -412,11 +413,12 @@ test.describe("Settings", () => {
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
     await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
-    await expect(page.getByText("1 shot total")).toBeVisible();
+    await expect(page.getByText("1 stone recorded")).toBeVisible();
 
     // Ending the session moves it into history, which is what enables Export/Clear.
     await startNewSessionFromManagement(page);
-    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByRole("button", { name: "Complete", exact: true }).click();
+
 
     await goToSettings(page);
     await expect(page.getByRole("button", { name: "Export History CSV" })).toBeEnabled();
@@ -454,6 +456,7 @@ test.describe("Accessibility Smoke Test", () => {
   test("Coming next tiles never receive keyboard focus", async ({ page }) => {
     await freshLoad(page);
 
+    await page.getByText("Teams & devices", { exact: true }).click();
     const scheduleTile = page.getByText("Schedule", { exact: true });
     await expect(scheduleTile).not.toHaveAttribute("tabindex");
 
@@ -487,22 +490,22 @@ test.describe("Regression", () => {
     });
     await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.80");
     await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
-    await expect(page.getByText("1 shot total")).toBeVisible();
+    await expect(page.getByText("1 stone recorded")).toBeVisible();
 
     // Navigation — active session survives a round trip through every screen
     await goToHome(page);
-    await expect(page.getByText("Today's Plan")).toBeVisible();
+    await expect(page.getByTestId("house-home")).toBeVisible();
 
-    // View Analyze (from Home's Training Overview)
-    await page.getByRole("button", { name: "View Analyze" }).click();
-    await expect(page.getByRole("heading", { name: "Analyze" })).toBeVisible();
+    // Full history (from Home's Recent training)
+    await page.getByRole("button", { name: "See all" }).click();
+    await expect(page.getByRole("heading", { name: "See your progress." })).toBeVisible();
 
     await goToSettings(page);
-    await expect(page.getByText("Data Management")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Make it yours." })).toBeVisible();
 
     await goToTrain(page);
-    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
-    await expect(page.getByText("1 shot total")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
+    await expect(page.getByText("1 stone recorded")).toBeVisible();
 
     expect(consoleErrors).toEqual([]);
   });

@@ -1005,3 +1005,73 @@ describe("Stage M3b3 — no shipped path can declare native storage ready", () =
     expect(/\b(?:window\s*\.\s*)?(?:local|session)Storage\s*\./.test("const sessionStorageKey = null;")).toBe(false);
   });
 });
+
+/**
+ * The diagnostics-only owned transaction (`nativeSqliteAdapter.ts`) must have no
+ * ordinary production caller.
+ *
+ * It exists so Stage M3b4's checkpoint model can be exercised before it is
+ * written. If a repository, a composition or a component ever reached it, the
+ * `RemovableStorageAdapter` contract's "no multi-key atomicity" promise would
+ * quietly stop describing what the application does — and a transaction left
+ * open by production code would refuse every other storage operation in the app.
+ */
+describe("persistence architecture boundary — the diagnostics-only transaction has no production caller", () => {
+  const TRANSACTION_MEMBERS = [
+    "beginDiagnosticTransaction",
+    "stageDiagnosticWrites",
+    "stageDiagnosticFailingStatement",
+    "commitDiagnosticTransaction",
+    "rollbackDiagnosticTransaction",
+    "abandonDiagnosticTransaction",
+    "hasPendingDiagnosticTransaction",
+    "diagnosticTransactionState",
+    "reopenDiagnosticConnection",
+  ];
+
+  const DECLARING_FILE = join(SRC_ROOT, "lib", "persistence", "nativeSqliteAdapter.ts");
+
+  const productionFiles = collectSourceFiles(SRC_ROOT).filter(
+    (path) => !isTestPath(path) && path !== DECLARING_FILE
+  );
+
+  it("declares every member it claims to (non-vacuous)", () => {
+    const declaration = readFileSync(DECLARING_FILE, "utf8");
+    for (const member of TRANSACTION_MEMBERS) {
+      expect(declaration).toContain(member);
+    }
+  });
+
+  it("is referenced by no production file under src/ except the module declaring it", () => {
+    const offenders: string[] = [];
+    for (const file of productionFiles) {
+      const source = stripComments(readFileSync(file, "utf8"));
+      for (const member of TRANSACTION_MEMBERS) {
+        if (source.includes(member)) offenders.push(`${relative(SRC_ROOT, file)} → ${member}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it("is not reachable through the repository-facing storage contracts", () => {
+    // `RemovableStorageAdapter` still promises no multi-key atomicity. If a
+    // transaction member ever appeared in types.ts, every repository would gain
+    // the ability to open one.
+    const types = stripComments(
+      readFileSync(join(SRC_ROOT, "lib", "persistence", "types.ts"), "utf8")
+    );
+    for (const member of TRANSACTION_MEMBERS) {
+      expect(types).not.toContain(member);
+    }
+    expect(types).not.toContain("Transaction");
+  });
+
+  it("keeps the production composition free of it (the one owned production consumer)", () => {
+    const composition = stripComments(
+      readFileSync(join(SRC_ROOT, "lib", "persistence", "storageComposition.ts"), "utf8")
+    );
+    for (const member of TRANSACTION_MEMBERS) {
+      expect(composition).not.toContain(member);
+    }
+  });
+});

@@ -12,12 +12,12 @@ describe("navigation config", () => {
     expect(DEFAULT_ACTIVE_VIEW).toBe("home");
   });
 
-  it("lists Assess as a visible, active item now that its flow exists (Phase B)", () => {
+  it("keeps the Assess view resolvable but out of primary navigation", () => {
     const assess = NAVIGATION_ITEMS.find((item) => item.id === "assess");
     expect(assess).toBeDefined();
-    expect(assess?.availability).toBe("active");
+    expect(assess?.availability).toBe("hidden");
     expect(getVisibleNavigationItems().some((item) => item.id === "assess")).toBe(
-      true
+      false
     );
   });
 
@@ -25,7 +25,6 @@ describe("navigation config", () => {
     expect(getVisibleNavigationItems().map((item) => item.id)).toEqual([
       "home",
       "train",
-      "assess",
       "analyze",
       "settings",
     ]);

@@ -1,5 +1,7 @@
 "use client";
 
+import TrainingHeader from "./TrainingHeader";
+
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
@@ -24,6 +26,8 @@ import TrainingPlansLibrary from "./TrainingPlansLibrary";
 import TrainingPlanStartReview from "./TrainingPlanStartReview";
 
 type TrainLandingProps = {
+  completionNotice?: string;
+  onOpenAssessments?: () => void;
   /** The existing Release Timing setup, reached through its Measured Exercise. */
   releaseTimingSetupContent: ReactNode;
   plans: TrainingPlan[];
@@ -103,6 +107,8 @@ const TRAIN_ENTRY_PATHS: readonly { id: TrainEntryPath; label: string }[] = [
  * Exercise delegates to TrackerApp, which owns Session persistence.
  */
 export default function TrainLanding({
+  completionNotice,
+  onOpenAssessments,
   releaseTimingSetupContent,
   plans,
   plansTabDisabled = false,
@@ -244,6 +250,8 @@ export default function TrainLanding({
 
   return (
     <div className="space-y-4">
+      {exercisesSubView.screen === "library" && <TrainingHeader title="Choose your focus." eyebrow="Train" />}
+      {completionNotice && exercisesSubView.screen === "library" && <p role="status" className="house-completion-notice">{completionNotice}</p>}
       <div
         ref={tablistRef}
         role="tablist"
@@ -272,6 +280,11 @@ export default function TrainLanding({
         ))}
       </div>
 
+      {onOpenAssessments && mode === "exercises" && exercisesSubView.screen === "library" && (
+        <button type="button" onClick={onOpenAssessments} className="house-link w-full px-1 text-sm">
+          Assessments <span aria-hidden="true">→</span>
+        </button>
+      )}
       <div
         role="tabpanel"
         id={panelId}

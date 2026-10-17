@@ -84,7 +84,7 @@ describe("production Exercise catalog", () => {
     expect(EXERCISE_CATALOG.exercises).toHaveLength(41);
     // 41 identities, plus every superseded Version kept byte-identical: the diagram
     // correction publishes a new Version rather than rewriting a released one.
-    expect(EXERCISE_CATALOG.versions).toHaveLength(80);
+    expect(EXERCISE_CATALOG.versions).toHaveLength(114);
   });
 
   it("uses unique stable Exercise ids and unique Exercise Version ids", () => {

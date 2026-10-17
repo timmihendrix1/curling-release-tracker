@@ -3,7 +3,7 @@
 // Flexible progression and early finishing for Profile-owned Training Plans
 // (docs/TRAINING_SYSTEM_AND_PLANS.md sections 28-31/34, ADR-0048). Proves the
 // approved behaviour end to end through the real orchestration and persistence
-// boundaries — the planned stone count is guidance, never a gate; Finish Training is
+// boundaries — the planned stone count is guidance, never a gate; Complete Session is
 // available throughout; and neither control can advance twice, fabricate a result, or
 // let a Timing Result cross from one step into the next.
 import "@testing-library/jest-dom/vitest";
@@ -20,6 +20,7 @@ import { findExerciseVersion } from "../../lib/exercises/lookup";
 import { sessionRepository } from "../../lib/sessionRepository";
 import type { Session, TimingResult } from "../../types";
 import TrackerApp from "../TrackerApp";
+import { getPlanStepSummaries, countRecordedStones } from "../../lib/trainingPlans/progress";
 
 const TRAINING_PLANS_KEY = "curling-release-tracker-training-plans";
 const SESSION_HISTORY_KEY = "curling-release-tracker-session-history";
@@ -113,7 +114,7 @@ function navButton(label: string) {
 
 async function startSeededPlan() {
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   screen.getByRole("tab", { name: "Training Plans" }).click();
@@ -146,10 +147,10 @@ function archivedSession(): Session {
 }
 
 async function finishTraining() {
-  screen.getByRole("button", { name: "Finish Training" }).click();
-  await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
-  screen.getByRole("button", { name: "Finish" }).click();
-  await waitFor(() => screen.getByText("Training finished"));
+  screen.getByRole("button", { name: "Complete Session" }).click();
+  await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+  screen.getByRole("button", { name: "Complete" }).click();
+  await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 }
 
 describe("Training Plan progression — the planned count is guidance, not a gate", () => {
@@ -160,7 +161,7 @@ describe("Training Plan progression — the planned count is guidance, not a gat
     ]);
     await startSeededPlan();
 
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
     expect(screen.getByText("0 of 2 planned stones")).toBeInTheDocument();
     expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
@@ -179,7 +180,7 @@ describe("Training Plan progression — the planned count is guidance, not a gat
       releaseTimingStep("step-2", 3),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 3 planned stones"));
@@ -207,7 +208,7 @@ describe("Training Plan progression — the planned count is guidance, not a gat
       releaseTimingStep("step-2", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 2 planned stones"));
@@ -290,7 +291,7 @@ describe("Training Plan progression — the planned count is guidance, not a gat
   });
 });
 
-describe("Finish Training from anywhere in a plan", () => {
+describe("Complete Session from anywhere in a plan", () => {
   it("finishes from an intermediate step and summarises planned versus actual factually", async () => {
     seedPlan("Three Step Plan", [
       releaseTimingStep("step-1", 4),
@@ -298,7 +299,7 @@ describe("Finish Training from anywhere in a plan", () => {
       curatedStep("release-point", RELEASE_POINT_VERSION_ID),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 4 planned stones"));
@@ -307,20 +308,15 @@ describe("Finish Training from anywhere in a plan", () => {
 
     await finishTraining();
 
-    expect(screen.getByText("Three Step Plan")).toBeInTheDocument();
-    expect(screen.getByText(/Saved to history/)).toBeInTheDocument();
-    expect(screen.getByText("1. Release Time")).toBeInTheDocument();
-    expect(screen.getByText("1 of 4 planned stones")).toBeInTheDocument();
-    expect(screen.getByText("Ended early")).toBeInTheDocument();
-    expect(screen.getByText("0 of 4 planned stones")).toBeInTheDocument();
-    expect(screen.getByText("Nothing recorded")).toBeInTheDocument();
-    // The third step was never reached — it must never read as completed.
-    expect(screen.getByText("Not started")).toBeInTheDocument();
-    expect(screen.queryByText("Completed")).toBeNull();
-
+    expect(screen.getByText("Training saved.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start New Training" })).toBeNull();
+    const saved = archivedSession();
+    const steps = getPlanStepSummaries(saved, saved.planExecution!);
+    expect(steps.map(({ actualUnits }) => actualUnits)).toEqual([1, 0, 0]);
+    expect(steps.map(({ outcome }) => outcome)).toEqual(["ended-early", "nothing-recorded", "not-started"]);
+    expect(steps[0].volumeLabel).toBe("1 of 4 planned stones");
     expect(archivedSession().shots).toHaveLength(1);
 
-    screen.getByRole("button", { name: "Start New Training" }).click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   });
 
@@ -330,12 +326,12 @@ describe("Finish Training from anywhere in a plan", () => {
       releaseTimingStep("step-2", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     await finishTraining();
 
     expect(
-      screen.getByText("Nothing was recorded, so no training was saved to history.")
+      screen.getByText("Training ended. No stones recorded.")
     ).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]")).toEqual([]);
   });
@@ -352,19 +348,19 @@ describe("Finish Training from anywhere in a plan", () => {
       releaseTimingStep("step-2", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 2 planned stones"));
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
-    screen.getByRole("button", { name: "Finish" }).click();
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
 
     await waitFor(() => screen.getByRole("alert"));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "This training could not be saved yet."
     );
-    expect(screen.queryByText("Training finished")).toBeNull();
+    expect(screen.queryByText("Training saved.")).toBeNull();
     // The recorded stone is still in the live training, not silently lost.
     expect(screen.getByText("1 of 2 planned stones")).toBeInTheDocument();
 
@@ -382,7 +378,7 @@ describe("Training Plan progression — races and guards", () => {
       releaseTimingStep("step-3", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     const nextExercise = screen.getByRole("button", { name: "Next Exercise" });
     act(() => {
@@ -400,7 +396,7 @@ describe("Training Plan progression — races and guards", () => {
     expect(archivedSession().blocks).toHaveLength(2);
   });
 
-  it("archives once when Next Exercise and Finish Training compete", async () => {
+  it("archives once when Next Exercise and Complete Session compete", async () => {
     const archiveSpy = vi.spyOn(sessionRepository, "archiveAndReplace");
 
     seedPlan("Three Step Plan", [
@@ -409,23 +405,23 @@ describe("Training Plan progression — races and guards", () => {
       releaseTimingStep("step-3", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 2 planned stones"));
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
 
     // Confirming Finish and clicking Next in one flush: both are enqueued onto the
     // same capture queue, and the one that runs second must find its own precondition
     // gone rather than acting on a replaced Session.
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+      fireEvent.click(screen.getByRole("button", { name: "Complete" }));
       const next = screen.queryByRole("button", { name: "Next Exercise" });
       if (next) fireEvent.click(next);
     });
 
-    await waitFor(() => screen.getByText("Training finished"));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     expect(archiveSpy).toHaveBeenCalledTimes(1);
     const session = archivedSession();
     expect(session.shots).toHaveLength(1);
@@ -438,7 +434,7 @@ describe("Training Plan progression — races and guards", () => {
       releaseTimingStep("step-2", 2),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.change(screen.getByLabelText("Predicted time"), {
       target: { value: "3.80" },
@@ -469,7 +465,7 @@ describe("Training Plan progression — races and guards", () => {
       releaseTimingStep("step-2", 4),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));
@@ -513,7 +509,7 @@ describe("Training Plan progression — races and guards", () => {
       releaseTimingStep("step-2", 4),
     ]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 4 planned stones"));
@@ -525,7 +521,7 @@ describe("Training Plan progression — races and guards", () => {
     // Cold remount — the migrated plan execution must still be on step 2.
     cleanup();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByText(/Step 2 of 2/));
     expect(screen.getByText("1 of 4 planned stones")).toBeInTheDocument();
@@ -535,7 +531,7 @@ describe("Training Plan progression — races and guards", () => {
 
     cleanup();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     // A finished training does not reappear after a reload; Train is back to its
     // ordinary entry point and the archived Session is untouched.
@@ -553,7 +549,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
   it("cannot accept a stone into a training whose archive snapshot is already chosen", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 4), releaseTimingStep("two", 4)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 4 planned stones"));
 
@@ -570,9 +566,9 @@ describe("Training Plan progression — reviewed correction regressions", () => 
         return original(history, current);
       });
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
-    screen.getByRole("button", { name: "Finish" }).click();
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     // The entry control is refused for the duration rather than accepting a stone
@@ -581,7 +577,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
     if (addButton) expect(addButton).toBeDisabled();
 
     await act(async () => release());
-    await waitFor(() => screen.getByText("Training finished"));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     // Exactly the one stone recorded before the transition, never a lost second one.
     expect(archivedSession().shots).toHaveLength(1);
@@ -591,7 +587,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
   it("reports a failed persistence of Next Exercise instead of silently disagreeing with storage", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 4), releaseTimingStep("two", 4)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     await waitFor(() =>
       expect(
         JSON.parse(localStorage.getItem("curling-release-tracker-current-session")!)
@@ -627,13 +623,13 @@ describe("Training Plan progression — reviewed correction regressions", () => 
     // strand the plan without navigation. The non-destructive controls remain.
     expect(screen.queryByRole("button", { name: "Abandon Exercise" })).toBeNull();
     expect(screen.getByRole("button", { name: "Next Exercise" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Finish Training" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Complete Session" })).toBeInTheDocument();
   });
 
   it("does not call a training completed when an earlier step was skipped", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 1), releaseTimingStep("two", 1)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // Skip step 1 entirely, then complete step 2's planned volume.
     screen.getByRole("button", { name: "Next Exercise" }).click();
@@ -641,8 +637,8 @@ describe("Training Plan progression — reviewed correction regressions", () => 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 1 planned stone"));
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
 
     expect(screen.queryByText("Save this completed training to history?")).toBeNull();
     expect(
@@ -653,7 +649,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
   it("calls a training completed only when every planned step was completed", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 1), releaseTimingStep("two", 1)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 1 planned stone"));
@@ -662,8 +658,8 @@ describe("Training Plan progression — reviewed correction regressions", () => 
     addShot("3.80");
     await waitFor(() => screen.getByText("1 of 1 planned stone"));
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
     expect(
       screen.getByText("Save this completed training to history?")
     ).toBeInTheDocument();
@@ -689,10 +685,9 @@ describe("Training Plan progression — reviewed correction regressions", () => 
 
     await finishTraining();
 
-    // The summary's own total line — never "0 stones recorded" after a recorded stone.
-    const total = screen.getByText(/stones? recorded ·/);
-    expect(total.textContent).toMatch(/^1 stone recorded/);
-    expect(screen.queryByText(/^0 stones recorded/)).toBeNull();
+    expect(countRecordedStones(archivedSession())).toBe(1);
+    expect(screen.getByText("Training saved.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start New Training" })).toBeNull();
   });
 
   it("does not let an older write's success acknowledge a newer transition", async () => {
@@ -834,7 +829,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
     // about the advance and must not be surfaced as its failure.
     seedPlan("Timing", [releaseTimingStep("one", 4), releaseTimingStep("two", 4)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     addShot("3.75");
     await waitFor(() => screen.getByText("1 of 4 planned stones"));
 
@@ -850,7 +845,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
   it("clears the save failure once a retry succeeds", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 4), releaseTimingStep("two", 4)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     const original = sessionRepository.saveCurrent.bind(sessionRepository);
     let failNext = true;
@@ -882,7 +877,7 @@ describe("Training Plan progression — reviewed correction regressions", () => 
   it("does not attribute a result received while no capture was active to the next capture", async () => {
     seedPlan("Timing", [releaseTimingStep("one", 4), releaseTimingStep("two", 4)]);
     await startSeededPlan();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));

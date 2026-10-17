@@ -8,6 +8,7 @@ import {
   parseSpeedInput,
 } from "../lib/measurement/speedInput";
 import type { ResolvedBlockMeasurement } from "../lib/measurement/quantities";
+import { toleranceBandLabel } from "../lib/measurement/tolerance";
 import type { Handle, ShotType } from "../types";
 import { surfaceClass } from "./Surface";
 
@@ -80,6 +81,8 @@ export const EMPTY_SHOT_ENTRY_DRAFT: ShotEntryDraft = {
 
 
 type ShotEntryProps = {
+  /** House supports manual Fixed and Variable Weight; active Auto Capture keeps a subordinate manual fallback. */
+  appearance?: "classic" | "house";
   onAddShot: (input: AddShotInput) => boolean;
   /** The current draft for THIS exercise, held by the parent. */
   draft: ShotEntryDraft;
@@ -110,6 +113,7 @@ type ShotEntryProps = {
 };
 
 export default function ShotEntry({
+  appearance = "classic",
   onAddShot,
   draft,
   onChangeDraft,
@@ -237,6 +241,101 @@ export default function ShotEntry({
   }
 
   const shownError = localError ?? errorMessage;
+
+  // Presentation only: both layouts submit through the same validation and
+  // parent-owned draft/acknowledgement boundary above. During Auto Capture the
+  // manual fallback keeps its subordinate classic surface.
+  if (appearance === "house" && level === "hero") {
+    return (
+      <div className="space-y-4" data-testid="house-shot-entry">
+        <h2 className="text-xs font-medium text-[var(--house-muted)]">Add Shot</h2>
+        <div className="house-hero">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <span className="house-hero-muted text-xs">{measuresBoth ? "Time + Speed" : measuresSpeed ? "Your speed" : "Your release time"}</span>
+            <span className="house-hero-muted text-xs">Manual entry</span>
+          </div>
+          <div className={`house-measurements ${measuresBoth ? "house-measurements-both" : ""}`}>
+            {measurement.quantities.map((quantity) => {
+              const isTime = quantity === "time";
+              const id = isTime ? "shot-entry-release-time" : "shot-entry-speed";
+              return (
+                <div key={quantity} className="house-measurement">
+                  <label htmlFor={id}>
+                    {isTime ? "Release Time (s)" : "Speed (m/s)"}{measuresBoth && " — optional"}
+                  </label>
+                  <div className="house-number-row">
+                    <input
+                      id={id}
+                      type="text"
+                      inputMode="decimal"
+                      enterKeyHint="done"
+                      autoComplete="off"
+                      placeholder={isTime ? "3.75 or 375" : "—"}
+                      value={isTime ? timeInput : speedInput}
+                      aria-invalid={shownError ? true : undefined}
+                      aria-describedby={shownError ? "house-shot-error" : undefined}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          handleSaveShot();
+                        }
+                      }}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (isTime ? /^[0-9.,]*$/.test(value) : SPEED_INPUT_PATTERN.test(value)) {
+                          if (isTime) setTimeInput(value);
+                          else setSpeedInput(value);
+                        }
+                      }}
+                      className="house-number"
+                    />
+                    <span aria-hidden="true" className="house-unit">{isTime ? "s" : "m/s"}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="house-targets" aria-label="Targets for Next Shot">
+          {measurement.quantities.map((quantity) => {
+            const config = measurement[quantity];
+            if (!config) return null;
+            const isTime = quantity === "time";
+            return (
+              <div key={quantity} className="house-target-row">
+                <div>
+                  <p className="text-sm font-medium">{isTime ? "Target time" : "Target speed"}</p>
+                  <small>On Target {toleranceBandLabel(config.tolerance.onTarget, quantity)}</small>
+                </div>
+                {isTime && target?.editable ? (
+                  <input aria-label="Target Time" type="text" inputMode="decimal" value={manualTargetInput}
+                    onChange={(event) => { if (/^[0-9.,]*$/.test(event.target.value)) setManualTargetInput(event.target.value); }}
+                    className="min-h-11 w-28 rounded-xl border border-slate-300 bg-white px-3 text-lg" />
+                ) : (
+                  <strong>{isTime ? formatReleaseTime(target?.value ?? config.target) : formatSpeed(config.target)}</strong>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {measuresBoth && <p className="text-xs text-[var(--house-muted)]">Enter either measurement or both. Add a missing measurement to the saved stone later.</p>}
+        <div role="group" aria-label="Handle" className="grid grid-cols-2 gap-2">
+          {(["in", "out"] as Handle[]).map((value) => (
+            <button key={value} type="button" aria-pressed={handle === value} onClick={() => setHandle(value)} className="house-select">
+              {value === "in" ? "In Handle" : "Out Handle"}
+            </button>
+          ))}
+        </div>
+        <div role="group" aria-label="Shot type" className="grid grid-cols-2 gap-2">
+          {(["draw", "takeout"] as ShotType[]).map((value) => (
+            <button key={value} type="button" aria-pressed={shotType === value} onClick={() => setShotType(value)} className="house-select capitalize">{value}</button>
+          ))}
+        </div>
+        {shownError && <p id="house-shot-error" role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{shownError}</p>}
+        <button type="button" onClick={handleSaveShot} disabled={disabled} className="house-action">Save Shot</button>
+      </div>
+    );
+  }
 
   return (
     <div className={surfaceClass(level)}>

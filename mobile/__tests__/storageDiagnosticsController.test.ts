@@ -45,6 +45,9 @@ function createFakeStore(rows = new Map<string, string>()) {
     openCount: 0,
     closeCount: 0,
     failReads: false,
+    /** Fails reads of exactly these keys, so an incomplete evidence set can be
+     * constructed without failing every read. */
+    failReadForKeys: new Set<string>(),
     failWrites: false,
     /** Fails the write of exactly one key, so an interrupted publication can be
      * constructed without failing the fixtures that precede it. */
@@ -58,12 +61,53 @@ function createFakeStore(rows = new Map<string, string>()) {
     failRemoveForKey: null as string | null,
     writes: [] as string[],
     removals: [] as string[],
+
+    /* --- transaction model --- */
+    /** The open transaction's working copy, or null. Lives here rather than in
+     * `rows` so that discarding it models an uncommitted transaction being
+     * lost, exactly as the real engine would. */
+    working: null as Map<string, string> | null,
+    tokenId: null as string | null,
+    transactionOrdinal: 0,
+    failBegin: false,
+    /** BEGIN is issued but its acknowledgement is lost: the real store then
+     * owns an UNCERTAIN transaction and returns its token. */
+    beginUnacknowledged: false,
+    failCommit: false,
+    failRollback: false,
+    /** True once a rollback failed (or BEGIN went unacknowledged): the real
+     * store's `uncertain` phase. */
+    uncertain: false,
+    /** Fails abandon at this boundary, leaving the transaction owned. */
+    failAbandonAt: null as "close" | "release" | null,
+    /** Fails the explicit reopen at this boundary. */
+    failReopenAt: null as "close" | "release" | "open" | null,
+    reopens: 0,
+    /** Makes the deliberate failing statement resolve instead of failing, so
+     * "the statement that was supposed to fail did not" is exercisable. */
+    deliberateStatementSucceeds: false,
+    /** Fails staging of exactly one key, to construct a partial transaction. */
+    failStageForKey: null as string | null,
+    begins: 0,
+    commits: 0,
+    rollbacks: 0,
+    abandons: 0,
   };
+
   const store: NativeSqliteStore = {
     databaseName: DIAGNOSTIC_DATABASE_NAME,
     adapter: {
       async get(key: string): Promise<StorageGetResult> {
-        if (state.failReads) {
+        if (state.working !== null) {
+          // The real store refuses ordinary reads while it owns a transaction,
+          // so a read can never observe uncommitted rows.
+          return {
+            status: "read_failed",
+            fallback: null,
+            error: { kind: "unknown", message: "transaction pending" },
+          };
+        }
+        if (state.failReads || state.failReadForKeys.has(key)) {
           return { status: "read_failed", fallback: null, error: { kind: "unknown", message: "x" } };
         }
         if (!state.open) {
@@ -73,6 +117,9 @@ function createFakeStore(rows = new Map<string, string>()) {
         return { status: "value", value: state.rows.has(key) ? state.rows.get(key)! : null };
       },
       async set(key: string, value: string): Promise<PersistenceWriteResult> {
+        if (state.working !== null) {
+          return { ok: false, error: { kind: "unknown", message: "transaction pending" } };
+        }
         const occurrence = (state.writeCountByKey.get(key) ?? 0) + 1;
         state.writeCountByKey.set(key, occurrence);
         if (
@@ -91,6 +138,9 @@ function createFakeStore(rows = new Map<string, string>()) {
         return { ok: true };
       },
       async remove(key: string): Promise<PersistenceRemoveResult> {
+        if (state.working !== null) {
+          return { ok: false, error: { kind: "removal_failed", message: "transaction pending" } };
+        }
         if (state.failRemoveForKey === key) {
           return { ok: false, error: { kind: "removal_failed", message: "x" } };
         }
@@ -119,8 +169,131 @@ function createFakeStore(rows = new Map<string, string>()) {
       state.closeCount += 1;
       return { ok: true };
     },
+    async reopenDiagnosticConnection() {
+      if (state.working !== null) {
+        return { ok: false, boundary: "refused", reason: "operation_failed" } as const;
+      }
+      if (state.failReopenAt !== null) {
+        return { ok: false, boundary: state.failReopenAt, reason: "operation_failed" } as const;
+      }
+      state.reopens += 1;
+      state.closeCount += 1;
+      state.openCount += 1;
+      state.open = true;
+      return { ok: true } as const;
+    },
     async deleteAllRecords(): Promise<NativeSqliteControlResult> {
+      if (state.working !== null) return { ok: false, reason: "operation_failed" };
       state.rows.clear();
+      return { ok: true };
+    },
+
+    hasPendingDiagnosticTransaction: () => state.working !== null,
+    diagnosticTransactionState: () =>
+      state.working === null ? "none" : state.uncertain ? "uncertain" : "open",
+
+    async beginDiagnosticTransaction() {
+      if (state.working !== null) return { ok: false, reason: "transaction_pending" };
+      if (state.failBegin) return { ok: false, reason: "operation_failed" };
+      state.begins += 1;
+      state.transactionOrdinal += 1;
+      state.tokenId = `txn-${state.transactionOrdinal}`;
+      // Snapshot of the COMMITTED rows. Nothing written into this copy is
+      // durable until commit merges it back.
+      state.working = new Map(state.rows);
+      if (state.beginUnacknowledged) {
+        state.uncertain = true;
+        return { ok: false, reason: "begin_unacknowledged", token: { id: state.tokenId } };
+      }
+      return { ok: true, token: { id: state.tokenId } };
+    },
+
+    async stageDiagnosticWrites(token, entries) {
+      if (state.working === null) return { ok: false, reason: "no_pending_transaction" };
+      if (token.id !== state.tokenId) return { ok: false, reason: "wrong_transaction" };
+      if (state.uncertain) return { ok: false, reason: "transaction_uncertain" };
+      for (const entry of entries) {
+        if (state.failStageForKey === entry.key) {
+          if (state.failRollback) {
+            state.uncertain = true;
+            return { ok: false, reason: "statement_failed", cleanup: "rollback_failed" };
+          }
+          state.working = null;
+          state.rollbacks += 1;
+          return { ok: false, reason: "statement_failed", cleanup: "rolled_back" };
+        }
+        state.working.set(entry.key, entry.value);
+      }
+      return { ok: true };
+    },
+
+    async stageDiagnosticFailingStatement(token) {
+      if (state.working === null) return { ok: false, reason: "no_pending_transaction" };
+      if (token.id !== state.tokenId) return { ok: false, reason: "wrong_transaction" };
+      if (state.uncertain) return { ok: false, reason: "transaction_uncertain" };
+      const reason = state.deliberateStatementSucceeds
+        ? ("statement_unexpectedly_succeeded" as const)
+        : ("statement_failed" as const);
+      if (state.failRollback) {
+        state.uncertain = true;
+        return { ok: false, reason, cleanup: "rollback_failed" };
+      }
+      state.working = null;
+      state.rollbacks += 1;
+      return { ok: false, reason, cleanup: "rolled_back" };
+    },
+
+    async commitDiagnosticTransaction(token) {
+      if (state.working === null) return { ok: false, reason: "no_pending_transaction" };
+      if (token.id !== state.tokenId) return { ok: false, reason: "wrong_transaction" };
+      if (state.uncertain) return { ok: false, reason: "transaction_uncertain" };
+      if (state.failCommit) {
+        if (state.failRollback) {
+          state.uncertain = true;
+          return { ok: false, reason: "commit_rejected", cleanup: "rollback_failed" };
+        }
+        state.working = null;
+        state.rollbacks += 1;
+        return { ok: false, reason: "commit_rejected", cleanup: "rolled_back" };
+      }
+      state.commits += 1;
+      // The whole working copy becomes durable AT ONCE. Mutated IN PLACE rather
+      // than reassigned: a caller holding the same Map is how a simulated app
+      // restart shares one device's storage, and reassigning would silently
+      // hand the "restarted" store an empty database.
+      state.rows.clear();
+      for (const [key, value] of state.working) state.rows.set(key, value);
+      state.working = null;
+      return { ok: true };
+    },
+
+    async rollbackDiagnosticTransaction(token) {
+      if (state.working === null) return { ok: false, reason: "no_pending_transaction" };
+      if (token.id !== state.tokenId) return { ok: false, reason: "wrong_transaction" };
+      if (state.failRollback) {
+        state.uncertain = true;
+        return { ok: false, reason: "rollback_failed" };
+      }
+      state.rollbacks += 1;
+      state.working = null;
+      state.uncertain = false;
+      return { ok: true };
+    },
+
+    async abandonDiagnosticTransaction(token) {
+      if (state.working === null) return { ok: false, reason: "no_pending_transaction" };
+      if (token.id !== state.tokenId) return { ok: false, reason: "wrong_transaction" };
+      state.uncertain = true;
+      if (state.failAbandonAt !== null) {
+        // Ownership is KEPT, exactly as the real store keeps it.
+        return { ok: false, reason: "abandon_incomplete", boundary: state.failAbandonAt };
+      }
+      state.abandons += 1;
+      // Discards the working copy and closes, exactly as the real one does.
+      state.working = null;
+      state.uncertain = false;
+      state.open = false;
+      state.closeCount += 1;
       return { ok: true };
     },
   };
@@ -836,5 +1009,1132 @@ describe("storage diagnostics — an unreadable record is not an absent one", ()
     // an absence the failed read cannot establish.
     expect(entry.message).toContain("could not be read");
     expect(entry.message).not.toContain("No previous run");
+  });
+});
+
+// ===================================================================================
+// Checkpoints and transactions (Stage M3b1 evidence tooling).
+//
+// EVIDENCE CLASS: **mock**. The fake store models one transaction at a time with a
+// working copy that only becomes durable on commit, which is faithful to the
+// adapter's contract — but it is not SQLite and not a device. Nothing here is
+// measured native atomicity, and nothing here is evidence about power loss.
+// ===================================================================================
+
+import {
+  buildCheckpointProgress,
+  buildCheckpointRow,
+  CHECKPOINT_PROGRESS_KEY,
+  checkpointRowKeys,
+  classifyCheckpoint,
+  parseCheckpointProgress,
+  type CheckpointEvidence,
+} from "../src/diagnostics/syntheticCheckpoints";
+
+/** A controller whose attempt ids actually differ between attempts — the whole
+ * point of the checkpoint payloads being attempt-scoped. */
+function checkpointController(
+  store: NativeSqliteStore,
+  sessionId = "session-a"
+): NativeStorageDiagnosticsController {
+  let tick = 0;
+  let attempt = 0;
+  return createNativeStorageDiagnosticsController({
+    createStore: () => store,
+    detectPlatform: () => "ios",
+    now: () => (tick += 1),
+    isoNow: () => "2026-10-15T00:00:00.000Z",
+    newRunId: () => `attempt-${(attempt += 1)}`,
+    sessionId,
+  });
+}
+
+function storedRowValues(state: { rows: Map<string, string> }) {
+  return checkpointRowKeys().map((key) => state.rows.get(key));
+}
+
+describe("checkpoints — a committed checkpoint", () => {
+  it("commits every payload row and the progress record together", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("ok");
+    expect(entry.claim).toBe("verified_after_reopen");
+    // EXACTLY one transaction, committed exactly once. Several transactions
+    // would mean the rows could have landed separately.
+    expect(state.begins).toBe(1);
+    expect(state.commits).toBe(1);
+    expect(state.rollbacks).toBe(0);
+    // Rows AND progress, not one without the other.
+    for (const key of checkpointRowKeys()) expect(state.rows.has(key)).toBe(true);
+    const progress = parseCheckpointProgress(state.rows.get(CHECKPOINT_PROGRESS_KEY)!);
+    expect(progress?.attemptId).toBe("attempt-1");
+    expect(progress?.rows.map((row) => row.key)).toEqual(checkpointRowKeys());
+    // Every row is exactly the payload this attempt and checkpoint derive.
+    expect(storedRowValues(state)).toEqual(
+      checkpointRowKeys().map((_key, index) => buildCheckpointRow("attempt-1", 1, index))
+    );
+  });
+
+  it("verifies after a close and reopen, and says what that does not prove", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+
+    expect(state.closeCount).toBeGreaterThan(0);
+    expect(latest(controller).message).toMatch(/evidence about power loss/i);
+  });
+
+  it("does not leave a transaction pending", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+  });
+});
+
+describe("checkpoints — rollback and statement failure", () => {
+  it("leaves no part of a rolled-back checkpoint committed", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runExplicitRollback();
+
+    expect(latest(controller).status).toBe("ok");
+    expect(state.begins).toBe(1);
+    expect(state.rollbacks).toBe(1);
+    expect(state.commits).toBe(0);
+    expect(state.rows.has(CHECKPOINT_PROGRESS_KEY)).toBe(false);
+    for (const key of checkpointRowKeys()) expect(state.rows.has(key)).toBe(false);
+  });
+
+  it("preserves the LAST COMMITTED checkpoint when a later attempt rolls back", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+
+    await controller.runExplicitRollback();
+
+    const entry = latest(controller);
+    expect(entry.status).toBe("ok");
+    expect(entry.message).toMatch(/previous checkpoint is intact/i);
+    // Byte-for-byte restoration of the rows the transaction overwrote, not
+    // merely "no new keys appeared".
+    expect(state.rows).toEqual(committed);
+  });
+
+  it("reports a statement failure as a STATEMENT failure, never as a commit failure", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runStatementFailure();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("ok");
+    expect(entry.detail.join(" ")).toMatch(/statement failed inside the transaction/i);
+    expect(entry.detail.join(" ")).toMatch(/no commit was ever attempted/i);
+    expect(entry.message).not.toMatch(/commit (failed|was rejected)/i);
+  });
+
+  it("preserves the previous checkpoint across a statement failure", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+
+    await controller.runStatementFailure();
+
+    expect(latest(controller).status).toBe("ok");
+    expect(state.rows).toEqual(committed);
+  });
+
+  it("rolls the whole checkpoint back when the PROGRESS record is the statement that fails", async () => {
+    // The partial case the checkpoint model exists to prevent: the payload rows
+    // were staged and the progress record was not. Without a transaction this
+    // would leave rows with no record describing them.
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+
+    state.failStageForKey = CHECKPOINT_PROGRESS_KEY;
+    await controller.runExplicitRollback();
+
+    const entry = latest(controller);
+    expect(entry.status).toBe("failed");
+    expect(entry.message).toMatch(/statement failure, not a commit failure/i);
+    // No stray rows: the earlier checkpoint is exactly as it was.
+    expect(state.rows).toEqual(committed);
+  });
+
+  it("reports an unresolved transaction when the rollback itself fails", async () => {
+    const { store, state } = createFakeStore();
+    state.failRollback = true;
+    const controller = checkpointController(store);
+
+    await controller.runStatementFailure();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/unresolved/i);
+    expect(controller.getSnapshot().pendingTransaction?.unresolved).toBe(true);
+  });
+
+  it("classifies a rejected commit by reading, not by the rejection", async () => {
+    const { store, state } = createFakeStore();
+    state.failCommit = true;
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+    const entry = latest(controller);
+
+    // The rejection freed the connection; the VERDICT came from the reopened
+    // store. A rejected commit is never read as proof of rollback.
+    expect(entry.detail.join(" ")).toMatch(/not proof that nothing was committed/i);
+    expect(entry.message).toMatch(/no checkpoint was committed/i);
+    expect(state.rows.has(CHECKPOINT_PROGRESS_KEY)).toBe(false);
+  });
+});
+
+describe("checkpoints — interruption preparation", () => {
+  it("leaves the transaction open and names both attempt ids", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+
+    await controller.prepareInterruption();
+    const pending = controller.getSnapshot().pendingTransaction;
+
+    expect(pending).not.toBeNull();
+    expect(pending?.attemptId).toBe("attempt-2");
+    expect(pending?.baselineAttemptId).toBe("attempt-1");
+    expect(pending?.unresolved).toBe(false);
+    // Nothing from the prepared attempt is durable.
+    expect(state.rows.get(CHECKPOINT_PROGRESS_KEY)).toContain("attempt-1");
+  });
+
+  it("does not describe backgrounding or a reload as process death", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.prepareInterruption();
+
+    expect(latest(controller).detail.join(" ")).toMatch(
+      /backgrounding the app or reloading the web view is NOT process death/i
+    );
+  });
+
+  it("refuses every other action while a transaction is pending", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.prepareInterruption();
+    const writesBefore = state.writes.length;
+
+    for (const action of [
+      () => controller.runCommittedCheckpoint(),
+      () => controller.writeFixtures(),
+      () => controller.verifyCurrentSession(),
+      () => controller.closeAndReopen(),
+      () => controller.clearSyntheticDatabase(),
+      () => controller.clearCheckpointData(),
+      () => controller.inspectStoredCheckpoint(),
+      () => controller.readSettings(),
+    ]) {
+      await action();
+      expect(latest(controller).status).toBe("blocked");
+    }
+    // Refusal means refusal: nothing was written by any of them.
+    expect(state.writes.length).toBe(writesBefore);
+    expect(controller.getSnapshot().pendingTransaction).not.toBeNull();
+  });
+
+  it("refuses cleanup while a transaction is pending, so evidence cannot be destroyed", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+    await controller.prepareInterruption();
+
+    await controller.clearSyntheticDatabase();
+
+    expect(latest(controller).status).toBe("blocked");
+    expect(state.rows).toEqual(committed);
+  });
+
+  it("rolls a prepared transaction back on request", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+    await controller.prepareInterruption();
+
+    await controller.rollbackPreparedTransaction();
+
+    expect(latest(controller).status).toBe("ok");
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+    expect(state.rows).toEqual(committed);
+    // The store is usable again.
+    await controller.inspectStoredCheckpoint();
+    expect(latest(controller).status).toBe("ok");
+  });
+
+  it("abandons an unresolved transaction when rollback cannot end it", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.prepareInterruption();
+    state.failRollback = true;
+
+    await controller.rollbackPreparedTransaction();
+    expect(controller.getSnapshot().pendingTransaction?.unresolved).toBe(true);
+
+    state.failRollback = false;
+    await controller.abandonPreparedTransaction();
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+  });
+
+  it("refuses a rollback when nothing is prepared", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.rollbackPreparedTransaction();
+    expect(latest(controller).status).toBe("blocked");
+  });
+});
+
+describe("checkpoints — uncertain acknowledgement", () => {
+  it("classifies a commit whose acknowledgement was lost as COMMITTED, by reading", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runLostAcknowledgementAfterCommit();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("ok");
+    expect(entry.message).toMatch(/classified committed/i);
+    expect(state.rows.has(CHECKPOINT_PROGRESS_KEY)).toBe(true);
+  });
+
+  it("labels the lost acknowledgement as a diagnostic simulation", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+
+    await controller.runLostAcknowledgementAfterCommit();
+
+    const detail = latest(controller).detail.join(" ");
+    expect(detail).toMatch(/DIAGNOSTIC SIMULATION/);
+    expect(detail).toMatch(/discarded unread/i);
+    // And it says the verdict did not come from the discarded result.
+    expect(detail).toMatch(/Nothing below is derived from what the commit returned/i);
+  });
+
+  it("classifies an attempt that never committed as NOT COMMITTED, with the previous one intact", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const committed = new Map(state.rows);
+
+    await controller.runLostAcknowledgementBeforeCommit();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("ok");
+    expect(entry.message).toMatch(/classified not committed/i);
+    expect(state.rows).toEqual(committed);
+  });
+
+  it("does not call a clean discard process death", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runLostAcknowledgementBeforeCommit();
+
+    expect(latest(controller).detail.join(" ")).toMatch(
+      /clean discard, not process death/i
+    );
+  });
+});
+
+describe("checkpoints — inspection never repairs", () => {
+  it("writes nothing and removes nothing while inspecting", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    const writes = state.writes.length;
+    const removals = state.removals.length;
+    const rows = new Map(state.rows);
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(state.writes.length).toBe(writes);
+    expect(state.removals.length).toBe(removals);
+    expect(state.rows).toEqual(rows);
+  });
+
+  it("does not replay or recreate a missing checkpoint", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    // A payload row disappears — the partial state a migration must handle.
+    state.rows.delete(checkpointRowKeys()[1]);
+    const writes = state.writes.length;
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/UNRESOLVED/);
+    expect(latest(controller).message).toMatch(/nothing was rewritten or replayed/i);
+    expect(state.writes.length).toBe(writes);
+    expect(state.rows.has(checkpointRowKeys()[1])).toBe(false);
+  });
+
+  it("reports a failed read as unresolved, never as an absent checkpoint", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    state.failReads = true;
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/could not be read/i);
+    expect(latest(controller).message).not.toMatch(/no checkpoint is stored/i);
+  });
+
+  it("reports stray rows without a progress record as a partial state", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    state.rows.delete(CHECKPOINT_PROGRESS_KEY);
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/partial state, not an empty one/i);
+  });
+
+  it("reports an invalid progress record as attributing nothing", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    state.rows.set(CHECKPOINT_PROGRESS_KEY, '{"schema":99}');
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/failed validation/i);
+  });
+
+  it("distinguishes an earlier app session from this one", async () => {
+    const rows = new Map<string, string>();
+    const first = createFakeStore(rows);
+    await checkpointController(first.store, "session-a").runCommittedCheckpoint();
+
+    const second = createFakeStore(rows);
+    const controller = checkpointController(second.store, "session-b");
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).detail.join(" ")).toMatch(/EARLIER app session/i);
+    expect(latest(controller).claim).toBe("verified_after_reopen");
+  });
+});
+
+describe("checkpoints — old evidence never certifies a newer attempt", () => {
+  function evidenceFor(attemptId: string, checkpointNumber: number): CheckpointEvidence {
+    return {
+      progress: {
+        status: "value",
+        value: JSON.stringify(
+          buildCheckpointProgress({
+            attemptId,
+            sessionId: "session-a",
+            checkpointNumber,
+            writtenAtIso: "2026-10-15T00:00:00.000Z",
+          })
+        ),
+      },
+      rows: checkpointRowKeys().map((_key, index) => ({
+        status: "value" as const,
+        value: buildCheckpointRow(attemptId, checkpointNumber, index),
+      })),
+    };
+  }
+
+  it("never reports a previous attempt's committed checkpoint as this attempt's", () => {
+    const previous = buildCheckpointProgress({
+      attemptId: "attempt-1",
+      sessionId: "session-a",
+      checkpointNumber: 1,
+      writtenAtIso: "2026-10-15T00:00:00.000Z",
+    });
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: previous,
+      evidence: evidenceFor("attempt-1", 1),
+    });
+    expect(verdict.kind).toBe("not_committed");
+  });
+
+  it("produces different bytes for every attempt and every checkpoint", () => {
+    const a = buildCheckpointRow("attempt-1", 1, 0);
+    const b = buildCheckpointRow("attempt-2", 1, 0);
+    const c = buildCheckpointRow("attempt-1", 2, 0);
+    expect(new Set([a, b, c]).size).toBe(3);
+  });
+
+  it("calls an unrecognised attempt unresolved rather than guessing", () => {
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: null,
+      evidence: evidenceFor("attempt-9", 9),
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("calls a progress record whose rows belong to another attempt unresolved", () => {
+    const evidence = evidenceFor("attempt-2", 2);
+    evidence.rows[1] = { status: "value", value: buildCheckpointRow("attempt-1", 1, 1) };
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: null,
+      evidence,
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("calls a vanished previous checkpoint unresolved, not 'not committed'", () => {
+    const previous = buildCheckpointProgress({
+      attemptId: "attempt-1",
+      sessionId: "session-a",
+      checkpointNumber: 1,
+      writtenAtIso: "2026-10-15T00:00:00.000Z",
+    });
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: previous,
+      evidence: { progress: { status: "absent" }, rows: [] },
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("calls a failed progress read unresolved, never absent", () => {
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-1",
+      expectedCheckpointNumber: 1,
+      baseline: null,
+      evidence: { progress: { status: "read_failed" }, rows: [] },
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("calls a failed ROW read unresolved rather than certifying the rest", () => {
+    const evidence = evidenceFor("attempt-1", 1);
+    evidence.rows[2] = { status: "read_failed" };
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-1",
+      expectedCheckpointNumber: 1,
+      baseline: null,
+      evidence,
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+});
+
+describe("checkpoints — progress record validation", () => {
+  const valid = () =>
+    buildCheckpointProgress({
+      attemptId: "attempt-1",
+      sessionId: "session-a",
+      checkpointNumber: 1,
+      writtenAtIso: "2026-10-15T00:00:00.000Z",
+    });
+
+  it("accepts a well-formed record", () => {
+    expect(parseCheckpointProgress(JSON.stringify(valid()))).not.toBeNull();
+  });
+
+  it("rejects malformed, truncated and hostile input", () => {
+    for (const raw of [
+      "",
+      "{",
+      "null",
+      "[]",
+      '"a string"',
+      "123",
+      JSON.stringify({ ...valid(), schema: 2 }),
+      JSON.stringify({ ...valid(), attemptId: "" }),
+      JSON.stringify({ ...valid(), sessionId: 42 }),
+      JSON.stringify({ ...valid(), checkpointNumber: 0 }),
+      JSON.stringify({ ...valid(), checkpointNumber: 1.5 }),
+      JSON.stringify({ ...valid(), writtenAtIso: null }),
+      JSON.stringify({ ...valid(), rows: "nope" }),
+      JSON.stringify({ ...valid(), rows: [{ key: "x", bytes: 1 }] }),
+      JSON.stringify({ ...valid(), rows: [{ key: "x", bytes: Number.NaN }] }),
+    ]) {
+      expect(parseCheckpointProgress(raw)).toBeNull();
+    }
+  });
+
+  it("rejects a record describing a different row set", () => {
+    const record = { ...valid(), rows: [{ key: "diagnostic.synthetic.other", bytes: 1 }] };
+    expect(parseCheckpointProgress(JSON.stringify(record))).toBeNull();
+  });
+
+  it("survives an object whose property reads throw", () => {
+    const hostile = JSON.stringify(valid());
+    const revived = JSON.parse(hostile) as Record<string, unknown>;
+    Object.defineProperty(revived, "rows", {
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    // Parsing goes through JSON, so the hostile object is reconstructed here to
+    // prove the guard rather than to simulate a real JSON payload.
+    expect(() => parseCheckpointProgress(hostile)).not.toThrow();
+  });
+});
+
+describe("checkpoints — isolation and concurrency", () => {
+  it("addresses only its own synthetic checkpoint keys", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    await controller.runExplicitRollback();
+    await controller.runStatementFailure();
+    await controller.inspectStoredCheckpoint();
+
+    for (const key of [...state.rows.keys(), ...state.writes, ...state.removals]) {
+      expect(key.startsWith("diagnostic.synthetic.")).toBe(true);
+      expect(key).not.toContain("curling.");
+    }
+  });
+
+  it("deletes only the checkpoint keys, leaving the restart fixtures alone", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.writeFixtures();
+    await controller.runCommittedCheckpoint();
+    const fixtureKeys = [...state.rows.keys()].filter(
+      (key) => !key.startsWith("diagnostic.synthetic.checkpoint.")
+    );
+
+    await controller.clearCheckpointData();
+
+    expect(latest(controller).status).toBe("ok");
+    for (const key of fixtureKeys) expect(state.rows.has(key)).toBe(true);
+    expect(state.rows.has(CHECKPOINT_PROGRESS_KEY)).toBe(false);
+  });
+
+  it("refuses a second checkpoint action while one is running", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+
+    const first = controller.runCommittedCheckpoint();
+    await controller.runExplicitRollback();
+    await first;
+
+    // The refusal is recorded, not queued and not silently dropped. Entries are
+    // newest-first, so the refusal sits above the completed action.
+    const refused = controller
+      .getSnapshot()
+      .entries.find((entry) => entry.action === "Roll back a checkpoint");
+    expect(refused?.status).toBe("blocked");
+  });
+
+  it("fails closed when the transaction cannot be started", async () => {
+    const { store, state } = createFakeStore();
+    state.failBegin = true;
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/could not be started/i);
+    expect(state.rows.size).toBe(0);
+  });
+
+  it("refuses to judge an attempt when the existing record cannot be validated", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    state.rows.set(CHECKPOINT_PROGRESS_KEY, "not json");
+
+    await controller.runCommittedCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/could not be read or validated/i);
+    // Nothing was written over the unreadable record.
+    expect(state.rows.get(CHECKPOINT_PROGRESS_KEY)).toBe("not json");
+  });
+});
+
+describe("checkpoints — build and platform boundaries", () => {
+  it("touches no application database, repository, localStorage, credential or cloud module", async () => {
+    const sources = await Promise.all(
+      ["src/diagnostics/checkpointDiagnostics.ts", "src/diagnostics/syntheticCheckpoints.ts"].map(
+        (file) => readFile(path.join(mobileRoot, file), "utf8")
+      )
+    );
+    for (const source of sources) {
+      for (const forbidden of [
+        "localStorage",
+        "sessionStorage",
+        "indexedDB",
+        "SecureStorage",
+        "secureCredentialStore",
+        "supabase",
+        "Repository",
+        "storageComposition",
+        "curling-sporting-v1",
+        "curling.",
+      ]) {
+        expect(source).not.toContain(forbidden);
+      }
+    }
+  });
+
+  it("addresses the one fixed synthetic database and never an application one", async () => {
+    const source = await readFile(
+      path.join(mobileRoot, "src/diagnostics/checkpointDiagnostics.ts"),
+      "utf8"
+    );
+    // The database name is not re-spelled here: the controller supplies the one
+    // store, so a diagnostic transaction cannot be pointed somewhere else.
+    expect(source).not.toContain(DIAGNOSTIC_DATABASE_NAME);
+    expect(source).toContain("store: NativeSqliteStore");
+  });
+
+  it("accepts no caller-supplied SQL", async () => {
+    const source = await readFile(
+      path.join(mobileRoot, "src/diagnostics/checkpointDiagnostics.ts"),
+      "utf8"
+    );
+    for (const sql of ["SELECT", "INSERT", "DELETE", "PRAGMA", "BEGIN", "COMMIT TRANSACTION"]) {
+      expect(source).not.toContain(sql);
+    }
+  });
+
+  it("fails closed on a non-native platform", async () => {
+    const { store } = createFakeStore();
+    const controller = createNativeStorageDiagnosticsController({
+      createStore: () => store,
+      detectPlatform: () => "web",
+      sessionId: "session-a",
+    });
+    // The platform gate lives in the store, which this fake replaces; what is
+    // asserted here is that the panel reports the platform honestly rather than
+    // presenting a web run as native evidence.
+    expect(controller.getSnapshot().platform).toBe("web");
+  });
+
+  it("leaves the production activation authority unavailable", async () => {
+    const composition = await readFile(
+      path.join(mobileRoot, "src/storage/nativeStorageComposition.ts"),
+      "utf8"
+    );
+    expect(composition).toContain('status: "unavailable", reason: "migration_not_implemented"');
+    // And nothing in the checkpoint work reaches it.
+    const checkpoints = await readFile(
+      path.join(mobileRoot, "src/diagnostics/checkpointDiagnostics.ts"),
+      "utf8"
+    );
+    expect(checkpoints).not.toContain("ActivationAuthority");
+  });
+});
+
+describe("checkpoints — an engine that does not enforce the constraint is a finding", () => {
+  it("reports an accepted NOT NULL violation as an engine finding, not as the expected failure", async () => {
+    const { store, state } = createFakeStore();
+    // The store's own contract: the deliberate statement reports its own
+    // reason when the engine accepts it. Modelled here by overriding the one
+    // method, because the fake otherwise always rejects it.
+    store.stageDiagnosticFailingStatement = async () => {
+      state.working = null;
+      state.rollbacks += 1;
+      return {
+        ok: false,
+        reason: "statement_unexpectedly_succeeded",
+        cleanup: "rolled_back",
+      } as const;
+    };
+    const controller = checkpointController(store);
+
+    await controller.runStatementFailure();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("failed");
+    expect(entry.message).toMatch(/ACCEPTED by the engine/);
+    expect(entry.message).toMatch(/no statement-failure evidence was gathered/i);
+  });
+});
+
+// ===================================================================================
+// Correction regressions (R1–R3). Each case below reproduces a defect found in
+// independent review; the comment names the defect, and the assertion is the
+// corrected behaviour.
+// ===================================================================================
+
+describe("checkpoints — incomplete evidence is never established absence (R1)", () => {
+  const rowKeys = checkpointRowKeys();
+  const absentRows = () => rowKeys.map(() => ({ status: "absent" as const }));
+  const previous = () =>
+    buildCheckpointProgress({
+      attemptId: "attempt-1",
+      sessionId: "session-a",
+      checkpointNumber: 1,
+      writtenAtIso: "2026-10-15T00:00:00.000Z",
+    });
+  const previousRows = () =>
+    rowKeys.map((_key, index) => ({
+      status: "value" as const,
+      value: buildCheckpointRow("attempt-1", 1, index),
+    }));
+
+  function classifyEmptyBaseline(evidence: CheckpointEvidence) {
+    return classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: null,
+      evidence,
+    });
+  }
+
+  it("positive control: a truly empty store is NOT COMMITTED", () => {
+    const verdict = classifyEmptyBaseline({ progress: { status: "absent" }, rows: absentRows() });
+    expect(verdict.kind).toBe("not_committed");
+  });
+
+  it("no baseline, no progress, a PRESENT payload row → unresolved (was: not_committed)", () => {
+    const rows = absentRows() as CheckpointEvidence["rows"];
+    rows[1] = { status: "value", value: buildCheckpointRow("attempt-2", 2, 1) };
+    const verdict = classifyEmptyBaseline({ progress: { status: "absent" }, rows });
+    expect(verdict.kind).toBe("unresolved");
+    expect(verdict.detail.join(" ")).toMatch(/partial state, not an empty one/i);
+  });
+
+  it("no baseline, no progress, an UNREADABLE payload row → unresolved (was: not_committed)", () => {
+    const rows = absentRows() as CheckpointEvidence["rows"];
+    rows[2] = { status: "read_failed" };
+    const verdict = classifyEmptyBaseline({ progress: { status: "absent" }, rows });
+    expect(verdict.kind).toBe("unresolved");
+    expect(verdict.detail.join(" ")).toMatch(/cannot be determined/i);
+  });
+
+  it("no baseline, no progress, every payload row unreadable → unresolved", () => {
+    const verdict = classifyEmptyBaseline({
+      progress: { status: "absent" },
+      rows: rowKeys.map(() => ({ status: "read_failed" as const })),
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("an evidence set that does not cover every row is unresolved, never 'the rest are absent'", () => {
+    for (const rows of [[], absentRows().slice(0, 1), [...absentRows(), { status: "absent" as const }]]) {
+      const verdict = classifyEmptyBaseline({ progress: { status: "absent" }, rows });
+      expect(verdict.kind).toBe("unresolved");
+    }
+  });
+
+  it("a disappeared previously committed checkpoint is unresolved even if every row read as absent", () => {
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: previous(),
+      evidence: { progress: { status: "absent" }, rows: absentRows() },
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("an unchanged previous checkpoint with every row matching is NOT COMMITTED (positive control)", () => {
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: previous(),
+      evidence: {
+        progress: { status: "value", value: JSON.stringify(previous()) },
+        rows: previousRows(),
+      },
+    });
+    expect(verdict.kind).toBe("not_committed");
+    expect(verdict.detail.join(" ")).toMatch(/progress record is unchanged/i);
+  });
+
+  it.each([
+    ["session", { sessionId: "session-x" }],
+    ["timestamp", { writtenAtIso: "2026-10-16T00:00:00.000Z" }],
+    ["row manifest byte counts", { rows: previous().rows.map((row) => ({ ...row, bytes: row.bytes + 1 })) }],
+  ])(
+    "does not call the previous checkpoint intact when its %s changed but attempt and number match",
+    (_label, change) => {
+      const changed = { ...previous(), ...change };
+      const verdict = classifyCheckpoint({
+        expectedAttemptId: "attempt-2",
+        expectedCheckpointNumber: 2,
+        baseline: previous(),
+        evidence: {
+          progress: { status: "value", value: JSON.stringify(changed) },
+          rows: previousRows(),
+        },
+      });
+      expect(verdict.kind).toBe("unresolved");
+    }
+  );
+
+  it("does not certify a record whose own byte manifest does not describe its rows", () => {
+    const record = buildCheckpointProgress({
+      attemptId: "attempt-2",
+      sessionId: "session-a",
+      checkpointNumber: 2,
+      writtenAtIso: "2026-10-15T00:00:00.000Z",
+    });
+    record.rows[0] = { ...record.rows[0], bytes: record.rows[0].bytes + 1 };
+    const verdict = classifyCheckpoint({
+      expectedAttemptId: "attempt-2",
+      expectedCheckpointNumber: 2,
+      baseline: null,
+      evidence: {
+        progress: { status: "value", value: JSON.stringify(record) },
+        rows: rowKeys.map((_key, index) => ({
+          status: "value" as const,
+          value: buildCheckpointRow("attempt-2", 2, index),
+        })),
+      },
+    });
+    expect(verdict.kind).toBe("unresolved");
+  });
+
+  it("inspection: progress absent and EVERY payload read failed → failed, never 'no rows present'", async () => {
+    const { store, state } = createFakeStore();
+    for (const key of rowKeys) state.failReadForKeys.add(key);
+    const controller = checkpointController(store);
+
+    await controller.inspectStoredCheckpoint();
+    const entry = latest(controller);
+
+    expect(entry.status).toBe("failed");
+    expect(entry.message).toMatch(/cannot be determined/i);
+    expect(entry.message).not.toMatch(/no checkpoint is stored/i);
+    expect(entry.message).not.toMatch(/no payload rows are present/i);
+  });
+
+  it("inspection: progress absent and ONE payload read failed → failed", async () => {
+    const { store, state } = createFakeStore();
+    state.failReadForKeys.add(rowKeys[0]);
+    const controller = checkpointController(store);
+
+    await controller.inspectStoredCheckpoint();
+    expect(latest(controller).status).toBe("failed");
+  });
+
+  it("inspection positive control: a truly empty store reports no checkpoint", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.inspectStoredCheckpoint();
+    expect(latest(controller).status).toBe("ok");
+    expect(latest(controller).message).toMatch(/read successfully and are absent/i);
+  });
+
+  it("refuses to start an attempt over an existing partial state instead of judging against it", async () => {
+    const { store, state } = createFakeStore();
+    state.rows.set(rowKeys[0], buildCheckpointRow("attempt-x", 1, 0));
+    const controller = checkpointController(store);
+
+    await controller.runExplicitRollback();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/could not be read or validated/i);
+    expect(state.begins).toBe(0);
+  });
+
+  it("refuses to start an attempt when a baseline row cannot be read", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.runCommittedCheckpoint();
+    state.failReadForKeys.add(rowKeys[1]);
+
+    await controller.runExplicitRollback();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(state.begins).toBe(1);
+  });
+});
+
+describe("checkpoints — a failed close/reopen never certifies recovery (R2)", () => {
+  type Scenario = {
+    name: string;
+    run: (controller: NativeStorageDiagnosticsController) => Promise<void>;
+    setup?: (state: ReturnType<typeof createFakeStore>["state"]) => void;
+  };
+  const scenarios: Scenario[] = [
+    { name: "committed checkpoint", run: (c) => c.runCommittedCheckpoint() },
+    {
+      name: "rejected commit",
+      run: (c) => c.runCommittedCheckpoint(),
+      setup: (state) => {
+        state.failCommit = true;
+      },
+    },
+    { name: "explicit rollback", run: (c) => c.runExplicitRollback() },
+    { name: "statement failure", run: (c) => c.runStatementFailure() },
+    { name: "lost acknowledgement after commit", run: (c) => c.runLostAcknowledgementAfterCommit() },
+    { name: "lost acknowledgement before commit", run: (c) => c.runLostAcknowledgementBeforeCommit() },
+  ];
+
+  for (const scenario of scenarios) {
+    for (const boundary of ["close", "release", "open"] as const) {
+      it(`${scenario.name}: a failed ${boundary} gives no verdict and no reopen claim`, async () => {
+        const { store, state } = createFakeStore();
+        scenario.setup?.(state);
+        state.failReopenAt = boundary;
+        const controller = checkpointController(store);
+
+        await scenario.run(controller);
+        const entry = latest(controller);
+
+        expect(entry.status).toBe("failed");
+        expect(entry.claim).not.toBe("verified_after_reopen");
+        expect(entry.message).toMatch(/no fresh connection was established/i);
+        expect(entry.message).toMatch(/no verdict/i);
+        // Nothing claims a reopen happened.
+        expect(entry.message).not.toMatch(/read back exactly after/i);
+        expect(entry.message).not.toMatch(/Classified (NOT )?COMMITTED/);
+        expect(entry.detail.join(" ")).toContain(`Recovery boundary not established: ${boundary}.`);
+        // And nothing was read as evidence after the failed boundary: no
+        // reopen was counted.
+        expect(state.reopens).toBe(0);
+      });
+    }
+  }
+
+  it("the acknowledged commit keeps only the acknowledgement claim when the reopen fails", async () => {
+    const { store, state } = createFakeStore();
+    state.failReopenAt = "close";
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+
+    expect(latest(controller).claim).toBe("write_acknowledged");
+    expect(latest(controller).message).toMatch(/acknowledged the COMMIT/);
+  });
+
+  it("closeAndReopen names the failed boundary and verifies nothing", async () => {
+    const { store, state } = createFakeStore();
+    const controller = controllerFor(store);
+    await controller.writeFixtures();
+    state.failReopenAt = "release";
+
+    await controller.closeAndReopen();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).claim).toBe("no_claim");
+    expect(latest(controller).message).toMatch(/releasing the native connection handle failed/i);
+  });
+});
+
+describe("checkpoints — ownership while the native state is uncertain (R3)", () => {
+  it("keeps the token and refuses everything when BEGIN went unacknowledged", async () => {
+    const { store, state } = createFakeStore();
+    state.beginUnacknowledged = true;
+    const controller = checkpointController(store);
+
+    await controller.runCommittedCheckpoint();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/does not prove no transaction was opened/i);
+    const pending = controller.getSnapshot().pendingTransaction;
+    expect(pending?.unresolved).toBe(true);
+    expect(pending?.uncertainty).toMatch(/not positively acknowledged/i);
+
+    for (const action of [
+      () => controller.inspectStoredCheckpoint(),
+      () => controller.clearCheckpointData(),
+      () => controller.clearSyntheticDatabase(),
+      () => controller.readSettings(),
+      () => controller.writeFixtures(),
+      () => controller.runExplicitRollback(),
+    ]) {
+      await action();
+      expect(latest(controller).status).toBe("blocked");
+    }
+
+    // Recovery controls stay available and go through the owner.
+    state.beginUnacknowledged = false;
+    await controller.abandonPreparedTransaction();
+    expect(latest(controller).status).toBe("ok");
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+  });
+
+  it("keeps ownership when abandon cannot close, and releases it only on a completed retry", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.prepareInterruption();
+    state.failAbandonAt = "close";
+
+    await controller.abandonPreparedTransaction();
+
+    expect(latest(controller).status).toBe("failed");
+    expect(latest(controller).message).toMatch(/closing the connection failed/i);
+    expect(controller.getSnapshot().pendingTransaction?.unresolved).toBe(true);
+    expect(store.hasPendingDiagnosticTransaction()).toBe(true);
+    await controller.inspectStoredCheckpoint();
+    expect(latest(controller).status).toBe("blocked");
+
+    state.failAbandonAt = "release";
+    await controller.abandonPreparedTransaction();
+    expect(latest(controller).message).toMatch(/releasing the native connection handle failed/i);
+    expect(controller.getSnapshot().pendingTransaction).not.toBeNull();
+
+    state.failAbandonAt = null;
+    await controller.abandonPreparedTransaction();
+    expect(latest(controller).status).toBe("ok");
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+    expect(store.hasPendingDiagnosticTransaction()).toBe(false);
+  });
+
+  it("keeps a resolvable token when the deliberate statement is ACCEPTED and the rollback fails", async () => {
+    const { store, state } = createFakeStore();
+    state.deliberateStatementSucceeds = true;
+    state.failRollback = true;
+    const controller = checkpointController(store);
+
+    await controller.runStatementFailure();
+
+    expect(latest(controller).message).toMatch(/ACCEPTED by the engine/);
+    expect(latest(controller).message).toMatch(/UNRESOLVED/);
+    const pending = controller.getSnapshot().pendingTransaction;
+    expect(pending).not.toBeNull();
+    expect(pending?.unresolved).toBe(true);
+
+    state.failRollback = false;
+    await controller.abandonPreparedTransaction();
+    expect(controller.getSnapshot().pendingTransaction).toBeNull();
+  });
+
+  it("distinguishes an acknowledged open transaction from an unknown outcome", async () => {
+    const { store, state } = createFakeStore();
+    const controller = checkpointController(store);
+    await controller.prepareInterruption();
+    expect(controller.getSnapshot().pendingTransaction).toMatchObject({
+      unresolved: false,
+      uncertainty: null,
+    });
+
+    state.failRollback = true;
+    await controller.rollbackPreparedTransaction();
+    expect(controller.getSnapshot().pendingTransaction).toMatchObject({ unresolved: true });
+    await controller.runCommittedCheckpoint();
+    expect(latest(controller).message).toMatch(/outcome is unknown/i);
+  });
+
+  it("refuses everything when the store owns a transaction the panel holds no token for", async () => {
+    const { store } = createFakeStore();
+    const controller = checkpointController(store);
+    // Taken behind the panel's back: no checkpoint pending state exists.
+    await store.beginDiagnosticTransaction();
+
+    await controller.inspectStoredCheckpoint();
+
+    expect(latest(controller).status).toBe("blocked");
+    expect(latest(controller).message).toMatch(/no record of/i);
   });
 });

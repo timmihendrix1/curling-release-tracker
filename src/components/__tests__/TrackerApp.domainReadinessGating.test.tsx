@@ -42,6 +42,10 @@ beforeEach(() => {
 });
 
 function navButton(label: string) {
+  if (label === "Assess") {
+    fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
+    return screen.getByRole("button", { name: "Assessments" });
+  }
   return screen.getAllByRole("button", { name: label })[0];
 }
 
@@ -144,7 +148,7 @@ describe("TrackerApp — History Filters readiness gating", () => {
     const saveSpy = vi.spyOn(historyFiltersRepository, "save");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     // Unrelated ready domain (Session/Home) is fully usable while History
     // Filters is still loading.
@@ -183,7 +187,7 @@ describe("TrackerApp — History Filters readiness gating", () => {
     vi.spyOn(historyFiltersRepository, "load").mockReturnValue(filtersDeferred.promise);
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Analyze").click();
     await waitFor(() => screen.getByText(/Loading filters/));
 
@@ -209,7 +213,7 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     const saveSpy = vi.spyOn(trainingPlansRepository, "savePlans");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
@@ -221,7 +225,7 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     // while the Training Plans library is still loading.
     const exercisesTab = screen.getByRole("tab", { name: "Exercises" });
     expect(exercisesTab).toBeEnabled();
-    await waitFor(() => screen.getByText("Eight Guards, Progressively Longer"));
+    await waitFor(() => screen.getByRole("button", { name: /^Shotmaking/ }));
 
     fireEvent.click(plansTab);
     // Disabled tab — clicking it must not switch modes.
@@ -246,7 +250,7 @@ describe("TrackerApp — Training Plans readiness gating", () => {
     vi.spyOn(trainingPlansRepository, "loadPlans").mockReturnValue(plansDeferred.promise);
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
@@ -276,7 +280,7 @@ describe("TrackerApp — Accuracy Tolerance Profiles readiness gating", () => {
     const saveSpy = vi.spyOn(accuracyToleranceProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Accuracy Tolerances"));
 
@@ -299,7 +303,7 @@ describe("TrackerApp — Accuracy Tolerance Profiles readiness gating", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Manage Accuracy Tolerances" })).toBeEnabled()
     );
-    expect(screen.getByText(/1 profile saved · Default: Match Play/)).toBeInTheDocument();
+    expect(screen.getByText(/1 saved · Match Play/)).toBeInTheDocument();
   });
 
   it("initializes the documented empty default (not a fabricated profile) on absent, only once the manager becomes reachable, and never persists a default while loading", async () => {
@@ -316,7 +320,7 @@ describe("TrackerApp — Accuracy Tolerance Profiles readiness gating", () => {
     const saveSpy = vi.spyOn(accuracyToleranceProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Accuracy Tolerances"));
 
@@ -365,7 +369,7 @@ describe("TrackerApp — Smart Random Profiles readiness gating", () => {
     const saveSpy = vi.spyOn(smartRandomProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Smart Random Profiles"));
 
@@ -386,7 +390,7 @@ describe("TrackerApp — Smart Random Profiles readiness gating", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Manage Smart Random Profiles" })).toBeEnabled()
     );
-    expect(screen.getByText(/1 profile saved/)).toBeInTheDocument();
+    expect(screen.getByText(/1 saved/)).toBeInTheDocument();
   });
 
   it("initializes the documented empty default (not a fabricated profile) on absent, only once the manager becomes reachable, and never persists a default while loading", async () => {
@@ -403,7 +407,7 @@ describe("TrackerApp — Smart Random Profiles readiness gating", () => {
     const saveSpy = vi.spyOn(smartRandomProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Smart Random Profiles"));
 
@@ -489,7 +493,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveHistorySpy = vi.spyOn(sessionRepository, "saveHistory");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
@@ -524,12 +528,12 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     expect(screen.getByRole("button", { name: "Start Training" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByText("Active Training Block")).toBeNull();
+    expect(screen.queryByText("Current exercise")).toBeNull();
 
     // Session History mutation — reachable via Settings/Analyze
     // independent of block state — is visibly disabled too.
     navButton("Settings").click();
-    await waitFor(() => screen.getByText("Clear Data"));
+    await waitFor(() => screen.getByText("Delete training history"));
     expect(screen.getByRole("button", { name: "Clear History" })).toBeDisabled();
 
     navButton("Analyze").click();
@@ -552,7 +556,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveSpy = vi.spyOn(historyFiltersRepository, "save");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Analyze").click();
     await waitFor(() => screen.getByRole("combobox", { name: "Handle" }));
     expect(screen.getByRole("combobox", { name: "Handle" })).toHaveValue(
@@ -597,7 +601,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveSpy = vi.spyOn(assessmentRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Assess").click();
 
     // "View Assessment" is pure navigation — it neither mutates the
@@ -646,7 +650,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveSpy = vi.spyOn(trainingPlansRepository, "savePlans");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 
@@ -654,7 +658,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     expect(saveSpy).not.toHaveBeenCalled();
 
     // Unrelated ready domain: the curated Exercise Library still works.
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
   });
 
   it("Accuracy Tolerance Profiles: settles loading, retains the empty fallback, keeps Manage disabled, and never calls saveState", async () => {
@@ -669,7 +673,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveSpy = vi.spyOn(accuracyToleranceProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Accuracy Tolerances"));
 
@@ -692,7 +696,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     const saveSpy = vi.spyOn(smartRandomProfilesRepository, "saveState");
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Settings").click();
     await waitFor(() => screen.getByText("Smart Random Profiles"));
 

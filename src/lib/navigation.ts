@@ -1,13 +1,6 @@
-// Central configuration for the platform's top-level navigation. See
-// docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md and docs/adr/0009 for the
-// long-term navigation model (Home / Train / Assess / Analyze / Settings) and
-// why this app uses an in-memory view-state model rather than Next.js routes.
-//
-// Assess became a real, active navigation item in Phase B (see
-// docs/adr/0011-assessment-execution-shares-the-app-shells-capture-navigation-guard-and-persistence-patterns.md)
-// once a functional Release Time Core Assessment v1 flow existed to render —
-// flipping `availability` here plus adding the "assess" ActiveView value was
-// the entire navigation-side change; PrimaryNavigation needed no changes.
+// Primary navigation: Home / Train / Analyze / Settings. Assessments is reached
+// within Train; its internal view and shared leaving-active-work guards remain intact.
+// See docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md (House refinement, 2026-10-09).
 export type NavigationItemId =
   | "home"
   | "train"
@@ -26,7 +19,7 @@ export type NavigationItem = {
 export const NAVIGATION_ITEMS: NavigationItem[] = [
   { id: "home", label: "Home", availability: "active" },
   { id: "train", label: "Train", availability: "active" },
-  { id: "assess", label: "Assess", availability: "active" },
+  { id: "assess", label: "Assess", availability: "hidden" },
   { id: "analyze", label: "Analyze", availability: "active" },
   { id: "settings", label: "Settings", availability: "active" },
 ];

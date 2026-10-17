@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import TrackerApp from "../TrackerApp";
 import { createAssessmentRun, transitionAssessmentRun } from "../../lib/assessment/run";
@@ -42,6 +42,10 @@ function seedActiveAssessmentRun(run: AssessmentRun) {
 }
 
 function navButton(label: string) {
+  if (label === "Assess") {
+    fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
+    return screen.getByRole("button", { name: "Assessments" });
+  }
   return screen.getAllByRole("button", { name: label })[0];
 }
 
@@ -49,26 +53,26 @@ describe("TrackerApp — Assess integration", () => {
   it("Home shows Resume Assessment for an active run, and it navigates to Assess", async () => {
     seedActiveAssessmentRun(buildRunInStatus("warmup"));
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     const resumeButton = await waitFor(() => screen.getByRole("button", { name: "Resume Assessment" }));
     fireEvent.click(resumeButton);
 
     await waitFor(() =>
-      expect(navButton("Assess")).toHaveAttribute("aria-current", "page")
+      expect(navButton("Train")).toHaveAttribute("aria-current", "page")
     );
   });
 
   it("Home never invents a Resume Assessment action when there is no active run", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     expect(screen.queryByRole("button", { name: "Resume Assessment" })).not.toBeInTheDocument();
   });
 
   it("Reload Recovery: a run still 'in_progress' at load time is force-paused, never silently resumed", async () => {
     seedActiveAssessmentRun(buildRunInStatus("in_progress"));
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     fireEvent.click(navButton("Assess"));
     await waitFor(() => screen.getByText("Assessment paused"));
@@ -79,7 +83,7 @@ describe("TrackerApp — Assess integration", () => {
   it("Reload Recovery: a run still 'warmup' at load time is also force-paused (not left live)", async () => {
     seedActiveAssessmentRun(buildRunInStatus("warmup"));
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     fireEvent.click(navButton("Assess"));
     await waitFor(() => screen.getByText("Assessment paused"));
@@ -91,7 +95,7 @@ describe("TrackerApp — Assess integration", () => {
       JSON.stringify({ schemaVersion: 1, currentRun: { totally: "broken" }, history: [] })
     );
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     fireEvent.click(navButton("Assess"));
     await waitFor(() =>
@@ -102,9 +106,9 @@ describe("TrackerApp — Assess integration", () => {
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   });
 
-  it("blocks starting an assessment while a Training Auto Capture sequence is active, without losing anything", async () => {
+  it("offers no Assessment switch during Training Auto Capture and preserves its leave guard", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     fireEvent.click(navButton("Train"));
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
@@ -113,36 +117,25 @@ describe("TrackerApp — Assess integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
     await waitFor(() => screen.getByText("Set Up Training Block"));
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.change(screen.getByLabelText("Number of Shots"), { target: { value: "3" } });
     fireEvent.click(screen.getByRole("button", { name: "Fixed In" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));
     await waitFor(() => screen.getByText("0 / 3 shots"));
 
-    // Leaving Train with an active capture sequence is guarded — confirm the
-    // existing guard (unrelated to this feature) before Assess is reachable.
-    fireEvent.click(navButton("Assess"));
+    expect(screen.queryByRole("button", { name: "Assessments" })).toBeNull();
+    fireEvent.click(navButton("Home"));
     await waitFor(() => screen.getByText("Auto Capture In Progress"));
-    fireEvent.click(screen.getByRole("button", { name: "Leave" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.getByText("0 / 3 shots")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Assessments" })).toBeNull();
 
-    await waitFor(() => screen.getByText("Release Time Core Assessment"));
-    fireEvent.click(screen.getByRole("button", { name: "View Assessment" }));
-    await waitFor(() => screen.getByText("How this assessment works"));
-    fireEvent.click(screen.getByRole("button", { name: "Skip explanation" }));
-    await waitFor(() => screen.getByText("Accuracy Thresholds"));
-    fireEvent.click(screen.getByRole("checkbox"));
-
-    // The capture sequence was already ended by confirming the leave-guard
-    // above (captured shots preserved) — so this defensive check normally
-    // isn't hit via this exact navigation path, but Start Warm-up must never
-    // silently start over lingering capture state either way.
-    expect(screen.getByRole("button", { name: "Start Warm-up" })).not.toBeDisabled();
   });
 
   it("leaving Assess while a run is active pauses it (never silently loses attempts)", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     fireEvent.click(navButton("Assess"));
     await waitFor(() => screen.getByText("Release Time Core Assessment"));

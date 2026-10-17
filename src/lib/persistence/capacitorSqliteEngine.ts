@@ -37,9 +37,29 @@ function wrapConnection(db: SQLiteDBConnection): NativeSqliteConnection {
     open: () => db.open(),
     close: () => db.close(),
     execute: (statements, transaction) => db.execute(statements, transaction),
-    run: (statement, values) => db.run(statement, values),
+    // `transaction` is passed EXPLICITLY and is never defaulted here. The
+    // plugin's own signature is `run(statement, values, transaction = true, ...)`
+    // (`dist/esm/definitions.js`), and on iOS that flag reaches
+    // `Database.runSQL(sql:values:transaction:)`, which issues an unconditional
+    // `BEGIN TRANSACTION` before the statement and `COMMIT` after it
+    // (Database.swift). So a statement issued with the DEFAULT inside a
+    // transaction this application already owns would either fail — SQLite
+    // rejects a nested `BEGIN` — or, if it did not, commit independently and end
+    // the owned transaction early. Forwarding the caller's explicit choice is
+    // what makes "one owned transaction" mean what it says.
+    run: (statement, values, transaction) => db.run(statement, values, transaction),
     query: (statement, values): Promise<NativeSqliteQueryResult> =>
       db.query(statement, values),
+    // The plugin's own transaction primitives. Each one issues the corresponding
+    // single statement through `sqlite3_exec` on iOS
+    // (`UtilsSQLCipher.beginTransaction` / `commitTransaction` /
+    // `rollbackTransaction`) and maintains the plugin's own
+    // transaction-active flag. They are used ONLY by the diagnostics-only
+    // transaction owner in `nativeSqliteAdapter.ts`; no repository-facing
+    // contract exposes them.
+    beginTransaction: () => db.beginTransaction(),
+    commitTransaction: () => db.commitTransaction(),
+    rollbackTransaction: () => db.rollbackTransaction(),
   };
 }
 

@@ -38,6 +38,8 @@ async function expandExerciseCategory(
     name: new RegExp(`^${exerciseCategory(title)}`),
   });
   if ((await category.getAttribute("aria-expanded")) === "false") await category.click();
+  const all = page.getByRole("button", { name: "Show all exercises" });
+  if (await all.isVisible()) await all.click();
 }
 
 async function openExerciseDetail(
@@ -45,6 +47,8 @@ async function openExerciseDetail(
   title: typeof CURATED_TITLES[number]
 ) {
   await expandExerciseCategory(page, title);
+  const all = page.getByRole("button", { name: "Show all exercises" });
+  if (await all.isVisible()) await all.click();
   await page.getByRole("button", { name: `View Details: ${title}` }).click();
 }
 
@@ -88,7 +92,7 @@ async function seedTeamExerciseEligibility(page: import("@playwright/test").Page
     localStorage.setItem(key, JSON.stringify(state));
   });
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
 }
 
 test.describe("Exercise Library and Solo execution", () => {
@@ -127,8 +131,8 @@ test.describe("Exercise Library and Solo execution", () => {
 
     // The Train header now names finding an exercise too.
     await expect(
-      page.getByText("Find an exercise, set up a session, and record release times as you throw.")
-    ).toBeVisible();
+      page.getByText("Choose an exercise. Record your training.")
+    ).toHaveCount(0);
   });
 
   test("searches, filters, resets and opens each Exercise detail, then returns", async ({ page }) => {
@@ -171,6 +175,7 @@ test.describe("Exercise Library and Solo execution", () => {
     for (const title of CURATED_TITLES) {
       await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await page.getByText("Setup and instructions", { exact: true }).click();
       await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
       await expect(
         page.getByRole("button", { name: /Start Exercise|Continue to Timing Setup/i })
@@ -251,7 +256,7 @@ test.describe("Exercise Library and Solo execution", () => {
     // from the persisted Data URL rather than the network.
     await page.route("**/exercise-diagrams/**", (route) => route.abort());
     await page.reload();
-    await page.waitForSelector("text=Today's Plan");
+    await page.getByTestId("house-home").waitFor();
     await goToTrain(page);
     await openTrainTab(page, "Exercises");
     await openExerciseDetail(page, "Eight Guards, Progressively Longer");
@@ -336,6 +341,8 @@ test.describe("Exercise Library and Solo execution", () => {
       ] as const) {
         const category = page.getByRole("button", { name: new RegExp(`^${group}`) });
         if ((await category.getAttribute("aria-expanded")) === "false") await category.click();
+        const all = page.getByRole("button", { name: "Show all exercises" });
+        if (await all.isVisible()) await all.click();
         await page.getByRole("button", { name: `View Details: ${title}` }).click();
         await page.locator("figure img").first().waitFor();
 
@@ -514,6 +521,7 @@ test.describe("Exercise Library and Solo execution", () => {
       ["Release Time", 1],
     ] as const) {
       await openExerciseDetail(page, title);
+      await page.getByText("Exercise details", { exact: true }).click();
       await expect(page.getByText(`Exercise version ${version}`)).toBeVisible();
 
       const body = await page.locator("body").textContent();
@@ -539,6 +547,7 @@ test.describe("Exercise Library and Solo execution", () => {
     for (const title of CURATED_TITLES) {
       await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await page.getByText("Setup and instructions", { exact: true }).click();
       await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       await page.getByRole("button", { name: "← Back to Exercises" }).click();
@@ -567,7 +576,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
     await expect(page.getByText("Set Up Training Block")).toBeVisible();
     await page.getByRole("button", { name: "Start Training" }).click();
-    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
   });
 
   test("runs Technique as an unscored observation with a private note", async ({ page }) => {
@@ -576,8 +585,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await openTrainTab(page, "Exercises");
     await openExerciseDetail(page, "Release Point");
     await page.getByRole("button", { name: "Start Exercise" }).click();
-    await expect(page.getByText("Prepare the exercise, then confirm when you are ready to record.")).toBeVisible();
-    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
+    await expect(page.getByText("Prepare the exercise, then start when you are ready.")).toHaveCount(0);
 
     await expect(page.getByRole("heading", { name: "Release Point", exact: true })).toBeVisible();
     await expect(page.getByText("Observe and discuss")).toBeVisible();
@@ -598,14 +606,13 @@ test.describe("Exercise Library and Solo execution", () => {
     await openTrainTab(page, "Exercises");
     await openExerciseDetail(page, "Eight Guards, Progressively Longer");
     await page.getByRole("button", { name: "Start Exercise" }).click();
-    await expect(page.getByText("Prepare the exercise, then confirm when you are ready to record.")).toBeVisible();
-    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
+    await expect(page.getByText("Prepare the exercise, then start when you are ready.")).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Record outcome" })).toBeVisible();
     await expect(page.getByText("Exercise setup and reference")).toBeVisible();
     await page.getByRole("button", { name: "Inhandle" }).click();
     await page.getByRole("button", { name: "0 points, 0 percent" }).click();
     await page.getByRole("button", { name: "Record Stone" }).click();
-    await expect(page.getByText("0/4", { exact: true })).toBeVisible();
+    await expect(page.getByText("Average", { exact: true }).locator("..")).toContainText("0%");
     await expect(page.getByText("1 scored · 0 excluded")).toBeVisible();
 
     await page.getByRole("button", { name: "Outhandle" }).click();
@@ -635,7 +642,8 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByRole("button", { name: "Blind Weight", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Blind Weight", exact: true }).click();
     await page.getByRole("button", { name: "Start Training" }).click();
-    await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
+    await page.getByText("Exercise settings", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Blind Weight Block" })).toBeVisible();
   });
 
@@ -645,7 +653,6 @@ test.describe("Exercise Library and Solo execution", () => {
     await openTrainTab(page, "Exercises");
     await openExerciseDetail(page, "Rotation Count");
     await page.getByRole("button", { name: "Start Exercise" }).click();
-    await page.getByRole("button", { name: "Setup Complete — Start Exercise" }).click();
 
     await expect(page.getByRole("heading", { name: "Rotation Count", exact: true })).toBeVisible();
     await page.getByLabel(/Rotation Count/).fill("2.5");

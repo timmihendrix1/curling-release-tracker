@@ -57,7 +57,6 @@ export default function ExerciseSoloExecutionScreen({
   writable,
   onReplace,
   onBackToLibrary,
-  onStartNewSession,
   withinTrainingPlan = false,
   exerciseAssetResolver,
 }: ExerciseSoloExecutionScreenProps) {
@@ -241,25 +240,12 @@ export default function ExerciseSoloExecutionScreen({
 
   return (
     <div className="space-y-4">
-      <div className={surfaceClass("primary")}>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-          <span>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</span>
-          <span aria-hidden="true">·</span>
-          <span>Solo</span>
-          <span aria-hidden="true">·</span>
-          <span>{active ? "In progress" : execution.status === "completed" ? "Completed" : "Abandoned"}</span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {execution.configuration.sweeperCount === 0
-              ? "No sweepers"
-              : `${execution.configuration.sweeperCount} sweepers`}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>{execution.configuration.sweepingUsed ? "Sweeping used" : "Sweeping not used"}</span>
-        </div>
-        <h2 className="mt-2 text-xl font-semibold text-slate-900">{version.title}</h2>
-        <p className="mt-2 text-sm text-slate-600">{version.goal}</p>
-      </div>
+      <header className="px-1 py-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          {exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo · {active ? "In progress" : execution.status === "completed" ? "Completed" : "Abandoned"}
+        </p>
+        <h2 className="mt-2 text-2xl font-medium leading-tight tracking-tight text-slate-900">{version.title}</h2>
+      </header>
 
       {active && version.primaryFocus === "technique" && version.guidance.kind === "observation" && (
         <section className={surfaceClass("hero")}>
@@ -321,7 +307,7 @@ export default function ExerciseSoloExecutionScreen({
             <legend className="text-sm font-medium text-slate-700">
               Self-assessed outcome
             </legend>
-            <div className="mt-2 grid grid-cols-5 gap-2">
+            <div className="house-score-picker mt-2 grid grid-cols-5 gap-2">
               {([0, 1, 2, 3, 4] as const).map((value) => (
                 <button
                   key={value}
@@ -338,12 +324,12 @@ export default function ExerciseSoloExecutionScreen({
                       : "bg-slate-100 text-slate-700 hover:bg-slate-200"
                   }`}
                 >
-                  {value}
+                  {value}<small aria-hidden="true">{value * 25}%</small>
                 </button>
               ))}
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              0 = 0%, 1 = 25%, 2 = 50%, 3 = 75%, 4 = 100%. This is your own judgement,
+              This is your own judgement,
               not a platform-standardised rubric.
             </p>
           </fieldset>
@@ -419,7 +405,7 @@ export default function ExerciseSoloExecutionScreen({
           <h3 className="mt-1 text-lg font-semibold text-slate-900">
             Record measurement
           </h3>
-          <label className="mt-4 block text-sm font-medium text-slate-700">
+          <label className="house-measured-field mt-4 block">
             {standaloneProtocol.name}
             <span className="ml-1 font-normal text-slate-500">
               ({measurementUnitLabel(standaloneProtocol.unit)})
@@ -470,6 +456,53 @@ export default function ExerciseSoloExecutionScreen({
         </section>
       )}
 
+      <section className={surfaceClass("secondary", "house-training-note")}>
+        <label className="text-sm font-semibold text-slate-900" htmlFor="exercise-private-note">
+          Private athlete note
+        </label>
+        <p className="mt-1 text-xs text-slate-500">
+          Only you can read or edit this note. It is not shared with a Team or coach.
+        </p>
+        <textarea
+          id="exercise-private-note"
+          value={result.privateNote ?? ""}
+          onChange={(event) => updateNote(event.target.value)}
+          disabled={!writable}
+          rows={2}
+          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+          placeholder="Add your observation…"
+        />
+      </section>
+
+      {error && (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>
+      )}
+
+      {active ? (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={complete}
+            disabled={
+              !writable ||
+              ((shotmaking || measured) && result.attempts.length === 0)
+            }
+            className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Complete Exercise
+          </button>
+
+        </div>
+      ) : !withinTrainingPlan ? (
+        <button
+          type="button"
+          onClick={onBackToLibrary}
+          className="house-select w-full"
+        >
+          Back to Exercise Library
+        </button>
+      ) : null}
+
       {shotSummary && (
         <section className={surfaceClass(active ? "secondary" : "hero")}>
           <h3 className="text-lg font-semibold text-slate-900">
@@ -485,12 +518,12 @@ export default function ExerciseSoloExecutionScreen({
                   {shotSummary.averagePercentage?.toFixed(0)}%
                 </p>
               </div>
-              <div className="rounded-xl bg-slate-100 p-3">
+              {!active && <div className="rounded-xl bg-slate-100 p-3">
                 <p className="text-xs text-slate-500">Points</p>
                 <p className="mt-1 text-xl font-semibold text-slate-900">
                   {shotSummary.points}/{shotSummary.maximumPoints}
                 </p>
-              </div>
+              </div>}
             </div>
           )}
           <p className="mt-3 text-sm text-slate-600">
@@ -503,7 +536,9 @@ export default function ExerciseSoloExecutionScreen({
               ))}
             </ul>
           )}
-          {shotSummary.scoredStoneCount > 0 && (
+          <details className="house-training-disclosure mt-3" open={!active}>
+            <summary>Result details and stones</summary>
+          {!active && shotSummary.scoredStoneCount > 0 && (
             <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-800">Score distribution</h4>
@@ -562,6 +597,7 @@ export default function ExerciseSoloExecutionScreen({
               </ol>
             </div>
           )}
+          </details>
         </section>
       )}
 
@@ -589,9 +625,9 @@ export default function ExerciseSoloExecutionScreen({
                       summary.mean
                     )}
                   </p>
-                  <p className="mt-1 text-xs text-slate-600">
+                  {!active && <p className="mt-1 text-xs text-slate-600">
                     Range {summary.minimum}–{summary.maximum}
-                  </p>
+                  </p>}
                 </div>
               ))}
             </div>
@@ -634,88 +670,33 @@ export default function ExerciseSoloExecutionScreen({
         </section>
       )}
 
-      <section className={surfaceClass("primary")}>
-        <label className="text-sm font-semibold text-slate-900" htmlFor="exercise-private-note">
-          Private athlete note
-        </label>
-        <p className="mt-1 text-xs text-slate-500">
-          Only you can read or edit this note. It is not shared with a Team or coach.
-        </p>
-        <textarea
-          id="exercise-private-note"
-          value={result.privateNote ?? ""}
-          onChange={(event) => updateNote(event.target.value)}
-          disabled={!writable}
-          rows={4}
-          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-          placeholder="Add your observation…"
-        />
-      </section>
 
       {active && (
-        <ExerciseExecutionReference
-          version={version}
-          exerciseAssetResolver={exerciseAssetResolver}
-        />
+        <ExerciseExecutionReference version={version} exerciseAssetResolver={exerciseAssetResolver}>
+          <p className="text-xs text-slate-500">
+            {execution.configuration.sweeperCount === 0 ? "No sweepers" : `${execution.configuration.sweeperCount} sweepers`}
+            {" · "}{execution.configuration.sweepingUsed ? "Sweeping used" : "Sweeping not used"}
+          </p>
+        </ExerciseExecutionReference>
       )}
 
-      {error && (
-        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>
-      )}
+      {!withinTrainingPlan && active && (
+        <details className="house-training-disclosure">
+          <summary>Session options</summary>
+          <div className="space-y-2">
+            {active && (
+              <button
+                type="button"
+                onClick={() => setConfirmAbandon(true)}
+                disabled={!writable}
+                className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-red-700 underline disabled:opacity-50"
+              >
+                Abandon Exercise
+              </button>
+            )}
 
-      {active ? (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={complete}
-            disabled={
-              !writable ||
-              ((shotmaking || measured) && result.attempts.length === 0)
-            }
-            className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Complete Exercise
-          </button>
-          {/* Inside a Training Plan the plan's own controls (Next Exercise / Finish
-              Training) are the single end-of-training path — the same rule the
-              "Back to Exercise Library" action below already follows. Abandoning
-              discards the Exercise Execution the active plan step is bound to, which
-              would strand the plan with no navigation at all, so it is not offered
-              here. Leaving a step early is already supported, non-destructively, by
-              Next Exercise and Finish Training (ADR-0048). */}
-          {!withinTrainingPlan && (
-            <button
-              type="button"
-              onClick={() => setConfirmAbandon(true)}
-              disabled={!writable}
-              className="min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-red-700 underline disabled:opacity-50"
-            >
-              Abandon Exercise
-            </button>
-          )}
-        </div>
-      ) : !withinTrainingPlan ? (
-        <button
-          type="button"
-          onClick={onBackToLibrary}
-          className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white"
-        >
-          Back to Exercise Library
-        </button>
-      ) : null}
-
-      {/* Within a Training Plan the plan's own controls (Next Exercise / Finish
-          Training) are the single end-of-training path — no second, red discard-style
-          action competes with them. */}
-      {!withinTrainingPlan && (
-        <button
-          type="button"
-          onClick={onStartNewSession}
-          disabled={!writable}
-          className="min-h-11 w-full rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Start New Session
-        </button>
+          </div>
+        </details>
       )}
 
       {confirmAbandon && (

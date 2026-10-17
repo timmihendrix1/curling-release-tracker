@@ -9,12 +9,13 @@ import { surfaceClass } from "./Surface";
  * the Release Time runner and under a curated Exercise.
  *
  * Deliberately never gated on the planned stone count: **Next Exercise** is offered
- * whenever a next step exists and **Finish Training** throughout, including midway
+ * whenever a next step exists and **Complete Session** throughout, including midway
  * through an exercise and with nothing recorded (docs/TRAINING_SYSTEM_AND_PLANS.md
  * section 31, ADR-0048). Shown alongside, never instead of, normal Shot Entry /
  * Auto Capture / Exercise recording — extra stones stay allowed in every state.
  */
 type TrainingPlanStepTransitionProps = {
+  appearance?: "classic" | "house";
   /** Absent on the final step — the control is then structurally unavailable. */
   nextStepLabel?: string;
   onNextExercise: () => void;
@@ -31,6 +32,7 @@ type TrainingPlanStepTransitionProps = {
 };
 
 export default function TrainingPlanStepTransition({
+  appearance = "classic",
   nextStepLabel,
   onNextExercise,
   onFinishTraining,
@@ -40,7 +42,7 @@ export default function TrainingPlanStepTransition({
   retryLabel = "Try Saving Again",
 }: TrainingPlanStepTransitionProps) {
   return (
-    <section className={surfaceClass("primary")}>
+    <section className={appearance === "house" ? "house-support" : surfaceClass("primary")}>
       {/* The current step, its title and its planned-versus-actual volume are the
           TrainingPlanProgress readout's job — never repeated here. */}
       <div className="flex items-start justify-between gap-3">
@@ -77,7 +79,7 @@ export default function TrainingPlanStepTransition({
           type="button"
           onClick={onNextExercise}
           disabled={disabled}
-          className="mt-3 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className={appearance === "house" ? "house-link mt-2 w-full text-sm font-medium disabled:opacity-50" : "mt-3 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"}
         >
           Next Exercise
         </button>
@@ -88,12 +90,12 @@ export default function TrainingPlanStepTransition({
         onClick={onFinishTraining}
         disabled={disabled}
         className={
-          nextStepLabel
+          appearance === "house" ? "house-link mt-1 w-full text-sm disabled:opacity-50" : nextStepLabel
             ? "mt-2 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
             : "mt-3 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         }
       >
-        Finish Training
+        Complete Session
       </button>
     </section>
   );

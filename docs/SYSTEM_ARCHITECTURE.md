@@ -481,9 +481,9 @@ The current training session. Exactly one exists at a time (`currentSession` in
 | `shots: Shot[]` | **Flat** list of every shot across every block in this session — shots are not nested inside blocks; they reference their block via `shot.blockId` |
 
 A session has no explicit status field. "In progress" vs. "finished" is implicit:
-the current session is whatever is in `currentSession`; clicking *Start New Session*
-archives it into the history array (only if it has at least one shot) and creates a
-fresh, blockless session. There is no partial/paused/completed session status —
+the current session is whatever is in `currentSession`. *Complete Session* runs the
+guarded, acknowledged archive transition and returns directly to training selection,
+with a brief saved/empty notice. There is no partial/paused/completed session status —
 only "current" (exactly one) and "history" (append-only list, deletable per entry
 or entirely from the History view).
 
@@ -850,7 +850,7 @@ local, unsaved draft.
 
 **Leaving an incomplete draft:** `hasUnsavedBlindProgress(draft)` is simply
 `phase !== "predict"`. `TrackerApp.tsx` tracks this as `hasUnsavedBlindDraft` and gates
-History navigation, "New Training Block", and "Start New Session" behind the existing
+History navigation, "New Training Block", and "Complete Session" behind the existing
 `ConfirmModal` ("You have an unfinished blind-weight shot..."). Confirming discards the
 draft — no shot is saved, no shot number is consumed, `pendingTargetTime` is untouched —
 and bumps `blindDraftResetToken`, which is part of `BlindShotEntry`'s React `key`, so a
@@ -1177,10 +1177,9 @@ documented safe default" discipline `sessionMigration.ts` uses for `TrainingBloc
 - **Blind Weight** Prediction Accuracy cards (`PredictionDashboardCards`) only render
   when the selection's Training Category is Blind Weight — Target Accuracy cards remain
   the same for every category, since they apply uniformly (see ADR-0008).
-- The Scatterplot is prominent (always expanded) for Variable Weight; for Fixed Weight
-  with only one distinct target time it renders inside a collapsed `<details>` (secondary,
-  one tap to expand) instead of being hidden — see "Current Session information
-  hierarchy" below.
+- Detailed chart groups, including the Scatterplot, are available in Analyze after
+  training. The active session shows count and averages; see "Current Session
+  information hierarchy" below.
 
 ### Multi-session Scatterplot
 
@@ -1252,12 +1251,11 @@ same filtered selection — it no longer computes its own, separately-filtered r
 
 ### Current Session information hierarchy
 
-Active Block header + Shot Entry/Auto Capture → Dashboard (immediate feedback) → Target
-Error by Shot (primary live chart) → Handle Analysis (same dynamic-visibility component
-as History) → Target vs. Actual Scatterplot (prominent for Variable Weight; collapsed
-`<details>` for Fixed Weight with one target) → Current Shots list → Target Time
-Settings / Session Settings / Export / Start New Session. Same interpretation-text
-math as History, framed for immediate in-block feedback (`ExplanationContext: "current"`).
+Recording (Shot Entry or Auto Capture) comes first. Optional plan progress and visible
+Complete Session / Next Exercise actions follow, with stone count and independent
+per-quantity averages. Exercise settings, recent-shot corrections and session metadata
+are secondary disclosures. Charts and detailed statistics are available after training
+in Analyze; export is in Settings. See DESIGN_SYSTEM.md, House rink-side refinement.
 
 ## Persistence boundary (Implemented)
 
@@ -2004,7 +2002,7 @@ older manual shot. Restoration is exact, not reconstructed:
   never deleted; the active block is untouched; classic manual shot entry remains fully
   available afterward; no session end is triggered.
 - Attempting to leave a running/paused sequence (open History, start a New Training
-  Block, or Start New Session) shows the same kind of `ConfirmModal` warning already used
+  Block, or Complete Session) shows the same kind of `ConfirmModal` warning already used
   for an in-progress Blind Weight draft (`runOrConfirmCaptureLeave`, composed with the
   existing Blind guard via `guardLeavingActiveWork` in `TrackerApp.tsx`) — confirming
   cancels the sequence (shots already saved remain) before the navigation proceeds.
@@ -2404,11 +2402,14 @@ deliberately keeps its existing `localStorageAdapter` path.
 **Device evidence now exists, within stated limits.** The user reported (2026-09-30) that
 `journal_mode = wal` and `synchronous = 2` (FULL) are actually in force, that written values
 survive a restart in airplane mode, and that a never-written key reads as absent rather than as
-a fabricated value. **Still unmeasured:** failed and uncertain commit reporting,
-reopen-after-interruption, backup/restore, power-loss survival, any capacity limit, and
+a fabricated value. On 2026-10-15 the user ran the diagnostic transaction and checkpoint
+scenarios on a **disposable simulator** through the real plugin (user-reported). **Still
+unmeasured:** physical-device transaction acceptance, naturally occurring commit failures,
+termination during a commit, backup/restore, power-loss survival, any capacity limit, and
 anything about Android. So the engine is settled for the **adapter** while **source retirement
 stays unjustified**. The canonical status statements are the M3b1 and M3b3 implementation status
-entries in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
+entries, including the M3b1 simulator-evidence record, in `docs/MOBILE_APP_MIGRATION.md` Stage
+M3b0 §7.
 
 The protocol selects the engine on **write semantics** — `@capacitor/preferences` gives no
 durable-commit acknowledgement, so SQLite is chosen and source retirement is otherwise not
@@ -2539,7 +2540,7 @@ resolve, each verified against this working tree, are:
 Except where a stage above is explicitly marked implemented (M1, M2a, M3a), nothing here is
 implemented. Do not treat the migration document as a description of current behaviour.
 
-## Platform Navigation (Implemented for Home/Train/Assess/Analyze/Settings)
+## Platform Navigation (Home/Train/Analyze/Settings; Assessments within Train)
 
 See `docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md` for the product-level navigation
 model and Home content, ADR-0009 for the original two architectural decisions
@@ -2549,15 +2550,16 @@ summarized here, and ADR-0011 for the Assess-specific navigation guard added in 
 
 A single `NAVIGATION_ITEMS: NavigationItem[]` array is the one place the platform's
 top-level structure is declared: `{ id, label, availability }` per item, for
-`home | train | assess | analyze | settings`. All five are `availability: "active"` as
-of the Release Time Core Assessment v1 execution flow (Phase B) —
-`getVisibleNavigationItems()` still filters on `availability`, so a future section can
-still be added `"hidden"` first without a navigation/layout rewrite; this filter is just
-not currently hiding anything.
+`home | train | assess | analyze | settings`. Primary navigation offers Home, Train,
+Analyze and Settings. `assess` is hidden from this bar but remains a valid internal
+view, reached through Assessments in Train (House refinement, 2026-10-09). Train stays
+highlighted while assessing. All domain-specific capture and navigation guards remain
+in place, including the transition between training and assessment within this parent.
+
 
 `ActiveView` (`"home" | "train" | "assess" | "analyze" | "settings"`) is the
-screen-switching type — kept distinct from `NavigationItemId` in case a nav entry is
-ever reserved (`"hidden"`) again before its screen exists. `sanitizeActiveView`/
+screen-switching type — kept distinct from primary-navigation visibility, so the
+hidden `assess` destination remains renderable. `sanitizeActiveView`/
 `isActiveView` resolve any value to a valid `ActiveView`, defaulting to `"home"` — used
 by `src/lib/__tests__/navigation.test.ts`, not currently wired to persistence (see
 below).
@@ -2565,12 +2567,14 @@ below).
 ### `TrackerApp`'s `activeView` state
 
 `TrackerApp` owns one `activeView: ActiveView` state value and renders exactly one of
-`HomeScreen` / the Train JSX / `AssessScreen` / the Analyze JSX (a Training/Assessments
-segmented control, no repeated screen title) / `SettingsScreen` based on it.
-`PrimaryNavigation` is the only thing that calls `setActiveView` (via `handleNavigate`).
-`TrackerApp` also renders the one screen-identifying header for whichever view is
-active — `AppHeader` (full product identity) only when `activeView === "home"`,
-`PageHeader` (compact contextual title + one-sentence description) otherwise — see
+`HomeScreen` / the Train JSX / `AssessScreen` / the Analyze JSX (Training, Assessments
+and Exercises tabs) / `SettingsScreen` based on it. Primary navigation and contextual
+actions, including Home's resume actions and the Assessments entry in Train, use
+`handleNavigate` and its shared guards. Internal lifecycle transitions, such as
+acknowledged session completion and capture recovery, also select the appropriate view.
+The shared shell reserves a sync-status row and supplies a screen-reader-only `h1`.
+Visible orientation headers use `TrainingHeader` within the destination's content;
+active recording starts with its task rather than another page hero. See
 "Mobile shell, safe area and page headers" below.
 
 ### Leaving Train or Assess are the guarded transitions
@@ -2604,26 +2608,33 @@ is nothing to migrate).
 
 ### Home screen composition — `src/components/HomeScreen.tsx` + friends
 
-`HomeScreen` renders, in order: a plain time-of-day greeting (no card), `TodayPlanCard`,
-`TrainingOverview`, `DeviceStatusCard`, and `FutureCapabilitiesSection`. The last renders
-Teams as an implemented "Available now" surface whose callback opens Team administration,
-then keeps only Schedule and Coach inside one shared, dashed "Coming next" container.
-All of them receive already-prepared data/callbacks as props — none
-computes analytics or invents scheduling/coaching data;
-`TrainingOverview`'s "Last Training"/"Total Sessions" figures are read directly from
-`sessionHistory`/`currentSession`, not a new analytics function. There is no standalone
-Quick Access section — its one non-redundant action ("View Analyze") is a secondary
-control inside `TrainingOverview` instead (see
-`docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md`'s Implementation Status for the full
-rationale of this narrower, first-review information hierarchy). `TodayPlanCard` adds
-one contextual action (Phase B) when an active, non-terminal Assessment Run exists —
-"Resume Assessment" — computed from `assessmentState.currentRun` exactly like
-`hasActiveAssessmentRun`/`onResumeAssessment`; never an invented or scheduled
-assessment, only a real in-progress one. The full-product-identity title
-(`AppHeader.tsx`) currently reads "Curling Performance" with the subtitle "Train,
-assess and understand your performance." — a provisional, visible-only name/subtitle,
-not reflected in package/PWA metadata. It is rendered by `TrackerApp` only on Home;
-every other screen renders `PageHeader.tsx` instead (see below).
+`HomeScreen` renders the stable House `TrainingHeader` ("Your training." with the
+"Curling Performance" eyebrow), the House `TodayPlanCard`,
+a compact list of the two newest archived Sessions, and a **Teams & devices**
+disclosure containing `DeviceStatusCard` and `FutureCapabilitiesSection`.
+It derives the current-training preview from existing Session state and the shared
+`countRecordedStones` helper. Configured zero-stone training remains resumable;
+a default empty Session offers Start Training. An active Team runner takes
+precedence over the Solo preview, matching Train's destination. These are existing
+activity facts, not inferred performance, recommendations or scheduling data.
+**See all** opens Analyze through the shell's existing navigation guard. Team
+Manage opens the existing administration surface; Manage devices opens Settings.
+The former `TrainingOverview` component is no longer mounted on Home.
+`TodayPlanCard` retains **Resume Assessment** for an actual active, non-terminal
+Assessment Run, using the existing `hasActiveAssessmentRun`/`onResumeAssessment`
+props. The canonical House scope and presentation rules are in `DESIGN_SYSTEM.md`.
+`TrackerApp`'s shared content root carries the `house-training` presentation boundary,
+so House surface and control styles apply across Home, Train, Assessments, Analyze
+and Settings. Shared Surface classes expose semantic level markers for those overrides.
+`TrainingHeader` provides orientation for discovery and setup; successful session
+completion returns directly to the Train landing with a saved/empty notice. Exercise
+references and plan/step/session maintenance use native disclosures; hidden content
+remains mounted. Manual Fixed/Variable capture share the existing ShotEntry draft
+and submission path, while Blind and Auto keep their state machines. No persistence
+or capture ownership is implemented in these presentation components.
+"Curling Performance" remains the visible product identity on Home, not a product
+rename or a change to package/PWA metadata. The retained `AppHeader.tsx` and
+`PageHeader.tsx` components are no longer mounted by the current application shell.
 
 ### Mobile shell, safe area and page headers
 
@@ -2637,15 +2648,19 @@ every other screen renders `PageHeader.tsx` instead (see below).
   `viewportFit: "cover"` (required for `env(safe-area-inset-*)` to resolve to a
   non-zero value on notch/Home-Indicator devices) and carries `themeColor` (moved
   there from `metadata` per Next's current API). `PrimaryNavigation`'s mobile bar is a
-  floating, edge-inset surface (not five buttons flush against the device edge) that
-  reads the safe-area inset directly in its own Tailwind class.
-  `NAVIGATION_ITEMS`/`ActiveView`/`getVisibleNavigationItems` are unchanged.
-- **Page headers** — `PageHeader.tsx` is a small shared component (title + optional
-  one-sentence description, no card/border/shadow) used for Train/Assess/Analyze/
-  Settings, so the large `AppHeader` product identity is never repeated as a card on
-  every functional screen. Screens that previously rendered their own in-content
-  "Train"/"Analyze"/"Settings" title card (e.g. the old "Analyze" / "History &
-  Analytics" card) no longer do, since `PageHeader` now owns that role.
+  floating, edge-inset surface with four labeled destinations that reads the safe-area
+  inset directly in its own Tailwind class. `getVisibleNavigationItems` filters out
+  `assess`; its internal `ActiveView` remains available through Train.
+- **Status and account controls** — the reserved `house-status-row` renders compact
+  sync/offline status above the destination content. Account details and sign-out
+  render below the Settings heading, without duplicating the sync control.
+- **Page headers** — `TrainingHeader.tsx` supplies the shared House orientation
+  surface and decorative House rings: Home uses "Your training.", Train's library
+  uses "Choose your focus.", the Assessment landing uses "Find your baseline.",
+  Analyze uses "See your progress.", and Settings uses "Make it yours.". The primary
+  destinations share header geometry; nested details and setup may supply their own
+  context. Active training keeps recording first, and completion adds a brief notice
+  to the Train landing rather than mounting a separate finish screen.
 
 ## Assessments (Phase A domain/persistence, Phase B execution flow, and Phase C Results/Analyze integration implemented)
 
@@ -2658,8 +2673,8 @@ persistence wiring) summarized below.
 
 ### Current state
 
-- Assess is a real, active navigation item (see "Platform Navigation" above) — no
-  longer reserved/hidden.
+- Assessments is a real view nested under Train (see "Platform Navigation" above),
+  hidden only from the primary navigation bar.
 - The complete Assessment domain and persistence layer from Phase A is unchanged
   (`src/lib/assessment/` — types, the official Release Time Core Assessment v1
   template, the Run state machine, attempt semantics, raw/category metrics, comparison
@@ -2913,12 +2928,12 @@ a Handle Strategy selector), `TrainingPlanStartReview.tsx` (pre-start summary),
 `TrainingPlanProgress.tsx` (compact focus-appropriate step progress — "Step X of Y", the
 current Exercise, and its actual-versus-planned volume, e.g. `6 of 12 planned stones` —
 visually secondary to active capture), `TrainingPlanStepTransition.tsx` (the plan's own
-controls: **Next Exercise** whenever a next step exists and **Finish Training**
+controls: **Next Exercise** whenever a next step exists and **Complete Session**
 throughout, neither gated on the planned count; the final step simply has no next-step
-control rather than a disabled one, and Finish Training reuses the existing session
+control rather than a disabled one, and Complete Session reuses the existing session
 archive transition, introducing no second archiving path — ADR-0048), and
-`TrainingPlanFinishSummary.tsx` (the factual close of a finished training, rendered for
-the Session that was actually archived). `Start New Session` and `New Training Block` are
+a saved/empty notice on the Train landing (no intermediate finish screen). The archived
+Session retains its factual plan progress for historical inspection. `New Training Block` is
 hidden while a plan owns progression — in the curated-Exercise runner as well as the
 timing runner — so the plan's own controls are the single end-of-training path and a
 middle timing step cannot strand or silently abandon the following Exercise.
@@ -4049,7 +4064,7 @@ local component state.
 | `ShotEntry.tsx` | Fixed/Variable Weight single-step shot capture (release time, handle, shot type, optional editable target) |
 | `BlindShotEntry.tsx` | Blind Weight's 3-phase capture UI, wired to `blindWeight.ts` |
 | `ReleaseTrendChart.tsx` | Per-block chart: target/release/(prediction if present) over shot number, with a combined tooltip |
-| `DashboardCard.tsx` | One shared metric-tile presentational component (label/value/optional sublabel/tone/explanation), used by the live Dashboard, History, and Block Summary |
+| `DashboardCard.tsx` | Shared metric-tile presentational component (label/value/optional sublabel/tone/explanation) used by Analyze and result summaries; active training shows count and independent per-quantity averages |
 | `TargetAccuracyDashboardCards.tsx` | The shared Bias/Average Error/On Target/Major Misses/... card set — formats a pre-computed `TargetAccuracyAnalytics`, never computes analytics itself |
 | `TargetErrorChart.tsx` | Target Error by Shot — bar chart with on-target/acceptable reference bands and a zero line |
 | `TargetActualScatterChart.tsx` | Target vs. Actual scatterplot with a y=x reference diagonal and a clickable In/Out legend toggle (visual filter only); shot-level across multiple blocks/sessions in History |
@@ -4065,15 +4080,18 @@ local component state.
 | `TargetTimeSettings.tsx` | Edits the active block's constant target — only rendered for Fixed Weight and Blind+Fixed |
 | `AutoCapture.tsx` | Capture Sequence start form + live status/Pause/Resume/Cancel/Undo/"Add Result Manually" panel — not rendered for Blind Weight blocks |
 | `TimingSimulatorPanel.tsx` | Dev/test-only Timing Simulator controls, gated by `process.env.NODE_ENV !== "production"` |
-| `PrimaryNavigation.tsx` | The one platform-wide navigation surface — desktop top bar + mobile floating, safe-area-aware bottom bar, both rendered from `getVisibleNavigationItems()`; a hidden item would never reach it, though none currently is |
-| `AppHeader.tsx` | The full "Curling Performance" product identity — rendered by `TrackerApp` only when `activeView === "home"` |
-| `PageHeader.tsx` | Compact contextual header (title + optional one-sentence description, no card) for Train/Assess/Analyze/Settings |
+| `PrimaryNavigation.tsx` | Shared desktop top bar and mobile floating, safe-area-aware bottom bar for Home / Train / Analyze / Settings, rendered from `getVisibleNavigationItems()`; Assessments is nested under Train and keeps Train highlighted |
+| `TrainingHeader.tsx` | Shared House orientation header with eyebrow, title, optional supporting content and decorative `HouseMark`; used by destination landings and nested detail/setup views |
+| `HouseMark.tsx` | Decorative House-ring SVG; never represents a measurement, score or progress |
+| `NavigationIcon.tsx` | Decorative destination icons accompanying the navigation's visible labels |
+| `AppHeader.tsx` | Retained standalone product-heading component, no longer mounted by the current application shell |
+| `PageHeader.tsx` | Retained compact title/description component, no longer mounted by the current application shell |
 | `HomeScreen.tsx` | Composes the Home screen's sections from already-prepared props — no analytics/scheduling logic of its own |
-| `TodayPlanCard.tsx` | Today's Plan — the "no scheduled session" empty state (no scheduling data model exists yet) with the Start Training primary action, plus (Phase B) a contextual "Resume Assessment" action when an active Assessment Run exists |
-| `TrainingOverview.tsx` | Compact Last Training / Total Sessions glance (an honestly-scoped rename of the former "Performance Snapshot"), or an honest "no training yet" empty state — never a new metric or inferred trend; also hosts the secondary "View Analyze" action |
+| `TodayPlanCard.tsx` | House current-training preview with Resume training, or an honest Start Training empty state; preserves contextual Resume Assessment |
+| `TrainingOverview.tsx` | Older Last Training / Total Sessions component, no longer mounted on House Home |
 | `FutureCapabilitiesSection.tsx` | Shows Teams as implemented with a Manage action; groups only Schedule/Coach in the shared dashed "Coming next" container |
 | `FutureCapabilityItem.tsx` | One reusable, visually secondary "Coming soon" row/column (used for Schedule and Coach) — never interactive, renders no border/background of its own |
-| `DeviceStatusCard.tsx` | Honest current device state ("Manual Timing") |
+| `DeviceStatusCard.tsx` | Device-management entry into Settings; does not invent connection status |
 | `SettingsScreen.tsx` | App-wide Data Management (Export History CSV / Clear History, moved here from the old History view) and Data & Privacy, including the public current-Privacy-Notice link — session-specific settings stay in Train |
 | `AssessScreen.tsx` | Phase B's Assess-domain orchestrator — the Assess-domain counterpart to `TrackerApp`'s Train branch; owns pre-run UI state (threshold draft, setup confirmation, guided-introduction step) and calls `src/lib/assessment/*` directly, never duplicating its logic |
 | `AssessmentLanding.tsx` | Assess entry point — Release Time Core Assessment v1 metadata card, and a prominent "Resume Assessment" state when an active run exists (never silently offering a fresh start alongside it) |
@@ -4125,11 +4143,11 @@ local component state.
 | `TrainingPlanExercisePicker.tsx` / `TrainingPlanStepEditor.tsx` | Searchable Technique/Shotmaking/Measured catalogue with descriptive cards and inline setup/diagram preview, shared by create/edit; snapshots the exact selected Exercise Version, while only Release Time wraps `TrainingSetup.tsx` and adds Number of Stones plus Handle Strategy |
 | `TrainingPlanStartReview.tsx` | Profile-owned pre-start summary of ordered mixed steps and any planned Release Time volume + Start Training |
 | `TrainingPlanProgress.tsx` | Compact focus-aware "Step X of Y", current Exercise and actual-versus-planned volume during execution — visually secondary to active capture |
-| `TrainingPlanStepTransition.tsx` | The plan's always-available controls — Next Exercise (absent, not disabled, on the final step) and Finish Training — never gated on the planned stone count (ADR-0048) |
-| `TrainingPlanFinishSummary.tsx` | Factual close of a finished training: the archived Session's per-step outcome and actual-versus-planned volume, plus Start New Training; states plainly when nothing was recorded and so nothing was saved |
+| `TrainingPlanStepTransition.tsx` | The plan's always-available controls — Next Exercise (absent, not disabled, on the final step) and Complete Session — never gated on the planned stone count (ADR-0048) |
+| `TrainingPlanFinishSummary.tsx` | Retained summary component, no longer mounted by TrackerApp: successful completion returns directly to Train's selection with a saved/empty notice; archived per-step outcomes and actual-versus-planned volume remain preserved |
 | `identity/IdentityProvider.tsx` | The one application-level identity owner. Mounts `TrackerApp` only for a reducer-accepted ready session; otherwise renders the global gate |
 | `identity/IdentityGateScreen.tsx` | Fixed fail-closed gate/onboarding presentation for email OTP, Google entry, Legal availability/rotation, trusted-state recovery, locks and progress |
-| `identity/IdentityAccountControl.tsx` | Ready-session identity summary with Teams and coordinator-owned Sign out actions |
+| `identity/IdentityAccountControl.tsx` | Compact sync/offline status in the shared status row; identity details and coordinator-owned Sign out below the Settings heading, with optional Teams and sync controls |
 | `identity/SportingSyncStatusControl.tsx` | Honest Synced/Saved-on-device state plus a bounded sync-issue disclosure and explicit retry; no raw provider error or payload is rendered |
 | `identity/IdentityPendingTeamIntent.tsx` | Replays one durable invitation/Admin-Request intent only after gate readiness |
 | `legal/PrivacyNotice.tsx` | The immutable first closed-beta Privacy Notice content and its shared version/effective-date constants, rendered by both the dated evidence route and the current `/privacy` entry point (ADR-0041) |

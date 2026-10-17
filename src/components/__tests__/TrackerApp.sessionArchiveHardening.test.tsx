@@ -69,13 +69,13 @@ async function openReleaseTimingSetup() {
 
 async function startTrainingAndAddOneShot() {
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
 
   screen.getByRole("button", { name: "Start Training" }).click();
   await openReleaseTimingSetup();
 
   screen.getByRole("button", { name: "Start Training" }).click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
 
   fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
     target: { value: "3.80" },
@@ -86,7 +86,7 @@ async function startTrainingAndAddOneShot() {
 
 function openStartNewSessionDialog() {
   screen.getByText(/Edit Details —/).click();
-  screen.getByRole("button", { name: "Start New Session" }).click();
+  screen.getByRole("button", { name: "Complete Session" }).click();
 }
 
 describe("Session archive transition — single-flight guard", () => {
@@ -95,8 +95,8 @@ describe("Session archive transition — single-flight guard", () => {
 
     await startTrainingAndAddOneShot();
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    const startButton = screen.getByRole("button", { name: "Start" });
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    const startButton = screen.getByRole("button", { name: "Complete" });
 
     // Both clicks inside one `act()` call so React does not flush (and remove the
     // modal) between them — the only way to genuinely exercise the race a disabled
@@ -106,7 +106,7 @@ describe("Session archive transition — single-flight guard", () => {
       fireEvent.click(startButton);
     });
 
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     expect(archiveSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -118,11 +118,11 @@ describe("Session archive transition — single-flight guard", () => {
         <TrackerApp />
       </StrictMode>
     );
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     screen.getByRole("button", { name: "Start Training" }).click();
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
     });
@@ -130,15 +130,15 @@ describe("Session archive transition — single-flight guard", () => {
     await waitFor(() => screen.getByText("1 shot total"));
 
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    const startButton = screen.getByRole("button", { name: "Start" });
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    const startButton = screen.getByRole("button", { name: "Complete" });
 
     act(() => {
       fireEvent.click(startButton);
       fireEvent.click(startButton);
     });
 
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     expect(archiveSpy).toHaveBeenCalledTimes(1);
   });
 });
@@ -156,24 +156,24 @@ describe("Session archive transition — pending-write UI safety", () => {
 
     await startTrainingAndAddOneShot();
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(1));
     // Still pending: the confirm dialog itself is gone (its own "Start" button no
     // longer exists), but nothing about the underlying session has changed yet — no
-    // premature reset before the write is confirmed durable. (The "Start New Session"
+    // premature reset before the write is confirmed durable. (The "Complete Session"
     // *button* in the still-expanded Edit Details panel is unrelated and stays
     // present regardless — asserting on the dialog's own elements specifically.)
-    expect(screen.queryByRole("heading", { name: "Start New Session" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Complete Session" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
     expect(screen.queryByText("Set Up Training Block")).toBeNull();
-    expect(screen.getByText("Active Training Block")).toBeInTheDocument();
+    expect(screen.getByText("Current exercise")).toBeInTheDocument();
     expect(screen.getByText("1 shot total")).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]")).toHaveLength(0);
 
     deferred.resolve();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY)!)).toHaveLength(1);
   });
 });
@@ -193,8 +193,8 @@ describe("Session archive transition — failure semantics", () => {
 
     await startTrainingAndAddOneShot();
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(1));
     // Nothing changed: same session, same shot, no history entry — retry is just
@@ -203,11 +203,11 @@ describe("Session archive transition — failure semantics", () => {
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]")).toHaveLength(0);
 
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await waitFor(() => expect(archiveSpy).toHaveBeenCalledTimes(2));
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY)!)).toHaveLength(1);
   });
 
@@ -252,8 +252,8 @@ describe("Session archive transition — failure semantics", () => {
       });
 
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     // React state still advances — the archive itself is already durable — so the UI
     // reaches the fresh, post-archive session. Per docs/adr/0014, this only happens
@@ -261,7 +261,7 @@ describe("Session archive transition — failure semantics", () => {
     // `await`s — only happens after the history write already succeeded and the
     // current-session write was already attempted (and, here, failed) — i.e. the UI
     // never advances to new-session setup before history is durable.
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     // 1. archiveAndReplace invoked exactly once.
@@ -325,10 +325,10 @@ describe("Session archive transition — failure semantics", () => {
     const saveHistorySpy = vi.spyOn(sessionRepository, "saveHistory");
 
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     // Give any further, independently-scheduled render/effect cycle a chance to run.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -341,11 +341,11 @@ describe("Session archive transition — failure semantics", () => {
 describe("Session archive transition — capture coordination", () => {
   it("archives a shot captured via Auto Capture (routed through captureQueueRef), not just classic manual entry", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     screen.getByRole("button", { name: "Start Training" }).click();
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));
@@ -355,6 +355,7 @@ describe("Session archive transition — capture coordination", () => {
     // ShotEntry's own "3.75 or 375" input can be simultaneously present, so scope this
     // query to the "Add Result Manually" panel specifically, via its "Add" button's
     // container, rather than the ambiguous placeholder text alone.
+    fireEvent.click(screen.getByText("Add Result Manually"));
     const addResultContainer = screen.getByRole("button", { name: "Add" }).closest("div")!;
     fireEvent.change(within(addResultContainer).getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
@@ -362,17 +363,17 @@ describe("Session archive transition — capture coordination", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
     await waitFor(() => screen.getByText(/1 \/ \d+ shots/));
 
-    // Leaving Auto Capture is required before Start New Session's own dialog — the
+    // Leaving Auto Capture is required before Complete Session's own dialog — the
     // shot itself is already committed to session.shots by this point, unaffected by
     // the sequence's own status changing to "cancelled".
     screen.getByText(/Edit Details —/).click();
-    fireEvent.click(screen.getByRole("button", { name: "Start New Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Session" }));
     await waitFor(() => screen.getByText("Auto Capture In Progress"));
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY)!);
     expect(history).toHaveLength(1);
     expect(history[0].shots).toHaveLength(1);
@@ -398,8 +399,8 @@ describe("Session archive transition — capture coordination", () => {
 
     await startTrainingAndAddOneShot();
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
     await waitFor(() => expect(simulatorListeners).toHaveLength(1));
 
     // Injected while the archive's own write is still pending — queued behind it on
@@ -414,7 +415,7 @@ describe("Session archive transition — capture coordination", () => {
     });
 
     deferred.resolve();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
@@ -432,15 +433,15 @@ describe("Session archive transition — ordinary persistence still works", () =
 
     await startTrainingAndAddOneShot();
     openStartNewSessionDialog();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start" }));
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     saveCurrentSpy.mockClear();
 
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.90" },
     });

@@ -204,7 +204,7 @@ async function startCaptureSequence(shotType: "draw" | "takeout" = "draw", measu
 
   await waitFor(() => screen.getAllByRole("button", { name: "Train" })[0]);
   fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
 
   fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
   if (count !== undefined) fireEvent.change(screen.getByLabelText("Number of Shots"), { target: { value: String(count) } });
@@ -238,16 +238,6 @@ async function savedShot(number: number) {
   await within(panel()).findByText(new RegExp(`Shot ${number} .*saved on this device`));
 }
 
-/** The one progressive-disclosure element. Never a second state machine — plain DOM. */
-function detailsElement(): HTMLDetailsElement {
-  const summary = within(panel()).getByText("Details");
-  return summary.closest("details") as HTMLDetailsElement;
-}
-
-function openDetails() {
-  fireEvent.click(within(panel()).getByText("Details"));
-}
-
 describe("automatic filtered Brower capture in the real application", () => {
   it("writes matching draws in split order, hides returns, preserves precision and alternating handles", async () => {
     const { saveCurrent } = await startCaptureSequence(); await connectAndArm();
@@ -257,9 +247,6 @@ describe("automatic filtered Brower capture in the real application", () => {
       [3.771, "draw", "in", "external"], [3.644, "draw", "out", "external"],
     ]);
     expect(within(panel()).queryByRole("button", { name: "Use for next shot" })).toBeNull();
-    expect(within(panel()).getByText(/1 interval outside the selected range hidden/)).not.toBeVisible();
-    openDetails();
-    expect(within(panel()).getByText(/1 interval outside the selected range hidden/)).toBeVisible();
     notify(basePacket([3771, 19791, 23435]));
     await act(async () => { await Promise.resolve(); });
     expect(latest(saveCurrent).shots).toHaveLength(2);
@@ -284,9 +271,7 @@ describe("automatic filtered Brower capture in the real application", () => {
     // never asked for again. The original protocol wording stays available in Details.
     expect(within(panel()).getByText(/Waiting for a clear update from the same timer record/)).toBeVisible();
     expect(within(panel()).queryByText(/^Recording ·/)).toBeNull();
-    expect(detailsElement().open).toBe(false);
-    openDetails();
-    expect(within(panel()).getByText(/Waiting for an unambiguous update/)).toBeInTheDocument();
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     expect(within(panel()).queryByRole("button", { name: /Setup checked/ })).toBeNull();
     snapshot("0F9858E8728EDA68F2DE8FAA4906A40000000000");
     await savedShot(1);
@@ -489,7 +474,7 @@ describe("automatic filtered Brower capture in the real application", () => {
     expect(new Set(latest(saveCurrent).captureSequence?.processedResultIds).size).toBe(10);
 
     // The actionable warning stays in full view — never behind the disclosure.
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     expect(within(panel()).getByText(/is full at its 20-split limit/)).toBeVisible();
 
     // A full record accepts nothing further, so no affirmative "Recording" may remain.
@@ -524,18 +509,17 @@ describe("automatic filtered Brower capture in the real application", () => {
     expect(latest(saveCurrent).shots).toHaveLength(1);
   });
 
-  it("keeps Details collapsed by default and keeps recording while it is open", async () => {
+  it("keeps recording without a technical Details disclosure", async () => {
     const { saveCurrent } = await startCaptureSequence(); await connectAndArm();
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     expect(within(panel()).getByText("Recording · Draw · 3–5 s")).toBeVisible();
 
     notify(basePacket([3771])); await savedShot(1);
     const callsBeforeToggle = [...transportState.calls];
     const epochBefore = within(panel()).getByText("Recording · Draw · 3–5 s");
 
-    openDetails();
-    expect(detailsElement().open).toBe(true);
-    expect(within(panel()).getByText(/Timer record.*seen:/)).toBeVisible();
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
+    expect(within(panel()).queryByText(/Timer record.*seen:/)).toBeNull();
 
     // Recording continues untouched while the disclosure is open, and toggling it
     // neither reconnected nor asked for setup confirmation again.
@@ -544,8 +528,7 @@ describe("automatic filtered Brower capture in the real application", () => {
     expect(transportState.calls).toEqual(callsBeforeToggle);
     expect(within(panel()).queryByRole("button", { name: /Setup checked/ })).toBeNull();
 
-    openDetails();
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     expect(epochBefore).toBeVisible();
   });
 
@@ -554,7 +537,7 @@ describe("automatic filtered Brower capture in the real application", () => {
     saveCurrent.mockResolvedValue({ ok: false, error: { kind: "quota_exceeded" } });
     notify(basePacket([3500]));
     await within(panel()).findByText("not saved");
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     expect(within(panel()).getByText("not saved")).toBeVisible();
     expect(within(panel()).getByRole("button", { name: "Try saving again" })).toBeVisible();
     saveCurrent.mockResolvedValue({ ok: true });
@@ -565,7 +548,7 @@ describe("automatic filtered Brower capture in the real application", () => {
 
   it("keeps connect, the setup blocker and disconnect outside Details", async () => {
     await startCaptureSequence();
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
     fireEvent.click(within(panel()).getByRole("button", { name: "Connect timer" }));
     await waitFor(() => expect(transportState.notify).not.toBeNull());
 
@@ -573,14 +556,14 @@ describe("automatic filtered Brower capture in the real application", () => {
     expect(arm).toBeVisible();
     expect(arm).toBeDisabled();
     expect(within(panel()).getByText(/No complete measurement has been received yet/)).toBeVisible();
-    expect(detailsElement().open).toBe(false);
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
 
     notify(basePacket([]));
     expect(within(panel()).getByRole("button", { name: "Setup checked — start receiving measurements" })).toBeEnabled();
     expect(within(panel()).getByRole("button", { name: "Disconnect" })).toBeVisible();
   });
 
-  it("keeps manual candidates usable and moves only their provenance into Details", async () => {
+  it("keeps manual candidates usable without technical provenance text", async () => {
     const { saveCurrent } = await startCaptureSequence("draw", "hog-hog"); await connectAndArm();
     notify(basePacket([16020]));
     const accept = await within(panel()).findByRole("button", { name: "Use for next shot" });
@@ -588,9 +571,8 @@ describe("automatic filtered Brower capture in the real application", () => {
     expect(within(panel()).getByText(/Timer shows 16\.02s/)).toBeVisible();
     expect(within(panel()).getByRole("button", { name: "Discard" })).toBeVisible();
 
-    expect(detailsElement().open).toBe(false);
-    openDetails();
-    expect(within(panel()).getByText(/16\.020s — record .*split 1 of 1/)).toBeVisible();
+    expect(within(panel()).queryByText("Details", { exact: true })).toBeNull();
+    expect(within(panel()).queryByText(/16\.020s — record .*split 1 of 1/)).toBeNull();
 
     fireEvent.click(accept);
     await savedShot(1);
@@ -601,9 +583,8 @@ describe("automatic filtered Brower capture in the real application", () => {
     const { saveCurrent } = await startCaptureSequence(); await connectAndArm();
     notify(new Uint8Array(12));
     await within(panel()).findByText("Measurements are paused. Confirm the setup again to resume.");
-    expect(within(panel()).getByText(/Why measurements paused/)).not.toBeVisible();
-    openDetails();
-    expect((await within(panel()).findAllByText(/could not be read/)).length).toBeGreaterThan(0);
+    expect(within(panel()).getByText(/Measurements paused:/)).toBeVisible();
+    expect((await within(panel()).findAllByText(/could not be received completely/)).length).toBeGreaterThan(0);
     expect(latest(saveCurrent).shots).toHaveLength(0);
     expect(screen.getAllByPlaceholderText("3.75 or 375").length).toBeGreaterThanOrEqual(2);
   });

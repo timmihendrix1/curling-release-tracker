@@ -30,7 +30,7 @@ import { buildTestVersion } from "./testHelpers";
 // Discovery is what the Library offers, so the retired Draw Split Time pair is absent
 // throughout this suite; their continued resolvability is covered in discovery.test.ts.
 const CURRENT = listDiscoverableExerciseVersions(EXERCISE_CATALOG);
-const RETIRED_IDS = ["draw-split-time-v2", "draw-split-time-ladder-v2"];
+const RETIRED_IDS = ["draw-split-time-v3", "draw-split-time-ladder-v3"];
 const CORPUS_IDS = SWISS_CURLING_CORPUS_VERSION_IDS.filter(
   (id) => !RETIRED_IDS.includes(id)
 );
@@ -100,7 +100,7 @@ describe("classification filters", () => {
 
     const draws = ids(filterExerciseVersions(CURRENT, filters({ shotFamily: "draw" })));
     expect(draws).toContain(COME_AROUND_VERSION_ID);
-    expect(draws).toContain("draws-into-house-outside-in-v2");
+    expect(draws).toContain("draws-into-house-outside-in-v3");
   });
 
   it("filters by Sweeper requirement", () => {
@@ -166,7 +166,7 @@ describe("classification filters", () => {
     ).toEqual(
       expect.arrayContaining([
         COME_AROUND_VERSION_ID,
-        "guards-in-left-mixed-doubles-zone-v2",
+        "guards-in-left-mixed-doubles-zone-v3",
       ])
     );
   });
@@ -277,7 +277,7 @@ describe("text search", () => {
     }
     expect(ids(filterExerciseVersions(CURRENT, filters({ searchTerm: "8 Steine" })))).toEqual([
       EIGHT_GUARDS_SOURCE_DIAGRAM_VERSION_ID,
-      "eight-guards-progressively-shorter-v2",
+      "eight-guards-progressively-shorter-v3",
     ]);
   });
 

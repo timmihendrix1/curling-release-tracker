@@ -6,12 +6,11 @@
 import type { Handle, MeasurementMode } from "../types";
 import type { TargetErrorCategory } from "./accuracyThresholds";
 
-// Blue/orange — distinguishable under the common red-green color-vision
-// deficiencies; Scatter series additionally vary marker shape (see
+// House petrol / graphite. Scatter series additionally vary marker shape (see
 // TargetActualScatterChart), not color alone.
 export const HANDLE_COLORS: Record<Handle, string> = {
-  in: "#2563eb",
-  out: "#ea580c",
+  in: "#356d72",
+  out: "#626e73",
 };
 
 export const HANDLE_LABELS: Record<Handle, string> = {
@@ -19,13 +18,13 @@ export const HANDLE_LABELS: Record<Handle, string> = {
   out: "Out Handle",
 };
 
-// Green/amber/red — ordered severity, deliberately not "alarmist" reds (a
+// Petrol/grey/muted red — ordered categories, deliberately not alarmist reds (a
 // muted red, not a saturated alert red) since Major Miss is a normal,
 // expected part of training data, not an error state.
 export const TARGET_ERROR_CATEGORY_COLORS: Record<TargetErrorCategory, string> = {
-  on_target: "#16a34a",
-  acceptable: "#ca8a04",
-  major_miss: "#dc2626",
+  on_target: "#356d72",
+  acceptable: "#7c8d92",
+  major_miss: "#ad6257",
 };
 
 export const TARGET_ERROR_CATEGORY_LABELS: Record<TargetErrorCategory, string> = {
@@ -34,8 +33,8 @@ export const TARGET_ERROR_CATEGORY_LABELS: Record<TargetErrorCategory, string> =
   major_miss: "Major Miss",
 };
 
-export const REFERENCE_LINE_COLOR = "#64748b"; // slate-500, neutral zero line / diagonal
-export const STATISTICAL_OUTLIER_COLOR = "#7c3aed"; // violet — visually distinct from Major Miss red
+export const REFERENCE_LINE_COLOR = "#626e73"; // House muted, neutral zero line / diagonal
+export const STATISTICAL_OUTLIER_COLOR = "#20282b"; // graphite — distinct from the muted Major Miss red
 
 export function formatSecondsAxisTick(value: number): string {
   return value.toFixed(2);

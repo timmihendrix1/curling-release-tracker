@@ -1,11 +1,14 @@
 # Fixed Weight speed and simplified capture
 
 Status: product scope approved on 2026-10-06. **Stage A (measurement model and
-compatibility foundation) is implemented and has PASSED independent review. Stage B
-(simplified setup, capture and results) is implemented and awaits independent review.**
-Rollout readiness remains a separate unmet gate, and real-device iOS/TCi acceptance has
-not been established. The architectural decisions Stage A settled, and the defects its
-reviews found, are recorded in
+compatibility foundation) and Stage B (simplified setup, capture and results) are both
+implemented and have PASSED independent review**, Stage B's review having completed
+before commit `d801315` (2026-10-08). That review covered this feature's own scope only.
+It did **not** approve the deployed old-client rollout policy, any earlier mobile
+workstream, the native-storage migration/cutover, or physical iOS/TCi acceptance —
+**those gates remain open and unmet**, and the rollout gate is now LIVE because a
+user-reachable path can create a wire-version-2 record. The architectural decisions
+Stage A settled, and the defects its reviews found, are recorded in
 `docs/adr/0051-fixed-weight-measured-quantities-and-per-side-tolerances.md`.
 This remains the canonical product decision record for this feature. It does not mark
 the existing unstaged training-progression, native-storage, or Brower work as reviewed.
@@ -195,7 +198,7 @@ symmetric and unitless; consumers that classified one stone as a Major Miss in h
 aggregation and On Target in the progress series; and `is_major_miss=false` exported
 for a stone with no time classification at all.
 
-### B — Simplified setup, capture and results — **Implemented; independent review outstanding**
+### B — Simplified setup, capture and results — **Implemented; independent review PASSED**
 
 The approved UI across direct and planned Fixed Weight training, missing-measurement
 completion on explicitly selected stones, metric-specific presentation and concise
@@ -402,8 +405,10 @@ relabelled. Completion is scoped to the CURRENT training: an archived session is
 editable through it, which is the boundary between completing a missing measurement
 and general historical editing.
 
-Independent review is outstanding before any release or guarded commit preparation,
-and no agent report is proof of correctness.
+Independent review of Stage B is complete (before commit `d801315`, 2026-10-08), and
+no agent report is proof of correctness. A passed review of this feature is **not**
+release authorisation: the old-client rollout policy, the native-storage
+migration/cutover and real-device iOS/TCi acceptance are separate, still-unmet gates.
 
 ## Deferred work and release evidence
 

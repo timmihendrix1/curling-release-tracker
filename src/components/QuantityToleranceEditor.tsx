@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { accuracyToleranceProfilesFor } from "../lib/accuracyToleranceProfiles/profiles";
 import {
@@ -109,6 +110,7 @@ export default function QuantityToleranceEditor({
   idPrefix,
   allowAsymmetry = true,
 }: QuantityToleranceEditorProps) {
+  const [preferredChoiceId, setPreferredChoiceId] = useState("");
   const { quantity } = draft;
   const unit = quantityUnitLabel(quantity);
   // Unit compatibility is necessary but NOT sufficient. A destination that cannot
@@ -133,6 +135,16 @@ export default function QuantityToleranceEditor({
     })),
   ];
 
+  // This is display state only. The copied numeric snapshot remains authoritative;
+  // editing/deleting a library preset never changes these fields or saved blocks.
+  const matchingChoices = choices.filter(({ tolerance }) => validation.valid &&
+    tolerance.onTarget.lower === validation.tolerance.onTarget.lower &&
+    tolerance.onTarget.upper === validation.tolerance.onTarget.upper &&
+    tolerance.acceptable.lower === validation.tolerance.acceptable.lower &&
+    tolerance.acceptable.upper === validation.tolerance.acceptable.upper);
+  const selectedChoice = matchingChoices.find(({ id }) => id === preferredChoiceId)
+    ?? matchingChoices[0];
+
   // Seconds keep the existing input mask (which the shared hundredths shorthand
   // relies on); m/s uses its own, deliberately shorthand-free one.
   const pattern = quantity === "speed" ? SPEED_INPUT_PATTERN : /^[0-9.,]*$/;
@@ -146,6 +158,7 @@ export default function QuantityToleranceEditor({
     const choice = choices.find((candidate) => candidate.id === choiceId);
     if (!choice) return;
 
+    setPreferredChoiceId(choice.id);
     const { onTarget, acceptable } = choice.tolerance;
     const symmetric =
       onTarget.lower === onTarget.upper && acceptable.lower === acceptable.upper;
@@ -195,17 +208,13 @@ export default function QuantityToleranceEditor({
         </label>
         <select
           id={`${idPrefix}-tolerance-template`}
-          // Applying a template is an ACTION, not a persisted selection: the fields
-          // below are the single source of truth afterwards, and the athlete may edit
-          // them freely. Holding a "currently selected template" here would imply a
-          // live link to the saved template that deliberately does not exist.
-          value=""
+          value={selectedChoice?.id ?? ""}
           onChange={(event) => {
             if (event.target.value) applyTolerance(event.target.value);
           }}
           className="mt-1 min-h-11 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900"
         >
-          <option value="">Choose…</option>
+          <option value="">Custom values</option>
           {choices.map((choice) => (
             <option key={choice.id} value={choice.id}>
               {choice.name} — {toleranceSummaryLabel(choice.tolerance, quantity)}

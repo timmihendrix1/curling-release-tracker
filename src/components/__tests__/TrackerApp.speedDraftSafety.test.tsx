@@ -52,9 +52,9 @@ function stored(): Session {
 async function openTraining(state: Session) {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -452,8 +452,8 @@ describe("asynchronous events never disturb an open editor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add Speed" }));
 
     // The training is replaced while that write is still outstanding.
-    fireEvent.click(screen.getByRole("button", { name: "Finish Training" }));
-    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await act(async () => {
       release();

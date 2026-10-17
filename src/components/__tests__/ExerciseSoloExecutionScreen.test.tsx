@@ -102,9 +102,10 @@ describe("ExerciseSoloExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "3 points, 75 percent" }));
     fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
 
-    expect(screen.getByText("3/4")).toBeInTheDocument();
+    expect(screen.getByText("Average").parentElement).toHaveTextContent("75%");
+    expect(screen.queryByText("3/4")).toBeNull();
     expect(screen.getByText("1 scored · 0 excluded")).toBeInTheDocument();
-    expect(screen.getByText(/Inhandle: 75% · 1 scored/)).toBeInTheDocument();
+    expect(screen.queryByText(/Inhandle: 75% · 1 scored/)).toBeNull();
     expect(screen.getByRole("button", { name: "Inhandle" })).toHaveAttribute(
       "aria-pressed",
       "false"
@@ -175,7 +176,7 @@ describe("ExerciseSoloExecutionScreen", () => {
     expect(screen.getByRole("button", { name: "Record Stone" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Complete Exercise" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Abandon Exercise" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Start New Session" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Start New Session" })).toBeNull();
     expect(screen.getByLabelText("Private athlete note")).toBeDisabled();
   });
 });

@@ -59,9 +59,9 @@ async function openBothTraining() {
     JSON.stringify(measurementSession([bothBlock()], []))
   );
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   fireEvent.click(navButton("Train"));
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -270,9 +270,7 @@ describe("an acknowledgement arriving mid-edit settles only what it wrote", () =
     // selection made for the next stone is the athlete's and survives.
     await waitFor(() => expect(timeField()).toHaveValue(""));
     expect(speedField()).toHaveValue("");
-    expect(within(entryCard()).getByRole("button", { name: "Out Handle" })).toHaveClass(
-      "bg-slate-900"
-    );
+    expect(within(entryCard()).getByRole("button", { name: "Out Handle" })).toHaveAttribute("aria-pressed", "true");
 
     typeSpeed("2.42");
     saveShot();
@@ -293,9 +291,9 @@ describe("an acknowledgement arriving mid-edit settles only what it wrote", () =
     // Train must change nothing about what it holds — including which of its values
     // are retained.
     fireEvent.click(navButton("Analyze"));
-    await waitFor(() => expect(screen.queryByText("Active Training Block")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Current exercise")).toBeNull());
     fireEvent.click(navButton("Train"));
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     expect(timeField()).toHaveValue("3.80");
     expect(speedField()).toHaveValue("2.41");
@@ -358,7 +356,7 @@ describe("retained values stay recoverable and are never recorded twice", () => 
     fireEvent.click(navButton("Analyze"));
 
     expect(screen.queryByText("Unsaved Measurement")).toBeNull();
-    await waitFor(() => expect(screen.queryByText("Active Training Block")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Current exercise")).toBeNull());
   });
 
   it("still warns about a genuinely unsaved measurement", async () => {
@@ -369,6 +367,6 @@ describe("retained values stay recoverable and are never recorded twice", () => 
 
     // Nothing was submitted, so this value really would be lost.
     await waitFor(() => screen.getByText("Unsaved Measurement"));
-    expect(screen.getByText("Active Training Block")).toBeInTheDocument();
+    expect(screen.getByText("Current exercise")).toBeInTheDocument();
   });
 });

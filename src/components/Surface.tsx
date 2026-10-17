@@ -27,7 +27,7 @@ const SURFACE_LEVEL_CLASSES: Record<SurfaceLevel, string> = {
 };
 
 export function surfaceClass(level: SurfaceLevel, className?: string): string {
-  return className ? `${SURFACE_LEVEL_CLASSES[level]} ${className}` : SURFACE_LEVEL_CLASSES[level];
+  return `surface-${level} ${SURFACE_LEVEL_CLASSES[level]}${className ? ` ${className}` : ""}`;
 }
 
 type SurfaceOwnProps<T extends ElementType> = {

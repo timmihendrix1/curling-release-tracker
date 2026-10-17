@@ -40,13 +40,13 @@ async function openReleaseTimingSetup() {
 
 async function startTrainingAndAddOneShot() {
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
 
   screen.getByRole("button", { name: "Start Training" }).click();
   await openReleaseTimingSetup();
 
   screen.getByRole("button", { name: "Start Training" }).click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
 
   fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
     target: { value: "3.80" },
@@ -73,12 +73,12 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     setItemSpy.mockClear();
 
-    screen.getByRole("button", { name: "Start New Session" }).click();
-    await waitFor(() => screen.getByText("Start New Session"));
-    screen.getByRole("button", { name: "Start" }).click();
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
 
     // handleStartNewSession navigates to Train with a fresh, block-less session.
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     const keysInCallOrder = setItemSpy.mock.calls.map(([key]) => key);
     const sessionHistoryIndex = keysInCallOrder.indexOf(SESSION_HISTORY_KEY);
@@ -98,10 +98,10 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     const setItemSpy = vi.spyOn(Storage.prototype, "setItem");
     setItemSpy.mockClear();
 
-    screen.getByRole("button", { name: "Start New Session" }).click();
-    await waitFor(() => screen.getByText("Start New Session"));
-    screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     // Give any further, independently-scheduled render/effect cycle a chance to run —
     // if the ordinary save effects redundantly re-persisted this same transition (in
@@ -119,34 +119,34 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
     setItemSpy.mockRestore();
   });
 
-  it("archives the recorded-shot session into history on Start New Session", async () => {
+  it("archives the recorded-shot session into history on Complete Session", async () => {
     await startTrainingAndAddOneShot();
     openEditDetails();
 
-    screen.getByRole("button", { name: "Start New Session" }).click();
-    await waitFor(() => screen.getByText("Start New Session"));
-    screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]");
     expect(history).toHaveLength(1);
     expect(history[0].shots).toHaveLength(1);
   });
 
-  it("does not archive an empty (zero-shot) session into history on Start New Session", async () => {
+  it("does not archive an empty (zero-shot) session into history on Complete Session", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     screen.getByRole("button", { name: "Start Training" }).click();
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     openEditDetails();
-    screen.getByRole("button", { name: "Start New Session" }).click();
-    await waitFor(() => screen.getByText("Start New Session"));
-    screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     const rawHistory = localStorage.getItem(SESSION_HISTORY_KEY);
     const history = rawHistory ? JSON.parse(rawHistory) : [];
@@ -183,10 +183,10 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
 
     render(<TrackerApp />);
     await waitFor(() => screen.getByRole("heading", { name: "Release Point" }));
-    screen.getByRole("button", { name: "Start New Session" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    screen.getByRole("button", { name: "Start" }).click();
-    await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
     const history = JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]");
     expect(history).toHaveLength(1);
@@ -224,9 +224,9 @@ describe("TrackerApp persistence characterization (current, pre-repository behav
 
     render(<TrackerApp />);
 
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     expect(screen.getByText(/Reloaded Session/)).toBeInTheDocument();
   });
 });

@@ -315,7 +315,7 @@ export default function AutoCapture({
         {captureSequence!.capturedShotCount} / {captureSequence!.expectedShotCount} shots
       </p>
 
-      <div className={surfaceClass("inset", "mt-3")}>
+      <div className="house-training-focus mt-3">
         <p className="text-sm text-slate-500">Current Target</p>
 
         {isVariableManualTarget ? (
@@ -436,8 +436,8 @@ export default function AutoCapture({
         Undo Last Captured Shot
       </button>
 
-      <div className={surfaceClass("inset", "mt-4")}>
-        <p className="text-sm font-medium text-slate-700">Add Result Manually</p>
+      <details className="house-training-disclosure mt-4">
+        <summary>Add Result Manually</summary>
         <p className="mt-1 text-xs text-slate-500">
           {captureSequence!.status === "paused"
             ? "Resume the sequence to add a result manually."
@@ -470,7 +470,7 @@ export default function AutoCapture({
             Add
           </button>
         </div>
-      </div>
+      </details>
     </div>
   );
 }

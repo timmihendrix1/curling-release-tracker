@@ -2,10 +2,12 @@
 
 ## Status
 
-**Accepted. Stage A implemented and independently reviewed (measurement model and
-compatibility foundation). Stage B implemented (setup, capture and results UI);
-its independent review is outstanding. Rollout readiness and real-device acceptance
-are separate, unmet gates (see Consequences).** Stage A's review rounds found, and its
+**Accepted. Stage A (measurement model and compatibility foundation) and Stage B
+(setup, capture and results UI) are both implemented and independently reviewed**,
+Stage B's review having completed before commit `d801315` (2026-10-08). **Rollout
+readiness (deployed old clients), the native-storage migration/cutover and real-device
+acceptance remain separate, unmet gates (see Consequences); a passed review of this
+feature is not release authorisation.** Stage A's review rounds found, and its
 correction passes fixed: plan execution silently dropped on reload for speed-only steps; validation
 that filtered unknown shapes instead of rejecting them, and threw on a null entry;
 tolerance snapshots shared by reference with their caller; two time targets able to

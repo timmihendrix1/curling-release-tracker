@@ -114,7 +114,7 @@ function seedMixedPlan() {
 async function advanceToCuratedStep() {
   seedMixedPlan();
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   screen.getAllByRole("button", { name: "Train" })[0].click();
   await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
   screen.getByRole("tab", { name: "Training Plans" }).click();

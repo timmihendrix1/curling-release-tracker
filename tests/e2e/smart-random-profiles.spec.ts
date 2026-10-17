@@ -19,7 +19,7 @@ test("creating, defaulting and using a Smart Random Profile end to end", async (
   await freshLoad(page);
   await goToSettings(page);
 
-  await expect(page.getByText("No profiles saved yet.").first()).toBeVisible();
+  await expect(page.getByText("0 saved").first()).toBeVisible();
 
   await createProfile(page, { name: "Full Weight Range", min: "2.50", max: "4.50" });
   await expect(page.getByText("Full Weight Range")).toBeVisible();
@@ -29,14 +29,14 @@ test("creating, defaulting and using a Smart Random Profile end to end", async (
   await expect(page.getByText("Default", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close Smart Random Profiles" }).click();
   await expect(
-    page.getByText("1 profile saved · Default: Full Weight Range")
+    page.getByText("1 saved · Full Weight Range")
   ).toBeVisible();
 
   // Persists across reload.
   await page.reload();
   await goToSettings(page);
   await expect(
-    page.getByText("1 profile saved · Default: Full Weight Range")
+    page.getByText("1 saved · Full Weight Range")
   ).toBeVisible();
 
   // Release Time, Variable Weight: the default profile's range prefills
@@ -57,7 +57,7 @@ test("creating, defaulting and using a Smart Random Profile end to end", async (
   await page.getByLabel("Maximum Target Time").fill("3.50");
 
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 });
 
 test("editing or deleting a profile never changes an already-started Training Block", async ({
@@ -75,7 +75,7 @@ test("editing or deleting a profile never changes an already-started Training Bl
     page.getByText("Full Weight Range: 2.50s–4.50s")
   ).toBeVisible();
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // Now edit the profile to a different range, and delete it entirely —
   // neither should require or affect the already-active Training Block.
@@ -86,12 +86,12 @@ test("editing or deleting a profile never changes an already-started Training Bl
   await page.getByRole("button", { name: "Save Profile" }).click();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete Profile" }).click();
-  await expect(page.getByText("No profiles saved yet.").first()).toBeVisible();
+  await expect(page.getByText("0 saved").first()).toBeVisible();
   await page.getByRole("button", { name: "Close Smart Random Profiles" }).click();
 
   // The active session/block is untouched — still on Train, still active.
   await goToTrain(page);
-  await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
 });
 
 test("Hog – Hog never shows a Smart Random Profile selector, and no profile controls leak into Coach / Manual", async ({

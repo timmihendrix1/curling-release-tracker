@@ -1123,9 +1123,10 @@ The Version 1 start flow should require only information that changes execution:
 
 Defaults from the Exercise Version or Training Plan should minimise rink-side input.
 
-For a Library-launched Solo Exercise, the physical setup is shown and explicitly
-confirmed before the durable Exercise Execution is created. Cancelling that review
-creates no empty result. Team setup combines the same physical reference with its
+For a Library-launched Solo Exercise, the physical setup and Start Exercise action
+share the detail page (House refinement, approved 2026-10-09). One Start creates the
+durable execution; there is no second setup confirmation. Leaving the detail page
+without starting creates no empty result. Team setup combines the same physical reference with its
 participant, role and rotation configuration before Start is confirmed. Once execution
 begins, the rink screen is capture-first: Shotmaking evaluation or Measurement entry is
 placed ahead of supporting instructions and diagram. Technique instead places its

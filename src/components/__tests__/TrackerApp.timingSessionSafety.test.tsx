@@ -123,7 +123,7 @@ describe("TrackerApp — Timing Simulator / manual entry safety while Session is
     expect(simulatorSpies.start).not.toHaveBeenCalled();
 
     deferred.resolve(loadedAbsent());
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     // Once Session is genuinely ready ("absent" -> the new-session default),
     // the simulator subscribes exactly once.
@@ -143,7 +143,7 @@ describe("TrackerApp — Timing Simulator / manual entry safety while Session is
     deferred.resolve(loadedValue(sessionWithFixedBlock()));
     await waitFor(() => screen.getAllByText("Home")[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     await waitFor(() => expect(simulatorSpies.subscribe).toHaveBeenCalledTimes(1));
   });
 });
@@ -163,7 +163,7 @@ describe("TrackerApp — Timing Simulator / manual entry safety after a Session 
 
     const trainButtons = screen.getAllByRole("button", { name: "Train" });
     fireEvent.click(trainButtons[0]);
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // The fallback session (with its block) is displayed — but never
     // subscribed to the Timing Simulator.
@@ -193,7 +193,7 @@ describe("TrackerApp — Timing Simulator / manual entry safety after a Session 
     render(<TrackerApp />);
     await waitFor(() => screen.getAllByText("Home")[0]);
     fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start Auto Capture" }));

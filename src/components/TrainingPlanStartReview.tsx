@@ -7,6 +7,7 @@ import {
   trainingPlanStepTitle,
 } from "../lib/trainingPlans/steps";
 import type { TrainingPlan, TrainingPlanStep } from "../types";
+import TrainingHeader from "./TrainingHeader";
 import { surfaceClass } from "./Surface";
 
 type TrainingPlanStartReviewProps = {
@@ -50,12 +51,10 @@ export default function TrainingPlanStartReview({
   );
 
   return (
-    <div className={surfaceClass("hero")}>
-      <h2 className="text-xl font-semibold text-slate-900">{plan.name}</h2>
-
-      {plan.description && (
-        <p className="mt-1 text-sm text-slate-600">{plan.description}</p>
-      )}
+    <div className="space-y-4">
+      <TrainingHeader title={plan.name} eyebrow="Ready to train">
+        {plan.description && <p>{plan.description}</p>}
+      </TrainingHeader>
 
       <ol className="mt-4 space-y-2">
         {plan.steps.map((step, index) => (

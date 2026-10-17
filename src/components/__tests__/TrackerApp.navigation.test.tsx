@@ -14,6 +14,10 @@ beforeEach(() => {
 // both copies exist in the DOM at once, responsive visibility is CSS-only.
 // Clicking either activates the same navigation, so tests just use the first.
 function navButton(label: string) {
+  if (label === "Assess") {
+    fireEvent.click(screen.getAllByRole("button", { name: "Train" })[0]);
+    return screen.getByRole("button", { name: "Assessments" });
+  }
   return screen.getAllByRole("button", { name: label })[0];
 }
 
@@ -32,12 +36,12 @@ describe("TrackerApp — top-level navigation", () => {
     await waitFor(() =>
       expect(navButton("Home")).toHaveAttribute("aria-current", "page")
     );
-    expect(screen.getByText("No scheduled session.")).toBeInTheDocument();
+    expect(screen.getByText("Technique, shotmaking or assessment.")).toBeInTheDocument();
   });
 
   it("Train is reachable and shows the grouped Exercise Library for a session with no blocks yet", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Train").click();
 
@@ -61,14 +65,14 @@ describe("TrackerApp — top-level navigation", () => {
 
   it("Analyze is reachable with keyboard-operable Training, Assessments and Exercises tabs", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Analyze").click();
 
     await waitFor(() =>
       expect(navButton("Analyze")).toHaveAttribute("aria-current", "page")
     );
-    expect(screen.getByRole("heading", { name: "Analyze" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "See your progress." })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Training" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Assessments" })).toBeInTheDocument();
     const training = screen.getByRole("tab", { name: "Training" });
@@ -84,7 +88,7 @@ describe("TrackerApp — top-level navigation", () => {
 
   it("Settings is reachable", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Settings").click();
 
@@ -96,7 +100,7 @@ describe("TrackerApp — top-level navigation", () => {
 
   it("shows the full product identity only on Home, and a compact page header on functional screens", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     expect(
       screen.getByRole("heading", { name: "Curling Performance" })
@@ -113,24 +117,24 @@ describe("TrackerApp — top-level navigation", () => {
     // getByRole (not getAllByRole) already asserts there is exactly one
     // "Settings" heading — the old duplicate in-card title was removed once
     // this compact page header took over identifying the screen.
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Make it yours." })).toBeInTheDocument();
   });
 
   it("reserves bottom clearance for the floating mobile navigation on the one scrolling content root", async () => {
     const { container } = render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     expect(container.firstChild).toHaveClass("app-content-clearance");
   });
 
   it("Assess is reachable and shows the Release Time Core Assessment landing", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Assess").click();
 
     await waitFor(() =>
-      expect(navButton("Assess")).toHaveAttribute("aria-current", "page")
+      expect(navButton("Train")).toHaveAttribute("aria-current", "page")
     );
     expect(
       screen.getByRole("heading", { name: "Release Time Core Assessment" })
@@ -139,7 +143,7 @@ describe("TrackerApp — top-level navigation", () => {
 
   it("Home's Start Training goes to Train, and a shot recorded there survives a Home/Train round trip", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     screen.getByRole("button", { name: "Start Training" }).click();
     await waitFor(() =>
@@ -148,7 +152,7 @@ describe("TrackerApp — top-level navigation", () => {
 
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
@@ -161,16 +165,16 @@ describe("TrackerApp — top-level navigation", () => {
     await waitFor(() =>
       expect(navButton("Home")).toHaveAttribute("aria-current", "page")
     );
-    expect(screen.queryByText("Active Training Block")).not.toBeInTheDocument();
+    expect(screen.queryByText("Current exercise")).not.toBeInTheDocument();
 
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     expect(screen.getByText("1 shot total")).toBeInTheDocument();
   });
 
   it("Analyze can be opened without discarding an in-progress session", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Train").click();
     await waitFor(() =>
@@ -179,7 +183,7 @@ describe("TrackerApp — top-level navigation", () => {
 
     await openReleaseTimingSetup();
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
       target: { value: "3.80" },
@@ -193,7 +197,7 @@ describe("TrackerApp — top-level navigation", () => {
     );
 
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     expect(screen.getByText("1 shot total")).toBeInTheDocument();
   });
 });

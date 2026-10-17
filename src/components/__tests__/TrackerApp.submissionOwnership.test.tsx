@@ -48,9 +48,9 @@ function stored(): Session {
 async function openTraining(state: Session) {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -160,7 +160,7 @@ describe("idempotency survives the entry control unmounting", () => {
     await act(async () => {
       fireEvent.click(navButton("Train"));
     });
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     failing = false;
     saveShot();
@@ -246,11 +246,10 @@ describe("pending state belongs to its own training", () => {
     // Finishing succeeds, which durably writes the outgoing session — including the
     // measurement that failed to save on its own.
     failing = false;
-    fireEvent.click(screen.getByRole("button", { name: "Finish Training" }));
-    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
-    await waitFor(() => screen.getByRole("button", { name: "Start New Training" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Start New Training" }));
     await waitFor(() =>
       screen.getByRole("heading", { level: 2, name: "Exercises" })
     );
@@ -265,7 +264,7 @@ describe("pending state belongs to its own training", () => {
       screen.getByRole("button", { name: "Continue to Timing Setup" })
     );
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // The old training's outstanding row belongs to a training that is finished and
     // archived; it has nothing to do with this one.

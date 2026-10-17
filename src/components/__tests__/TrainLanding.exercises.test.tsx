@@ -97,6 +97,8 @@ function openDetail(title: string) {
   const groupLabel = exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version));
   const group = screen.getByRole("button", { name: new RegExp(`^${groupLabel}`) });
   if (group.getAttribute("aria-expanded") === "false") fireEvent.click(group);
+  const all = screen.queryByRole("button", { name: "Show all exercises" });
+  if (all) fireEvent.click(all);
   fireEvent.click(screen.getByRole("button", { name: `View Details: ${title}` }));
 }
 
@@ -137,7 +139,7 @@ describe("Train entry paths", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "Exercises" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
   });
 
   it("still reaches the unchanged Training Plans library when it is ready", () => {
@@ -171,33 +173,24 @@ describe("Train entry paths", () => {
 // ---------------------------------------------------------------------------
 
 describe("Exercise Library", () => {
-  it("lists the complete curated corpus with focus, classification, difficulty, participation and Sweeper summary", () => {
+  it("lists the complete curated corpus as compact rows with one action per exercise", () => {
     renderTrainLanding();
     openExercises();
-
-    for (const title of CURATED_TITLES) {
-      expect(screen.getByText(title)).toBeInTheDocument();
-    }
-
-    // One group heading plus one badge per Exercise in that category. "Measured" is no
-    // longer an active category anywhere in discovery.
-    expect(screen.getAllByText("Technique")).toHaveLength(5);
-    expect(screen.getAllByText("Shotmaking")).toHaveLength(36);
+    fireEvent.click(screen.getByRole("button", { name: /^Shotmaking/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Show all exercises" }));
+    for (const title of CURATED_TITLES) expect(screen.getByText(title)).toBeInTheDocument();
+    expect(screen.getAllByText("Technique")).toHaveLength(1);
+    expect(screen.getAllByText("Shotmaking")).toHaveLength(1);
     expect(screen.queryByText("Measured")).toBeNull();
-    expect(screen.queryByText("Measured Exercises")).toBeNull();
     expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.getAllByText("Guard")).toHaveLength(7);
-    expect(screen.getAllByText("Level 6").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Level 3").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Level 4").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Not rated")).toHaveLength(4);
-    expect(screen.getAllByText("Solo or Team")).toHaveLength(39);
-    expect(screen.getAllByText("No sweeping")).toHaveLength(35);
-    expect(screen.getAllByText("Sweeping optional")).toHaveLength(4);
-    expect(screen.getAllByText("0 Sweepers")).toHaveLength(35);
-    expect(screen.getAllByText("0–2 Sweepers")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
+    const release = screen.getByRole("button", { name: "View Details: Release Time" });
+    expect(release.parentElement).toHaveTextContent("Solo or Team");
+    expect(release.parentElement).not.toHaveTextContent("Not rated");
+    expect(screen.queryByText("0–2 Sweepers")).toBeNull();
+    fireEvent.click(release);
+    fireEvent.click(screen.getByText("Setup and instructions"));
+    expect(screen.getByText("Sweeping")).toBeVisible();
   });
 
   it("explains itself through the shared Info affordance rather than a wall of text", () => {
@@ -224,7 +217,7 @@ describe("Exercise Library", () => {
     expect(screen.queryByText("Eight Guards, Progressively Longer")).toBeNull();
 
     fireEvent.change(search, { target: { value: "Übung" } });
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
     expect(screen.queryByText("Release Point")).toBeNull();
     // Matching an alias must never display the non-English source title.
     expect(document.body.textContent).not.toMatch(/Guard Übung 10/);
@@ -242,7 +235,7 @@ describe("Exercise Library", () => {
     fireEvent.change(screen.getByLabelText("Category"), { target: { value: "any" } });
 
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "level:6" } });
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
     expect(screen.queryByText("Release Time")).toBeNull();
     fireEvent.change(screen.getByLabelText("Difficulty"), { target: { value: "unrated" } });
     expect(screen.getByText("4 exercises")).toBeInTheDocument();
@@ -258,7 +251,7 @@ describe("Exercise Library", () => {
 
     fireEvent.change(screen.getByLabelText("Sweepers"), { target: { value: "forbidden" } });
     expect(screen.getByText("35 exercises")).toBeInTheDocument();
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
   });
 
   it("offers no filter value the catalog does not contain", () => {
@@ -354,7 +347,7 @@ describe("Exercise detail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     expect(screen.getByText("39 exercises")).toBeInTheDocument();
-    expect(screen.getByText("Eight Guards, Progressively Longer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Shotmaking/ })).toBeInTheDocument();
   });
 
   it("keeps the filtered list when returning from a detail", () => {
@@ -564,7 +557,7 @@ describe("Exercise detail", () => {
 
     expect(screen.getByRole("heading", { name: "Release Time" })).toBeInTheDocument();
     // Its execution focus is unchanged; only the category the athlete browses by is.
-    expect(screen.getByText("Technique")).toBeInTheDocument();
+    expect(screen.getAllByText("Technique").length).toBeGreaterThan(0);
     expect(screen.queryByText("Measured")).toBeNull();
     expect(
       screen.getByText(
@@ -586,8 +579,10 @@ describe("Exercise detail", () => {
     expect(measurementsSummary).toBeInTheDocument();
     // The count is in the summary, so a collapsed section still says how many.
     expect(measurementsSummary.textContent).toContain("2");
-    // A Measured Exercise opens its protocols by default — its measurement *is*
-    // the exercise. This branches on the declared focus, not on the Exercise.
+    // Reference protocols remain available on demand, with the start action visible.
+    expect(measurementsSummary.closest("details")).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: "Continue to Timing Setup" })).toBeVisible();
+    fireEvent.click(measurementsSummary);
     expect(measurementsSummary.closest("details")).toHaveAttribute("open");
     expect(screen.getByText("Release Time (Backline – Hog)")).toBeInTheDocument();
     expect(screen.getByText("Release Time (Hog – Hog)")).toBeInTheDocument();

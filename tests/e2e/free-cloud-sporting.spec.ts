@@ -23,7 +23,8 @@ test("completed training history restores from Free cloud and a clear tombstone 
   await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
 
   await startNewSessionFromManagement(page);
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
+
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 
   await expect
@@ -35,7 +36,7 @@ test("completed training history restores from Free cloud and a clear tombstone 
   // Simulate opening the same Profile on a device with no sporting localStorage.
   await clearLocalSportingState(page);
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToAnalyze(page);
   await expect(page.getByText("Key Progress Summary")).toBeVisible();
   await expect(page.getByText("1 block · 1 shot")).toBeVisible();
@@ -49,7 +50,7 @@ test("completed training history restores from Free cloud and a clear tombstone 
   // A second blank-device reload proves the deleted server record is not restored.
   await clearLocalSportingState(page);
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToSettings(page);
   await expect(page.getByRole("button", { name: "Export History CSV" })).toBeDisabled();
   await expect(await readCloudSportingRecords(page)).toHaveLength(0);
@@ -69,7 +70,7 @@ test("a terminal Assessment restores from Free cloud and remains deleted after a
 
   await clearLocalSportingState(page);
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToAnalyze(page);
   await page.getByRole("tab", { name: "Assessments" }).click();
   await expect(page.getByRole("heading", { name: "Latest Completed Assessment" })).toBeVisible();
@@ -81,7 +82,7 @@ test("a terminal Assessment restores from Free cloud and remains deleted after a
 
   await clearLocalSportingState(page);
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToAnalyze(page);
   await page.getByRole("tab", { name: "Assessments" }).click();
   await expect(page.getByRole("heading", { name: "No completed assessments yet." })).toBeVisible();

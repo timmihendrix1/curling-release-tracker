@@ -306,17 +306,11 @@ export default function ExerciseTeamExecutionScreen({
 
   return (
     <div className="space-y-4">
-      <section className={surfaceClass("hero")}>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
-          <span>Team</span><span aria-hidden="true">·</span><span>Local draft</span>
-          <span aria-hidden="true">·</span><span>{eligibilitySnapshot?.teamName ?? "Team exercise"}</span>
-        </div>
-        <h2 className="mt-2 text-xl font-semibold text-slate-900">{version.title}</h2>
-        <p className="mt-2 text-sm text-slate-600">{version.goal}</p>
-        <p className="mt-3 rounded-xl bg-blue-50 p-3 text-xs text-blue-800">
-          Saved on this device for the signed-in recorder. Cloud authority is checked again after completion.
-        </p>
-      </section>
+      <header className="px-1 py-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Team · Local draft · {eligibilitySnapshot?.teamName ?? "Team exercise"}</p>
+        <h2 className="mt-2 text-2xl font-medium leading-tight tracking-tight text-slate-900">{version.title}</h2>
+        <p className="mt-2 text-xs text-slate-500">Saved on this device. Cloud permissions are checked after completion.</p>
+      </header>
 
       {version.primaryFocus === "technique" && version.guidance.kind === "observation" && (
         <section className={surfaceClass("hero")}>
@@ -350,14 +344,14 @@ export default function ExerciseTeamExecutionScreen({
 
           <fieldset className="mt-4">
             <legend className="text-sm font-medium text-slate-700">Team-assessed outcome</legend>
-            <div className="mt-2 grid grid-cols-5 gap-2">
+            <div className="house-score-picker mt-2 grid grid-cols-5 gap-2">
               {([0, 1, 2, 3, 4] as const).map((value) => (
                 <button key={value} type="button" aria-label={`${value} points, ${value * 25} percent`} aria-pressed={score === value} onClick={() => { setScore(value); setShowExclusion(false); }} className={`min-h-11 rounded-xl px-2 py-3 text-sm font-semibold ${score === value ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700"}`}>
-                  {value}
+                  {value}<small aria-hidden="true">{value * 25}%</small>
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-slate-500">0 = 0%, 1 = 25%, 2 = 50%, 3 = 75%, 4 = 100%. The Team applies its own judgement.</p>
+            <p className="mt-2 text-xs text-slate-500">The Team applies its own judgement.</p>
           </fieldset>
 
           {rotationProtocol && (
@@ -483,7 +477,7 @@ export default function ExerciseTeamExecutionScreen({
                 <div key={result.id} className="rounded-xl bg-slate-100 p-3">
                   <p className="font-medium text-slate-800">{label(result.athleteProfileId)}</p>
                   <p className="mt-1 text-sm text-slate-600">
-                    {summary.scoredStoneCount === 0 ? "No scored stones" : `${summary.averagePercentage?.toFixed(0)}% average · ${summary.points}/${summary.maximumPoints} points`}
+                    {summary.scoredStoneCount === 0 ? "No scored stones" : `${summary.averagePercentage?.toFixed(0)}% average · ${summary.scoredStoneCount} scored`}
                     {` · ${summary.excludedAttemptCount} excluded`}
                   </p>
                 </div>

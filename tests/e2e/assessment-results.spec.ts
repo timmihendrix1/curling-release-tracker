@@ -199,7 +199,8 @@ test.describe("Desktop", () => {
     // the desktop top bar directly rather than through completeFullAssessment
     // (which calls the mobile-only goToAssess) — same convention as
     // assess.spec.ts's own Desktop describe block.
-    await primaryNavDesktop(page).getByRole("button", { name: "Assess" }).click();
+    await primaryNavDesktop(page).getByRole("button", { name: "Train" }).click();
+    await page.getByRole("button", { name: "Assessments", exact: true }).click();
     await page.waitForSelector("text=Release Time Core Assessment");
     await openReleaseTimeCoreOverview(page);
     await confirmAssessSetupAndStartWarmup(page);

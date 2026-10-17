@@ -12,13 +12,11 @@
  */
 export default function AppHeader() {
   return (
-    <div className="mb-3 rounded-2xl bg-white px-4 py-3 shadow-lg sm:px-5">
-      <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">
+    <header className="px-1 py-2">
+      <h1 className="text-lg font-medium tracking-tight text-[var(--house-ink)] sm:text-xl">
         Curling Performance
       </h1>
-      <p className="mt-0.5 text-xs text-slate-600 sm:text-sm">
-        Train, assess and understand your performance.
-      </p>
-    </div>
+
+    </header>
   );
 }

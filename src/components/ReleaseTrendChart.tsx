@@ -121,7 +121,7 @@ export default function ReleaseTrendChart({
               type="monotone"
               dataKey="targetTime"
               name="Target"
-              stroke="#ef4444"
+              stroke="#626e73"
               strokeWidth={2}
               strokeDasharray="4 4"
               dot={false}
@@ -132,7 +132,7 @@ export default function ReleaseTrendChart({
                 type="monotone"
                 dataKey="predictedTime"
                 name="Prediction"
-                stroke="#f59e0b"
+                stroke="#5e8589"
                 strokeWidth={2}
                 strokeDasharray="2 2"
                 dot={{ r: 3 }}
@@ -144,7 +144,7 @@ export default function ReleaseTrendChart({
               type="monotone"
               dataKey="releaseTime"
               name="Actual"
-              stroke="#0f172a"
+              stroke="#163a40"
               strokeWidth={3}
               dot={{ r: 4 }}
             />

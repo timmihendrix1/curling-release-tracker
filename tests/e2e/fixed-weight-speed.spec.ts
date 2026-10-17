@@ -21,7 +21,7 @@ async function startSpeedTraining(page: import("@playwright/test").Page) {
   await page.getByRole("radio", { name: "Speed (m/s)" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 }
 
 /** Starts a Fixed Weight block measuring both time and speed. */
@@ -30,7 +30,7 @@ async function startBothTraining(page: import("@playwright/test").Page) {
   await page.getByRole("radio", { name: "Both" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 }
 
 test("Speed setup hides every time control and records a speed-only stone", async ({
@@ -54,7 +54,7 @@ test("Speed setup hides every time control and records a speed-only stone", asyn
 
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // Auto Capture is a TIME path and is not offered where no device could feed it.
   await expect(page.getByRole("tab", { name: "Auto Capture" })).toHaveCount(0);
@@ -111,12 +111,12 @@ test("Both records one stone with two measurements, and completes a missing one 
   await expect(page.getByRole("button", { name: /Stone 2 · In Handle/ })).toHaveCount(0);
 
   // Two stones, not three — completing a measurement never adds one.
-  await expect(page.getByText("2 shots total")).toBeVisible();
+  await expect(page.getByText("2 stones recorded")).toBeVisible();
 
   // It survives a reload with both measurements intact.
   await page.reload();
   await goToTrain(page);
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
   const reloaded = page.locator("details", { has: page.getByText("Recent Shots") });
   await reloaded.getByText("Recent Shots").click();
   await expect(reloaded.getByText(/3\.70s/).first()).toBeVisible();
@@ -137,25 +137,16 @@ test("the two measurements are summarised separately, each with its own denomina
   await page.getByLabel("Release Time (s) — optional").fill("3.78");
   await page.getByRole("button", { name: "Save Shot", exact: true }).click();
 
-  await page.getByText("Live Performance").click();
+  const live = page.getByRole("region", { name: "Live Performance" });
+  await expect(live).toContainText("2 stones recorded");
+  await expect(live).toContainText("Average time");
+  await expect(live).toContainText("3.77s");
+  await expect(live).toContainText("2 measurements");
+  await expect(live).toContainText("Average speed");
+  await expect(live).toContainText("2.41 m/s");
+  await expect(live).toContainText("1 measurement");
+  await expect(live.getByText("Average Error")).toHaveCount(0);
 
-  const live = page.locator("details", {
-    has: page.getByText("Live Performance"),
-  });
-  await live.getByRole("tab", { name: "Speed" }).click();
-
-  // The speed figures describe the ONE stone that carries a speed — never two with a
-  // fabricated 0.00 m/s — and are labelled in m/s throughout.
-  await expect(
-    page.getByText("1 of 2 stones carry a recorded speed.")
-  ).toBeVisible();
-  // "0.01 m/s" is correct in several cards at once (Average Error, Bias, Largest
-  // Miss), so the assertion names the card instead of the bare figure.
-  await expect(live.getByText("Average Error")).toBeVisible();
-  await expect(live.getByText("within ±0.05m/s")).toBeVisible();
-
-  await live.getByRole("tab", { name: "Time" }).click();
-  await expect(live.getByText("within ±0.10s")).toBeVisible();
 });
 
 test("a speed exercise is reachable, readable and free of fabricated seconds on a small phone", async ({
@@ -170,9 +161,7 @@ test("a speed exercise is reachable, readable and free of fabricated seconds on 
 
   // The collapsed Live Performance header must not state a seconds figure for a
   // training that recorded no time.
-  const summary = page.locator("summary", {
-    has: page.getByText("Live Performance"),
-  });
+  const summary = page.getByRole("region", { name: "Live Performance" });
   await expect(summary).toContainText("2.44 m/s");
   await expect(summary).not.toContainText("0.00s");
 
@@ -205,7 +194,7 @@ test("Desktop: the same journey works at a wide viewport", async ({ page }) => {
   await page.getByRole("radio", { name: "Both" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   await page.getByLabel("Release Time (s) — optional").fill("3.80");
   await page.getByLabel("Speed (m/s) — optional").fill("2.42");
@@ -232,7 +221,7 @@ test("a stone left half-measured in an earlier exercise stays completable", asyn
   await page.getByRole("radio", { name: "Speed (m/s)" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // The stone from the previous exercise is still reachable, named by its block so a
   // repeated stone number stays unambiguous.
@@ -247,7 +236,7 @@ test("a stone left half-measured in an earlier exercise stays completable", asyn
   ).toBeVisible();
 
   // The new exercise gained nothing from the completion.
-  await expect(page.getByText("0 shots total")).toBeVisible();
+  await expect(page.getByText("0 stones recorded")).toBeVisible();
 });
 
 test("a Speed block created while Auto Capture was selected is still recordable", async ({
@@ -262,7 +251,7 @@ test("a Speed block created while Auto Capture was selected is still recordable"
   await page.getByRole("radio", { name: "Speed (m/s)" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // Auto Capture is a time path and is not offered; manual entry must be.
   await expect(page.getByRole("tab", { name: "Auto Capture" })).toHaveCount(0);
@@ -281,15 +270,15 @@ test("direct training can be finished, and offers a new training afterwards", as
   await page.getByRole("button", { name: "Save Shot", exact: true }).click();
   await expect(page.getByText("Shot saved.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Finish Training" }).click();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await page.getByRole("button", { name: "Complete Session" }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
 
   // A truthful finish result, and a way to start the next training.
-  await expect(page.getByText("Training finished")).toBeVisible();
-  await expect(page.getByText(/Saved to history/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
+  await expect(page.getByText("Training saved.", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Start New Training" })
-  ).toBeVisible();
+  ).toHaveCount(0);
 });
 
 
@@ -339,9 +328,9 @@ test("Analyze's Speed selection governs the figures it reports", async ({ page }
   await page.getByRole("button", { name: "Save Shot", exact: true }).click();
   await expect(page.getByText("Shot saved.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Finish Training" }).click();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(page.getByText("Training finished")).toBeVisible();
+  await page.getByRole("button", { name: "Complete Session" }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
 
   await primaryNav(page).getByRole("button", { name: "Analyze" }).click();
   // Exact: "Measurement" is a prefix of "Measurement Mode", which is a different

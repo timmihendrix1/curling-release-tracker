@@ -180,7 +180,7 @@ export default function BlindShotEntry({
         Blind Weight Shot
       </h2>
 
-      <div className={surfaceClass("inset", "mt-4")}>
+      <div className="house-training-focus mt-4">
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm font-medium text-slate-700">Target</p>
 

@@ -211,7 +211,7 @@ export default function ExerciseRestrictedSourceImage({
   return (
     <figure className="w-full">
       {access.available ? (
-        <div className="w-full overflow-hidden rounded-xl">
+        <div className="w-full">
           <LabelledDiagramImage diagram={diagram} src={access.src} />
         </div>
       ) : (

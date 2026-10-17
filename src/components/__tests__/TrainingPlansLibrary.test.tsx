@@ -150,6 +150,7 @@ describe("TrainingPlansLibrary", () => {
       />
     );
 
+    fireEvent.click(screen.getByText("Plan options"));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(screen.getByText("Delete Training Plan?")).toBeInTheDocument();
     expect(onDelete).not.toHaveBeenCalled();
@@ -177,6 +178,7 @@ describe("TrainingPlansLibrary", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByText("Plan options"));
     fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
 
     expect(onStart).toHaveBeenCalledWith(plan);

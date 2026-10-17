@@ -12,6 +12,12 @@
 
 ---
 
+# Navigation placement (approved 2026-10-09)
+
+Assessments are reached under Train, rather than a separate primary navigation item.
+This changes discovery only; the independent Run domain, protocols, result comparisons,
+capture ownership and leaving-active-work guards below remain authoritative.
+
 # 1. Purpose
 
 The platform distinguishes between three athlete intentions:

@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { E2E_TEST_EMAIL, readLatestOtp } from "./global-setup";
-import { freshLoad, goToHome, goToTrain, setupFixedBlock } from "./utils";
+import { freshLoad, goToHome, goToSettings, goToTrain, setupFixedBlock } from "./utils";
 
 const SECOND_EMAIL = "playwright-profile-switch@example.invalid";
 
@@ -14,7 +14,7 @@ async function signInAndCompleteOnboarding(page: Page, email: string, displayNam
 
   const destination = await Promise.race([
     page.getByLabel("Display Name").waitFor().then(() => "onboarding" as const),
-    page.getByText("Today's Plan").waitFor().then(() => "ready" as const),
+    page.getByTestId("house-home").waitFor().then(() => "ready" as const),
   ]);
   if (destination === "onboarding") {
     await page.getByLabel("Display Name").fill(displayName);
@@ -22,7 +22,7 @@ async function signInAndCompleteOnboarding(page: Page, email: string, displayNam
     await page.getByRole("checkbox", { name: /I acknowledge/i }).check();
     await page.getByRole("button", { name: "Create athlete profile" }).click();
   }
-  await page.getByText("Today's Plan").waitFor();
+  await page.getByTestId("house-home").waitFor();
 }
 
 async function currentProfileId(page: Page): Promise<string> {
@@ -43,6 +43,7 @@ async function currentProfileId(page: Page): Promise<string> {
 }
 
 async function signOutThroughAccessibleControl(page: Page) {
+  await goToSettings(page);
   // `next dev` turns the pre-existing Recharts size warning into an overlay that
   // can intercept pointer input. Keyboard activation still exercises the real,
   // accessible button and avoids coupling this identity test to Next's dev UI.
@@ -58,18 +59,18 @@ test("sign-out and account switching hide the previous Profile workspace and res
   await setupFixedBlock(page);
   await page.getByPlaceholder("3.75 or 375").fill("3.80");
   await page.getByRole("button", { name: "Save Shot" }).click();
-  await expect(page.getByText("1 shot total")).toBeVisible();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
 
   await goToHome(page);
   await signOutThroughAccessibleControl(page);
   await expect(page.getByLabel("Email address")).toBeVisible();
-  await expect(page.getByText("1 shot total")).not.toBeVisible();
+  await expect(page.getByText("1 stone recorded")).not.toBeVisible();
 
   await signInAndCompleteOnboarding(page, SECOND_EMAIL, "Second Playwright Athlete");
   const profileB = await currentProfileId(page);
   expect(profileB).not.toBe(profileA);
   await goToTrain(page);
-  await expect(page.getByText("1 shot total")).not.toBeVisible();
+  await expect(page.getByText("1 stone recorded")).not.toBeVisible();
   await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
 
   const physicalKeys = await page.evaluate(() => Object.keys(localStorage));
@@ -80,5 +81,5 @@ test("sign-out and account switching hide the previous Profile workspace and res
   await signInAndCompleteOnboarding(page, E2E_TEST_EMAIL, "Playwright Athlete");
   expect(await currentProfileId(page)).toBe(profileA);
   await goToTrain(page);
-  await expect(page.getByText("1 shot total")).toBeVisible();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
 });

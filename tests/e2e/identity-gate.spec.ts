@@ -11,7 +11,7 @@ test.describe("mandatory identity gate", () => {
       await expect(page.getByLabel("Email address")).toBeVisible();
       await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
       await expect(page.getByRole("link", { name: /Privacy Notice \(e2e-fixture-privacy-v1\)/ })).toBeVisible();
-      await expect(page.getByText("Today's Plan")).toHaveCount(0);
+      await expect(page.getByTestId("house-home")).toHaveCount(0);
       await expect(page.getByTestId("primary-nav-mobile")).toHaveCount(0);
     });
   });

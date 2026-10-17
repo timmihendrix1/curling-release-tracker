@@ -49,9 +49,9 @@ function stored(): Session {
 async function openTraining(state: Session) {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -299,7 +299,7 @@ describe("a later durable write resolves an earlier failure it contains", () => 
     await act(async () => {
       fireEvent.click(navButton("Train"));
     });
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     fireEvent.click(screen.getByRole("button", { name: "Save Shot" }));
     await act(async () => {});

@@ -74,7 +74,7 @@ export default async function globalSetup(config: FullConfig) {
     // use the real gate and produce the same authenticated storage state.
     const destination = await Promise.race([
       page.getByLabel("Display Name").waitFor().then(() => "onboarding" as const),
-      page.getByText("Today's Plan").waitFor().then(() => "ready" as const),
+      page.getByTestId("house-home").waitFor().then(() => "ready" as const),
     ]);
     if (destination === "onboarding") {
       await page.getByLabel("Display Name").fill("Playwright Athlete");
@@ -82,7 +82,7 @@ export default async function globalSetup(config: FullConfig) {
       await page.getByRole("checkbox", { name: /I acknowledge/i }).check();
       await page.getByRole("button", { name: "Create athlete profile" }).click();
     }
-    await page.getByText("Today's Plan").waitFor();
+    await page.getByTestId("house-home").waitFor();
 
     await mkdir(dirname(E2E_AUTH_STATE_PATH), { recursive: true });
     await page.context().storageState({ path: E2E_AUTH_STATE_PATH });

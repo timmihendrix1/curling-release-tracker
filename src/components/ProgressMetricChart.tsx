@@ -161,7 +161,7 @@ export default function ProgressMetricChart({
               type="monotone"
               dataKey="value"
               name={METRIC_OPTIONS.find((o) => o.key === metric)?.label}
-              stroke="#0f172a"
+              stroke="#163a40"
               strokeWidth={2}
               dot={{ r: 4 }}
               connectNulls
@@ -170,7 +170,7 @@ export default function ProgressMetricChart({
               type="monotone"
               dataKey="rollingAverage"
               name="3-block rolling average"
-              stroke="#2563eb"
+              stroke="#356d72"
               strokeWidth={2}
               strokeDasharray="4 4"
               dot={false}

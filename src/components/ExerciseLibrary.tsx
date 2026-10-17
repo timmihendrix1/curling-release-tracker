@@ -2,18 +2,18 @@
 
 import { useState } from "react";
 import {
-  EXERCISE_LIBRARY_DESCRIPTION,
   EXERCISE_LIBRARY_EMPTY_STATE_BODY,
   EXERCISE_LIBRARY_EMPTY_STATE_TITLE,
   EXERCISE_LIBRARY_HEADING,
   EXERCISE_LIBRARY_RESET_FILTERS_LABEL,
   exerciseDiscoveryCategoryLabel,
-  exerciseLibraryExplanation,
+  exerciseShotFamilyLabel,
 } from "../lib/exercises/presentation";
 import {
   DEFAULT_EXERCISE_LIBRARY_FILTERS,
   areDefaultExerciseLibraryFilters,
   filterExerciseVersions,
+  availableExerciseShotFamilies,
   groupExerciseVersionsByCategory,
   type ExerciseLibraryFilters,
 } from "../lib/exercises/query";
@@ -21,7 +21,6 @@ import type { ExerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import ExerciseLibraryFilterBar from "./ExerciseLibraryFilterBar";
 import ExerciseSummaryCard from "./ExerciseSummaryCard";
-import InfoButton from "./InfoButton";
 import { surfaceClass } from "./Surface";
 
 type ExerciseLibraryProps = {
@@ -54,6 +53,7 @@ export default function ExerciseLibrary({
   const [openCategories, setOpenCategories] = useState<Set<ExerciseDiscoveryCategory>>(
     () => new Set()
   );
+  const [showAllShotmaking, setShowAllShotmaking] = useState(false);
   const matches = filterExerciseVersions(versions, filters);
   const groups = groupExerciseVersionsByCategory(matches);
   const filtersActive = !areDefaultExerciseLibraryFilters(filters);
@@ -69,26 +69,13 @@ export default function ExerciseLibrary({
 
   return (
     <div className="space-y-4">
-      <div className={surfaceClass("secondary")}>
-        {/* The Info action is a *sibling* of the heading, never a child: nesting
-            it inside the h2 folded "About Exercises" into the heading's own
-            accessible name. */}
-        <div className="flex items-center">
-          <h2 className="text-lg font-semibold text-slate-900">
-            {EXERCISE_LIBRARY_HEADING}
-          </h2>
-          <InfoButton explanation={exerciseLibraryExplanation()} />
-        </div>
-
-        <p className="mt-1 text-sm text-slate-600">{EXERCISE_LIBRARY_DESCRIPTION}</p>
-
-        <div className="mt-4">
-          <ExerciseLibraryFilterBar
-            filters={filters}
-            onChange={onFiltersChange}
-            allVersions={versions}
-          />
-        </div>
+      <h2 className="px-1 text-lg font-medium">{EXERCISE_LIBRARY_HEADING}</h2>
+      <div className="px-1">
+        <ExerciseLibraryFilterBar
+          filters={filters}
+          onChange={onFiltersChange}
+          allVersions={versions}
+        />
       </div>
 
       {matches.length === 0 ? (
@@ -127,7 +114,7 @@ export default function ExerciseLibrary({
                   disabled={filtersActive}
                   onClick={() => toggleCategory(group.category)}
                   title={filtersActive ? "Matching categories stay open while search or filters are active." : undefined}
-                  className="flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:opacity-100"
+                  className="house-exercise-category flex min-h-11 w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50 disabled:cursor-default disabled:opacity-100"
                 >
                   <span className="text-base font-semibold text-slate-900">
                     {exerciseDiscoveryCategoryLabel(group.category)}
@@ -141,6 +128,27 @@ export default function ExerciseLibrary({
                 </button>
 
                 <div id={panelId} hidden={!expanded} className="space-y-3">
+                  {group.category === "shotmaking" && !filtersActive && !showAllShotmaking ? (
+                    <div className="grid grid-cols-2 gap-2" aria-label="Shotmaking categories">
+                      {availableExerciseShotFamilies(group.versions).map((family) => (
+                        <button key={family} type="button" className="house-category-tile"
+                          onClick={() => onFiltersChange({ ...filters, category: "shotmaking", shotFamily: family })}>
+                          <span>{exerciseShotFamilyLabel(family)}</span>
+                          <span aria-hidden="true">→</span>
+                        </button>
+                      ))}
+                      <button type="button" className="house-link col-span-2 px-2 text-sm" onClick={() => setShowAllShotmaking(true)}>
+                        Show all exercises <span aria-hidden="true">→</span>
+                      </button>
+                    </div>
+                  ) : <>
+                  {group.category === "shotmaking" && (showAllShotmaking || filters.shotFamily !== "any") && (
+                    <button type="button" className="house-link text-sm" onClick={() => {
+                      setShowAllShotmaking(false);
+                      onFiltersChange(DEFAULT_EXERCISE_LIBRARY_FILTERS);
+                      setOpenCategories(new Set(["shotmaking"]));
+                    }}>← Shotmaking categories</button>
+                  )}
                   {group.versions.map((version) => (
                     <ExerciseSummaryCard
                       key={version.id}
@@ -148,6 +156,7 @@ export default function ExerciseLibrary({
                       onOpen={onOpenExercise}
                     />
                   ))}
+                  </>}
                 </div>
               </section>
             );

@@ -20,7 +20,7 @@ test("undo restores the exact pre-capture Smart Random target, not a new one", a
     .last();
   const targetBefore = await targetText.textContent();
 
-  await captureManualResultInput(page).fill("3.60");
+  await (await captureManualResultInput(page)).fill("3.60");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("1 / 5 shots")).toBeVisible();
 
@@ -41,11 +41,11 @@ test("undo of the shot that completed a sequence reopens it as running, and a ne
   await setupVariableSmartRandomBlock(page);
   await startAutoCapture(page, { count: 2, handleMode: "Fixed In" });
 
-  await captureManualResultInput(page).fill("3.60");
+  await (await captureManualResultInput(page)).fill("3.60");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("1 / 2 shots")).toBeVisible();
 
-  await captureManualResultInput(page).fill("3.62");
+  await (await captureManualResultInput(page)).fill("3.62");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
     page.getByText("Previous capture complete: 2 / 2 shots captured.")
@@ -59,7 +59,7 @@ test("undo of the shot that completed a sequence reopens it as running, and a ne
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
 
   // A new result completes it again correctly (no leftover inconsistency).
-  await captureManualResultInput(page).fill("3.64");
+  await (await captureManualResultInput(page)).fill("3.64");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
     page.getByText("Previous capture complete: 2 / 2 shots captured.")

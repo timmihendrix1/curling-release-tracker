@@ -1,233 +1,116 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import HomeScreen from "../HomeScreen";
 import type { Session } from "../../types";
+import { bothBlock, bothShot, session as measuredSession } from "../../lib/measurement/__tests__/measurementFixtures";
+import { createTechniqueExecution, createCompletedShotmakingExecution } from "../../lib/exercises/__tests__/executionFixtures";
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
-
+afterEach(() => { cleanup(); vi.useRealTimers(); });
 function emptySession(): Session {
-  return {
-    id: "s1",
-    title: "Training Session",
-    date: new Date().toISOString(),
-    notes: "",
-    blocks: [],
-    activeBlockId: "",
-    shots: [],
-  };
+  return { id: "s1", title: "Training Session", date: "2026-10-08T10:00:00Z", notes: "", blocks: [], activeBlockId: "", shots: [] };
+}
+function recordedSession() {
+  const block = bothBlock();
+  return measuredSession([block], [bothShot(block, 3.75, 2.4)]);
+}
+function home(extra: Partial<React.ComponentProps<typeof HomeScreen>> = {}) {
+  const props = { currentSession: emptySession(), sessionHistory: [], onStartTraining: vi.fn(), onOpenAnalyze: vi.fn(), onOpenSettings: vi.fn(), onManageTeams: vi.fn(), ...extra };
+  render(<HomeScreen {...props} />);
+  return props;
 }
 
-describe("HomeScreen", () => {
-  it("shows a time-of-day greeting, not as its own feature card", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-15T15:00:00"));
-
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    const greeting = screen.getByText("Good afternoon");
-    expect(greeting).toBeInTheDocument();
-    // A plain heading in the page flow, not a card — no shadow/background
-    // container of its own (unlike Today's Plan, Training Overview, etc.).
-    expect(greeting.className).not.toMatch(/shadow/);
+describe("House Home", () => {
+  it("uses the stable page header", () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-07-15T15:00:00")); home();
+    expect(screen.getByRole("heading", { name: "Your training." }).className).not.toMatch(/shadow/);
   });
-
-  it("shows Today's Plan with no scheduled session and a Start Training action", () => {
-    const onStartTraining = vi.fn();
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={onStartTraining}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.getByText("No scheduled session.")).toBeInTheDocument();
-    expect(screen.getByText("Start whenever you're ready.")).toBeInTheDocument();
-
-    screen.getByRole("button", { name: "Start Training" }).click();
-    expect(onStartTraining).toHaveBeenCalledTimes(1);
+  it("does not mistake the default Session for active training or invent a schedule", () => {
+    const p = home();
+    expect(screen.getByText("Technique, shotmaking or assessment.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Resume training" })).not.toBeInTheDocument();
+    expect(screen.queryByText("stones recorded")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
+    expect(p.onStartTraining).toHaveBeenCalledOnce();
   });
-
-  it("has no separate Quick Access section", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.queryByText("Quick Access")).not.toBeInTheDocument();
-    expect(screen.queryByText("Open Analyze")).not.toBeInTheDocument();
+  it("resumes a configured block before its first stone through the existing callback", () => {
+    const p = home({ currentSession: measuredSession([bothBlock()], []) });
+    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.queryByText("Technique, shotmaking or assessment.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Plans & exercises" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume training" }));
+    expect(p.onStartTraining).toHaveBeenCalledOnce();
   });
-
-  it("View Analyze in Training Overview calls onOpenAnalyze", () => {
-    const onOpenAnalyze = vi.fn();
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={onOpenAnalyze}
-      />
-    );
-
-    screen.getByRole("button", { name: "View Analyze" }).click();
-    expect(onOpenAnalyze).toHaveBeenCalledTimes(1);
+  it("counts a Both stone once and leaves the source unchanged", () => {
+    const session = recordedSession();
+    const before = JSON.stringify(session); home({ currentSession: session });
+    expect(within(screen.getByRole("region", { name: "Current training" })).getByText("1")).toBeVisible();
+    expect(JSON.stringify(session)).toBe(before);
   });
-
-  it("Training Overview shows an honest empty state with no training yet, and is never called Performance Snapshot", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.getByText("Training Overview")).toBeInTheDocument();
-    expect(screen.queryByText("Performance Snapshot")).not.toBeInTheDocument();
-    expect(screen.getByText("No training completed yet.")).toBeInTheDocument();
-    expect(screen.queryByText("Total Sessions")).not.toBeInTheDocument();
+  it("resumes a zero-attempt Technique execution", () => {
+    const execution = createTechniqueExecution();
+    home({ currentSession: { ...emptySession(), exerciseExecutions: [execution], activeExerciseExecutionId: execution.id } });
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeVisible();
+    expect(screen.getByText(execution.exerciseVersionSnapshot.title)).toBeVisible();
   });
-
-  it("Training Overview shows Last Training and Total Sessions once history exists", () => {
-    const history: Session[] = [
-      { ...emptySession(), id: "h1", date: "2026-06-01T00:00:00.000Z" },
-    ];
-
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={history}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.getByText("Last Training")).toBeInTheDocument();
-    expect(screen.getByText("Total Sessions")).toBeInTheDocument();
-    expect(screen.getByText("1")).toBeInTheDocument();
+  it("counts supported exercise attempts alongside timing shots", () => {
+    const execution = createCompletedShotmakingExecution();
+    const session = { ...recordedSession(), exerciseExecutions: [execution] };
+    const count = 1 + execution.athleteResults.reduce((n, result) => n + result.attempts.length, 0);
+    home({ currentSession: session });
+    expect(within(screen.getByRole("region", { name: "Current training" })).getByText(String(count))).toBeVisible();
   });
-
-  it("never invents a training plan or a progress trend", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.queryByText(/should train/i)).not.toBeInTheDocument();
+  it("keeps an unarchived training resumable after its zero-attempt exercise ends", () => {
+    const execution = { ...createTechniqueExecution(), status: "abandoned" as const };
+    home({ currentSession: { ...emptySession(), exerciseExecutions: [execution] } });
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeVisible();
+    expect(screen.getByText("0")).toBeVisible();
+  });
+  it("reflects the Team runner's precedence without showing the Solo count as Team data", () => {
+    home({ currentSession: recordedSession(), activeTeamExerciseTitle: "Team guards" });
+    const hero = screen.getByRole("region", { name: "Current training" });
+    expect(within(hero).getByText("Team guards")).toBeVisible();
+    expect(within(hero).queryByText("stones recorded")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeVisible();
+  });
+  it("retains assessment resume alongside current training", () => {
+    const onResumeAssessment = vi.fn();
+    home({ currentSession: measuredSession([bothBlock()], []), hasActiveAssessmentRun: true, onResumeAssessment });
+    fireEvent.click(screen.getByRole("button", { name: "Resume Assessment" }));
+    expect(onResumeAssessment).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeVisible();
+  });
+  it("shows an honest empty history and opens Analyze", () => {
+    const p = home();
+    expect(screen.getByText("No training completed yet.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "See all" }));
+    expect(p.onOpenAnalyze).toHaveBeenCalledOnce();
     expect(screen.queryByText(/recommend/i)).not.toBeInTheDocument();
   });
-
-  it("shows Teams as available and keeps only Schedule and Coach under Coming next", () => {
-    const onManageTeams = vi.fn();
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-        onManageTeams={onManageTeams}
-      />
-    );
-
-    expect(screen.getByText("Coming next")).toBeInTheDocument();
-
-    expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.getByText("Plan and repeat training sessions.")).toBeInTheDocument();
-    expect(screen.getByText("Coach")).toBeInTheDocument();
-    expect(screen.getByText("Assigned training and feedback.")).toBeInTheDocument();
-    expect(screen.getByText("Available now")).toBeInTheDocument();
-    expect(screen.getByText("Teams")).toBeInTheDocument();
-    expect(screen.getByText(/invite athletes/)).toBeInTheDocument();
-
+  it("shows the newest two archived records without reordering history or creating dead links", () => {
+    const history = [1, 3, 2].map((i) => ({ ...emptySession(), id: `h${i}`, title: `Training ${i}`, date: `2026-10-0${i}T10:00:00Z` }));
+    home({ sessionHistory: history });
+    const recent = screen.getByRole("region", { name: "Recent training" });
+    const rows = within(recent).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Training 3"); expect(rows[1]).toHaveTextContent("Training 2");
+    expect(within(recent).queryByText("Training 1")).not.toBeInTheDocument();
+    expect(within(rows[0]).queryByRole("button")).not.toBeInTheDocument();
+    expect(history.map(s => s.id)).toEqual(["h1", "h3", "h2"]);
+  });
+  it("keeps Team and device management accessible in a disclosure without fabricated connection status", () => {
+    const p = home(); fireEvent.click(screen.getByText("Teams & devices"));
+    fireEvent.click(screen.getByRole("button", { name: "Manage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage devices" }));
+    expect(p.onManageTeams).toHaveBeenCalledOnce(); expect(p.onOpenSettings).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Manual Timing")).not.toBeInTheDocument();
+    expect(screen.queryByText(/External timing systems will/)).not.toBeInTheDocument();
     expect(screen.getAllByText("Coming soon")).toHaveLength(2);
-    screen.getByRole("button", { name: "Manage" }).click();
-    expect(onManageTeams).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Schedule" })).not.toBeInTheDocument();
   });
-
-  it("Coming next tiles are not interactive or focusable", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    for (const title of ["Schedule", "Coach", "Team"]) {
-      expect(
-        screen.queryByRole("button", { name: title })
-      ).not.toBeInTheDocument();
-    }
-  });
-
-  it("shows Devices with Manual Timing as the current, honest state, without a Coming soon label", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(screen.getByText("Devices")).toBeInTheDocument();
-    expect(screen.getByText("Manual Timing")).toBeInTheDocument();
-    expect(screen.getAllByText("Coming soon")).toHaveLength(2);
-  });
-
-  it("Devices copy never suggests an external connection already exists", () => {
-    render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    expect(
-      screen.getByText("External timing systems will be supported here.")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("External timing systems will appear here when connected.")
-    ).not.toBeInTheDocument();
-  });
-
-  it("groups Coming next capabilities in one shared container, not three separately-boxed cards", () => {
-    const { container } = render(
-      <HomeScreen
-        currentSession={emptySession()}
-        sessionHistory={[]}
-        onStartTraining={() => {}}
-        onOpenAnalyze={() => {}}
-      />
-    );
-
-    // A dashed border marks the "future capability" container — there should
-    // be exactly one shared container, not one per capability.
-    expect(container.querySelectorAll(".border-dashed")).toHaveLength(1);
+  it("keeps the House graphic decorative", () => {
+    home(); const graphic = screen.getByRole("heading", { name: "Your training." }).closest("header")?.querySelector("svg");
+    expect(graphic).toHaveAttribute("aria-hidden", "true");
+    expect(graphic).toHaveAttribute("focusable", "false");
   });
 });

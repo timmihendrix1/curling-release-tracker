@@ -1,5 +1,7 @@
 "use client";
 
+import TrainingHeader from "./TrainingHeader";
+
 import { useId, useState } from "react";
 import type { TeamExerciseEligibilitySnapshot } from "../lib/cloudSporting/syncStateRepository";
 import { EXERCISE_CATALOG } from "../lib/exercises/catalog";
@@ -230,13 +232,9 @@ export default function ExerciseTeamSetupScreen({
         ← Back to Exercise Library
       </button>
 
-      <section className={surfaceClass("hero")}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Team exercise setup</p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-900">{version.title}</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          The signed-in participant records on this device. There is no Recorder selector.
-        </p>
-      </section>
+      <TrainingHeader title={version.title} eyebrow="Team setup">
+        You record this exercise for your team on this device.
+      </TrainingHeader>
 
       <section className={surfaceClass("primary")}>
         <h3 className="mb-4 text-base font-semibold text-slate-900">Confirm exercise setup</h3>

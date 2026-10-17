@@ -23,6 +23,7 @@ import {
 import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { ExerciseVersion } from "../lib/exercises/types";
+import TrainingHeader from "./TrainingHeader";
 import ExerciseDiagramView from "./ExerciseDiagramView";
 import { surfaceClass } from "./Surface";
 
@@ -52,6 +53,12 @@ function Badge({ children }: { children: string }) {
  * treating every section as an equally elevated card").
  */
 function SectionCard({ title, children }: { title: string; children: ReactNode }) {
+  if (title !== "Goal" && title !== "Setup and instructions") return (
+    <details className="house-training-disclosure">
+      <summary>{title}</summary>
+      <div className="space-y-3 text-sm text-slate-600">{children}</div>
+    </details>
+  );
   return (
     <section className={surfaceClass("primary")}>
       <h3 className="text-base font-semibold text-slate-900">{title}</h3>
@@ -114,7 +121,7 @@ function DetailDisclosure({
 
 /**
  * The one generic Exercise detail renderer. It follows the specification's
- * fixed information order (spec 14.3) and branches only on declared domain
+ * approved House information hierarchy and branches only on declared domain
  * semantics — the guidance union's `kind`, the diagram's `kind`, the Primary
  * Exercise Focus, and whether an optional field is present. It never compares
  * an Exercise id or title, so adding a curated Exercise needs no change here.
@@ -152,15 +159,51 @@ export default function ExerciseDetail({
         ← {EXERCISE_DETAIL_BACK_LABEL}
       </button>
 
-      {/* 1. Title, focus, category, difficulty, source and this Exercise's own
-             immutable version. */}
-      <div className={surfaceClass("hero")}>
-        <h2 className="text-xl font-semibold text-slate-900">{version.title}</h2>
+      <TrainingHeader title={version.title} eyebrow={exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} />
+      {/* One start action. Physical setup stays on this page and in the running reference. */}
+      <section className={surfaceClass("primary")}>
+        <h3 className="text-base font-semibold text-slate-900">
+          {version.primaryFocus === "measured" ? "Set up this exercise" : "Ready to practise?"}
+        </h3>
+        <p className="mt-2 text-sm text-slate-600">
+          {version.primaryFocus === "technique" &&
+            "Practise Solo with a private note, or set up a shared Team observation. The app records no technique score."}
+          {version.primaryFocus === "shotmaking" &&
+            "Record a handle and a 0–4 outcome for each stone."}
+          {version.primaryFocus === "measured" && usesReleaseTimingRunner &&
+            "Choose your target and how to measure: time, speed or both in Fixed Weight."}
+          {version.primaryFocus === "measured" && measuredRunnerKind === "exercise-execution" &&
+            "Start an open-ended measured exercise. Record each observed value, then complete the exercise when you are finished."}
+          {version.primaryFocus === "measured" && runnerUnsupported &&
+            "This combination of measurements is not available yet."}
+        </p>
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={startDisabled || runnerUnsupported}
+          className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {usesReleaseTimingRunner ? "Continue to Timing Setup" : "Start Exercise"}
+        </button>
+        {onStartTeam && !runnerUnsupported && !usesReleaseTimingRunner && version.participation.supportedModes.includes("team") && (
+          <button
+            type="button"
+            onClick={onStartTeam}
+            disabled={teamStartDisabled}
+            className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Set Up Team Exercise
+          </button>
+        )}
+      </section>
 
+
+      <details className="house-training-disclosure">
+        <summary>Exercise details</summary>
+        <div>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Badge>{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))}</Badge>
           {version.shotFamily && <Badge>{exerciseShotFamilyLabel(version.shotFamily)}</Badge>}
-          <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>
+          {version.difficulty && <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>}
           <Badge>{exerciseTrainingPurposeLabel(version.primaryTrainingPurpose)}</Badge>
           {version.additionalTrainingPurposes.map((purpose) => (
             <Badge key={purpose}>{exerciseTrainingPurposeLabel(purpose)}</Badge>
@@ -169,8 +212,8 @@ export default function ExerciseDetail({
 
         <p className="mt-3 text-xs text-slate-500">
           {exerciseVersionLabel(version.version)}
-        </p>
-      </div>
+        </p>        </div>
+      </details>
 
       {/* 2. Goal and why it matters, with 3. the Diagram illustrating it. */}
       <SectionCard title="Goal">
@@ -201,7 +244,7 @@ export default function ExerciseDetail({
         </Block>
 
         <Block title="Participants">
-          <p>{participation.summary}</p>
+          {!["Usable Solo or in a Team. An observer is optional.", "Solo or in a Team. One athlete delivers at a time.", "Usable Solo or in a Team. A second person can take the time.", "Solo or in a Team. A second person can take the time.", "Usable Solo or in a Team. Another participant may count the rotations."].includes(participation.summary) && <p>{participation.summary}</p>}
           <p className="text-xs text-slate-500">
             {exerciseParticipationModesLabel(participation.supportedModes)} ·{" "}
             {exerciseTrainingAthleteCountLabel(
@@ -218,7 +261,7 @@ export default function ExerciseDetail({
                 <span className="text-xs text-slate-500">
                   ({exerciseRequirementLabel(role.requirement)})
                 </span>
-                {role.note && <span> — {role.note}</span>}
+                {role.note && !["Another person can take the time and say what they measured.", "A second person can take the time consistently."].includes(role.note) && <span> — {role.note}</span>}
               </li>
             ))}
           </ul>
@@ -333,10 +376,6 @@ export default function ExerciseDetail({
             <DetailDisclosure
               title="Compatible Measurements"
               badge={String(measurementProtocols.length)}
-              // A Measured Exercise exists to measure something, so its
-              // protocols open by default. This branches on the declared
-              // Primary Exercise Focus, never on which Exercise it is.
-              defaultOpen={version.primaryFocus === "measured"}
             >
               <ul className="space-y-3">
                 {measurementProtocols.map(({ protocol, requirement }) => (
@@ -361,42 +400,6 @@ export default function ExerciseDetail({
         </section>
       )}
 
-      {/* 10. Start action — wording follows focus semantics, never a named Exercise. */}
-      <section className={surfaceClass("hero")}>
-        <h3 className="text-base font-semibold text-slate-900">
-          {version.primaryFocus === "measured" ? "Set up this exercise" : "Ready to practise?"}
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">
-          {version.primaryFocus === "technique" &&
-            "Practise Solo with a private note, or set up a shared Team observation. The app records no technique score."}
-          {version.primaryFocus === "shotmaking" &&
-            "Practise Solo or with a Team, with no planned stone limit. Record the actual handle, any enabled optional Measurement and a 0–4 outcome for each stone."}
-          {version.primaryFocus === "measured" && usesReleaseTimingRunner &&
-            "Continue with the existing Fixed, Variable and Blind Weight setup. No second measurement runner is created."}
-          {version.primaryFocus === "measured" && measuredRunnerKind === "exercise-execution" &&
-            "Start an open-ended measured exercise. Record each observed value, then complete the exercise when you are finished."}
-          {version.primaryFocus === "measured" && runnerUnsupported &&
-            "This Measurement combination does not yet have a supported execution runner."}
-        </p>
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={startDisabled || runnerUnsupported}
-          className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {usesReleaseTimingRunner ? "Continue to Timing Setup" : "Start Exercise"}
-        </button>
-        {onStartTeam && !runnerUnsupported && !usesReleaseTimingRunner && version.participation.supportedModes.includes("team") && (
-          <button
-            type="button"
-            onClick={onStartTeam}
-            disabled={teamStartDisabled}
-            className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Set Up Team Exercise
-          </button>
-        )}
-      </section>
 
       <p className="px-1 text-xs text-slate-500">
         Source: {source.attribution}

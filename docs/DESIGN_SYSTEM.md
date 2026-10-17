@@ -1,5 +1,59 @@
 # Design System
 
+## Approved House direction — 2026-10-08
+
+The owner approved [D / House](https://www.figma.com/design/vjcNv1awEflVVwvNmovNFy?node-id=10-159).
+The approved implementation covers the shared shell/navigation, Home and the
+complete Train flow: discovery, exercise details, Solo/Team setup, training plans,
+manual/Blind/Auto capture, exercise recording and completion. The owner approved
+this extension on 2026-10-09, including shorter copy, grouped secondary actions
+and progressive disclosure. Analyze, Assess and Settings retain their content
+layouts; this is not a product rename.
+
+Train uses compact single-action catalog rows, a short House orientation header,
+a prominent exercise start action before optional reference material, and grouped
+plan-management actions. Physical setup instructions remain visible on the setup
+confirmation screen. Scores, measurement fields, role/permission warnings and save
+errors remain explicit. Existing persistence, execution rules, capture ownership,
+confirmations, planned-volume guidelines and device integration are unchanged.
+
+Within this scope, House supersedes the older default navy action and white hero
+treatment below: use canvas `#F4F6F7`, white supporting surfaces, text `#20282B`,
+secondary text `#626E73`, deep petrol `#163A40`, petrol `#356D72`, middle petrol
+`#93B7BA`, pale petrol `#E7EFF0`, and dividers `#DEE5E7`. Error/warning semantics
+remain distinct, accompanied by text. These are one brand color family, not a
+requirement to recolor every status or every existing Surface consumer.
+
+Home uses one dominant current-training surface with a factual recorded-stone
+count, an inverse primary action and a decorative curling-house SVG. Empty Home
+offers a start action without inventing a plan or measurement. Recent history is
+a compact list, with Analyze remaining the full history destination. Assessment,
+Team, account, device and storage controls remain reachable.
+
+Fixed and Variable Weight manual capture use large editable measurements on a petrol surface,
+with units, independent nearby targets, handle and shot type, and one Save Shot
+action. Both mode adapts to narrow screens; it never combines metrics or requires
+both measurements. Auto Capture remains primary while active; manual fallback
+does not compete with it. Existing parsing, drafts, acknowledgements, retries,
+navigation guards and early next/finish behavior are unchanged.
+
+Use 24–32px dominant radii, restrained elevation and labeled floating mobile
+navigation. The House rings are decoration, never data or progress. Fix the
+reference's navigation overflow and rounded text clipping rather than copying
+them. Preserve the existing Web Geist/mobile offline system-font setup. Test
+320×700, 390×844, tablet/desktop and keyboard reachability; browser evidence does
+not replace physical iOS/TCi acceptance. The Figma example values are not defaults.
+
+Implementation status and evidence are reported with the implementation; this
+decision does not approve a deployment or close existing release gates.
+
+The owner approved the **House & Stone** app-icon concept on 2026-10-09 for
+the current Xcode build: a deep-petrol square, two light House rings and a central
+stone with a diagonal handle. The native iOS `AppIcon` asset contains the approved
+second image, exported to 1024×1024 RGB PNG without transparency. iOS supplies the
+corner mask. This changes the native icon only; app identity, signing, Web/PWA
+icons and the launch screen remain separate.
+
 &gt; Visual Language, Components and Interface Standards
 
 &gt;
@@ -1656,20 +1710,11 @@ Do not permanently retain the entire configuration form after capture begins.
 
 ## 19.5 Live Training Analytics
 
-Display a compact summary first. The implemented mobile pattern calls the combined,
-collapsed-by-default surface **Live Performance**: its closed header retains the current
-shot count, average and on-target rate; opening it reveals filters, supporting metrics
-and detailed charts in that order.
-
-Detailed charts should appear:
-
-- below the execution area
-
-- in collapsible sections
-
-- or in a dedicated Live Analysis view
-
-Do not require the athlete to scroll through all analytics to reach current-session controls.
+Display only the recorded stone count and average per measured quantity during
+training. Each mean uses its own recorded-value denominator; missing readings are
+never zero. Detailed charts, distributions and accuracy classifications belong in
+completed results or Analyze. Keep the recording action and Complete Session ahead
+of reference details. This replaces the former expandable Live Performance dashboard.
 
 ---
 
@@ -2659,7 +2704,7 @@ The Curling Performance Platform uses:
 
 - a calm neutral canvas
 
-- dark navy primary actions and active states
+- deep petrol primary actions and active states
 
 - white primary surfaces
 
@@ -2698,3 +2743,62 @@ The Curling Performance Platform uses:
 - execution-first Training and Assessment layouts
 
 These rules apply to all new interface work and to the planned mobile design-refinement pass.
+
+## House rink-side refinement — approved 2026-10-09
+
+This decision supersedes the older five-destination and live-dashboard guidance above.
+
+- Primary navigation is Home / Train / Analyze / Settings. Assessments are reached
+  within Train; Assessment Runs remain a separate domain with unchanged protocol,
+  recovery, capture ownership and navigation guards.
+- Home is compact enough for a normal phone viewport without scrolling. Short windows,
+  expanded supporting content, large accessibility text and error notices may scroll;
+  nothing is clipped to enforce a fixed height. Account management belongs in Settings;
+  sync/offline truth remains visible throughout the app.
+- Active Release Time training begins with recording, without repeated page, exercise
+  and block headings. Context and adjustments are secondary. Only stone count and
+  independent averages per recorded quantity appear during training; missing readings
+  are omitted from each denominator. Detailed statistics belong in Analyze or results.
+- Complete Session is a visible action. It uses the guarded, acknowledged archive
+  transition and returns to the Train landing with a brief confirmation. It preserves partial measurements;
+  it does not imply that every planned stone was played. History export is in Settings.
+- Timer diagnostics are removed from ordinary capture. Actionable reception, suspension
+  and persistence errors remain visible without opening a disclosure.
+- Shotmaking discovery first offers shot families plus Show all exercises. Description,
+  physical setup and the Start Exercise action share one page; Solo no longer requires
+  a second setup-confirmation page. Team configuration remains required.
+- Saved tolerance selections show the matching preset name (or Custom values after an
+  edit); copying remains a numeric snapshot, never a live reference to a saved profile.
+- Source diagrams retain square, uncut image bounds. Editorial corrections ship as new
+  content versions; historical plans and execution snapshots are unchanged.
+- House surfaces, typography and controls apply to Assessments, Analyze, Settings and
+  confirmation dialogs. iOS restores WKWebView's native edge bounce, without a custom
+  scrolling engine or changes to timer/storage plugins.
+
+Chart series follow House petrol and graphite, with different handle marker shapes.
+Accuracy categories use petrol / grey / muted brick; labels retain their exact domain
+meaning. Statistical outliers use graphite, distinct from Major Miss colouring. Targets
+and predictions are reference lines, not red error states. No scoring formulas change.
+
+## Stable navigation and concise exercise guidance — approved 2026-10-09
+
+- Main destinations share a reserved sync-status row and the same House heading
+  dimensions. Account details and sign-out appear below the Settings heading; account
+  actions must not replace the heading or move the shared status row.
+- Exercise and plan libraries use simple section titles below the shared Train heading,
+  without a second decorative hero or repeated introductory copy.
+- Active training exposes no shortcut to start an Assessment. Assessments remain an
+  entry from the Train landing; existing resume paths and capture guards remain valid.
+- Completing a session returns directly to the Train landing after the archive
+  acknowledgement, with a brief saved/empty notice. There is no intervening finish
+  screen or required Start New Training action. Save failure keeps the current work.
+- Exercise selection omits missing difficulty instead of showing Not rated. Difficulty
+  filtering retains its explicit unclassified option. Unknown is not a zero rating.
+- Participation modes, athlete count and role labels are stated once. Known redundant
+  helper-person descriptions are omitted from presentation; historical content and
+  execution snapshots remain unchanged. Distinct authored guidance is preserved.
+- Analyze filters use a compact, aligned control grid while retaining native selectors,
+  keyboard operation and 44-pixel touch targets. Filter semantics and persistence do not change.
+
+The longer-term relationship between personal training analysis and team result views
+is under product discussion; this UI pass does not grant access to other athletes' results.

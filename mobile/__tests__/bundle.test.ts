@@ -215,6 +215,13 @@ describe("mobile production bundle", () => {
       expect(js).not.toContain("diagnostic.synthetic.");
       expect(js).not.toContain("Native storage diagnostics");
       expect(js).not.toContain("Write synthetic fixtures");
+      // The checkpoint/transaction scenarios are part of the same opt-in and
+      // are absent too — including the synthetic checkpoint namespace and the
+      // wording that labels an injected fault as a simulation.
+      expect(js).not.toContain("diagnostic.synthetic.checkpoint.");
+      expect(js).not.toContain("Checkpoints and transactions");
+      expect(js).not.toContain("Commit a checkpoint");
+      expect(js).not.toContain("DIAGNOSTIC SIMULATION");
       expect(assets.some((name) => name.includes("Diagnostics"))).toBe(false);
 
       // The SQLITE PLUGIN is a separate question from the panel, because Stage
@@ -235,6 +242,9 @@ describe("mobile production bundle", () => {
     // A DIAGNOSTICS build (`npm run mobile:build:diagnostics`).
     const js = [...chunks.values()].join("\n");
     expect(js).toContain("Native storage diagnostics");
+    // The checkpoint scenarios ship with the panel, in the same opt-in.
+    expect(js).toContain("Checkpoints and transactions");
+    expect(js).toContain("diagnostic.synthetic.checkpoint.");
     // The two opt-ins are independent: a diagnostics build composes nothing.
     expect(js).not.toContain("curling-sporting-v1");
     // Everything that makes an artifact a PRODUCTION artifact must still hold:
@@ -290,6 +300,8 @@ describe("mobile production bundle", () => {
     // opt-ins are independent.
     expect(js).not.toContain(DIAGNOSTIC_DATABASE_NAME);
     expect(js).not.toContain("Native storage diagnostics");
+    expect(js).not.toContain("Checkpoints and transactions");
+    expect(js).not.toContain("diagnostic.synthetic.checkpoint.");
     // Everything that makes an artifact a PRODUCTION artifact still holds.
     expect(js).not.toContain("00000000-0000-4000-8000-000000000001");
     expect(js).not.toContain("createUnscopedSportingRepositoriesForTests");

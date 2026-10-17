@@ -18,7 +18,7 @@ test.describe("First Assessment Start", () => {
     page,
   }) => {
     await freshLoad(page);
-    await expect(primaryNav(page).getByRole("button", { name: "Assess" })).toBeVisible();
+    await expect(primaryNav(page).getByRole("button", { name: "Assess" })).toHaveCount(0);
 
     await goToAssess(page);
     await expect(page.getByRole("heading", { name: "Release Time Core Assessment" })).toBeVisible();
@@ -129,13 +129,14 @@ test.describe("Pause and Reload", () => {
     await expect(page.getByText("Warm-up 1 / 6")).toBeVisible();
 
     await page.reload();
-    await page.waitForSelector("text=Today's Plan");
+    await page.getByTestId("house-home").waitFor();
     await expect(page.getByRole("button", { name: "Resume Assessment" })).toBeVisible();
 
     // Not goToAssess: an active (paused) run means Assess opens straight into
     // the Paused view, not the "Release Time Core Assessment" Landing text
     // goToAssess normally waits for.
-    await primaryNav(page).getByRole("button", { name: "Assess" }).click();
+    await primaryNav(page).getByRole("button", { name: "Train" }).click();
+    await page.getByRole("button", { name: "Assessments", exact: true }).click();
     await expect(page.getByText("Assessment paused")).toBeVisible();
     await expect(page.getByText("Warm-up 1 / 6")).toBeVisible();
 
@@ -272,7 +273,8 @@ test.describe("Desktop", () => {
     // Desktop viewport: the mobile bottom bar is CSS-hidden, so navigate via
     // the desktop top bar specifically (see tests/e2e/utils.ts's primaryNav
     // vs. primaryNavDesktop convention).
-    await primaryNavDesktop(page).getByRole("button", { name: "Assess" }).click();
+    await primaryNavDesktop(page).getByRole("button", { name: "Train" }).click();
+    await page.getByRole("button", { name: "Assessments", exact: true }).click();
     await page.waitForSelector("text=Release Time Core Assessment");
     await openReleaseTimeCoreOverview(page);
     await expect(page.getByText("What this assessment measures")).toBeVisible();

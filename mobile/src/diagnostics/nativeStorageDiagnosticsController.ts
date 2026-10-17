@@ -16,8 +16,10 @@
  *   - `verified_same_process` — the values read back inside the same document.
  *     This proves binding, ordering and round-tripping. It proves nothing about
  *     disk, because the read may be served from the same connection's cache.
- *   - `verified_after_reopen` — the connection was closed and reopened. Stronger
- *     than the above, still inside one app process.
+ *   - `verified_after_reopen` — the connection was closed, its native handle
+ *     released and a FRESH connection positively opened before the read. Stronger
+ *     than the above, still inside one app process. A failure at any of those
+ *     steps produces no such claim and no verdict.
  *   - `verified_after_restart` — the values were written by a DIFFERENT document
  *     session than the one verifying them. This is the only claim that involves
  *     the app actually being torn down and started again, and even it cannot, on
@@ -31,12 +33,18 @@
 import {
   createNativeSqliteStore,
   type NativeSqliteEffectiveSettings,
+  type NativeSqliteLifecycleBoundary,
   type NativeSqliteStore,
 } from "../../../src/lib/persistence/nativeSqliteAdapter";
 import {
   detectRuntimePlatform,
   type RuntimePlatform,
 } from "../../../src/lib/platform/runtimePlatform";
+import {
+  createCheckpointDiagnostics,
+  type CheckpointDiagnostics,
+  type PendingCheckpointState,
+} from "./checkpointDiagnostics";
 import {
   byteLength,
   DIAGNOSTIC_DATABASE_NAME,
@@ -88,6 +96,16 @@ export interface DiagnosticsSnapshot {
    * is restart evidence. */
   sessionId: string;
   settings: NativeSqliteEffectiveSettings | null;
+  /**
+   * A transaction the store still owns, or null: either one deliberately left
+   * open by the interruption rehearsal (acknowledged and uncommitted), or one
+   * whose native state became unknown after a failure.
+   *
+   * While it is non-null the panel shows it and refuses every other action: an
+   * exercise running underneath it would be unattributable, and the store
+   * refuses it anyway.
+   */
+  pendingTransaction: PendingCheckpointState | null;
   /** Newest first, bounded. */
   entries: DiagnosticsLogEntry[];
 }
@@ -102,6 +120,29 @@ export interface NativeStorageDiagnosticsController {
   verifyAfterRestart(): Promise<void>;
   readSettings(): Promise<void>;
   clearSyntheticDatabase(): Promise<void>;
+
+  /* --- Checkpoint and transaction scenarios (see checkpointDiagnostics.ts) --- */
+
+  /** A — rows and progress committed together, verified after a reopen. */
+  runCommittedCheckpoint(): Promise<void>;
+  /** B — deliberate explicit rollback. */
+  runExplicitRollback(): Promise<void>;
+  /** B — a statement that fails inside the transaction. */
+  runStatementFailure(): Promise<void>;
+  /** C — stage writes and leave the transaction uncommitted. */
+  prepareInterruption(): Promise<void>;
+  /** C — end a prepared transaction cleanly. */
+  rollbackPreparedTransaction(): Promise<void>;
+  /** C — force a prepared or unresolved transaction to end. */
+  abandonPreparedTransaction(): Promise<void>;
+  /** D — commit happens, acknowledgement is discarded. */
+  runLostAcknowledgementAfterCommit(): Promise<void>;
+  /** D — no commit is issued, outcome is discarded. */
+  runLostAcknowledgementBeforeCommit(): Promise<void>;
+  /** Read-only inspection of whatever is stored. Writes and replays nothing. */
+  inspectStoredCheckpoint(): Promise<void>;
+  /** Removes only the synthetic checkpoint keys. */
+  clearCheckpointData(): Promise<void>;
 }
 
 /**
@@ -122,6 +163,13 @@ function createSessionId(): string {
 const DOCUMENT_SESSION_ID = createSessionId();
 
 const MAX_LOG_ENTRIES = 40;
+
+const REOPEN_BOUNDARY_WORDS: Record<NativeSqliteLifecycleBoundary, string> = {
+  refused: "the store owns a transaction and refused to cycle the connection",
+  close: "closing the connection failed",
+  release: "releasing the native connection handle failed",
+  open: "opening a fresh connection failed",
+};
 
 export interface DiagnosticsControllerOptions {
   createStore?: (databaseName: string) => NativeSqliteStore;
@@ -151,11 +199,26 @@ export function createNativeStorageDiagnosticsController(
     options.createStore ??
     ((databaseName: string) => createNativeSqliteStore({ databaseName }));
 
-  // ONE store for the whole controller lifetime. `close()` does not discard it —
-  // the store reopens on the next operation, which is exactly the close/reopen
-  // behaviour being exercised.
+  // ONE store for the whole controller lifetime. Cycling its connection
+  // (`reopenDiagnosticConnection`) does not discard it — the same owner closes,
+  // releases and reopens, which is exactly the close/reopen behaviour being
+  // exercised.
   const store = makeStore(DIAGNOSTIC_DATABASE_NAME);
   const adapter = store.adapter;
+
+  /**
+   * The checkpoint/transaction scenarios, over the SAME store and therefore the
+   * same single connection owner. Sharing the store is what makes "one
+   * transaction at a time, never overlapping another action" true by
+   * construction rather than by convention.
+   */
+  const checkpoints: CheckpointDiagnostics = createCheckpointDiagnostics({
+    store,
+    sessionId,
+    now,
+    isoNow,
+    newAttemptId: newRunId,
+  });
 
   let nextEntryId = 1;
   let listeners: (() => void)[] = [];
@@ -166,6 +229,7 @@ export function createNativeStorageDiagnosticsController(
     databaseName: store.databaseName,
     sessionId,
     settings: null,
+    pendingTransaction: null,
     entries: [],
   };
 
@@ -196,7 +260,46 @@ export function createNativeStorageDiagnosticsController(
    * overlapping exercises would make every measurement and every verification
    * verdict unattributable.
    */
-  async function run(action: string, task: () => Promise<ActionOutcome>): Promise<void> {
+  async function run(
+    action: string,
+    task: () => Promise<ActionOutcome>,
+    /** The two actions that EXIST to resolve a pending transaction. Everything
+     * else is refused while one is open, because it could neither run inside
+     * someone else's transaction nor be attributed if it did. */
+    options: { allowedWhilePending?: boolean } = {}
+  ): Promise<void> {
+    const pending = checkpoints.getPending();
+    if (pending !== null && options.allowedWhilePending !== true) {
+      appendEntry({
+        action,
+        status: "blocked",
+        claim: "no_claim",
+        message: pending.unresolved
+          ? "Refused: a transaction's outcome is unknown and the store still owns it. Roll it back or abandon it first."
+          : "Refused: a prepared transaction is open and uncommitted. Roll it back or abandon it first.",
+        detail: [
+          `Owned attempt ${pending.attemptId}, checkpoint ${pending.checkpointNumber}.`,
+        ],
+        elapsedMs: null,
+        bytes: null,
+      });
+      return;
+    }
+    if (pending === null && store.hasPendingDiagnosticTransaction()) {
+      // The store owns a transaction this panel holds no token for. Nothing
+      // here can resolve it, and nothing may run underneath it.
+      appendEntry({
+        action,
+        status: "blocked",
+        claim: "no_claim",
+        message:
+          "Refused: the store owns a transaction this panel has no record of. Force-quit and relaunch the app, then inspect.",
+        detail: [],
+        elapsedMs: null,
+        bytes: null,
+      });
+      return;
+    }
     if (snapshot.busy) {
       appendEntry({
         action,
@@ -225,7 +328,11 @@ export function createNativeStorageDiagnosticsController(
         bytes: null,
       });
     } finally {
-      publish({ busy: false, activity: null });
+      publish({
+        busy: false,
+        activity: null,
+        pendingTransaction: checkpoints.getPending(),
+      });
     }
   }
 
@@ -496,26 +603,28 @@ export function createNativeStorageDiagnosticsController(
     closeAndReopen: () =>
       run("Close and reopen the database", async () => {
         const startedAt = now();
-        const closed = await store.close();
-        if (!closed.ok) {
+        // Close, release the native handle and open a FRESH connection, each
+        // step checked. Only then are the reads below reopen evidence; after a
+        // failure at any step they could still be served by the old connection.
+        const reopened = await store.reopenDiagnosticConnection();
+        if (!reopened.ok) {
           return {
             status: "failed",
             claim: "no_claim",
-            message: `The database could not be closed (${closed.reason}).`,
+            message: `The database could not be closed and reopened: ${REOPEN_BOUNDARY_WORDS[reopened.boundary]} (${reopened.reason}). Nothing was read, so nothing was verified.`,
             detail: [],
             elapsedMs: now() - startedAt,
             bytes: null,
           };
         }
-        // The next adapter call reopens; the comparison below is that reopen.
         const report = await compareFixtures();
         return {
           status: report.ok ? "ok" : "failed",
           claim: report.ok ? "verified_after_reopen" : "no_claim",
           message: report.ok
-            ? "The connection was closed, reopened, and every fixture still matched. Still one app process — not power-loss evidence."
+            ? "The connection was closed, its native handle released, a fresh one opened, and every fixture still matched. Still one app process — not power-loss evidence."
             : "After closing and reopening, at least one fixture did not match.",
-          detail: ["Connection closed.", ...report.detail],
+          detail: ["Connection closed, native handle released, fresh connection opened.", ...report.detail],
           elapsedMs: now() - startedAt,
           bytes: report.totalBytes,
         };
@@ -639,6 +748,44 @@ export function createNativeStorageDiagnosticsController(
           bytes: null,
         };
       }),
+
+    runCommittedCheckpoint: () =>
+      run("Commit a checkpoint", () => checkpoints.runCommittedCheckpoint()),
+
+    runExplicitRollback: () =>
+      run("Roll back a checkpoint", () => checkpoints.runExplicitRollback()),
+
+    runStatementFailure: () =>
+      run("Fail a statement inside a transaction", () => checkpoints.runStatementFailure()),
+
+    prepareInterruption: () =>
+      run("Prepare an interrupted checkpoint", () => checkpoints.prepareInterruption()),
+
+    rollbackPreparedTransaction: () =>
+      run("Roll back the prepared transaction", () => checkpoints.rollbackPrepared(), {
+        allowedWhilePending: true,
+      }),
+
+    abandonPreparedTransaction: () =>
+      run("Abandon the prepared transaction", () => checkpoints.abandonPrepared(), {
+        allowedWhilePending: true,
+      }),
+
+    runLostAcknowledgementAfterCommit: () =>
+      run("Lose the acknowledgement after commit", () =>
+        checkpoints.runLostAcknowledgementAfterCommit()
+      ),
+
+    runLostAcknowledgementBeforeCommit: () =>
+      run("Lose the acknowledgement before commit", () =>
+        checkpoints.runLostAcknowledgementBeforeCommit()
+      ),
+
+    inspectStoredCheckpoint: () =>
+      run("Inspect stored checkpoint", () => checkpoints.inspectStoredCheckpoint()),
+
+    clearCheckpointData: () =>
+      run("Delete the synthetic checkpoint data", () => checkpoints.clearCheckpointKeys()),
 
     clearSyntheticDatabase: () =>
       run("Delete the synthetic data", async () => {

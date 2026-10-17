@@ -58,6 +58,21 @@ const DELETE_VALUE_SQL = `DELETE FROM ${NATIVE_SQLITE_RECORDS_TABLE} WHERE key =
 const DELETE_ALL_SQL = `DELETE FROM ${NATIVE_SQLITE_RECORDS_TABLE};`;
 
 /**
+ * DIAGNOSTICS ONLY — a statement that is MEANT to fail, inside an owned
+ * transaction, so that "a statement failed" can be exercised and reported as
+ * exactly that.
+ *
+ * It is a fixed statement in this module, never caller-supplied SQL: the
+ * diagnostics surface can ask for a deliberate failure, it cannot say what the
+ * failure is. `value` is declared `TEXT NOT NULL`, so binding the key and
+ * inserting a literal NULL into `value` is a genuine SQLite constraint
+ * violation on a real engine — not a simulated rejection and not an error the
+ * bridge was told to invent. The key is still BOUND rather than interpolated.
+ */
+const DIAGNOSTIC_FAILING_INSERT_SQL =
+  `INSERT INTO ${NATIVE_SQLITE_RECORDS_TABLE} (key, value) VALUES (?, NULL)`;
+
+/**
  * Two columns and nothing else — and in particular **neither `sql_deleted` nor
  * `last_modified`**. That is not cosmetic. Both platforms route every DELETE
  * through the plugin's `deleteSQL`, which rewrites it into a soft-delete UPDATE
@@ -115,6 +130,16 @@ const REMOVAL_FAILED_MESSAGE = "The value could not be removed from native stora
  * part of the envelope was wrong is engine detail, and naming it would start
  * leaking the very content this module never reads. */
 const UNREADABLE_RESULT_MESSAGE = "Native storage returned an unreadable result.";
+/**
+ * Returned to an ORDINARY caller that arrives while a diagnostics-only owned
+ * transaction is pending. The operation is refused outright rather than queued
+ * behind the transaction, because joining the queue would mean executing inside
+ * someone else's transaction — committing with it, or vanishing with its
+ * rollback. In a production build this is unreachable: no production module
+ * opens an owned transaction.
+ */
+const TRANSACTION_PENDING_MESSAGE =
+  "Native storage is held by a diagnostic transaction and refused this operation.";
 
 /** Raised for every condition under which native storage is not usable at all —
  * an unsupported platform, a missing plugin, a database that will not open. It is
@@ -137,6 +162,170 @@ export type NativeSqliteFailureReason =
 export type NativeSqliteControlResult =
   | { ok: true }
   | { ok: false; reason: NativeSqliteFailureReason };
+
+/* ==========================================================================
+ * The diagnostics-only owned transaction
+ * ==========================================================================
+ *
+ * This section exists so that Stage M3b4's checkpoint model — a batch of rows
+ * and its progress record committed TOGETHER — can be exercised and observed
+ * before it is implemented. It is deliberately not a general transaction API:
+ *
+ *   - it is not on `RemovableStorageAdapter`, so no repository can reach it;
+ *   - no production module calls it (asserted by
+ *     `__tests__/architectureBoundary.test.ts`);
+ *   - it accepts key/value pairs, never caller-supplied SQL;
+ *   - while one is pending, EVERY other operation on this store — reads,
+ *     writes, removals, settings, cleanup and `close()` — is refused rather
+ *     than queued, so a transaction can never overlap anything else and a
+ *     statement can never escape into the ordinary queue and commit separately.
+ *
+ * What it does NOT establish: a resolved `commit` is the engine's
+ * acknowledgement, not proof that bytes reached stable storage, and a REJECTED
+ * commit is not proof of rollback. Only reading a freshly reopened store can
+ * classify an attempt, which is why the diagnostics layer classifies by reading
+ * and never by the value below. */
+
+/** Identifies one owned transaction. Held by the caller that opened it; an
+ * operation carrying a different token is refused, so a stale handle from an
+ * earlier attempt can never resolve the current one. */
+export interface DiagnosticTransactionToken {
+  readonly id: string;
+}
+
+/** Why a transaction-scoped call was refused without touching the database. */
+export type DiagnosticTransactionRefusal =
+  /** Another owned transaction is already pending on this store. */
+  | "transaction_pending"
+  /** No owned transaction is open. */
+  | "no_pending_transaction"
+  /** A token from a different transaction. */
+  | "wrong_transaction"
+  /** The owned transaction's native state is UNKNOWN (see
+   * `DiagnosticTransactionPhase`). Nothing may be staged into it or committed
+   * from it; only a rollback or an abandon can resolve it. */
+  | "transaction_uncertain";
+
+/**
+ * The owner's view of its one diagnostics transaction.
+ *
+ *   - `none` — no transaction is owned. Ordinary operations run.
+ *   - `open` — BEGIN was positively acknowledged and nothing has failed since.
+ *     The transaction exists and is uncommitted.
+ *   - `uncertain` — something in the transaction's lifecycle failed or returned
+ *     an unreadable acknowledgement (BEGIN, a statement's cleanup, COMMIT's
+ *     cleanup, ROLLBACK, the connection close or the native handle release), so
+ *     whether a native transaction is still open is NOT KNOWN.
+ *
+ * Both non-`none` phases refuse every ordinary operation. `uncertain` is never
+ * cleared by assumption: only a positively acknowledged ROLLBACK, or a connection
+ * close AND native handle release that both succeed, end it.
+ */
+export type DiagnosticTransactionPhase = "none" | "open" | "uncertain";
+
+/**
+ * What happened to the transaction after a failure, so the caller knows whether
+ * the connection is free again.
+ *
+ * `rollback_failed` leaves the transaction owned in the `uncertain` phase: the
+ * engine would not end it (or its answer was unreadable), so this store keeps
+ * refusing everything else until the caller resolves it. Neither value is
+ * evidence about what was or was not committed.
+ */
+export type DiagnosticTransactionCleanup = "rolled_back" | "rollback_failed";
+
+export type DiagnosticTransactionBeginResult =
+  | { ok: true; token: DiagnosticTransactionToken }
+  | { ok: false; reason: NativeSqliteFailureReason | "transaction_pending" }
+  /**
+   * BEGIN was ISSUED but not positively acknowledged — it rejected, or resolved
+   * with something other than the plugin's acknowledgement envelope. That does
+   * not prove that no transaction exists (BEGIN may have taken effect and the
+   * answer been lost), so the store now OWNS an `uncertain` transaction under
+   * `token` and refuses ordinary work until the caller resolves it.
+   */
+  | { ok: false; reason: "begin_unacknowledged"; token: DiagnosticTransactionToken };
+
+export type DiagnosticTransactionStageResult =
+  | { ok: true }
+  | { ok: false; reason: "statement_failed"; cleanup: DiagnosticTransactionCleanup }
+  /**
+   * The statement that was supposed to violate `value TEXT NOT NULL` was
+   * ACCEPTED. Reported distinctly rather than folded into `statement_failed`,
+   * because an engine that does not enforce the constraint is a finding about
+   * the engine — and reporting it as an ordinary failure would hide it behind a
+   * result that looks like the expected one.
+   */
+  | { ok: false; reason: "statement_unexpectedly_succeeded"; cleanup: DiagnosticTransactionCleanup }
+  | { ok: false; reason: DiagnosticTransactionRefusal };
+
+/**
+ * `commit_rejected` means the engine rejected the `COMMIT`. It is **not** proof
+ * that nothing was committed — SQLite may have committed and failed afterwards,
+ * and the bridge may have lost the answer. The caller must classify by reading a
+ * freshly reopened store, never by this value.
+ */
+export type DiagnosticTransactionCommitResult =
+  | { ok: true }
+  | { ok: false; reason: "commit_rejected"; cleanup: DiagnosticTransactionCleanup }
+  | { ok: false; reason: DiagnosticTransactionRefusal };
+
+/** An explicit ROLLBACK. `rollback_failed` leaves the transaction owned and
+ * `uncertain`. */
+export type DiagnosticTransactionRollbackResult =
+  | { ok: true }
+  | { ok: false; reason: "rollback_failed" }
+  | {
+      ok: false;
+      reason: Exclude<DiagnosticTransactionRefusal, "transaction_uncertain">;
+    };
+
+/**
+ * Where a lifecycle step failed. Named so a caller can say exactly which
+ * boundary was NOT established, rather than "something went wrong".
+ *
+ *   - `refused` — the store owns a transaction and will not cycle the connection.
+ *   - `close` — the connection's own close rejected.
+ *   - `release` — the engine's native handle release rejected.
+ *   - `open` — a fresh connection could not be opened.
+ */
+export type NativeSqliteLifecycleBoundary = "refused" | "close" | "release" | "open";
+
+/**
+ * The outcome of deliberately closing, releasing and reopening the connection.
+ * `ok: true` means a FRESH connection was positively opened after the previous
+ * one was closed and its native handle released — the only state in which a
+ * following read is reopen evidence.
+ */
+export type NativeSqliteReopenResult =
+  | { ok: true }
+  | { ok: false; boundary: NativeSqliteLifecycleBoundary; reason: NativeSqliteFailureReason };
+
+/** Abandoning a transaction. On failure the store still OWNS it in the
+ * `uncertain` phase, and `boundary` says which step did not complete. */
+export type DiagnosticTransactionAbandonResult =
+  | { ok: true }
+  | { ok: false; reason: "wrong_transaction" | "no_pending_transaction" }
+  | {
+      ok: false;
+      reason: "abandon_incomplete";
+      boundary: Exclude<NativeSqliteLifecycleBoundary, "refused" | "open">;
+    };
+
+/** One synthetic row staged inside an owned transaction. */
+export interface DiagnosticTransactionEntry {
+  key: string;
+  value: string;
+}
+
+/** The store's private record of the one owned transaction. */
+interface OwnedDiagnosticTransaction {
+  token: DiagnosticTransactionToken;
+  phase: Exclude<DiagnosticTransactionPhase, "none">;
+  /** Set once abandon has closed the connection but the native handle release
+   * has not yet succeeded, so a retry resumes at the release. */
+  closedPendingRelease: boolean;
+}
 
 /** The pragmas as the engine reports them back, not as this module asked for
  * them. `null` means the engine returned nothing readable for that pragma. */
@@ -170,8 +359,27 @@ export interface NativeSqliteConnection {
   /** `transaction: false` is required for statements SQLite refuses inside one
    * (`PRAGMA journal_mode`). */
   execute(statements: string, transaction: boolean): Promise<unknown>;
-  run(statement: string, values: unknown[]): Promise<unknown>;
+  /**
+   * `transaction` is REQUIRED, not optional, and that is the point.
+   *
+   * The plugin's own `run` defaults it to `true`, which wraps the statement in
+   * its own `BEGIN`/`COMMIT`. Inside a transaction this module already owns,
+   * that default is wrong twice over — SQLite rejects the nested `BEGIN`, and a
+   * `COMMIT` that did slip through would end the owned transaction early and
+   * commit a partial checkpoint. Making the flag mandatory means no call site
+   * can inherit the default by omission.
+   */
+  run(statement: string, values: unknown[], transaction: boolean): Promise<unknown>;
   query(statement: string, values: unknown[]): Promise<NativeSqliteQueryResult>;
+  /**
+   * The explicit transaction primitives, used ONLY by this module's
+   * diagnostics-only transaction owner. They are deliberately absent from
+   * `RemovableStorageAdapter`: that contract still promises no multi-key
+   * atomicity, and nothing in the repository layer can reach these.
+   */
+  beginTransaction(): Promise<unknown>;
+  commitTransaction(): Promise<unknown>;
+  rollbackTransaction(): Promise<unknown>;
 }
 
 export interface NativeSqliteEngine {
@@ -207,8 +415,66 @@ export interface NativeSqliteStore {
   /** Closes the connection. Queued like every other operation, so it can never
    * run underneath a pending read, write or removal. A later operation reopens. */
   close(): Promise<NativeSqliteControlResult>;
-  /** Deletes every row of THIS store's own table. Diagnostics cleanup only. */
+  /** Deletes every row of THIS store's own table. Diagnostics cleanup only.
+   * Refused while an owned transaction is pending. */
   deleteAllRecords(): Promise<NativeSqliteControlResult>;
+
+  /* --- The diagnostics-only owned transaction. No production caller. --- */
+
+  /** Opens one owned transaction. Refused if one is already pending. */
+  beginDiagnosticTransaction(): Promise<DiagnosticTransactionBeginResult>;
+  /** Writes synthetic rows INSIDE the owned transaction, with the plugin's
+   * per-statement transaction flag explicitly off. On a statement failure the
+   * transaction is rolled back and the result says so. */
+  stageDiagnosticWrites(
+    token: DiagnosticTransactionToken,
+    entries: readonly DiagnosticTransactionEntry[]
+  ): Promise<DiagnosticTransactionStageResult>;
+  /** Issues a statement that is MEANT to fail, inside the owned transaction, so
+   * that statement-failure handling can be exercised. The SQL is fixed in this
+   * module; the caller supplies only the bound key. */
+  stageDiagnosticFailingStatement(
+    token: DiagnosticTransactionToken,
+    key: string
+  ): Promise<DiagnosticTransactionStageResult>;
+  /** Commits the owned transaction. A rejection is NOT proof of rollback. */
+  commitDiagnosticTransaction(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionCommitResult>;
+  /** Rolls the owned transaction back explicitly. Accepted in both the `open`
+   * and the `uncertain` phase; only a positively acknowledged ROLLBACK ends
+   * ownership. */
+  rollbackDiagnosticTransaction(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionRollbackResult>;
+  /**
+   * The escape hatch for a transaction that could not be ended cleanly:
+   * best-effort rollback, then close the connection, then release the engine's
+   * native handle. Closing discards an open transaction at the engine, so this
+   * can only ever lose UNCOMMITTED synthetic work.
+   *
+   * Ownership is released ONLY when the close and the release both succeed. If
+   * either fails the store keeps owning the transaction in the `uncertain`
+   * phase, keeps refusing ordinary work, and the caller may retry (a retry
+   * resumes at the step that failed) or start a new document.
+   */
+  abandonDiagnosticTransaction(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionAbandonResult>;
+  /** Whether an owned transaction exists in either phase, for a UI that must
+   * show it. Reads local state only and touches no database. */
+  hasPendingDiagnosticTransaction(): boolean;
+  /** The owned transaction's phase. Reads local state only. */
+  diagnosticTransactionState(): DiagnosticTransactionPhase;
+  /**
+   * DIAGNOSTICS ONLY. Closes the connection, releases the engine's native handle
+   * and opens a fresh connection, reporting which boundary failed if any. Queued
+   * like every other operation and refused while a transaction is owned.
+   *
+   * `close()` alone does not establish reopen evidence: it cannot say whether
+   * the NEXT operation reopened, and a failed close silently drops the handle.
+   */
+  reopenDiagnosticConnection(): Promise<NativeSqliteReopenResult>;
 }
 
 /** `instanceof` can itself throw (a Proxy with a hostile `getPrototypeOf`), so
@@ -291,6 +557,37 @@ function readEnvelope(result: unknown): QueryEnvelope {
     return { kind: "rows", rows };
   } catch {
     return { kind: "malformed" };
+  }
+}
+
+/**
+ * Whether a BEGIN/COMMIT/ROLLBACK result is the plugin's positive
+ * acknowledgement.
+ *
+ * The installed 8.1.1 plugin resolves all three with `{ changes: { changes: 0 } }`
+ * on both platforms: iOS `CapacitorSQLite.beginTransaction` (and siblings)
+ * returns `["changes": res]` with `res` the `Int` 0 from `Database.swift`, which
+ * `ReturnHandler.rChanges` wraps as `["changes": ret]`; Android
+ * `CapacitorSQLite.beginTransaction` returns a `JSObject` with `changes` set to
+ * the `Integer` 0 from `Database.java`, which `RetHandler.retChanges` wraps the
+ * same way. A failure is a REJECTION (`changes: -1` only ever travels with a
+ * reject message), so a resolved negative count is not a shape the plugin
+ * produces either.
+ *
+ * Anything else is not an acknowledgement. In particular it is never read as
+ * "the transition happened" — a lifecycle step whose answer cannot be read is a
+ * step whose outcome is unknown. Contained, because property reads on a hostile
+ * value can throw.
+ */
+function isTransactionAcknowledgement(result: unknown): boolean {
+  try {
+    if (result === null || typeof result !== "object" || Array.isArray(result)) return false;
+    const outer = (result as { changes?: unknown }).changes;
+    if (outer === null || typeof outer !== "object" || Array.isArray(outer)) return false;
+    const count = (outer as { changes?: unknown }).changes;
+    return typeof count === "number" && Number.isInteger(count) && count >= 0;
+  } catch {
+    return false;
   }
 }
 
@@ -397,6 +694,22 @@ export function createNativeSqliteStore(
   // is what refused. Read only by the control operations, which report a reason
   // rather than a persistence error.
   let lastFailureWasPlatform = false;
+  /**
+   * The one owned diagnostics transaction, or `null`.
+   *
+   * While it is non-null EVERY other task refuses as its first act. The refusal
+   * happens when the task RUNS, not when it is queued, so a caller is never
+   * blocked indefinitely behind a transaction a human has not resolved yet — it
+   * gets a prompt, honest refusal instead.
+   */
+  let pendingTransaction: OwnedDiagnosticTransaction | null = null;
+  /**
+   * Set when an ORDINARY `close()` failed part-way. `close()` drops its handle
+   * regardless (so the next operation reopens), but the native side may still
+   * hold the old connection; `reopenDiagnosticConnection` releases it before it
+   * will call a connection fresh.
+   */
+  let staleNativeHandle = false;
 
   function enqueue<T>(task: () => Promise<T>): Promise<T> {
     const result = tail.then(task, task);
@@ -468,6 +781,12 @@ export function createNativeSqliteStore(
   }
 
   async function getTask(key: string): Promise<StorageGetResult> {
+    // A read issued inside someone else's open transaction would see that
+    // transaction's UNCOMMITTED rows on this same connection, which is the
+    // single most misleading observation this store could produce.
+    if (pendingTransaction !== null) {
+      return readFailure({ kind: "unknown", message: TRANSACTION_PENDING_MESSAGE });
+    }
     try {
       const open = await ensureConnection();
       const result = await open.query(SELECT_VALUE_SQL, [key]);
@@ -487,9 +806,15 @@ export function createNativeSqliteStore(
   }
 
   async function setTask(key: string, value: string): Promise<PersistenceWriteResult> {
+    if (pendingTransaction !== null) {
+      return writeFailed({ kind: "unknown", message: TRANSACTION_PENDING_MESSAGE });
+    }
     try {
       const open = await ensureConnection();
-      await open.run(UPSERT_VALUE_SQL, [key, value]);
+      // `transaction: true` — the ordinary, unchanged behaviour: this one
+      // statement is its own transaction, exactly as the plugin's default would
+      // have made it. It is spelled out because the flag is now mandatory.
+      await open.run(UPSERT_VALUE_SQL, [key, value], true);
       return writeOk();
     } catch (error) {
       return writeFailed(classifyWriteError(error));
@@ -497,12 +822,15 @@ export function createNativeSqliteStore(
   }
 
   async function removeTask(key: string): Promise<PersistenceRemoveResult> {
+    if (pendingTransaction !== null) {
+      return removeFailed({ kind: "removal_failed", message: TRANSACTION_PENDING_MESSAGE });
+    }
     try {
       const open = await ensureConnection();
       // Removing a key that is not there is a success, exactly as it is for
       // `localStorage.removeItem`. A caller that needs to know whether something
       // WAS there reads first.
-      await open.run(DELETE_VALUE_SQL, [key]);
+      await open.run(DELETE_VALUE_SQL, [key], true);
       return removeOk();
     } catch (error) {
       return removeFailed(classifyRemoveError(error));
@@ -530,6 +858,7 @@ export function createNativeSqliteStore(
   };
 
   async function settingsTask(): Promise<NativeSqliteSettingsResult> {
+    if (pendingTransaction !== null) return { ok: false, reason: "operation_failed" };
     try {
       const open = await ensureConnection();
       // Sequential, not `Promise.all`. This store's whole ownership claim is
@@ -563,6 +892,10 @@ export function createNativeSqliteStore(
   }
 
   async function closeTask(): Promise<NativeSqliteControlResult> {
+    // Closing underneath an open transaction would silently discard it and
+    // leave the caller unable to say whether anything committed. The owner
+    // resolves it first, or abandons it deliberately.
+    if (pendingTransaction !== null) return { ok: false, reason: "operation_failed" };
     const open = connection;
     // Cleared before awaiting anything, so a concurrent caller queued behind
     // this one reopens rather than reusing a handle that is being torn down.
@@ -575,13 +908,60 @@ export function createNativeSqliteStore(
     try {
       await open.close();
       if (engine) await engine.closeConnection(databaseName);
+      staleNativeHandle = false;
       return { ok: true };
     } catch (error) {
+      staleNativeHandle = true;
       return { ok: false, reason: classifyControlFailure(error, false) };
     }
   }
 
+  /**
+   * Close → release → open, each step's failure named. A connection is only
+   * called FRESH when all three succeeded, because a read after any failure may
+   * still be served by the old connection (or the old native handle) and is
+   * therefore not reopen evidence.
+   */
+  async function reopenTask(): Promise<NativeSqliteReopenResult> {
+    if (pendingTransaction !== null) {
+      return { ok: false, boundary: "refused", reason: "operation_failed" };
+    }
+    const open = connection;
+    if (open !== null) {
+      try {
+        await open.close();
+      } catch (error) {
+        // The handle is kept: it may still be open, and pretending otherwise is
+        // exactly how a later read would be mistaken for a reopened one.
+        return { ok: false, boundary: "close", reason: classifyControlFailure(error, false) };
+      }
+      connection = null;
+      staleNativeHandle = true;
+    }
+    if (staleNativeHandle) {
+      try {
+        if (engine) await engine.closeConnection(databaseName);
+        staleNativeHandle = false;
+      } catch (error) {
+        return { ok: false, boundary: "release", reason: classifyControlFailure(error, false) };
+      }
+    }
+    try {
+      await ensureConnection();
+    } catch (error) {
+      return {
+        ok: false,
+        boundary: "open",
+        reason: classifyControlFailure(error, lastFailureWasPlatform),
+      };
+    }
+    return { ok: true };
+  }
+
   async function deleteAllTask(): Promise<NativeSqliteControlResult> {
+    // Cleanup during a pending or unresolved transaction could destroy the very
+    // evidence an interrupted attempt is about to be judged on.
+    if (pendingTransaction !== null) return { ok: false, reason: "operation_failed" };
     try {
       const open = await ensureConnection();
       // `run`, NOT `execute`. iOS's `execute` preprocesses any SQL containing
@@ -590,16 +970,334 @@ export function createNativeSqliteStore(
       // `sqlite3_exec` then succeeds and deletes nothing, and cleanup reports
       // success over records that are still present. `run` compiles one statement
       // through `prepareSQL` on both platforms with no such rewriting.
-      await open.run(DELETE_ALL_SQL, []);
+      await open.run(DELETE_ALL_SQL, [], true);
       return { ok: true };
     } catch (error) {
       return { ok: false, reason: classifyControlFailure(error, lastFailureWasPlatform) };
     }
   }
 
+  /* ------------------------------------------------------------------
+   * The diagnostics-only owned transaction.
+   *
+   * Every one of these runs as a SINGLE queued task, so a transaction's own
+   * statements are never interleaved with anything else. Between tasks the
+   * transaction stays open at the engine and `pendingTransaction` refuses all
+   * other work — which is what makes the "prepared but uncommitted" state of
+   * an interruption rehearsal observable at all.
+   * ------------------------------------------------------------------ */
+
+  let nextTransactionOrdinal = 0;
+
+  /** Confirms the caller owns the pending transaction before anything touches
+   * the database. A stale token from an earlier attempt resolves nothing. */
+  function checkToken(
+    token: DiagnosticTransactionToken
+  ): "no_pending_transaction" | "wrong_transaction" | null {
+    if (pendingTransaction === null) return "no_pending_transaction";
+    if (pendingTransaction.token.id !== token.id) return "wrong_transaction";
+    return null;
+  }
+
+  /** Statements and COMMIT are only ever issued into a transaction whose BEGIN
+   * was positively acknowledged and which nothing has disturbed since. */
+  function checkUsableToken(
+    token: DiagnosticTransactionToken
+  ): DiagnosticTransactionRefusal | null {
+    const refusal = checkToken(token);
+    if (refusal) return refusal;
+    if (pendingTransaction?.phase !== "open") return "transaction_uncertain";
+    return null;
+  }
+
+  /** Records that the owned transaction's native state is no longer known. The
+   * token, and therefore ownership, is kept. */
+  function markUncertain(): void {
+    if (pendingTransaction !== null) pendingTransaction.phase = "uncertain";
+  }
+
+  /**
+   * Best-effort ROLLBACK after a failure inside the transaction.
+   *
+   * Ownership ends ONLY on a positively acknowledged ROLLBACK. A rejection, or a
+   * result that is not the plugin's acknowledgement, leaves the transaction owned
+   * and `uncertain`, so every other operation keeps being refused until the
+   * owner resolves it. Silently clearing it here would hand the next caller a
+   * connection that may be sitting inside an open transaction.
+   */
+  async function rollbackAfterFailure(
+    open: NativeSqliteConnection
+  ): Promise<DiagnosticTransactionCleanup> {
+    try {
+      const result = await open.rollbackTransaction();
+      if (isTransactionAcknowledgement(result)) {
+        pendingTransaction = null;
+        return "rolled_back";
+      }
+    } catch {
+      /* falls through to the uncertain outcome below */
+    }
+    markUncertain();
+    return "rollback_failed";
+  }
+
+  async function beginTransactionTask(): Promise<DiagnosticTransactionBeginResult> {
+    if (pendingTransaction !== null) return { ok: false, reason: "transaction_pending" };
+    let open: NativeSqliteConnection;
+    try {
+      open = await ensureConnection();
+    } catch (error) {
+      // BEGIN was never issued, so nothing can have been opened.
+      return { ok: false, reason: classifyControlFailure(error, lastFailureWasPlatform) };
+    }
+    nextTransactionOrdinal += 1;
+    const token: DiagnosticTransactionToken = {
+      id: `${databaseName}#txn-${nextTransactionOrdinal}`,
+    };
+    // Ownership is taken BEFORE the native call, in the `uncertain` phase. From
+    // the moment BEGIN is issued a native transaction may exist whether or not
+    // its answer arrives, so there is no instant at which an ordinary read could
+    // slip in underneath it.
+    const owned: OwnedDiagnosticTransaction = {
+      token,
+      phase: "uncertain",
+      closedPendingRelease: false,
+    };
+    pendingTransaction = owned;
+    let acknowledged = false;
+    try {
+      acknowledged = isTransactionAcknowledgement(await open.beginTransaction());
+    } catch {
+      acknowledged = false;
+    }
+    if (!acknowledged) {
+      // NOT "nothing was opened". The store keeps owning an uncertain
+      // transaction and hands the token back so the caller can resolve it.
+      return { ok: false, reason: "begin_unacknowledged", token };
+    }
+    owned.phase = "open";
+    return { ok: true, token };
+  }
+
+  async function stageTask(
+    token: DiagnosticTransactionToken,
+    entries: readonly DiagnosticTransactionEntry[]
+  ): Promise<DiagnosticTransactionStageResult> {
+    const refusal = checkUsableToken(token);
+    if (refusal) return { ok: false, reason: refusal };
+    const open = connection;
+    if (open === null) {
+      // The connection cannot vanish while a transaction is owned — close and
+      // reopen are refused — so this is unreachable. Treated as a failure whose
+      // native state is unknown rather than assumed away.
+      markUncertain();
+      return { ok: false, reason: "statement_failed", cleanup: "rollback_failed" };
+    }
+    for (const entry of entries) {
+      try {
+        // `transaction: false` — THE critical argument. With the plugin's
+        // default the native side would issue its own BEGIN inside this one.
+        await open.run(UPSERT_VALUE_SQL, [entry.key, entry.value], false);
+      } catch {
+        return {
+          ok: false,
+          reason: "statement_failed",
+          cleanup: await rollbackAfterFailure(open),
+        };
+      }
+    }
+    return { ok: true };
+  }
+
+  async function stageFailingTask(
+    token: DiagnosticTransactionToken,
+    key: string
+  ): Promise<DiagnosticTransactionStageResult> {
+    const refusal = checkUsableToken(token);
+    if (refusal) return { ok: false, reason: refusal };
+    const open = connection;
+    if (open === null) {
+      markUncertain();
+      return { ok: false, reason: "statement_failed", cleanup: "rollback_failed" };
+    }
+    try {
+      await open.run(DIAGNOSTIC_FAILING_INSERT_SQL, [key], false);
+    } catch {
+      return {
+        ok: false,
+        reason: "statement_failed",
+        cleanup: await rollbackAfterFailure(open),
+      };
+    }
+    // The statement was supposed to violate NOT NULL and did not. That is a
+    // fact about the ENGINE and it is reported as its own reason. The rollback
+    // that follows may itself fail, in which case the transaction stays owned and
+    // `uncertain` exactly as on every other failure path.
+    return {
+      ok: false,
+      reason: "statement_unexpectedly_succeeded",
+      cleanup: await rollbackAfterFailure(open),
+    };
+  }
+
+  async function commitTask(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionCommitResult> {
+    const refusal = checkUsableToken(token);
+    if (refusal) return { ok: false, reason: refusal };
+    const open = connection;
+    if (open === null) {
+      markUncertain();
+      return { ok: false, reason: "commit_rejected", cleanup: "rollback_failed" };
+    }
+    let acknowledged = false;
+    try {
+      acknowledged = isTransactionAcknowledgement(await open.commitTransaction());
+    } catch {
+      acknowledged = false;
+    }
+    if (acknowledged) {
+      pendingTransaction = null;
+      return { ok: true };
+    }
+    // A rejected — or unreadably answered — COMMIT says nothing about what
+    // reached the database. The rollback below frees the connection only if it
+    // is itself acknowledged; it never establishes that nothing was committed,
+    // and no caller may read it that way. (If the COMMIT did take effect, the
+    // ROLLBACK finds no transaction, rejects, and ownership stays `uncertain`.)
+    return {
+      ok: false,
+      reason: "commit_rejected",
+      cleanup: await rollbackAfterFailure(open),
+    };
+  }
+
+  async function rollbackTask(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionRollbackResult> {
+    const refusal = checkToken(token);
+    if (refusal) return { ok: false, reason: refusal };
+    const open = connection;
+    if (open === null || pendingTransaction?.closedPendingRelease) {
+      // The connection is already closed by an incomplete abandon; a ROLLBACK
+      // has nothing to address. Only finishing the abandon can resolve it.
+      markUncertain();
+      return { ok: false, reason: "rollback_failed" };
+    }
+    return (await rollbackAfterFailure(open)) === "rolled_back"
+      ? { ok: true }
+      : { ok: false, reason: "rollback_failed" };
+  }
+
+  async function abandonTask(
+    token: DiagnosticTransactionToken
+  ): Promise<DiagnosticTransactionAbandonResult> {
+    const refusal = checkToken(token);
+    if (refusal) return { ok: false, reason: refusal };
+    const owned = pendingTransaction;
+    if (owned === null) return { ok: false, reason: "no_pending_transaction" };
+    // From here on the transaction is no longer one anything may be staged into
+    // or committed from, whatever the outcome below.
+    owned.phase = "uncertain";
+
+    if (!owned.closedPendingRelease) {
+      const open = connection;
+      if (open !== null) {
+        // Best effort. Its outcome is deliberately not what decides: the close
+        // below is what ends a transaction at the engine.
+        try {
+          await open.rollbackTransaction();
+        } catch {
+          /* the close below is the deciding step */
+        }
+        try {
+          await open.close();
+        } catch {
+          // Ownership, the handle and the uncertainty are all KEPT. The
+          // connection may still be open and inside the transaction; freeing
+          // the store now would let an ordinary read be served from it.
+          return { ok: false, reason: "abandon_incomplete", boundary: "close" };
+        }
+      }
+      connection = null;
+      owned.closedPendingRelease = true;
+    }
+    try {
+      if (engine) await engine.closeConnection(databaseName);
+    } catch {
+      // Still owned. A retry resumes here, at the release.
+      return { ok: false, reason: "abandon_incomplete", boundary: "release" };
+    }
+    // The connection is closed AND its native handle released: no transaction
+    // can survive that at the engine. Only now is ownership given up.
+    pendingTransaction = null;
+    staleNativeHandle = false;
+    return { ok: true };
+  }
+
   return {
     databaseName,
     adapter,
+    hasPendingDiagnosticTransaction: () => pendingTransaction !== null,
+    diagnosticTransactionState: () => pendingTransaction?.phase ?? "none",
+    beginDiagnosticTransaction: () =>
+      enqueue(beginTransactionTask).catch((): DiagnosticTransactionBeginResult => {
+        // Unreachable in practice. If ownership was already taken, the token
+        // must still reach the caller: losing it would strand the store.
+        const owned = pendingTransaction;
+        if (owned !== null) {
+          owned.phase = "uncertain";
+          return { ok: false, reason: "begin_unacknowledged", token: owned.token };
+        }
+        return { ok: false, reason: "operation_failed" };
+      }),
+    stageDiagnosticWrites: (token, entries) =>
+      enqueue(() => stageTask(token, entries)).catch(() => {
+        markUncertain();
+        return {
+          ok: false as const,
+          reason: "statement_failed" as const,
+          cleanup: "rollback_failed" as const,
+        };
+      }),
+    stageDiagnosticFailingStatement: (token, key) =>
+      enqueue(() => stageFailingTask(token, key)).catch(() => {
+        markUncertain();
+        return {
+          ok: false as const,
+          reason: "statement_failed" as const,
+          cleanup: "rollback_failed" as const,
+        };
+      }),
+    commitDiagnosticTransaction: (token) =>
+      enqueue(() => commitTask(token)).catch(() => {
+        markUncertain();
+        return {
+          ok: false as const,
+          reason: "commit_rejected" as const,
+          cleanup: "rollback_failed" as const,
+        };
+      }),
+    rollbackDiagnosticTransaction: (token) =>
+      enqueue(() => rollbackTask(token)).catch(() => {
+        markUncertain();
+        return { ok: false as const, reason: "rollback_failed" as const };
+      }),
+    abandonDiagnosticTransaction: (token) =>
+      enqueue(() => abandonTask(token)).catch(() => {
+        markUncertain();
+        return {
+          ok: false as const,
+          reason: "abandon_incomplete" as const,
+          boundary: "close" as const,
+        };
+      }),
+    reopenDiagnosticConnection: () =>
+      enqueue(reopenTask).catch(() => ({
+        ok: false as const,
+        boundary: "open" as const,
+        reason: "operation_failed" as const,
+      })),
     readEffectiveSettings: () =>
       enqueue(settingsTask).catch(() => ({ ok: false, reason: "operation_failed" as const })),
     close: () =>

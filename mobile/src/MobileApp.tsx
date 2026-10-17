@@ -94,7 +94,7 @@ export default function MobileApp() {
   );
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-4 sm:px-6 sm:py-8">
+    <main className="house-shell min-h-screen px-4 py-4 sm:px-6 sm:py-8">
       <div className="mx-auto w-full max-w-md sm:max-w-xl">
         {/* A default build folds this to `shell`, so the element tree stays
             IDENTICAL to the Web root's — which is what

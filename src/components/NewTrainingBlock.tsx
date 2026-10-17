@@ -42,7 +42,7 @@ export default function NewTrainingBlock({
   defaultSmartRandomProfileId = null,
 }: NewTrainingBlockProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4">
+    <div className="house-training fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 px-4">
       <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <h2 className="text-xl font-semibold text-slate-900">
           New Training Block
@@ -54,16 +54,16 @@ export default function NewTrainingBlock({
         </p>
 
         {outgoingBlockShots.length > 0 && (
-          <div className="mt-4 rounded-xl bg-slate-100 p-4">
-            <p className="text-sm font-medium text-slate-700">
+          <details className="house-training-disclosure mt-4">
+            <summary>
               Summary — {outgoingBlock.name}
-            </p>
+            </summary>
 
             <BlockSummaryCards
               block={outgoingBlock}
               shots={outgoingBlockShots}
             />
-          </div>
+          </details>
         )}
 
         <div className="mt-4">

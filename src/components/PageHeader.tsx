@@ -13,7 +13,7 @@ type PageHeaderProps = {
 export default function PageHeader({ title, description }: PageHeaderProps) {
   return (
     <header className="px-1">
-      <h1 className="text-lg font-semibold text-slate-900 sm:text-xl">
+      <h1 className="text-lg font-medium text-[var(--house-ink)] sm:text-xl">
         {title}
       </h1>
       {description && (

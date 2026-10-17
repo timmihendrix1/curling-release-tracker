@@ -19,9 +19,9 @@ test("creating, defaulting and using an Accuracy Tolerance Profile end to end", 
   await freshLoad(page);
   await goToSettings(page);
 
-  // Two "No profiles saved yet." sections exist (Accuracy Tolerances and
+  // Two "0 saved" sections exist (Accuracy Tolerances and
   // Smart Random Profiles) — just confirm the Settings screen loaded cleanly.
-  await expect(page.getByText("No profiles saved yet.").first()).toBeVisible();
+  await expect(page.getByText("0 saved").first()).toBeVisible();
 
   await createProfile(page, { name: "Elite", onTarget: "0.05", acceptable: "0.10" });
   await expect(page.getByText("Elite")).toBeVisible();
@@ -31,12 +31,12 @@ test("creating, defaulting and using an Accuracy Tolerance Profile end to end", 
   await page.getByRole("button", { name: "Set as Default" }).click();
   await expect(page.getByText("Default", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Close Accuracy Tolerances" }).click();
-  await expect(page.getByText("1 profile saved · Default: Elite")).toBeVisible();
+  await expect(page.getByText("1 saved · Elite")).toBeVisible();
 
   // Persists across reload.
   await page.reload();
   await goToSettings(page);
-  await expect(page.getByText("1 profile saved · Default: Elite")).toBeVisible();
+  await expect(page.getByText("1 saved · Elite")).toBeVisible();
 
   // Release Time setup: the default template already seeds the configuration, and the
   // compact summary states it without the athlete opening anything (Stage B replaced
@@ -59,7 +59,7 @@ test("creating, defaulting and using an Accuracy Tolerance Profile end to end", 
   await page.getByLabel("Acceptable (±s)").fill("0.30");
 
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 });
 
 test("editing or deleting a profile never changes an already-started Training Block", async ({
@@ -76,7 +76,7 @@ test("editing or deleting a profile never changes an already-started Training Bl
     page.getByText("On Target ±0.05s · Acceptable ±0.10s")
   ).toBeVisible();
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // Now edit the profile to different values, and delete it entirely —
   // neither should require or affect the already-active Training Block.
@@ -87,10 +87,10 @@ test("editing or deleting a profile never changes an already-started Training Bl
   await page.getByRole("button", { name: "Save Profile" }).click();
   await page.getByRole("button", { name: "Delete" }).click();
   await page.getByRole("button", { name: "Delete Profile" }).click();
-  await expect(page.getByText("No profiles saved yet.").first()).toBeVisible();
+  await expect(page.getByText("0 saved").first()).toBeVisible();
   await page.getByRole("button", { name: "Close Accuracy Tolerances" }).click();
 
   // The active session/block is untouched — still on Train, still active.
   await goToTrain(page);
-  await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
 });

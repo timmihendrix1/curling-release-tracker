@@ -431,7 +431,7 @@ test.describe("Brower TCi BLE diagnostic", () => {
 
     // Navigating away unmounts the diagnostic and releases everything it owned.
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByText("Today's Plan")).toBeVisible();
+    await expect(page.getByTestId("house-home")).toBeVisible();
     expect(
       await page.evaluate(() => window.__browerMock.disconnectCount)
     ).toBeGreaterThanOrEqual(1);

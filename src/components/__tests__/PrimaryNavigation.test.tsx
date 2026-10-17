@@ -11,7 +11,7 @@ describe("PrimaryNavigation", () => {
   it("renders Home, Train, Assess, Analyze, Settings, in that order", () => {
     render(<PrimaryNavigation activeView="home" onNavigate={() => {}} />);
 
-    for (const label of ["Home", "Train", "Assess", "Analyze", "Settings"]) {
+    for (const label of ["Home", "Train", "Analyze", "Settings"]) {
       expect(screen.getAllByRole("button", { name: label }).length).toBeGreaterThan(0);
     }
 
@@ -19,7 +19,7 @@ describe("PrimaryNavigation", () => {
     const labels = Array.from(desktopBar.querySelectorAll("button")).map(
       (button) => button.textContent
     );
-    expect(labels).toEqual(["Home", "Train", "Assess", "Analyze", "Settings"]);
+    expect(labels).toEqual(["Home", "Train", "Analyze", "Settings"]);
   });
 
   it("marks the active view with aria-current, and only that one", () => {
@@ -55,7 +55,7 @@ describe("PrimaryNavigation", () => {
     // The active item's styling comes from a solid background, not the ring —
     // so active and focus-visible are two independent, non-conflicting states.
     for (const button of screen.getAllByRole("button", { name: "Home" })) {
-      expect(button.className).toMatch(/bg-slate-900/);
+      expect(button.className).toMatch(/house-nav-active/);
       expect(button.className).toMatch(/focus-visible:ring/);
     }
   });

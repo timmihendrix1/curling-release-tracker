@@ -44,9 +44,12 @@ power-loss survival.
 implementation, the opt-in diagnostic panel, and — from Stage M3b3 — the **production
 composition, identity injection, protected credential store and readiness gate** are
 implemented and tested, and the existing iOS app compiles unsigned with both plugins linked.
-**User-reported device evidence now exists** for the configured pragmas and for restart
-recovery, and **not** for failed/uncertain commit reporting or reopen-after-interruption — so
-the engine is settled for the **adapter** while **source retirement stays unjustified**, and
+**User-reported physical-device evidence exists** for the configured pragmas and for restart
+recovery (2026-09-30), and **user-reported simulator evidence** through the real plugin exists
+for the diagnostic transaction scenarios, including reopen after a process stop with a
+transaction open (2026-10-15). There is **no** physical-device transaction evidence and no
+naturally occurring commit failure — so the engine is settled for the **adapter** while
+**source retirement stays unjustified**, and
 no operating envelope is recorded. **Nothing in decision 7 is implemented:** there is no
 activation record and no migration. **Decision 10's cutover has not happened**, and a
 flag-enabled build deliberately does **not mount** rather than mounting against an empty
@@ -457,9 +460,26 @@ everything and returning a result nobody reads). Exposing a getter would not hav
   recoverable from another device.
 - Android is **designed for, not verified.** No Android project exists; shared design is not
   Android evidence (Stage M5).
-- **Nothing in this ADR has been run on a device.** Of its decisions, only the adapter of
-  decision 1, the engine selection of decision 2 (provisionally) and the platform gating of
-  decision 3 are implemented; decisions 4–7 and 10 are not.
+- **What has and has not run on a device.** An earlier revision of this list said "nothing in
+  this ADR has been run on a device" and also described decisions 4–7 and 10 as unimplemented.
+  Both statements are now wrong and are corrected here rather than left to contradict the
+  status above: user-reported device evidence exists for the configured pragmas and for
+  restart recovery, and decisions 4, 5, 6, 8, 9 and the credential policy are implemented
+  (Stages M3b1–M3b3). What remains true is that **decision 7's migration protocol is
+  unimplemented and decision 10's cutover has not happened**, and that the evidence
+  decision 7 rests on is incomplete: the transaction scenarios have run on a simulator only
+  (2026-10-15), and physical-device transaction acceptance, a naturally occurring commit
+  failure and termination during a commit are **not** measured. The canonical,
+  non-duplicated status is the M3b1 and M3b3 entries, including the M3b1 simulator-evidence
+  record, in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
+- **Transaction tooling is not transaction evidence.** The diagnostic panel can now exercise
+  explicit transactions — commit, rollback, a deliberate statement failure, and both
+  uncertain-acknowledgement cases — against the synthetic database, and the adapter owns one
+  transaction at a time outside every repository-facing contract, keeping that ownership while
+  a failure leaves the transaction's native state unknown. **It has been run on a simulator
+  (user-reported, 2026-10-15) and never on a physical device.** A fault injected by the
+  diagnostic after a successful commit is also not a naturally occurring native commit
+  failure, so even a full device pass would leave that case unmeasured.
 
 ## Review status
 
@@ -469,9 +489,10 @@ everything and returning a result nobody reads). Exposing a getter would not hav
   awaiting independent review of that implementation.
 - **Decision 2 (engine):** settled for the **adapter**. User-reported device evidence confirms
   the configured pragmas are in force and that values survive a restart offline. The
-  **commit/uncertain-commit reporting and reopen-after-interruption** measurements are still
-  **not taken**, so **source retirement remains unjustified** and no operating envelope is
-  recorded.
+  diagnostic transaction scenarios (tooling 2026-10-15) have run on a **simulator only**
+  (user-reported, 2026-10-15); **physical-device transaction acceptance and native
+  commit-failure evidence are not taken** — so **source retirement remains unjustified** and
+  no operating envelope is recorded.
 - **Decision 4 (initialise before mount, gate on one readiness verdict):** implemented.
 - **Decision 7 (the migration protocol):** **UNRESOLVED.** Three open engineering items
   remain (see Consequences), plus the two S2 requirements named above. Not implemented.

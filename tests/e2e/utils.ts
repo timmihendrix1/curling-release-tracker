@@ -19,12 +19,13 @@ async function navigateTo(
   page: Page,
   label: "Home" | "Train" | "Assess" | "Analyze" | "Settings"
 ) {
-  await primaryNav(page).getByRole("button", { name: label }).click();
+  const nav = (page.viewportSize()?.width ?? 390) < 640 ? primaryNav(page) : primaryNavDesktop(page);
+  await nav.getByRole("button", { name: label }).click();
 }
 
 export async function goToHome(page: Page) {
   await navigateTo(page, "Home");
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
 }
 
 export async function goToTrain(page: Page) {
@@ -32,7 +33,8 @@ export async function goToTrain(page: Page) {
 }
 
 export async function goToAssess(page: Page) {
-  await navigateTo(page, "Assess");
+  await goToTrain(page);
+  await page.getByRole("button", { name: "Assessments", exact: true }).click();
   await page.waitForSelector("text=Release Time Core Assessment");
 }
 
@@ -41,26 +43,20 @@ export async function goToAnalyze(page: Page) {
   await page.getByRole("tab", { name: "Training" }).waitFor();
 }
 
-/**
- * Opens the Session Management disclosure and starts a new session.
- *
- * Stage B moved the infrequent management actions (export, and starting a new session
- * without a finish summary) behind one disclosure, leaving Finish Training as the
- * ordinary way to end a training. These helpers archive a session as test SETUP, where
- * the no-summary path is what the following assertions expect.
- */
+/** Locate the visible session completion action; callers confirm and choose where to go next. */
 export async function openSessionManagement(page: Page) {
-  await page.getByText("Session Management").click();
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 }
 
 export async function startNewSessionFromManagement(page: Page) {
   await openSessionManagement(page);
-  await page.getByRole("button", { name: "Start New Session" }).click();
+  await page.getByRole("button", { name: "Complete Session", exact: true }).click();
 }
 
 export async function goToSettings(page: Page) {
   await navigateTo(page, "Settings");
-  await page.waitForSelector("text=Data Management");
+  await page.getByText("Data and privacy", { exact: true }).click();
+  await page.getByText("Delete training history", { exact: true }).click();
 }
 
 type E2ECloudSportingRecord = {
@@ -206,11 +202,11 @@ export async function clearLocalSportingState(page: Page): Promise<void> {
  * Playwright uses one worker so scenarios cannot race on this shared test Profile. */
 export async function freshLoad(page: Page) {
   await page.goto("/");
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await clearCloudSportingRecords(page);
   await clearLocalSportingState(page);
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
 }
 
 /** Seeds one logical sporting key inside the Profile namespace established by the
@@ -270,7 +266,7 @@ export async function openReleaseTimingSetup(page: Page) {
 export async function setupFixedBlock(page: Page) {
   await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 }
 
 /** Creates a Variable Weight / Smart Random block (the Setup form's Variable default). */
@@ -278,7 +274,7 @@ export async function setupVariableSmartRandomBlock(page: Page) {
   await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 }
 
 type StartAutoCaptureOptions = {
@@ -309,11 +305,14 @@ export async function startAutoCapture(
  * separately from ShotEntry's own release-time input, since both happen to share the
  * placeholder "3.75 or 375".
  */
-export function captureManualResultInput(page: Page) {
-  return page
-    .locator("p", { hasText: "Add Result Manually" })
-    .locator("..")
-    .getByPlaceholder("3.75 or 375");
+export async function captureManualResultInput(page: Page) {
+  const panel = page.locator("details").filter({
+    has: page.locator("summary", { hasText: "Add Result Manually" }),
+  });
+  if (!(await panel.evaluate((element) => (element as HTMLDetailsElement).open))) {
+    await panel.locator("summary").click();
+  }
+  return panel.getByPlaceholder("3.75 or 375");
 }
 
 // --- Assess (Release Time Core Assessment v1) helpers — see docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md ---
@@ -390,4 +389,16 @@ export async function completeFullAssessment(page: Page, options: { threshold?: 
   await completeAssessWarmup(page);
   await fastForwardAssessScoredShots(page, 32);
   await page.waitForSelector("text=Assessment complete");
+}
+
+/** Complete through the acknowledged archive path, then inspect its actual block. */
+export async function completedBlockAnalysis(page: Page) {
+  await page.getByRole("button", { name: "Complete Session", exact: true }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
+  await page.getByRole("heading", { name: "Exercises", exact: true }).waitFor();
+  await goToAnalyze(page);
+  await page.getByText("Show Details", { exact: true }).first().click();
+  const block = page.locator("details").filter({ has: page.locator("summary").filter({ hasText: "Show detail" }) }).first();
+  await block.locator("summary").click();
+  return block;
 }

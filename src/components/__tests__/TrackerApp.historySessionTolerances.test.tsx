@@ -75,7 +75,7 @@ function heterogeneousSession(title: string): Session {
 
 async function expandArchivedSession(title: string) {
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Analyze").click();
   await waitFor(() => screen.getByText("Blocks and Sessions"));
 
@@ -173,7 +173,7 @@ describe("expanded session summary", () => {
     );
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));
 

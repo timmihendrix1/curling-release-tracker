@@ -1,5 +1,13 @@
 # Visual Language
 
+The approved **House** direction uses one petrol family, restrained supporting
+surfaces and a decorative curling-house motif. Its approved implementation covers
+the shared shell/navigation, Home and the complete Train flow. Within that
+scope, the active training or editable measurement is the dominant surface;
+targets and secondary actions are quieter. See `DESIGN_SYSTEM.md` for the
+canonical scope, palette and interaction constraints. Train uses progressive disclosure for references and secondary actions; Assess,
+Analyze and Settings retain their existing content layouts.
+
 &gt; This document defines how the visual identity of the Curling Performance Platform is expressed through layout, hierarchy, spacing and information architecture.
 
 &gt;

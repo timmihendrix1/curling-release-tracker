@@ -64,9 +64,9 @@ async function openWith(block: TrainingBlock) {
   const state = measurementSession([block], []);
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   screen.getAllByRole("button", { name: "Train" })[0].click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -167,6 +167,6 @@ describe("an incoming device stone never rewrites an in-progress manual draft", 
       .closest("div");
     expect(
       within(nextEntry as HTMLElement).getByRole("button", { name: "In Handle" })
-    ).toHaveClass("bg-slate-900");
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

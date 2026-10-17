@@ -70,7 +70,7 @@ test("an inconsistent persisted capturedShotCount is repaired from real shots on
   // defers to Train automatically on load (see docs/adr/0009), so no explicit
   // navigation is needed here, unlike the discarded-sequence case below.
   // The existing real shot must survive untouched.
-  await expect(page.getByText("1 shot total")).toBeVisible();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
 
   // The impossible "completed with only 1/8 real shots" state must not be trusted as
   // done — it's reopened as paused (with the repaired, real count) so the user can
@@ -133,10 +133,10 @@ test("a capture sequence referencing a non-existent block is discarded, but exis
   };
 
   await seedCorruptSession(page, corruptSession);
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToTrain(page);
 
-  await expect(page.getByText("1 shot total")).toBeVisible();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
   // No stale/broken sequence surfaces — the Start Auto Capture form shows, not a
   // "Previous capture" summary referencing data that no longer makes sense.
   await page.getByRole("tab", { name: "Auto Capture" }).click();

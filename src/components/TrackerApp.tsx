@@ -1,5 +1,7 @@
 "use client";
 
+import TrainingHeader from "./TrainingHeader";
+
 import {
   useCallback,
   useEffect,
@@ -12,7 +14,6 @@ import {
 import IdentityAccountControl from "./identity/IdentityAccountControl";
 import IdentityPendingTeamIntent from "./identity/IdentityPendingTeamIntent";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
-import AppHeader from "./AppHeader";
 import AssessScreen from "./AssessScreen";
 import AssessmentAnalyze from "./AssessmentAnalyze";
 import AssessmentResultScreen from "./AssessmentResultScreen";
@@ -22,7 +23,6 @@ import BrowerBleDiagnosticScreen from "./BrowerBleDiagnosticScreen";
 import ConfirmModal from "./ConfirmModal";
 import DashboardCard from "./DashboardCard";
 import HomeScreen from "./HomeScreen";
-import PageHeader from "./PageHeader";
 import NewTrainingBlock from "./NewTrainingBlock";
 import PrimaryNavigation from "./PrimaryNavigation";
 import ReleaseTrendChart from "./ReleaseTrendChart";
@@ -57,7 +57,6 @@ import ExerciseTeamExecutionScreen from "./ExerciseTeamExecutionScreen";
 import ExerciseTeamSetupScreen from "./ExerciseTeamSetupScreen";
 import ExerciseTeamResultsScreen from "./ExerciseTeamResultsScreen";
 import TrainLanding, { type TrainEntryPath } from "./TrainLanding";
-import TrainingPlanFinishSummary from "./TrainingPlanFinishSummary";
 import TrainingPlanProgress from "./TrainingPlanProgress";
 import TrainingPlanStepTransition from "./TrainingPlanStepTransition";
 import TrainingSetup, { type TrainingSetupValue } from "./TrainingSetup";
@@ -140,11 +139,9 @@ import {
 } from "../lib/captureSequence";
 import {
   historyCsvExport,
-  sessionCsvExport,
 } from "../lib/export";
 import { DEFAULT_ACTIVE_VIEW, type ActiveView } from "../lib/navigation";
 import { useFileExport } from "./useFileExport";
-import FileExportStatusNotice from "./FileExportStatusNotice";
 import {
   attachSoloExerciseExecution,
   prepareSessionForArchive,
@@ -183,8 +180,6 @@ import {
 import {
   DEFAULT_SHOT_FILTER,
   filterShots,
-  type HandleFilter,
-  type ShotTypeFilter,
 } from "../lib/shotFilters";
 import { createManualTimingResult } from "../lib/timingProvider";
 import { useOptionalIdentity } from "./identity/IdentityProvider";
@@ -234,7 +229,6 @@ import {
   findIncompleteShots,
 } from "../lib/measurement/operations";
 import {
-  quantityLabel,
   toleranceFromAccuracyThresholds,
 } from "../lib/measurement/tolerance";
 import { editableNumber } from "../lib/measurement/toleranceDraft";
@@ -331,28 +325,7 @@ type MaterializedPlanStep =
 // Compact contextual header copy for every functional screen (DESIGN_SYSTEM.md
 // §9.2) — Home keeps the full AppHeader product identity instead, see the
 // activeView switch below.
-const FUNCTIONAL_PAGE_HEADERS: Record<
-  Exclude<ActiveView, "home">,
-  { title: string; description: string }
-> = {
-  train: {
-    title: "Train",
-    description:
-      "Find an exercise, set up a session, and record release times as you throw.",
-  },
-  assess: {
-    title: "Assess",
-    description: "Run the Release Time Core Assessment and review results.",
-  },
-  analyze: {
-    title: "Analyze",
-    description: "Review training, assessment, and Exercise history.",
-  },
-  settings: {
-    title: "Settings",
-    description: "Manage local data and app preferences.",
-  },
-};
+
 
 // All ten storage keys are now owned by their respective repositories
 // (src/lib/sessionRepository.ts, historyFiltersRepository.ts,
@@ -873,12 +846,6 @@ export default function TrackerApp() {
       }
     | null
   >(null);
-
-  // Which measured quantity the live summary is currently showing. Only meaningful
-  // when the block records both: seconds and m/s are never combined into one figure,
-  // so they are shown one at a time rather than side by side in a shared axis.
-  const [liveMetricQuantity, setLiveMetricQuantity] =
-    useState<MeasuredQuantity>("time");
 
   // --- Capture Sequence UI state ---
   // "Next Handle" for CaptureHandleMode "manual" — the live sequence itself has no
@@ -2317,72 +2284,6 @@ export default function TrackerApp() {
     })
   );
 
-  // Falls back to whatever the block actually measures, so a stale selection (e.g.
-  // "speed" carried over from a previous block) can never ask a time-only block for
-  // figures it has none of.
-  const effectiveLiveQuantity: MeasuredQuantity =
-    activeBlockMeasurement.quantities.includes(liveMetricQuantity)
-      ? liveMetricQuantity
-      : (activeBlockMeasurement.quantities[0] ?? "time");
-
-  const activeBlockSpeedTolerance = activeBlockMeasurement.speed?.tolerance ?? null;
-  // Its own independent denominator: only stones that genuinely carry a speed take
-  // part, so a Both stone still missing its speed counts fully towards time and
-  // simply does not appear here (never as a zero).
-  const activeBlockSpeedAccuracy = activeBlockSpeedTolerance
-    ? computeQuantityAccuracyAnalytics(
-        filteredActiveBlockShots,
-        "speed",
-        activeBlockSpeedTolerance
-      )
-    : null;
-  const activeBlockSpeedValues = filteredActiveBlockShots
-    .map((shot) => shotMeasuredValue(shot, "speed"))
-    .filter((value): value is number => value !== null);
-
-  // The collapsed Live Performance header, which must never state a time figure for a
-  // block that records no time — "Avg 0.00s" there would be a fabricated measurement
-  // on the one line the athlete reads without opening anything.
-  const activeBlockOverviewSpeedValues = activeBlockShots
-    .map((shot) => shotMeasuredValue(shot, "speed"))
-    .filter((value): value is number => value !== null);
-  const activeBlockOverviewSpeedAccuracy = activeBlockSpeedTolerance
-    ? computeQuantityAccuracyAnalytics(
-        activeBlockShots,
-        "speed",
-        activeBlockSpeedTolerance
-      )
-    : null;
-
-  /**
-   * The one line the athlete reads without opening anything.
-   *
-   * Two things it must never do: state a figure in a unit this block does not
-   * measure, and deny that stones exist. "No shots yet" is about the STONE COUNT; a
-   * quantity with no recorded values yet is a separate, separately-worded fact —
-   * a Both block holding one speed-only stone has a stone, and simply has no time
-   * figures to report for it.
-   */
-  function liveOverviewSummary(): string {
-    if (activeBlockShots.length === 0) return "No shots yet";
-
-    const stones = `${activeBlockShots.length} shot${activeBlockShots.length === 1 ? "" : "s"}`;
-
-    if (effectiveLiveQuantity === "speed") {
-      if (
-        !activeBlockOverviewSpeedAccuracy ||
-        activeBlockOverviewSpeedAccuracy.shotCount === 0
-      ) {
-        return `${stones} · no speed recorded yet`;
-      }
-      return `${stones} · Avg ${formatMeasuredSpeed(average(activeBlockOverviewSpeedValues))} · ${Math.round((activeBlockOverviewSpeedAccuracy.onTargetRate ?? 0) * 100)}% on target`;
-    }
-
-    if (!activeBlockOverviewAnalysis || activeBlockOverviewAnalysis.count === 0) {
-      return `${stones} · no release time recorded yet`;
-    }
-    return `${stones} · Avg ${formatReleaseTime(activeBlockOverviewAnalysis.average)} · ${Math.round((activeBlockOverviewAnalysis.targetAccuracy.onTargetRate ?? 0) * 100)}% on target`;
-  }
   // The tolerance this block's time measurements were actually judged against. For a
   // legacy block that is its symmetric pair, unchanged; for a measurement-aware block
   // it is the block's own, possibly asymmetric, per-side tolerance. Everything on this
@@ -2396,30 +2297,11 @@ export default function TrackerApp() {
   const activeBlockAnalysis = activeBlock && activeBlockTimeTolerance
     ? analyzeShots(filteredActiveBlockShots, activeBlockTimeTolerance)
     : null;
-  const activeBlockOverviewAnalysis = activeBlock && activeBlockTimeTolerance
-    ? analyzeShots(activeBlockShots, activeBlockTimeTolerance)
-    : null;
-
   // Whichever capture path is actually in progress is the screen's Hero; the
   // other stays available as a Primary (non-Hero) fallback (Epic 1: exactly
   // one Hero per screen — see docs/DESIGN_SYSTEM.md §10.1).
   const autoCaptureIsActive = isCaptureSequenceActive(
     currentSession.captureSequence
-  );
-
-  const activeBlockMap = activeBlock
-    ? new Map([[activeBlock.id, activeBlock]])
-    : new Map();
-  const targetErrorByShotData = activeBlockTimeTolerance
-    ? prepareTargetErrorByShotData(
-        filteredActiveBlockShots,
-        activeBlockMap,
-        activeBlockTimeTolerance
-      )
-    : [];
-  const targetVsActualScatterData = prepareTargetVsActualScatterData(
-    filteredActiveBlockShots,
-    activeBlockMap
   );
 
   // Manual release-time entry is only meaningful against a time target. A block
@@ -3614,19 +3496,17 @@ export default function TrackerApp() {
       return false;
     }
 
-    // A library start is a two-step action: first confirm the physical setup,
-    // then create the durable execution. Cancelling the setup therefore leaves
-    // no empty or misleading in-progress result behind.
-    setPendingSoloExerciseVersion(snapshotExerciseVersion(version));
-    return true;
+    return startSoloExercise(version);
   }
 
   function handleConfirmSoloExerciseStart(): boolean {
-    if (sessionHydration !== "ready" || !pendingSoloExerciseVersion) return false;
+    return pendingSoloExerciseVersion ? startSoloExercise(pendingSoloExerciseVersion) : false;
+  }
 
+  function startSoloExercise(version: ExerciseVersion): boolean {
+    if (sessionHydration !== "ready") return false;
     const session = sessionRef.current;
     if (!session) return false;
-    const version = pendingSoloExerciseVersion;
     const compatibleProtocols = resolveMeasurementProtocols(
       EXERCISE_CATALOG,
       version.compatibleMeasurementProtocols
@@ -3655,6 +3535,7 @@ export default function TrackerApp() {
     commitSession(attached.value);
     setPendingSoloExerciseVersion(null);
     setViewingExerciseExecutionId(created.value.id);
+    setFinishedTrainingSummary(null);
     return true;
   }
 
@@ -4258,12 +4139,10 @@ export default function TrackerApp() {
     // and never upload an in-progress execution as archived cloud history.
     const prepared = prepareSessionForArchive(terminalSnapshot);
     if (!prepared.ok) {
-      // Only the plan's own controls render this; the pre-existing Start New Session
-      // path keeps its documented silent return rather than gaining wording that names
-      // an action the athlete did not take.
+      // Session completion reports a failed archive preparation alongside its action.
       if (options.summarize) {
         setPlanTransitionError(
-          "This training could not be closed safely. Nothing was changed — try Finish Training again."
+          "This training could not be closed safely. Nothing was changed — try Complete Session again."
         );
       }
       return;
@@ -4290,7 +4169,7 @@ export default function TrackerApp() {
       setFinishedTrainingSummary(null);
       if (options.summarize) {
         setPlanTransitionError(
-          "This training could not be saved yet. Everything you recorded is still here — try Finish Training again."
+          "This training could not be saved yet. Everything you recorded is still here — try Complete Session again."
         );
       }
       return;
@@ -4361,30 +4240,6 @@ export default function TrackerApp() {
     setShotEntryError(null);
   }
 
-  function handleStartNewSession() {
-    if (sessionHydration !== "ready") return;
-
-    guardLeavingActiveWork(
-      hasUnsavedBlindDraft
-        ? "You have an unfinished blind-weight shot. Starting a new session will discard it — the current session itself will still be saved to history. Continue?"
-        : null,
-      isCaptureSequenceActive(currentSession?.captureSequence)
-        ? "Starting a new session will end the current Auto Capture. Already captured shots will remain in the training."
-        : null,
-      null,
-      () => {
-        openSessionArchiveConfirmation(
-          {
-            title: "Start New Session",
-            message: "Current session will be saved to history. Continue?",
-            confirmLabel: "Start",
-          },
-          { summarize: false }
-        );
-      }
-    );
-  }
-
   /**
    * Presents intent-specific copy while keeping the durable archive transition
    * itself shared. Finishing a training is not a destructive action and must not
@@ -4417,13 +4272,13 @@ export default function TrackerApp() {
       () => {
         openSessionArchiveConfirmation(
           {
-            title: "Finish Training",
+            title: "Complete Session",
             message: planIncomplete
               ? "Save this training to history? Everything you recorded is kept; planned work you did not record stays unrecorded."
               : hasPlan
                 ? "Save this completed training to history?"
                 : "Save this training to history? Every stone you recorded is kept, including stones that are still missing one measurement.",
-            confirmLabel: "Finish",
+            confirmLabel: "Complete",
           },
           { summarize: true }
         );
@@ -4468,7 +4323,7 @@ export default function TrackerApp() {
 
   /**
    * Gates navigation away from an in-progress Blind Weight shot (History,
-   * New Training Block, Start New Session, ...). When there's nothing
+   * New Training Block, Complete Session, ...). When there's nothing
    * unsaved, `action` runs immediately; otherwise the user is asked first,
    * and `action` only runs if they confirm — at which point the draft is
    * treated as discarded (no partial shot is ever saved, the shot number and
@@ -4570,7 +4425,7 @@ export default function TrackerApp() {
   /**
    * Gates navigation away from a running/paused Capture Sequence — same shape as
    * runOrConfirmBlindDraftDiscard, for the same reason (History, New Training Block,
-   * Start New Session shouldn't silently abandon in-progress work). Confirming ends
+   * Complete Session shouldn't silently abandon in-progress work). Confirming ends
    * the sequence (already-captured shots remain; nothing half-finished is ever saved
    * as a shot) before running `action`.
    */
@@ -4830,18 +4685,10 @@ export default function TrackerApp() {
   );
 
   return (
-    <div className="app-content-clearance space-y-4">
+    <div className={`house-training app-content-clearance space-y-4 ${activeView === "home" ? "house-home-shell" : ""}`} >
       <IdentityPendingTeamIntent onOpenAdminRequests={() => setShowTeamsScreen(true)} />
-      <IdentityAccountControl onOpenTeams={() => setShowTeamsScreen(true)} />
+      <div className="house-status-row"><h1 className="sr-only">{activeView === "home" ? "Curling Performance" : activeView === "assess" ? "Assessments" : activeView.charAt(0).toUpperCase() + activeView.slice(1)}</h1><IdentityAccountControl compact onOpenTeams={() => setShowTeamsScreen(true)} /></div>
 
-      {activeView === "home" ? (
-        <AppHeader />
-      ) : (
-        <PageHeader
-          title={FUNCTIONAL_PAGE_HEADERS[activeView].title}
-          description={FUNCTIONAL_PAGE_HEADERS[activeView].description}
-        />
-      )}
 
       <PrimaryNavigation activeView={activeView} onNavigate={handleNavigate} />
 
@@ -4862,6 +4709,8 @@ export default function TrackerApp() {
           sessionHistory={sessionHistory}
           onStartTraining={() => handleNavigate("train")}
           onOpenAnalyze={() => handleNavigate("analyze")}
+          onOpenSettings={() => handleNavigate("settings")}
+          activeTeamExerciseTitle={activeTeamExerciseDraft?.exerciseVersionSnapshot.title}
           onManageTeams={() => setShowTeamsScreen(true)}
           hasActiveAssessmentRun={
             !!assessmentState?.currentRun &&
@@ -4874,6 +4723,7 @@ export default function TrackerApp() {
 
       {activeView === "settings" && (
         <SettingsScreen
+          accountControl={<IdentityAccountControl showSync={false} showTeams={false} onOpenTeams={() => setShowTeamsScreen(true)} />}
           hasHistory={sessionHistory.length > 0}
           onExportHistoryCsv={() => {
             void runExport(historyCsvExport(sessionHistory));
@@ -4904,7 +4754,7 @@ export default function TrackerApp() {
       )}
 
       {activeView === "train" && (
-        <>
+        <div className="house-training space-y-5" data-testid="house-training">
           {activeTeamExerciseDraft ? (
             <ExerciseTeamExecutionScreen
               exerciseAssetResolver={exerciseAssetResolver}
@@ -4983,17 +4833,6 @@ export default function TrackerApp() {
                 Back to Exercise Library
               </button>
             </div>
-          ) : finishedTrainingSummary ? (
-            // The factual close of a finished training — rendered for the Session that
-            // was actually archived, ahead of the Train landing it replaces.
-            <TrainingPlanFinishSummary
-              session={finishedTrainingSummary.session}
-              saved={finishedTrainingSummary.saved}
-              onStartNewTraining={() => {
-                setFinishedTrainingSummary(null);
-                setPreferredTrainEntryPath("exercises");
-              }}
-            />
           ) : displayedExerciseExecution ? (
             <div className="space-y-4">
               {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
@@ -5008,7 +4847,7 @@ export default function TrackerApp() {
                 writable={sessionWritable}
                 onReplace={handleReplaceExerciseExecution}
                 onBackToLibrary={handleBackToExerciseLibrary}
-                onStartNewSession={handleStartNewSession}
+                onStartNewSession={handleFinishPlannedTraining}
                 withinTrainingPlan={isTrainingPlanActive}
               />
 
@@ -5016,6 +4855,7 @@ export default function TrackerApp() {
 
               {isTrainingPlanActive && planExecution && (
                 <TrainingPlanStepTransition
+                  appearance="house"
                   nextStepLabel={nextPlanStepLabel}
                   onNextExercise={handleContinueToNextPlanStep}
                   onFinishTraining={handleFinishPlannedTraining}
@@ -5038,12 +4878,9 @@ export default function TrackerApp() {
                     disabled={!sessionWritable}
                     className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Finish Training
+                    Complete Session
                   </button>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Saves everything recorded to history, including stones still
-                    missing one measurement. You can start a new training afterwards.
-                  </p>
+
 
                   {planTransitionError && (
                     <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3">
@@ -5067,6 +4904,7 @@ export default function TrackerApp() {
             // through the Release Time Measured Exercise rather than a
             // top-level Quick Start shortcut.
             <TrainLanding
+              completionNotice={finishedTrainingSummary ? finishedTrainingSummary.saved ? "Training saved." : "Training ended. No stones recorded." : undefined}
               exerciseAssetResolver={exerciseAssetResolver}
               releaseTimingSetupContent={
                 // One Hero setup surface, composed around the actual decision
@@ -5079,7 +4917,7 @@ export default function TrackerApp() {
                   {pendingReleaseTimingExerciseVersion && (
                     <div
                       role="status"
-                      className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4"
+                      className="house-training-focus mb-5"
                     >
                       <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
                         From Exercise Library
@@ -5091,7 +4929,7 @@ export default function TrackerApp() {
                           wired internally. "Runner" is an implementation word and
                           means nothing at the rink. */}
                       <p className="mt-1 text-xs text-slate-600">
-                        Set up how you want to train it below, then start.
+                        Choose your mode, measurement and target.
                       </p>
                     </div>
                   )}
@@ -5146,6 +4984,7 @@ export default function TrackerApp() {
                   </details>
                 </div>
               }
+              onOpenAssessments={() => handleNavigate("assess")}
               plans={trainingPlans}
               initialEntryPath={preferredTrainEntryPath}
               onEntryPathChange={(path) => {
@@ -5178,84 +5017,6 @@ export default function TrackerApp() {
             />
           ) : (
             <>
-              {/* Essential context, not the Hero — the current target/capture
-                  task below carries the strongest surface (Epic 1). */}
-              <div className={surfaceClass("primary")}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                      Active Training Block
-                    </p>
-
-                    <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                      {activeBlock.name}
-                    </h2>
-
-                    <p className="mt-1 text-sm text-slate-600">
-                      {blockModeLabel(activeBlock.mode)}
-                      {activeBlock.mode === "variable" &&
-                        activeBlock.variableTargetMode && (
-                          <> ({variableTargetModeLabel(
-                            activeBlock.variableTargetMode
-                          )})</>
-                        )}
-                      {activeBlock.mode === "blind" &&
-                        activeBlock.blindTargetMode && (
-                          <> ({blindTargetModeLabel(
-                            activeBlock.blindTargetMode
-                          )})</>
-                        )}{" "}
-                      {activeBlock.measurementMode && (
-                        <>· {measurementModeLabel(activeBlock.measurementMode)}</>
-                      )}
-                      {activeBlock.targetTime !== undefined &&
-                        (activeBlock.mode === "fixed" ||
-                          (activeBlock.mode === "blind" &&
-                            activeBlock.blindTargetMode === "fixed")) && (
-                          <> · Target {activeBlock.targetTime.toFixed(2)}s</>
-                        )}
-                      {(activeBlock.variableTargetMode === "smart-random" ||
-                        activeBlock.blindTargetMode === "smart-random") &&
-                        activeBlock.smartRandomMin !== undefined &&
-                        activeBlock.smartRandomMax !== undefined && (
-                          <>
-                            {" "}
-                            · Range {activeBlock.smartRandomMin.toFixed(2)}s–
-                            {activeBlock.smartRandomMax.toFixed(2)}s
-                          </>
-                        )}
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      {activeBlockShots.length} shot
-                      {activeBlockShots.length === 1 ? "" : "s"}{" "}
-                      total
-                    </p>
-                  </div>
-
-                  {/* Secondary action — kept visually subordinate to the
-                      block identity beside it and to the primary shot-entry
-                      action below (DESIGN_SYSTEM.md §19.1/§12.2). */}
-                  {!isTrainingPlanActive && (
-                    <button
-                      type="button"
-                      onClick={handleOpenNewBlockModal}
-                      disabled={!sessionWritable}
-                      className="min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      New Training Block
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
-                <TrainingPlanProgress
-                  sourcePlanName={planExecution.sourcePlanName}
-                  summary={trainingPlanProgressSummary}
-                />
-              )}
-
               {activeBlock.mode === "blind" ? (
                 <>
                   {shotEntryTarget && (
@@ -5275,7 +5036,7 @@ export default function TrackerApp() {
                   </p>
                 </>
               ) : (
-                <>
+                <div className="house-entry-stack">
                   {/* Manual Entry and Auto Capture are two ways to do the
                       same task, not two permanently-stacked panels — a
                       segmented choice while idle; once a sequence is
@@ -5326,7 +5087,9 @@ export default function TrackerApp() {
                       recordable surface at all. */}
                   {activeBlockMeasurement.quantities.length > 0 &&
                     (autoCaptureIsActive || effectiveEntryMode === "manual") && (
+                    <div className={autoCaptureIsActive ? "house-manual-fallback" : "house-primary-entry"}>
                     <ShotEntry
+                      appearance="house"
                       key={manualDraftOwnerKey ?? "no-block"}
                       onAddShot={handleAddShot}
                       draft={manualEntryDraftForOwner}
@@ -5373,6 +5136,7 @@ export default function TrackerApp() {
                       disabled={!sessionWritable}
                       errorMessage={shotEntryError}
                     />
+                    </div>
                   )}
 
                   {(autoCaptureIsActive || effectiveEntryMode === "auto") &&
@@ -5416,16 +5180,24 @@ export default function TrackerApp() {
                       diagnostics={captureDiagnostics}
                     />
                   )}
-                </>
+                </div>
               )}
 
               {outstandingSessionWork}
+
+              {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
+                <TrainingPlanProgress
+                  sourcePlanName={planExecution.sourcePlanName}
+                  summary={trainingPlanProgressSummary}
+                />
+              )}
 
               {/* Directly after the recording task and before the optional analytics:
                   the plan's controls are the athlete's next decision, not a footer
                   action buried under the session's charts and export. */}
               {isTrainingPlanActive && planExecution && (
                 <TrainingPlanStepTransition
+                  appearance="house"
                   nextStepLabel={nextPlanStepLabel}
                   onNextExercise={handleContinueToNextPlanStep}
                   onFinishTraining={handleFinishPlannedTraining}
@@ -5441,19 +5213,16 @@ export default function TrackerApp() {
                   training is not a destructive action and never carried the red
                   treatment that one implied. */}
               {!isTrainingPlanActive && (
-                <div className={surfaceClass("secondary")}>
+                <div className="house-support">
                   <button
                     type="button"
                     onClick={handleFinishPlannedTraining}
                     disabled={!sessionWritable}
-                    className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="min-h-11 w-full rounded-2xl border border-[var(--house-accent)] px-4 py-3 text-sm font-medium text-[var(--house-deep)] disabled:opacity-50"
                   >
-                    Finish Training
+                    Complete Session
                   </button>
-                  <p className="mt-2 text-xs text-slate-500">
-                    Saves everything recorded to history, including stones still
-                    missing one measurement. You can start a new training afterwards.
-                  </p>
+
 
                   {planTransitionError && (
                     <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3">
@@ -5472,271 +5241,98 @@ export default function TrackerApp() {
                 </div>
               )}
 
-              {/* Rink-side analytics are one optional Live Performance view.
-                  Its closed header still answers "how am I doing?" without
-                  making Active Training feel like an analytics dashboard. */}
-              <details className="group rounded-2xl border border-slate-200 bg-white">
-                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 marker:content-none group-open:rounded-b-none">
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="font-medium text-slate-800">Live Performance</span>
-                    <span className="text-right text-xs text-slate-500">
-                      {liveOverviewSummary()}
-                    </span>
-                  </span>
-                  <span className="mt-1 block text-xs text-slate-400 group-open:hidden">
-                    Show summary and charts
-                  </span>
-                  <span className="mt-1 hidden text-xs text-slate-400 group-open:block">
-                    Hide summary and charts
-                  </span>
-                </summary>
-
-                <div className="border-t border-slate-100 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Summary
-                  </h2>
-
-                  <p className="text-xs text-slate-500">
-                    {filteredActiveBlockShots.length} of{" "}
-                    {activeBlockShots.length} shots shown
-                  </p>
-                </div>
-
-                <div className={`${surfaceClass("utility")} mt-3`}>
-                  <p className="text-sm font-medium text-slate-700">
-                    Filter
-                  </p>
-
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        ["all", "Total"],
-                        ["in", "In Handle"],
-                        ["out", "Out Handle"],
-                      ] as [HandleFilter, string][]
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() =>
-                          setBlockFilter((filter) => ({
-                            ...filter,
-                            handle: value,
-                          }))
-                        }
-                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.handle === value
-                            ? "bg-slate-900 text-white"
-                            : "bg-white text-slate-700"
-                          }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {(
-                      [
-                        ["all", "Total"],
-                        ["draw", "Draw"],
-                        ["takeout", "Takeout"],
-                      ] as [ShotTypeFilter, string][]
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() =>
-                          setBlockFilter((filter) => ({
-                            ...filter,
-                            shotType: value,
-                          }))
-                        }
-                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${blockFilter.shotType === value
-                            ? "bg-slate-900 text-white"
-                            : "bg-white text-slate-700"
-                          }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Seconds and metres per second are never combined into one figure,
-                    one average, one score or one unlabelled axis. When a block records
-                    both they are shown one at a time, each on its own terms. */}
-                {activeBlockMeasurement.quantities.length > 1 && (
-                  <div
-                    role="tablist"
-                    aria-label="Measurement"
-                    className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
-                  >
-                    {activeBlockMeasurement.quantities.map((quantity) => (
-                      <button
-                        key={quantity}
-                        type="button"
-                        role="tab"
-                        aria-selected={effectiveLiveQuantity === quantity}
-                        onClick={() => setLiveMetricQuantity(quantity)}
-                        className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition ${
-                          effectiveLiveQuantity === quantity
-                            ? "bg-slate-900 text-white"
-                            : "text-slate-700 hover:bg-slate-200"
-                        }`}
-                      >
-                        {quantityLabel(quantity)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {effectiveLiveQuantity === "speed" ? (
-                  activeBlockSpeedAccuracy === null ||
-                  activeBlockSpeedAccuracy.shotCount === 0 ? (
-                    <p className="mt-4 text-sm text-slate-500">
-                      {filteredActiveBlockShots.length === activeBlockShots.length
-                        ? "Record a speed to begin the live summary."
-                        : "No stones with a recorded speed match this filter yet."}
-                    </p>
-                  ) : (
-                    <div className="mt-4 space-y-3">
-                      <TargetAccuracyDashboardCards
-                        variant="hero"
-                        quantity="speed"
-                        targetAccuracy={activeBlockSpeedAccuracy}
-                        thresholds={activeBlockSpeedTolerance}
-                      />
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <DashboardCard
-                          label="Average"
-                          value={formatMeasuredSpeed(
-                            average(activeBlockSpeedValues)
-                          )}
-                        />
-                        <DashboardCard
-                          label="Speed SD"
-                          value={standardDeviationOfValues(
-                            activeBlockSpeedValues
-                          ).toFixed(3)}
-                        />
-
-                        <TargetAccuracyDashboardCards
-                          variant="supporting"
-                          quantity="speed"
-                          targetAccuracy={activeBlockSpeedAccuracy}
-                          thresholds={activeBlockSpeedTolerance}
-                        />
-                      </div>
-
-                      <p className="text-xs text-slate-500">
-                        {activeBlockSpeedAccuracy.shotCount} of{" "}
-                        {filteredActiveBlockShots.length} stone
-                        {filteredActiveBlockShots.length === 1 ? "" : "s"} carry a
-                        recorded speed.
+              <section aria-label="Live Performance" className="house-live-average">
+                <p className="text-sm text-[var(--house-muted)]">{activeBlockShots.length} {activeBlockShots.length === 1 ? "stone" : "stones"} recorded</p>
+                <div className="mt-2 flex flex-wrap gap-6">
+                  {activeBlockMeasurement.quantities.map((quantity) => {
+                    const values = activeBlockShots.map((shot) => shotMeasuredValue(shot, quantity))
+                      .filter((value): value is number => value !== null);
+                    return <div key={quantity}>
+                      <p className="text-xs text-[var(--house-muted)]">Average {quantity === "speed" ? "speed" : "time"}</p>
+                      <p className="text-2xl font-medium tabular-nums">
+                        {values.length === 0 ? "—" : quantity === "speed"
+                          ? formatMeasuredSpeed(average(values)) : formatReleaseTime(average(values))}
                       </p>
-                    </div>
-                  )
-                ) : activeBlockAnalysis.count === 0 ? (
-                  // One compact group-level empty state rather than a false
-                  // "Average 0.00s"/"Release SD 0.000" plus several repeated
-                  // "Not enough shots" cards (DESIGN_SYSTEM.md §21.2/§25.1).
-                  <p className="mt-4 text-sm text-slate-500">
-                    {filteredActiveBlockShots.length === activeBlockShots.length
-                      ? "Add a shot to begin the live summary."
-                      : "No shots match this filter yet."}
-                  </p>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    {/* Not every KPI deserves equal weight (Epic 2): Average
-                        Error is the one number the eye should go to first,
-                        with Bias/On Target/Major Misses as compact
-                        supporting context right beside it. */}
-                    <TargetAccuracyDashboardCards
-                      variant="hero"
-                      targetAccuracy={activeBlockAnalysis.targetAccuracy}
-                      measurementMode={activeBlock.measurementMode}
-                      thresholds={
-                        activeBlockTimeTolerance ??
-                        toleranceFromAccuracyThresholds(
-                          resolveAccuracyThresholds(undefined)
-                        )
-                      }
-                    />
+                      <p className="text-xs text-[var(--house-muted)]">{values.length} {values.length === 1 ? "measurement" : "measurements"}</p>
+                    </div>;
+                  })}
+                </div>
+              </section>
 
-                    {activeBlock.mode === "blind" && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <PredictionDashboardCards
-                          analysis={activeBlockAnalysis}
-                        />
-                      </div>
-                    )}
+                  {/* Secondary action — kept visually subordinate to the
+                      block identity beside it and to the primary shot-entry
+                      action below (DESIGN_SYSTEM.md §19.1/§12.2). */}
+                  {!isTrainingPlanActive && (
+                    <button
+                      type="button"
+                      onClick={handleOpenNewBlockModal}
+                      disabled={!sessionWritable}
+                      className={activeBlock.mode === "fixed" ? "house-link shrink-0 whitespace-nowrap text-sm disabled:opacity-50" : "min-h-11 whitespace-nowrap rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"}
+                    >
+                      New Training Block
+                    </button>
+                  )}
+              <details className="house-support">
+                <summary>Exercise settings</summary>
+              {/* Essential context, not the Hero — the current target/capture
+                  task below carries the strongest surface (Epic 1). */}
+              <div className="px-1 py-2">
+                <div className="flex flex-col items-start gap-1 sm:flex-row sm:justify-between sm:gap-4">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      Current exercise
+                    </p>
 
-                    {/* Quietly-supporting figures — same data, lower visual
-                        weight, kept in view rather than hidden (this is a
-                        secondary surface already; the tiering happens
-                        within it, not behind another click). */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <DashboardCard
-                        label="Average"
-                        value={formatReleaseTime(
-                          activeBlockAnalysis.average
+                    <h2 className="mt-1 break-words text-2xl font-medium text-[var(--house-ink)]">
+                      {activeBlock.name}
+                    </h2>
+
+                    <p className="mt-1 text-sm text-slate-600">
+                      {blockModeLabel(activeBlock.mode)}
+                      {activeBlock.mode === "variable" &&
+                        activeBlock.variableTargetMode && (
+                          <> ({variableTargetModeLabel(
+                            activeBlock.variableTargetMode
+                          )})</>
                         )}
-                      />
-
-                      <DashboardCard
-                        label="Release SD"
-                        value={activeBlockAnalysis.releaseTimeStandardDeviation.toFixed(
-                          3
+                      {activeBlock.mode === "blind" &&
+                        activeBlock.blindTargetMode && (
+                          <> ({blindTargetModeLabel(
+                            activeBlock.blindTargetMode
+                          )})</>
+                        )}{" "}
+                      {activeBlock.measurementMode && (
+                        <>· {measurementModeLabel(activeBlock.measurementMode)}</>
+                      )}
+                      {activeBlock.targetTime !== undefined &&
+                        (activeBlock.mode === "fixed" ||
+                          (activeBlock.mode === "blind" &&
+                            activeBlock.blindTargetMode === "fixed")) && (
+                          <> · Target {activeBlock.targetTime.toFixed(2)}s</>
                         )}
-                      />
+                      {(activeBlock.variableTargetMode === "smart-random" ||
+                        activeBlock.blindTargetMode === "smart-random") &&
+                        activeBlock.smartRandomMin !== undefined &&
+                        activeBlock.smartRandomMax !== undefined && (
+                          <>
+                            {" "}
+                            · Range {activeBlock.smartRandomMin.toFixed(2)}s–
+                            {activeBlock.smartRandomMax.toFixed(2)}s
+                          </>
+                        )}
+                    </p>
 
-                      <TargetAccuracyDashboardCards
-                        variant="supporting"
-                        targetAccuracy={activeBlockAnalysis.targetAccuracy}
-                        measurementMode={activeBlock.measurementMode}
-                        thresholds={
-                          activeBlockTimeTolerance ??
-                          toleranceFromAccuracyThresholds(
-                            resolveAccuracyThresholds(undefined)
-                          )
-                        }
-                      />
-                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {activeBlockShots.length} shot
+                      {activeBlockShots.length === 1 ? "" : "s"}{" "}
+                      total
+                    </p>
                   </div>
-                )}
-                {/* Every chart below plots a release TIME against a time target. None
-                    of them has a speed counterpart yet, so rather than relabel a
-                    seconds axis as m/s they are simply not shown for a speed view. */}
-                {effectiveLiveQuantity === "time" && (
-                <div className="mt-5 space-y-4 border-t border-slate-100 pt-5">
-                  <h3 className="text-sm font-semibold text-slate-500">Detailed charts</h3>
-                  <ReleaseTrendChart shots={filteredActiveBlockShots} />
 
-                  {activeBlock.measurementMode && (
-                    <TargetErrorChart
-                      points={targetErrorByShotData}
-                      thresholds={activeBlockTimeTolerance}
-                      measurementMode={activeBlock.measurementMode}
-                      context="current"
-                    />
-                  )}
-
-                  {activeBlockAnalysis && (
-                    <HandleAnalysisSection
-                      boxPlots={activeBlockAnalysis.handleTargetErrorBoxPlots}
-                      comparison={activeBlockAnalysis.handleAccuracy}
-                    />
-                  )}
-
-                  <TargetActualScatterChart
-                    points={targetVsActualScatterData}
-                    explanation={targetVsActualExplanation("current")}
-                  />
                 </div>
-                )}
-                </div>
+              </div>
+
+
               </details>
 
               {/* Recent Shots — and its inline Edit/Delete controls — is a
@@ -5991,61 +5587,16 @@ export default function TrackerApp() {
                 </div>
               </details>
 
-              {/* Infrequent management actions, behind one disclosure rather than
-                  competing permanently with the recording task. Finishing a training
-                  is the ordinary way to end one and lives beside the capture area
-                  above; these are the exceptions. */}
-              <details className="group rounded-2xl border border-slate-200 bg-white">
-                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
-                  <span className="flex items-center justify-between gap-2">
-                    <span>Session Management</span>
-                    <span className="text-xs text-slate-400 group-open:hidden">
-                      Show
-                    </span>
-                    <span className="hidden text-xs text-slate-400 group-open:inline">
-                      Hide
-                    </span>
-                  </span>
-                </summary>
 
-                <div className="space-y-3 border-t border-slate-100 p-4">
-                  <button
-                    type="button"
-                    disabled={exportStatus.state === "working"}
-                    onClick={() => {
-                      void runExport(sessionCsvExport(currentSession));
-                    }}
-                    className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Export Current Session CSV
-                  </button>
-                  <FileExportStatusNotice status={exportStatus} />
-
-                  {!isTrainingPlanActive && (
-                    <button
-                      type="button"
-                      onClick={handleStartNewSession}
-                      disabled={!sessionWritable}
-                      className="min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Start New Session
-                    </button>
-                  )}
-                  {!isTrainingPlanActive && (
-                    <p className="text-xs text-slate-500">
-                      Saves this training to history and starts an empty one, without
-                      the finish summary.
-                    </p>
-                  )}
-                </div>
-              </details>
             </>
           )}
-        </>
+
+        </div>
       )}
 
       {activeView === "assess" && assessmentState && (
         <>
+          <button type="button" className="house-link text-sm" onClick={() => handleNavigate("train")}>← Train</button>
           <AssessScreen
             assessmentState={assessmentState}
             updateAssessmentState={updateAssessmentState}
@@ -6087,6 +5638,7 @@ export default function TrackerApp() {
 
       {activeView === "analyze" && (
         <>
+          <TrainingHeader title="See your progress." eyebrow="Analyze" />
           {/* Training / Assessments / Exercise Results are distinct domain
               concepts that happen to share this one
               Analyze destination — see
@@ -6191,8 +5743,7 @@ export default function TrackerApp() {
                 Current training not included yet
               </p>
               <p className="mt-1 text-sm text-slate-600">
-                Finish the training to add its Release Time shots to this completed-session view.
-                Shotmaking and Technique results are reviewed under Exercises.
+                Complete your training to see its time and speed measurements here.
               </p>
             </div>
           )}
@@ -6332,10 +5883,8 @@ export default function TrackerApp() {
               {/* 5-7. Detailed Analysis — accuracy/bias, target and handle
                   questions grouped under one open section instead of three
                   more same-weight chart cards (compositional redesign). */}
-              <div>
-                <h3 className="px-1 text-sm font-semibold text-slate-500">
-                  Detailed Analysis
-                </h3>
+              <details className="house-support">
+                <summary>Detailed Analysis</summary>
 
                 <div className="mt-3 space-y-4">
                   {/* Every chart and comparison below plots a release TIME against a
@@ -6379,7 +5928,7 @@ export default function TrackerApp() {
                     </>
                   )}
                 </div>
-              </div>
+              </details>
             </>
           ) : (
             <AnalysisContextSummary context={historyAnalysisContext} />

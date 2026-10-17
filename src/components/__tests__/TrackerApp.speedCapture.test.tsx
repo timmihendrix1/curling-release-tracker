@@ -10,7 +10,7 @@
 // was selected rather than the newest one, and that no fabricated seconds value
 // appears anywhere a speed-only training is read.
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TrackerApp from "../TrackerApp";
 import {
@@ -47,9 +47,9 @@ function storedSession(): Session {
 async function openTrainingWith(state: Session) {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
 }
 
 // --- B. Manual capture ---------------------------------------------------------
@@ -398,17 +398,13 @@ describe("results present each measurement on its own terms", () => {
     ];
     await openTrainingWith(state);
 
-    const details = screen.getByText("Live Performance").closest("details");
-    if (!details) throw new Error("expected the Live Performance panel");
-    details.setAttribute("open", "");
-
-    fireEvent.click(within(details).getByRole("tab", { name: "Speed" }));
-
-    // One of two stones carries a speed; the speed figures must be about that one
-    // stone, not about two with a fabricated 0.00 m/s.
-    expect(details.textContent).toContain("1 of 2 stones carry a recorded speed.");
-    // 2.41 against 2.40 is +0.01, inside the ±0.05 On Target band => 100%.
-    expect(details.textContent).toContain("100%");
+    const summary = screen.getByRole("region", { name: "Live Performance" });
+    expect(summary).toHaveTextContent("2 stones recorded");
+    expect(summary).toHaveTextContent("2 measurements");
+    expect(summary).toHaveTextContent("1 measurement");
+    expect(summary).toHaveTextContent("3.77s");
+    expect(summary).toHaveTextContent("2.41 m/s");
+    expect(summary).not.toHaveTextContent("100%");
   });
 
   it("never offers a speed view for a time-only block", async () => {
@@ -416,10 +412,7 @@ describe("results present each measurement on its own terms", () => {
     const state = measurementSession([block], []);
     await openTrainingWith(state);
 
-    const details = screen.getByText("Live Performance").closest("details");
-    if (!details) throw new Error("expected the Live Performance panel");
-    details.setAttribute("open", "");
-    expect(within(details).getByRole("tab", { name: "Speed" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Live Performance" })).toHaveTextContent("Average speed");
 
     cleanup();
     localStorage.clear();
@@ -429,9 +422,7 @@ describe("results present each measurement on its own terms", () => {
     );
     await openTrainingWith(measurementSession([timeBlock()], []));
 
-    const timeOnly = screen.getByText("Live Performance").closest("details");
-    timeOnly?.setAttribute("open", "");
-    expect(within(timeOnly as HTMLElement).queryByRole("tab", { name: "Speed" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Live Performance" })).not.toHaveTextContent("Average speed");
   });
 });
 
@@ -461,9 +452,9 @@ describe("a speed training survives a reload", () => {
     // A genuine remount from storage — the same path a reload takes.
     cleanup();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     const afterReload = storedSession();
 

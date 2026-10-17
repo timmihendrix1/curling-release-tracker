@@ -2288,7 +2288,10 @@ return-to-app state preservation are all **still unperformed**. The remaining st
 thing. As of 2026-09-30 the adapter (M3b1/M3b2), the in-app diagnostics panel and the
 **composition, identity injection, protected credential store and readiness gate (M3b3)**
 exist; the **migration (M3b4) and the cutover (M3b5) do not**, and §5's protocol therefore
-remains an unimplemented design with three open items (§7).
+remains an unimplemented design with three open items (§7). On 2026-10-15 the panel's
+transaction scenarios were run on a **disposable iOS Simulator** (user-reported, real native
+plugin; §7, "M3b1 real-engine simulator evidence"); no physical-device transaction evidence
+exists.
 **Decision made ≠ designed ≠ implemented ≠ verified** still applies, per stage rather than to
 the whole of M3b.
 
@@ -2365,15 +2368,19 @@ workload, so no SQL" argument is still true about *queries* — but it was answe
 question. The engine is chosen for its **write semantics**, and the repository above it
 remains a plain key/value store.
 
-**Device evidence now exists for the CONFIGURATION and for restart recovery, and not for the
-transaction semantics the migration needs.** The user-reported iPhone measurement (2026-09-30,
-recorded under §7) confirms the pragmas are actually in force and that written values survive
-a process restart offline. That is sufficient for **composition** — it establishes that the
-adapter opens, configures and reads back as designed — and it is **not** sufficient for
-**migration**: what the plugin reports on a **failed or uncertain commit**, and how the store
-behaves on **reopen after an interrupted commit**, are still unmeasured, and those are exactly
-the properties §5.1's checkpointed model rests on. R1 therefore stands for the adapter, while
-**source retirement remains unjustified until that transactional evidence exists.**
+**Physical-device evidence exists for the CONFIGURATION and for restart recovery; real-engine
+transaction evidence exists only from a simulator.** The user-reported iPhone measurement
+(2026-09-30, recorded under §7) confirms the pragmas are actually in force and that written
+values survive a process restart offline. That is sufficient for **composition** — it
+establishes that the adapter opens, configures and reads back as designed. The user-reported
+**simulator** run (2026-10-15, §7) then exercised commit, rollback, a statement failure, two
+simulated lost acknowledgements and a process stop with a transaction open, all through the
+real plugin, and every reopened store classified as §5.1 expects. It is **still not
+sufficient for migration**: there is no physical-device transaction evidence, no naturally
+occurring commit failure, no termination **during** a commit and no power-loss evidence, and
+those are properties §5.1's checkpointed model rests on. R1 therefore stands for the adapter,
+while **source retirement remains unjustified** — and unimplemented, since M3b4 does not
+exist.
 
 **If R1 is not accepted, activation stays blocked.** Under R2, `StorageAdapter` may be backed
 by Preferences and **source retirement must not be implemented at all**; the migration then
@@ -2808,6 +2815,9 @@ engineering blocker for Stage M3b4**.
 store, or a restored backup pairing. This design **blocks** rather than guessing; automatic
 resolution is likewise an **open M3b4 blocker**.
 
+A **proposed, unapproved** design brief for both blockers is in §7 ("P-1/P-2 provenance design
+brief"). It changes nothing in this section.
+
 **Neither blocker affects an activated installation.** Both are pre-activation only, so the
 established invariant stands unchanged: **after a validated committed activation, losing the
 old source — marker included — never blocks ordinary access** (§5.4 rows B2/B4). Blocking here
@@ -3099,8 +3109,8 @@ nowhere earlier.** Every stage before it is inert in production.
 
 | Stage | Prerequisite | Allowed code | Production effect | Completion criteria |
 | --- | --- | --- | --- | --- |
-| **M3b1 — engine evidence** | M3b0 reviewed | the native adapter module and an **opt-in, off-by-default diagnostic panel inside the existing app**; **no production composition** | **None** | Which of R1/R2/R3 (§2) is adopted, decided on measured evidence; synthetic sizing and a recorded operating envelope; the diagram-cache policy (§1) decided. Scope below. **Adapter and panel implemented 2026-09-30. Device evidence now exists for the PRAGMAS and RESTART RECOVERY (status below); the commit/uncertain-commit and reopen-after-interruption measurements the migration depends on are STILL NOT TAKEN, and no operating envelope is recorded.** The diagram-cache policy is decided (§1) |
-| **M3b2 — native adapter** | M3b1; engine chosen | new adapter module + its tests | **None by itself — it is selected only by M3b3's flag** | Implements `RemovableStorageAdapter` with unchanged result contracts; real-engine integration tests; unsupported platform fails closed. **The module is written and unit-tested (2026-09-30) and now runs against the real engine on a device for reads, writes and restart recovery. The row is still NOT complete: the transactional evidence source retirement depends on is unmeasured** |
+| **M3b1 — engine evidence** | M3b0 reviewed | the native adapter module and an **opt-in, off-by-default diagnostic panel inside the existing app**; **no production composition** | **None** | Which of R1/R2/R3 (§2) is adopted, decided on measured evidence; synthetic sizing and a recorded operating envelope; the diagram-cache policy (§1) decided. Scope below. **Adapter and panel implemented 2026-09-30. Physical-device evidence exists for the PRAGMAS and RESTART RECOVERY (2026-09-30). The transaction scenarios (tooling 2026-10-15) have run on a disposable SIMULATOR only (user-reported, 2026-10-15); physical-device transaction acceptance, naturally occurring commit failures and interruption during a commit are NOT measured, and no operating envelope is recorded. Not complete.** The diagram-cache policy is decided (§1) |
+| **M3b2 — native adapter** | M3b1; engine chosen | new adapter module + its tests | **None by itself — it is selected only by M3b3's flag** | Implements `RemovableStorageAdapter` with unchanged result contracts; real-engine integration tests; unsupported platform fails closed. **The module is written and unit-tested (2026-09-30) and runs against the real engine on a physical device for reads, writes and restart recovery (2026-09-30), and on a simulator for the diagnostic transaction scenarios (2026-10-15). The row is still NOT complete: physical-device transaction evidence and native commit-failure evidence, which source retirement depends on, are unmeasured** |
 | **M3b3 — composition, behind an off switch** | M3b2; **§4 session decision APPROVED (S2, 2026-09-30)** | all five seams in §3, identity injection, protected credential store, readiness gate | **None: the native adapter is selected only under an explicit off-by-default build flag, and even then the application does not mount** — see the barrier below. Existing installs keep `localStorageAdapter` | Every seam demonstrably reaches the selected adapter; hydration/identity/sync all wait on readiness; **no default written while preparing**. **IMPLEMENTED 2026-09-30** |
 | **M3b4 — migration** | M3b3 | migration module, activation record, source enumeration | **None — still behind the flag** | The M3b0 §5.4 table and M3b0 §5.1 model implemented; every trace in M3b0 §5.6 and every acceptance case below green |
 | **M3b5 — production cutover** | M3b4 reviewed | flag default flip only | **THIS is the cutover** | Migration runs before the shell mounts; blocked states surface per §6. **Not yet performed — this row is a criterion, not a result** |
@@ -3136,9 +3146,17 @@ Isolation is therefore achieved by DATABASE and by BUILD, not by application ide
 
 **What this changes and what it does not.** It supersedes the separate-app requirement only.
 It does **not** authorise deleting or resetting existing local data, does **not** replace
-normal application storage, and does **not** settle where provider credentials are stored.
-**Whether existing local data is preserved or an explicitly authorised pilot reset is
-performed remains an open user decision**, and no code here assumes either answer.
+normal application storage, and does **not** settle where provider credentials are stored
+(that was settled separately: S2, §4). **Preservation is decided** (P6 amendment,
+2026-09-30): all existing local data is preserved, a pilot reset is **rejected**, and
+existing data must be migrated and verified before cutover.
+
+**Database isolation is not installation permission.** The diagnostics build carries the
+training app's own bundle identifier (`local.dev.curlingperformance`), so installing it
+**replaces** whatever installation of that app is on the target. A separate synthetic database
+does not make replacing a data-bearing installation an authorised action. The user's only
+physical iPhone holds real training data; it did **not** receive the 2026-10-15 diagnostics
+build and must not receive it.
 
 **M3b1 implementation status — 2026-09-30. This is the canonical statement; other documents
 reference it rather than restating it.**
@@ -3194,7 +3212,7 @@ user, not measured by an agent. What it establishes:
 | Observation | What it establishes |
 | --- | --- |
 | `journal_mode = wal` | The requested journal mode is **actually in force**, not merely requested |
-| `synchronous = 2` | `FULL` — the strongest setting SQLite offers — is **actually in force** (0 OFF, 1 NORMAL, 2 FULL, 3 EXTRA) |
+| `synchronous = 2` | `FULL` is **actually in force** (0 OFF, 1 NORMAL, 2 FULL, 3 EXTRA). In WAL mode `FULL` syncs the WAL at every transaction commit. It is **not** the highest value — `EXTRA` exists — and a configured value is not a tested power-loss outcome. (An earlier revision of this row called `FULL` the strongest setting; that was wrong) |
 | `page_size = 4096`, `sqlite_version = 3.53.4` | The engine and page size actually in use, recorded rather than assumed |
 | "Verify after app restart" succeeded **in airplane mode** | Written values survive **process death**, with no network involved |
 | All five synthetic fixtures matched, **994,669 bytes** total | Whole-document round-trip is byte-exact at that size, across the bridge |
@@ -3215,8 +3233,209 @@ user, not measured by an agent. What it establishes:
   operating envelope is recorded**.
 - **Nothing about backup or restore behaviour**, for either the SQLite store or the Keychain
   item — that must be verified against the SELECTED configuration and has not been.
-- **Nothing about transactions.** The panel exercises reads, writes, removals and restart
-  recovery; it does not exercise `beginTransaction`/`commitTransaction`.
+- **Nothing about transactions.** The device evidence above exercises reads, writes, removals
+  and restart recovery only. The panel has since gained explicit transaction scenarios (see
+  the M3b1 transaction-tooling entry below). They have run on a **simulator** (the
+  simulator-evidence entry below), **never on a physical device**, so this physical-device
+  record is unchanged and is not merged with the simulator run.
+
+**M3b1 transaction tooling — 2026-10-15. Tooling implemented.**
+
+The panel's checkpoint scenarios exist so §5.1's checkpointed model can be observed before
+M3b4 implements it. **This entry records tooling only**; what it has produced so far is the
+separate simulator-evidence entry that follows it. **Physical-device transaction evidence and
+native commit-failure evidence remain outstanding**, M3b4 stays blocked, and source retirement
+stays unjustified.
+
+*Implemented:*
+
+- A **diagnostics-only owned transaction** on `NativeSqliteStore`
+  (`beginDiagnosticTransaction` / `stageDiagnosticWrites` /
+  `stageDiagnosticFailingStatement` / `commit` / `rollback` / `abandon`). It is deliberately
+  **not** on `RemovableStorageAdapter`: that contract still promises no multi-key atomicity,
+  no repository can reach these, and
+  `src/lib/persistence/__tests__/architectureBoundary.test.ts` asserts that no production file
+  under `src/` references any of them.
+- **The call-shape decision, taken from the installed plugin's sources.** The plugin's
+  `run(statement, values, transaction = true, …)` defaults to wrapping each statement in its
+  OWN transaction, and on iOS that reaches `Database.runSQL(sql:values:transaction:)`, which
+  issues an unconditional `BEGIN TRANSACTION`. A statement issued with that default inside an
+  owned transaction would either fail — SQLite rejects a nested `BEGIN` — or commit
+  independently and end the owned transaction early, committing a partial checkpoint. The
+  flag is therefore **mandatory** on the adapter's connection interface, staged statements
+  pass `false`, and the plugin-faithful test engine rejects a nested `BEGIN` so an
+  implementation that regressed would fail in tests rather than on a device.
+- **One transaction at a time, and no escape into the ordinary queue.** While an owned
+  transaction is open, every other operation on that store — reads, writes, removals,
+  settings, cleanup and `close()` — is **refused**, not queued. A read is refused too: on one
+  connection it would observe the transaction's uncommitted rows, which is the most
+  misleading observation this store could produce.
+- **Ownership survives uncertainty.** The store tracks its transaction as `open` (BEGIN
+  positively acknowledged) or `uncertain` (some lifecycle step failed or answered unreadably,
+  so whether a native transaction is still open is unknown). Ownership is taken **before**
+  BEGIN is issued, so a BEGIN that takes effect and then rejects — or resolves with anything
+  other than the installed plugin's `{ changes: { changes: 0 } }` acknowledgement — leaves an
+  owned, `uncertain` transaction rather than a free store. Nothing may be staged into or
+  committed from an uncertain transaction. Ownership ends only on a positively acknowledged
+  COMMIT or ROLLBACK, or when `abandon` has **both** closed the connection **and** released
+  the engine's native handle; a failure at either step keeps ownership (a retry resumes at the
+  failed step), and if neither completes the remaining recovery is a new document
+  (force-quit and relaunch). The panel mirrors the store's ownership after every call and
+  words the two states differently: an acknowledged open transaction versus an unknown
+  outcome.
+- **Four scenarios** in `mobile/src/diagnostics/checkpointDiagnostics.ts`: a committed
+  checkpoint; explicit rollback and a deliberate `NOT NULL` statement failure; an interruption
+  rehearsal that leaves a transaction open for a manual force-quit; and both uncertain
+  acknowledgements ("commit happened, answer lost" and "no commit happened").
+- **Classification by reading, never by the call's return value.** A rejected or discarded
+  commit result is never treated as proof of rollback; `classifyCheckpoint` is handed the
+  evidence from a reopened store and returns committed / not committed / **unresolved**, with
+  unresolved covering partial, mismatched, malformed, unreadable and incomplete evidence.
+  "Not committed" requires either the previously observed progress record standing
+  **unchanged** (all attribution fields, not just attempt id and checkpoint number) with
+  every row matching, or — when there was none — successful absence reads for the progress
+  record **and every payload row**; rows present without a progress record are partial, and
+  a failed read is never counted as absence. An attempt is only started against a baseline
+  that was itself fully established.
+- **Reopen evidence requires a positively established fresh connection.**
+  `reopenDiagnosticConnection` closes the connection, releases the engine's native handle and
+  opens a fresh one, reporting which boundary failed. Every scenario — commit, rejected
+  commit, rollback, statement failure, both lost-acknowledgement cases and recovery after an
+  abandon — gives **no verdict and no reopen claim** when any of those steps fails; it does
+  not read through the uncertain connection and call that evidence.
+- **Synthetic cleanup asks first.** Both deletions (all synthetic data, and the checkpoint
+  keys alone) open a confirmation naming the synthetic database and the deletion scope;
+  opening or cancelling deletes nothing, and confirming still goes through the controller's
+  and store's execution-time refusal while a transaction is owned. Nothing is
+  replayed or repaired: what to do about an unresolved checkpoint is the migration's decision
+  and is still open.
+- **Attempt-scoped payloads.** Checkpoint rows are derived from the attempt id and checkpoint
+  number and verification regenerates them, so an earlier successful attempt's rows — or the
+  deterministic restart fixtures — cannot certify a later attempt.
+- The scenarios ride the EXISTING diagnostics opt-in and synthetic database; no new flag, no
+  new dependency, no caller-supplied SQL, database name or application key.
+
+*Not established by any of it:* power-loss survival; a naturally occurring native commit
+failure (every failure exercised is either a deliberate constraint violation or an injected
+lost acknowledgement); backup/restore; capacity; Android; and migration readiness. The
+interruption rehearsal is a **manual procedure for a disposable test installation**
+(`mobile/README.md`). It has been performed once, on a simulator (below), and never on a
+physical device.
+
+**M3b1 real-engine simulator evidence — USER-REPORTED, 2026-10-15. This is the canonical
+record; other documents link here rather than restating it.**
+
+*Provenance and evidence class.* Performed manually by the user on 2026-10-15
+(Europe/Zurich), guided by Codex, and supplied as screenshots of the in-app diagnostics panel.
+It is **user-reported simulator evidence through the real native SQLite plugin**. It is not
+mock evidence, not an agent measurement and **not physical-iPhone acceptance**. No agent
+independently reproduced it, and the screenshots came from temporary locations: there is no
+persistent screenshot archive, exported log or attachment in this repository.
+
+| Item | Recorded value |
+| --- | --- |
+| Simulator | Fresh, disposable, named "Curling Storage Test"; iPhone 18 Pro; iOS 27.0 |
+| Tooling identified during setup | Xcode 27.0 (build 27A266a) and Device Hub |
+| Application | Bundle identifier `local.dev.curlingperformance` — the training app's own identifier |
+| Database | `curling-storage-diagnostics-synthetic` only |
+| Build | `CURLING_MOBILE_NATIVE_STORAGE=0 npm run mobile:build:diagnostics`, then `npm run ios:sync`, then run from Xcode. Native-storage composition was therefore **off**; only the diagnostics opt-in was on |
+| Source identity | The **dirty working tree** at the time. No immutable binary or source fingerprint was recorded, so `HEAD` alone does **not** identify the tested artifact |
+| Physical iPhone | **Not used.** It holds real training data and must not receive this build (see "Database isolation is not installation permission" above) |
+
+*Effective settings.* `journal_mode = wal`; `synchronous = 2` (`FULL`: in WAL mode the WAL is
+synced at every commit, but it is not the highest value — `EXTRA` exists); `page_size = 4096`;
+`sqlite_version = 3.53.4`. Settings query: 118.0 ms. `fullfsync`/`checkpoint_fullfsync` were
+**not** read, so whether a sync on Apple platforms also asks the storage device to flush its
+own write cache is unrecorded.
+
+*Fixture run* — run id `9efb5d9d-afd8-4b4e-a4ea-5f087068ea21`, completed
+`2026-10-15T19:56:46.752Z`:
+
+| Step | Reported result | Time |
+| --- | --- | --- |
+| Write five fixtures: empty string 0 B; Unicode and SQL-looking text 142 B; small document 4,096 B; medium document 65,536 B; whole-document JSON 924,895 B — **994,669 B total** | All writes acknowledged | 153.0 ms |
+| Same-session readback | All five exact; the never-written key genuinely absent | 69.0 ms |
+| Separate mutable test key | Write/read, overwrite/read, remove/absence and repeated removal succeeded | 15.0 ms |
+| Close, release native handle, open fresh connection, read | All exact | 119.0 ms |
+| App process stopped with Xcode **Stop**, relaunched with **Run**; **Verify after app restart** pressed first | Prior session and run recognised; all fixtures exact | 92.0 ms |
+| After a later, instructed five-minute idle/background period, process stopped and relaunched again | Exact, same original run | 58.0 ms |
+
+The last row records the procedure followed and the reported result. It is **not** a measured
+physical screen-lock test and not a long-term OS-eviction test.
+
+*Checkpoint scenarios.* Each checkpoint is three payload rows of 652 B plus its progress
+record, **2,331 B** in total.
+
+| # | Scenario | Reported result | Time |
+| --- | --- | --- | --- |
+| 1 | Commit | Checkpoint 1, attempt `9326f13a-f4a3-4437-87b2-77bc87510789`; rows and progress exact after a verified close, release and reopen | 51.0 ms |
+| 2 | Explicit rollback | Attempted checkpoint 2 not committed; checkpoint 1's progress and rows preserved exactly | 26.0 ms |
+| 3 | Deliberate statement failure | Attempted checkpoint 3; the `NOT NULL` violation was reported as a **statement** failure, no COMMIT was attempted, and rollback plus verified reopen preserved checkpoint 1 | 30.0 ms |
+| 4 | Lost acknowledgement **after** commit (diagnostic simulation: a real COMMIT, answer deliberately discarded) | Classified **committed** from the reopened store; checkpoint 4, attempt `4a204c81-8c27-43cd-a12a-84678ac9bd3a`, all rows and progress exact | 33.0 ms |
+| 5 | Lost acknowledgement **before** commit (diagnostic simulation: no COMMIT issued; transaction discarded by closing the connection and releasing the native handle) | Attempted checkpoint 5 classified **not committed**; checkpoint 4 preserved with unchanged progress and exact rows | 30.0 ms |
+| 6 | Read-only inspection | Checkpoint 4 internally consistent | 11.0 ms |
+| 7 | Fresh committed baseline for the interruption | Checkpoint 6, attempt `eccbab1b-9ce8-4b07-85e2-a7e18fba1a9d`; all rows and progress exact after a verified reopen | 30.0 ms |
+| 8 | Prepare an interruption | An open, acknowledged, **uncommitted** transaction: checkpoint 7, prepared attempt `bce819dc-73ff-48cc-b647-7341d8d1f9d6`, three rows plus progress staged | 17.0 ms |
+| 9 | Actual process interruption | The user confirmed Xcode **Stop**, relaunch, then **Inspect stored checkpoint** as the first diagnostic action. Checkpoint 6 and its attempt id survived with every row matching its progress record; prepared checkpoint 7 was **not** adopted; the earlier document session was recognised | 67.0 ms |
+
+The prepare result's screenshot stated that other actions were refused. The conversation did
+**not** independently show each refused control being pressed, so the full manual refusal
+matrix is **not** recorded as executed.
+
+*Cleanup — every red verification after a deliberate deletion is an expected absence
+observation, not a storage malfunction.*
+
+| Step | Reported result | Time |
+| --- | --- | --- |
+| Checkpoint-only deletion opened | Confirmation named the synthetic database and the four checkpoint keys, and stated that fixtures and run record are kept | — |
+| Cancel, then inspect | Checkpoint 6 and its exact rows preserved | 12.0 ms |
+| Confirm checkpoint-only deletion | Completed | 16.0 ms |
+| Inspect | Progress record and all three rows positively absent | 12.0 ms |
+| Fixture readback | Still exact | 44.0 ms |
+| Whole-database deletion opened | Confirmation named all synthetic rows, fixtures, run record, mutable key and checkpoint evidence | — |
+| Cancel, then fixture verification | All five fixtures preserved. This checks the fixtures only, **not** every other key | 45.0 ms |
+| Confirm full synthetic cleanup | Completed | 14.0 ms |
+| Fixture readback | All five and the never-written key positively absent; nothing recreated | 34.0 ms |
+| Run-record check | "No previous run was found"; nothing recreated | 6.0 ms |
+| Checkpoint inspection | Progress record and all three rows positively absent; nothing recreated | 4.0 ms |
+
+No fixtures were written after cleanup.
+
+*What this run establishes, within its class:* on this simulator, through the real plugin, the
+diagnostic checkpoint model behaved as §5.1 assumes — a committed checkpoint is read back
+whole; rollback, a statement failure and a pre-commit discard leave the previous checkpoint
+intact; a discarded acknowledgement of a real commit is still classified committed by reading;
+and a process stopped with an open, uncommitted transaction relaunches to the previous
+committed checkpoint, without the prepared one. Synthetic deletion asks first, removes exactly
+its scope and recreates nothing.
+
+*What it does NOT establish:*
+
+- physical-iPhone transaction acceptance;
+- offline behaviour of the transaction scenarios (no offline repeat was performed);
+- physical screen-lock behaviour or long-term eviction;
+- a naturally occurring native COMMIT failure, a disk-full failure or an I/O failure;
+- termination **during** a COMMIT — the measured termination was **before** COMMIT, with a
+  transaction open;
+- runtime-injected failures of BEGIN acknowledgement, rollback, close or handle release on the
+  real engine (those paths are covered by mock evidence only);
+- power-loss survival;
+- backup/restore behaviour of SQLite or of the Keychain;
+- a safe capacity ceiling, an operating envelope or a performance benchmark — single timings
+  are observations, not thresholds, and 994,669 B is a measured fixture point, not a limit;
+- anything about Android;
+- credential migration, provenance recovery, activation, source retirement or production
+  readiness.
+
+*Evidence held separately, never substituted:*
+
+| Class | What exists |
+| --- | --- |
+| Mock / automated | Adapter contract, ownership state machine and checkpoint scenarios against the plugin-faithful engine, including injected BEGIN/rollback/close/release failures |
+| Compilation | Unsigned `xcodebuild` with both plugins linked (M3b1 and M3b3 entries) |
+| Real engine, simulator — user-reported | **This entry** (2026-10-15) |
+| Physical device — user-reported, historical | The 2026-09-30 entry above (pragmas, offline restart recovery, 55 ms verification). Not merged with this run |
+| Still missing | Physical-device transaction acceptance; native commit, disk-full and I/O failures; termination during COMMIT; power loss; backup/restore; envelope; Android |
 
 **M3b3 implementation status — 2026-09-30.**
 
@@ -3234,8 +3453,11 @@ user, not measured by an agent. What it establishes:
   application declares for the assisted capture pilot, not as an inherited transitive one.)
 - `src/lib/persistence/secureCredentialStore.ts` (the shared contract and platform-gated
   native store), `capacitorSecureStorageBinding.ts` (the one file naming the package), and
-  `src/lib/supabase/providerCredentialStorage.ts` (the SDK-facing integration, the readability
-  marker and the application-owned failure channel).
+  `src/lib/supabase/providerCredentialStorage.ts` (the SDK-facing integration and the
+  application-owned failure channel). **There is no readability marker.** An earlier revision
+  of this list named one as implemented; the inference it rested on is withdrawn as invalid
+  (§4) and the integration explicitly removed both the marker and the probe that wrote it, so
+  no failure path can leave one behind.
 - `src/lib/persistence/storageComposition.ts` — the one owned composition; `storageSeams.ts` —
   the three sporting seams plus the **unchanged** Web default;
   `src/lib/identity/identityRepositorySet.ts` — all five identity repositories over one
@@ -3269,9 +3491,9 @@ which is eliminated from the built artifact (asserted against the real bundle).
 
 *NOT implemented, and not claimed:*
 
-- **The transactional device measurements above are still missing**, so **the engine choice is
-  settled for the ADAPTER but source retirement remains unjustified**, and no operating
-  envelope is recorded.
+- **Physical-device transaction evidence is still missing** (the transaction scenarios have
+  run on a simulator only, M3b1 entry above), so **the engine choice is settled for the
+  ADAPTER but source retirement remains unjustified**, and no operating envelope is recorded.
 - **No migration.** Nothing enumerates, copies, activates or retires anything; the §5 protocol
   is unimplemented and its three open design items still block M3b4.
 - **No cutover.** M3b5 has not happened. Existing installs keep `localStorageAdapter`, and a
@@ -3292,12 +3514,13 @@ serialization, bridge-payload and memory cost at representative synthetic sizes.
 
 Evidence classes stay separate and are never substituted: **mock** (unit), **engine** (real
 plugin, synthetic data, the in-app diagnostic panel), **compilation** (unsigned native build),
-**device** (user-reported). **As of 2026-09-30 the mock and compilation classes are satisfied,
-and the device class is PARTIALLY satisfied**: the user has reported the effective pragmas and
-a successful restart recovery (see the device-evidence table above). **What is still missing is
-the TRANSACTION evidence** — what the plugin reports on a failed or uncertain commit, and how
-the store behaves on reopen after an interrupted one — which is what source retirement depends
-on, so no operating envelope is recorded and retirement stays unjustified.
+**device** (user-reported, physical hardware). **The mock and compilation classes are
+satisfied. The engine class is satisfied on a SIMULATOR for the transaction scenarios
+(user-reported, 2026-10-15). The device class is PARTIALLY satisfied**: the user has reported
+the effective pragmas and a successful offline restart recovery on the iPhone (2026-09-30).
+**What is still missing:** physical-device transaction acceptance, a naturally occurring native
+commit failure, termination during a commit, power loss and backup/restore — so no operating
+envelope is recorded and retirement stays unjustified.
 
 **Two different kinds of readiness, and they must not be conflated.**
 
@@ -3306,7 +3529,7 @@ on, so no operating envelope is recorded and retirement stays unjustified.
 | What it asserts | The isolated synthetic diagnostic surface is specifiable and may be built | The production migration protocol is safe to implement and then to cut over |
 | Depends on the §4 provider-session decision? | **No** | M3b3 did, and it is now SETTLED (S2); M3b5 inherits it |
 | Depends on the §5 protocol passing review? | **No** — the diagnostic panel migrates nothing | **Yes** |
-| Status today | **Gathered, partially.** Pragmas and restart recovery are user-reported; commit semantics and reopen-after-interruption are not | **NOT ready.** Three open design items remain — see the inventory below — plus the secure-credential transfer and cross-store interruption cases named in §4 |
+| Status today | **Gathered, partially.** Pragmas and restart recovery are user-reported on the iPhone; the transaction scenarios, including reopen after a process stop with a transaction open, are user-reported on a simulator only; physical-device transaction acceptance and native commit failures are not | **NOT ready.** Three open design items remain — see the inventory below — plus the secure-credential transfer and cross-store interruption cases named in §4 |
 | Production effect | None | M3b5 is the cutover |
 
 **Credential-policy approval was a prerequisite for Stage M3b3 (composition), not for M3b1,
@@ -3329,17 +3552,6 @@ requirements** that Stage M3b3 established and did not perform.
 
 *Named migration requirements arising from the S2 credential decision (§4), due in M3b4:*
 
-Plus one genuinely **open product question**, deliberately not settled by Stage M3b3 and due
-with the cutover (M3b5):
-
-- **What a mounted application should do about a credential failure that happens
-  MID-SESSION.** Composition already refuses to become ready over an unusable credential
-  store, so nothing starts from a broken one, and the failure verdict is sticky and readable
-  (`OwnedStorageComposition.credentialFailure()`). What is not decided is the behaviour: a
-  sticky historical latch should probably not blank a working workspace, and silently ignoring
-  it would be dishonest. Nothing is implemented in either direction, and no code guesses.
-
-
 - **Secure credential transfer.** The provider session of an already-installed app is in
   WebView `localStorage`. Composition points the SDK at the protected store and copies
   nothing, so the existing session must be transferred as part of the migration — under a
@@ -3350,6 +3562,114 @@ with the cutover (M3b5):
   reachable, is not detectable from either side alone, and must be handled explicitly rather
   than assumed away. S1 would not have removed this class either — only given both halves the
   same lifecycle (§4).
+
+Plus one genuinely **open product question**, deliberately not settled by Stage M3b3 and due
+with the cutover (M3b5):
+
+- **What a mounted application should do about a credential failure that happens
+  MID-SESSION.** Composition already refuses to become ready over an unusable credential
+  store, so nothing starts from a broken one, and the failure verdict is sticky and readable
+  (`OwnedStorageComposition.credentialFailure()`). What is not decided is the behaviour: a
+  sticky historical latch should probably not blank a working workspace, and silently ignoring
+  it would be dishonest. Nothing is implemented in either direction, and no code guesses.
+
+**P-1/P-2 provenance design brief — PROPOSED / NOT APPROVED (2026-10-16).** Everything in this
+block is a design input for review. It changes **no** row of §5.2 or §5.4, settles neither
+blocker, and authorises no implementation. Until a reviewed successor is approved, P-1 and P-2
+stay **BLOCKED** exactly as §5.2 states.
+
+*1. The ambiguity, and today's behaviour.* At the first enumeration one `installationStoreId`
+is written into the target activation record and into a source marker key. The two writes go
+to different stores and are not atomic, and a resolved `localStorage` write is not a
+durable-write acknowledgement (the same property that disqualified Preferences in §2). **P-1:**
+a pre-`active` record with no source marker is identical whether the marker write never landed
+or the source was later cleared. **P-2:** a pre-`active` record and a marker carrying different
+ids. Both **block before activation**, and neither affects an activated installation.
+
+*2. Observation, possible histories, action.* "Resolved" means the existing protocol already
+gives one safe action without new evidence.
+
+| Observation (pre-activation unless stated) | Possible histories | Action today | Resolved by existing evidence? |
+| --- | --- | --- | --- |
+| No record, no marker, target empty, source readable | Fresh install; migration never started | D1 (empty source) or D3 | **Yes** |
+| Same, source enumeration fails | Source temporarily or permanently unreadable | C1 — blocked, retry | **Yes** (fails closed) |
+| Source marker only, target empty | Target record never landed; target emptied after the marker (cause unmeasured) | Adopt the id | **Yes** — nothing staged, nothing to contradict. (Marker with a non-empty target and no record is D2, blocked — a separate lost-record case) |
+| Both present, ids match | Established pair | Continue through Group E | **Yes** for provenance; generation is validated separately (§5.5) |
+| Record pre-`active`, marker absent — **P-1** | H1 marker write never landed or never persisted; H2 marker landed, source later cleared in whole or part; H3 marker key alone removed; H4 source replaced by other content without a marker | **BLOCKED** | **No** |
+| Record pre-`active`, ids differ — **P-2** | Backup/restore pairing two containers from different times; a stale marker from an abandoned attempt (an older or defective build); a foreign source | **BLOCKED** | **No** |
+| Target record unreadable, malformed or wrong version | Storage fault, corruption, older/newer build | A1–A4 — blocked | **Yes** (fails closed) |
+| Source marker **unreadable** | Read fault; presence unknown | **Not an explicit row.** The absence/failure invariant requires block-and-retry, never "absent" | Direction yes; **the row must be made explicit** |
+| Source marker **malformed** (not a canonical UUID) | Corruption; foreign writer | **Not an explicit row.** Must never be adopted or compared as valid; block | Direction yes; **the row must be made explicit** |
+| Valid `active` target; source or marker missing or unreadable | Post-migration eviction or clearing | B2 → B4: access proceeds, retirement stalls; provenance is never consulted | **Yes** |
+
+*3. The observation that matters.* Indistinguishable histories are harmful only when they
+call for **different** actions. The protocol already records two facts that P-1/P-2 do not
+use: whether any application row is staged in the target, and whether the current source still
+equals the record's manifest under §5.5's complete **set and content** validation.
+
+*4. Candidates* (each evaluated against interruption at every cross-store write, marker loss
+and source clearing, restored/foreign stores, source-generation change, preservation of
+staged rows that may be the last copy, and replay/deletion/authority risk):
+
+| Candidate | What it proves | What stays indistinguishable | Risks and limits | Technical assessment |
+| --- | --- | --- | --- | --- |
+| **K0 — keep the block** (today) | Nothing new | All of H1–H4 | An ordinary interruption between two writes can strand migration with no specified recovery; recovery is the open human-authorised item | Safe and incomplete |
+| **K1 — P-1 or P-2 in phase `enumerating`, with no application row in the target established by successful reads: treat as E3** (abandon the attempt record, re-enumerate under a new `migrationId` and a new `installationStoreId`) | No staged row exists that could be the last surviving copy | All histories — but every one now takes the same action a first enumeration (D1/D3) would take on the current source | Limited to `enumerating`: a `copying` record with nothing copied still has a manifest, and re-enumerating it would drop vanished keys (T3), so K1 must not reach it. A failed read is never "no rows". Abandonment is one target transaction; interrupted, it leaves the old record (re-evaluated) or none (Group D). The new id's two writes are again non-atomic: an interruption between them reproduces P-1 or P-2 in `enumerating`, which K1 resolves the same way, so repeated interruption converges on one action. **For P-2 it overwrites the foreign marker**, the only evidence of the other attempt (see L1) | **Recommended for review for P-1** — consistent with E3. Its P-2 half is a review question (L1) |
+| **K2 — P-1 in `copying`/`verified`: re-write the marker under the record's EXISTING id only if** the source is readable, the manifest is **non-empty**, §5.5 set **and** content validation passes, and E0/E2 pass; otherwise block as today | The current source holds exactly the generation the record enumerated, at validation time | Which of H1–H4 occurred; any change after validation (§5.5's stated window) | Substitutes content evidence for continuity evidence — it is **not** a claim about which history happened, so it does not recreate provenance by guessing. A non-empty manifest prevents an emptied source from validating vacuously. The re-written marker is again not durably acknowledged; if lost, P-1 recurs and the same rule re-applies with the same id. Staged rows are never discarded; on any divergence the run blocks under item 3 | **Recommended for review** |
+| **K3 — a target-side journal around the marker write** (`sourceMarker: pending → acknowledged`, committed in the target) | "acknowledged + missing" shows the source lost a write it had acknowledged | "pending + missing": never written vs written then cleared before the journal committed. And a `localStorage` acknowledgement is not durability, so "acknowledged" does not exclude H1 | Adds another cross-store write and is **not** an atomicity mechanism. It enables no action K2 does not already take | **Not recommended** unless review finds a case where the action differs |
+| **K4 — fixed write order** (marker first, then record) | Record-without-marker then implies an acknowledged marker was lost | As K3 | Same non-durable acknowledgement | **Not recommended** on its own |
+| **K5 — content-derived store identity** (id derived from the manifest) instead of a random UUID | Collapses provenance into §5.5 validation | A different installation with byte-identical content (harmless: same data) | A schema-meaning change to `storeIdentity`; does not help an empty manifest | Larger change; evaluate only if K2 is rejected |
+| **L1 — P-2 with staged rows (`copying`/`verified`) stays blocked until backup/restore pairing of the WebView and SQLite containers is measured** on the selected configuration; whether K1 may overwrite a foreign marker in `enumerating` is decided in the same review | — | — | The likeliest P-2 history is a restore pairing, and that behaviour is unmeasured (§4) | **Recommended** |
+| **L2 — P-2 with staged rows: replace the foreign marker under K2's conditions** | As K2 | As K2, plus the history of the other attempt | Overwriting the foreign marker destroys the only evidence of the other attempt | Defer until L1's evidence exists |
+
+*5. None of these may:* revive W1 or W2; recreate provenance from a guess about history;
+discard, overwrite or re-copy staged rows; re-enumerate away a missing key (only K1's
+`enumerating` case re-enumerates, as E3 already does); treat a failed read as absence; or make
+a valid activated target depend on the old source.
+
+*6. Pending decisions that belong to the user* — technical recommendations above are not
+answers to these:
+
+- **U1.** When the source still validates exactly against the record and nothing would be
+  discarded (K1/K2), may migration continue automatically after a lost or foreign provenance
+  marker, or must every P-1/P-2 occurrence wait for an explicit user action? Alternatives: K0
+  everywhere (safest, needs a recovery interface that does not yet exist), K1+K2 automatic with
+  everything else blocked, or K1+K2 offered as a user-confirmed action.
+- **U2.** The recovery interface and wording for every case that stays blocked. This is the
+  existing open item 3 and is not settled here.
+
+*7. Recommended next deliverable — a P-1/P-2 provenance resolution specification (design and
+review only, no code).*
+
+- **Entry criteria:** this brief independently reviewed; U1 answered by the user, or
+  explicitly deferred (in which case the specification covers K0 recovery only); §5.2, §5.4
+  and §5.5 unchanged as its baseline. No device, build or data access is needed.
+- **Exit criteria:** §5.2's table rewritten with **explicit** rows for an unreadable and a
+  malformed marker and for every adopted candidate, each with one action; §5.4 Group E
+  re-ordered so no new row can mask E0, E2, E5 or E7; for every row, the set of histories that
+  reach it and the argument that one action serves all of them; the test matrix below added to
+  the acceptance cases; a clean independent review; and the user's approval recorded. M3b4
+  stays blocked on item 3 and the S2 requirements regardless.
+- **Negative and interruption matrix for a future implementation:** interruption before the
+  marker write, after it and before the record commit, after the record commit and before the
+  marker write, during K2's marker re-write, after the first checkpoint commit, between
+  validation and the activation commit, and during K1's abandonment; the marker alone removed
+  with the source intact; marker plus all, or some, eligible keys cleared; marker removed and
+  one value changed; source cleared and repopulated with identical and with different content;
+  a foreign id with identical content, different content, and nothing staged; an empty
+  manifest over a cleared source; an unreadable and a malformed marker; an unreadable target
+  record; a failed source enumeration at each step; repeated relaunch after every interruption
+  giving the same action, with K2 always re-using the record's id; staged rows retained
+  byte-for-byte in every blocked outcome, nothing deleted and no committed checkpoint
+  replayed; an activated target with a missing, unreadable or cleared source and marker
+  reaching B2/B4 without consulting provenance; and an older build writing source keys between
+  validation and activation, recorded as the stated residual.
+
+*8. What this brief does not close:* source-generation divergence recovery (item 3);
+protected-credential absence-versus-failure evidence (§4); secure transfer of existing
+credentials; the cross-store credential/SQLite interruption; physical-device acceptance;
+installation, signing and container preservation; the mid-session credential-failure
+behaviour; and production cutover (M3b5).
 
 **Required acceptance cases — FUTURE IMPLEMENTATION REQUIREMENTS, not results.** None of
 these has been written or run. They are stated as executable future scenarios against the

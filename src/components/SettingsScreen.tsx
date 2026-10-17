@@ -1,11 +1,14 @@
+import type { ReactNode } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
+import TrainingHeader from "./TrainingHeader";
 import { surfaceClass } from "./Surface";
 import ExternalDocumentLink from "./platform/ExternalDocumentLink";
 import FileExportStatusNotice from "./FileExportStatusNotice";
 import type { FileExportStatus } from "./useFileExport";
 
 type SettingsScreenProps = {
+  accountControl?: ReactNode;
   hasHistory: boolean;
   onExportHistoryCsv: () => void;
   /** Visible result of the last export attempt (Stage M3a). */
@@ -50,6 +53,7 @@ type SettingsScreenProps = {
  * see docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md.
  */
 export default function SettingsScreen({
+  accountControl,
   hasHistory,
   onExportHistoryCsv,
   exportStatus,
@@ -79,95 +83,25 @@ export default function SettingsScreen({
 
   return (
     <div className="space-y-4">
-      {/* Reusable configuration aid, not app-wide data management — its own
-          card so "Manage Accuracy Tolerances" reads as a distinct action from
-          Data Management's export/clear below. */}
-      <div className={surfaceClass("hero")}>
-        <h2 className="text-lg font-semibold text-slate-900">
-          Accuracy Tolerances
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-600">
-          Save reusable On Target / Acceptable tolerance profiles you can select
-          instead of retyping them for every Training Block or Plan Step.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-600">
-          {accuracyToleranceProfiles.length === 0
-            ? "No profiles saved yet."
-            : `${accuracyToleranceProfiles.length} profile${
-                accuracyToleranceProfiles.length === 1 ? "" : "s"
-              } saved${defaultProfile ? ` · Default: ${defaultProfile.name}` : ""}`}
-        </p>
-
-        <button
-          type="button"
-          onClick={onManageAccuracyTolerances}
-          disabled={manageAccuracyTolerancesDisabled}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          Manage Accuracy Tolerances
+      <TrainingHeader title="Make it yours." eyebrow="Settings" />
+      {accountControl && <section aria-label="Account" className="house-account-section">{accountControl}</section>}
+      <section className={surfaceClass("primary")} aria-label="Training preferences">
+        <button type="button" aria-label="Manage Accuracy Tolerances" onClick={onManageAccuracyTolerances} disabled={manageAccuracyTolerancesDisabled} className="house-settings-row">
+          <span><span>Accuracy Tolerances</span><small>{accuracyToleranceProfiles.length} saved{defaultProfile ? ` · ${defaultProfile.name}` : ""}</small></span><span aria-hidden="true">→</span>
         </button>
-      </div>
-
-      {/* Same "reusable configuration aid" grouping as Accuracy Tolerances
-          above, its own card since the two are independent domains. */}
-      <div className={surfaceClass("hero")}>
-        <h2 className="text-lg font-semibold text-slate-900">
-          Smart Random Profiles
-        </h2>
-
-        <p className="mt-1 text-sm text-slate-600">
-          Save reusable Smart Random ranges you can select instead of
-          re-entering them for every Variable Weight or Blind Weight exercise.
-        </p>
-
-        <p className="mt-3 text-sm text-slate-600">
-          {smartRandomProfiles.length === 0
-            ? "No profiles saved yet."
-            : `${smartRandomProfiles.length} profile${
-                smartRandomProfiles.length === 1 ? "" : "s"
-              } saved${
-                defaultSmartRandomProfile
-                  ? ` · Default: ${defaultSmartRandomProfile.name}`
-                  : ""
-              }`}
-        </p>
-
-        <button
-          type="button"
-          onClick={onManageSmartRandomProfiles}
-          disabled={manageSmartRandomProfilesDisabled}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          Manage Smart Random Profiles
+        <button type="button" aria-label="Manage Smart Random Profiles" onClick={onManageSmartRandomProfiles} disabled={manageSmartRandomProfilesDisabled} className="house-settings-row">
+          <span><span>Smart Random Profiles</span><small>{smartRandomProfiles.length} saved{defaultSmartRandomProfile ? ` · ${defaultSmartRandomProfile.name}` : ""}</small></span><span aria-hidden="true">→</span>
         </button>
-      </div>
-
-      {/* Team Foundation beta (docs/adr/0022) — optional, cloud-backed collaboration
-          layer. Its own card since it's an entirely separate domain from the two
-          reusable-configuration-aid cards above. */}
-      <div className={surfaceClass("hero")}>
-        <h2 className="text-lg font-semibold text-slate-900">Teams</h2>
-
-        <p className="mt-1 text-sm text-slate-600">
-          Optional beta: join or create a named team, invite teammates, and share
-          administration. Requires cloud sign-in.
-        </p>
-
-        <button
-          type="button"
-          onClick={onManageTeams}
-          className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
-        >
-          Manage Teams
+        <button type="button" aria-label="Manage Teams" onClick={onManageTeams} className="house-settings-row">
+          <span><span>Teams</span><small>Members and permissions</small></span><span aria-hidden="true">→</span>
         </button>
-      </div>
+      </section>
 
       {/* Settings' Data Management Hero (Epic 1) — the page-level PageHeader
           above already identifies this screen as "Settings", so this no longer
           repeats that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
-      <div className={surfaceClass("hero")}>
+      <details className="house-support">
+        <summary>Data and privacy</summary>
         <h2 className="text-lg font-semibold text-slate-900">
           Data Management
         </h2>
@@ -219,7 +153,7 @@ export default function SettingsScreen({
             </ExternalDocumentLink>
           </div>
         </div>
-      </div>
+      </details>
 
       {/* Development-only hardware discovery. Absent from production builds; see the
           prop documentation above and docs/BROWER_INTEGRATION_STATUS.md. */}
@@ -247,8 +181,8 @@ export default function SettingsScreen({
       {/* Destructive action kept in its own, clearly separated section
           (DESIGN_SYSTEM.md §12.4) rather than sharing a card with the
           non-destructive export action above. */}
-      <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
-        <h2 className="text-lg font-semibold text-red-900">Clear Data</h2>
+      <details className="house-support">
+        <summary>Delete training history</summary>
         <p className="mt-1 text-sm text-red-700">
           Permanently delete the entire session history from this device and your
           cloud account. If you are offline, deletion syncs when you reconnect. This
@@ -263,7 +197,7 @@ export default function SettingsScreen({
         >
           Clear History
         </button>
-      </div>
+      </details>
     </div>
   );
 }

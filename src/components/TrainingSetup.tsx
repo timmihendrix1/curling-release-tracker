@@ -526,6 +526,7 @@ export default function TrainingSetup({
             <button
               key={blockMode}
               type="button"
+              aria-pressed={mode === blockMode}
               onClick={() => setMode(blockMode)}
               className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
                 mode === blockMode
@@ -577,7 +578,7 @@ export default function TrainingSetup({
 
           {measuresSpeed && (
             <p className="mt-1.5 text-xs text-slate-500">
-              Speed is entered by hand. No timer reading is converted into a speed.
+              Enter speed manually in m/s.
             </p>
           )}
         </div>
@@ -599,6 +600,7 @@ export default function TrainingSetup({
               <button
                 key={mm}
                 type="button"
+                aria-pressed={measurementMode === mm}
                 onClick={() => setMeasurementMode(mm)}
                 className={`min-h-11 w-full rounded-xl px-2 py-3 text-sm font-medium transition ${
                   measurementMode === mm

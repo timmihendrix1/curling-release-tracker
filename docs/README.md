@@ -32,3 +32,8 @@ Engineering
 ├── TECHNICAL_DEBT_AND_ROADMAP.md
 
 ├── EXTERNAL_TIMING_INTEGRATION_DISCOVERY.md
+
+├── TESTFLIGHT_READINESS.md — What stands between this repository and an iOS build
+│   distributed through Apple. Separates Apple's requirements from this project's own
+│   gates, and carries the build/upload/beta runbook and the device acceptance
+│   checklist. Every runbook step is unexecuted.

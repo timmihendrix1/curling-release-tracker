@@ -13,7 +13,7 @@ test("manual fallback completes a capture sequence without the simulator", async
   await setupFixedBlock(page);
   await startAutoCapture(page, { count: 2, handleMode: "Fixed In" });
 
-  const manualInput = captureManualResultInput(page);
+  const manualInput = await captureManualResultInput(page);
 
   await manualInput.fill("3.68");
   await page.getByRole("button", { name: "Add", exact: true }).click();
@@ -27,5 +27,5 @@ test("manual fallback completes a capture sequence without the simulator", async
   ).toBeVisible();
 
   // The classic manual flow (outside any capture sequence) must remain fully intact.
-  await expect(page.getByText("2 shots total")).toBeVisible();
+  await expect(page.getByText("2 stones recorded")).toBeVisible();
 });

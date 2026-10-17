@@ -70,7 +70,7 @@ test("a simulator result and a manual fallback fired together each get a distinc
   });
 
   // Manual fallback fired essentially right after, before waiting for the UI to settle.
-  const manualInput = captureManualResultInput(page);
+  const manualInput = await captureManualResultInput(page);
   await manualInput.fill("3.60");
   await page.getByRole("button", { name: "Add", exact: true }).click();
 

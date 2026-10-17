@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   freshLoad,
+  completedBlockAnalysis,
   openReleaseTimingSetup,
   setupFixedBlock,
   setupVariableSmartRandomBlock,
@@ -43,7 +44,7 @@ test("Threshold Setup: the summary shows the resolved values, the editor validat
   await onTargetInput.fill("0.08");
   await acceptableInput.fill("0.16");
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // Metric cards only render their threshold-labeled sublabels once there's
   // at least one shot (otherwise they show "Not enough shots").
@@ -55,9 +56,9 @@ test("Threshold Setup: the summary shows the resolved values, the editor validat
 
   // Live Performance is intentionally collapsed by default. Once opened, its
   // metric cards reflect the custom thresholds (not the Standard default).
-  await page.getByText("Live Performance").click();
-  await expect(page.getByText("within ±0.08s")).toBeVisible();
-  await expect(page.getByText("beyond ±0.16s")).toBeVisible();
+  const analysis = await completedBlockAnalysis(page);
+  await expect(analysis.getByText("within ±0.08s")).toBeVisible();
+  await expect(analysis.getByText("beyond ±0.16s")).toBeVisible();
 });
 
 test("Block Analytics: deterministic shots produce the expected Bias, Average Error, On-Target/Acceptable/Major-Miss rates, and Largest Miss", async ({
@@ -77,16 +78,16 @@ test("Block Analytics: deterministic shots produce the expected Bias, Average Er
     await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
   }
 
-  await page.getByText("Live Performance").click();
+  const analysis = await completedBlockAnalysis(page);
 
   // Bias = mean(+0.05, +0.15, +0.45, -0.30) = +0.0875 -> "+0.09s"
-  await expect(page.getByText("+0.09s", { exact: true })).toBeVisible();
+  await expect(analysis.getByText("+0.09s", { exact: true })).toBeVisible();
   // Average Error = mean(0.05, 0.15, 0.45, 0.30) = 0.2375 -> "0.24s"
-  await expect(page.getByText("0.24s", { exact: true })).toBeVisible();
-  await expect(page.getByText("On Target", { exact: true })).toBeVisible();
-  await expect(page.getByText("25%").first()).toBeVisible(); // 1 of 4 on target
-  await expect(page.getByText("2 of 4")).toBeVisible(); // Major Misses
-  await expect(page.getByText("0.45s", { exact: true })).toBeVisible(); // Largest Miss
+  await expect(analysis.getByText("0.24s", { exact: true })).toBeVisible();
+  await expect(analysis.getByText("On Target", { exact: true })).toBeVisible();
+  await expect(analysis.getByText("25%").first()).toBeVisible(); // 1 of 4 on target
+  await expect(analysis.getByText("2 of 4")).toBeVisible(); // Major Misses
+  await expect(analysis.getByText("0.45s", { exact: true })).toBeVisible(); // Largest Miss
 });
 
 test("Target Error Chart: shows the zero line, positive/negative bars, and a tooltip on hover", async ({
@@ -106,11 +107,11 @@ test("Target Error Chart: shows the zero line, positive/negative bars, and a too
   // Every chart is grouped under one collapsed-by-default Live Performance
   // disclosure (compositional redesign — see TrackerApp.tsx's Active
   // Training composition).
-  await page.getByText("Live Performance").click();
+  const analysis = await completedBlockAnalysis(page);
 
-  await expect(page.getByText("Target Error by Shot")).toBeVisible();
+  await expect(analysis.getByText("Target Error by Shot")).toBeVisible();
   await expect(
-    page.getByText("Am I hitting my target, and is my miss systematic?")
+    analysis.getByText("Am I hitting my target, and is my miss systematic?")
   ).toBeVisible();
 });
 
@@ -129,20 +130,21 @@ test("Scatterplot: legend toggles In/Out visibility without mutating underlying 
     await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
   }
 
-  await page.getByText("Live Performance").click();
+  await completedBlockAnalysis(page);
+  await page.getByText("Detailed Analysis", { exact: true }).click();
+  const analysis = page.locator("details").filter({ has: page.locator("summary", { hasText: "Detailed Analysis" }) });
 
-  await expect(page.getByText("Target vs. Actual")).toBeVisible();
+  await expect(analysis.getByText("Target vs. Actual")).toBeVisible();
 
-  const scatterCard = page.locator("div", {
-    has: page.getByText("Target vs. Actual"),
-  }).last();
-
-  // Toggle Out Handle off, then back on — no crash, filter buttons above the
-  // chart remain unaffected (still "Total").
-  const outLegend = scatterCard.getByText("Out Handle");
+  // Toggle the actual scatter legend, while the underlying handle filter stays unchanged.
+  const outLegend = analysis.getByRole("listitem").filter({
+    has: page.getByRole("img", { name: "Out Handle legend icon", exact: true }),
+  });
+  await expect(page.getByLabel("Handle", { exact: true })).toHaveValue("both");
   await outLegend.click();
+  await expect(page.getByLabel("Handle", { exact: true })).toHaveValue("both");
   await outLegend.click();
-  await expect(page.getByRole("button", { name: "Total", exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel("Handle", { exact: true })).toHaveValue("both");
 });
 
 test("Regression: Smart Random Variable Weight, Blind Weight, and mobile viewport all remain functional with the new Accuracy Threshold UI", async ({
@@ -152,6 +154,7 @@ test("Regression: Smart Random Variable Weight, Blind Weight, and mobile viewpor
 
   // Variable Weight / Smart Random still creates a block with a generated target.
   await setupVariableSmartRandomBlock(page);
+  await page.getByText("Exercise settings", { exact: true }).click();
   await expect(page.getByText("Smart Random")).toBeVisible();
 });
 
@@ -168,8 +171,8 @@ test("Mobile viewport (390x844): Dashboard and charts render without horizontal 
   await shotEntry.locator('input[inputmode="decimal"]').first().fill("3.8");
   await shotEntry.getByRole("button", { name: "Save Shot", exact: true }).click();
 
-  await page.getByText("Live Performance").click();
-  await expect(page.getByText("Target Error by Shot")).toBeVisible();
+  const analysis = await completedBlockAnalysis(page);
+  await expect(analysis.getByText("Target Error by Shot")).toBeVisible();
 
   const hasHorizontalOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth

@@ -1867,6 +1867,19 @@ repository contract level, not just at the adapter's raw string layer.
 > connection inside the migration module; no repository sees it and this contract is
 > unchanged.
 >
+> **The diagnostics-only transaction (2026-10-15) does not weaken that.** `NativeSqliteStore`
+> — the lifecycle object, not the adapter — gained an owned-transaction capability so the
+> migration's checkpoint model could be exercised before it is implemented. It is **absent
+> from `RemovableStorageAdapter` and from `types.ts`**, it has **no production caller**
+> (asserted by `src/lib/persistence/__tests__/architectureBoundary.test.ts`), and it accepts
+> key/value pairs rather than SQL. While the store owns such a transaction the store **refuses
+> every other operation including reads**, so a transaction can never overlap ordinary work and
+> its statements can never escape into the ordinary queue and commit separately. Ownership is
+> taken before BEGIN is issued and is **kept while the native state is uncertain** (an
+> unacknowledged BEGIN, a failed rollback, close or native handle release); it ends only on an
+> acknowledged COMMIT or ROLLBACK or a completed close and handle release. No repository
+> gains multi-key atomicity, and none can observe uncommitted rows.
+>
 > **The five seams**, which a default swap does not reach, are now wired — and the three
 > sporting ones are handed over as ONE `SportingStorageSeams` object
 > (`src/lib/persistence/storageSeams.ts`) precisely so they cannot be selected independently

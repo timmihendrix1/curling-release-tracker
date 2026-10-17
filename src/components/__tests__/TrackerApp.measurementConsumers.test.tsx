@@ -47,20 +47,31 @@ async function openAsymmetricTraining() {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
 
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   return { block, state };
 }
 
-describe("live analysis uses the block's own per-side tolerance", () => {
+async function completedAnalysis() {
+  fireEvent.click(screen.getByRole("button", { name: "Complete Session" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Complete" }));
+  await screen.findByRole("heading", { name: "Exercises", level: 2 });
+  fireEvent.click(navButton("Analyze"));
+  await screen.findByText("Blocks and Sessions");
+  fireEvent.click(screen.getByText("Show Details"));
+  return screen.getByText("Blocks and Sessions").closest(".surface-secondary")!;
+}
+
+describe("completed analysis uses the block's own per-side tolerance", () => {
   it("does not report a 0.05s-fast stone as on target under a 0.01s lower band", async () => {
     await openAsymmetricTraining();
 
     // Target 3.75, recorded 3.70 => -0.05, well beyond the 0.02 lower Acceptable.
     // Judged by the symmetric 0.10/0.20 pair it would read as 100% on target.
-    const summary = screen.getByText("Live Performance").closest("summary");
-    expect(summary?.textContent).toMatch(/0% on target/);
+    const summary = await completedAnalysis();
+    expect(summary.textContent).toContain("0%");
+    expect(summary.textContent).toContain("beyond -0.02s / +0.30s");
   });
 });
 
@@ -68,9 +79,7 @@ describe("displayed tolerances match the tolerance that classified the stones", 
   it("never names a symmetric cutoff that neither side of an asymmetric band uses", async () => {
     await openAsymmetricTraining();
 
-    const details = screen.getByText("Live Performance").closest("details");
-    if (!details) throw new Error("expected the Live Performance panel");
-    details.setAttribute("open", "");
+    const details = await completedAnalysis();
 
     // 0.10 / 0.20 belong to the block's legacy symmetric pair, which is NOT what
     // classified this stone. Showing them would contradict the "major miss" result.
@@ -89,13 +98,11 @@ describe("displayed tolerances match the tolerance that classified the stones", 
     localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
-    const details = screen.getByText("Live Performance").closest("details");
-    if (!details) throw new Error("expected the Live Performance panel");
-    details.setAttribute("open", "");
+    const details = await completedAnalysis();
 
     expect(details.textContent).toContain("within ±0.10s");
     expect(details.textContent).toContain("beyond ±0.20s");
@@ -159,9 +166,9 @@ describe("refused manual entry keeps the athlete's input", () => {
     localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // Record one stone so the training has archivable activity.
     const field = screen.getByPlaceholderText("3.75 or 375");
@@ -181,9 +188,9 @@ describe("refused manual entry keeps the athlete's input", () => {
         return { ok: false, step: "history", error: { kind: "unknown", message: "test" } };
       });
 
-    navButton("Start New Session").click();
-    await waitFor(() => screen.getByRole("heading", { name: "Start New Session" }));
-    screen.getByRole("button", { name: "Start" }).click();
+    navButton("Complete Session").click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    screen.getByRole("button", { name: "Complete" }).click();
     await waitFor(() => expect(spy).toHaveBeenCalled());
 
     // Enter must honour the same refusal the button shows, and must not discard input.

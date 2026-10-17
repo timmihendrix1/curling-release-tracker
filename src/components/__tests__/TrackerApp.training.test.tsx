@@ -13,7 +13,7 @@ beforeEach(() => {
 describe("TrackerApp — active Training live summary", () => {
   it("shows a compact empty state instead of false-zero metrics before any shot is recorded", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     screen.getByRole("button", { name: "Start Training" }).click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
@@ -24,14 +24,14 @@ describe("TrackerApp — active Training live summary", () => {
     await waitFor(() => screen.getByText("Set Up Training Block"));
 
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // No shot recorded yet — must not show a false "Average 0.00s" /
     // "Release SD 0.000" as if they were measured values.
     expect(
-      screen.getByText("Add a shot to begin the live summary.")
+      screen.getByText("0 stones recorded")
     ).toBeInTheDocument();
-    expect(screen.queryByText("Average")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00s")).not.toBeInTheDocument();
     expect(screen.queryByText("Release SD")).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("3.75 or 375"), {
@@ -42,8 +42,8 @@ describe("TrackerApp — active Training live summary", () => {
 
     // Once real data exists, the actual metrics take over from the empty state.
     expect(
-      screen.queryByText("Add a shot to begin the live summary.")
+      screen.queryByText("0 stones recorded")
     ).not.toBeInTheDocument();
-    expect(screen.getByText("Average")).toBeInTheDocument();
+    expect(screen.getByText("Average time")).toBeInTheDocument();
   });
 });

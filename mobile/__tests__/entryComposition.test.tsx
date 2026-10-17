@@ -72,7 +72,7 @@ function namePaths(nodes: StructuralNode[], prefix = ""): string[] {
 }
 
 const container = (children: ReactNode) => (
-  <main className="min-h-screen bg-slate-100 px-4 py-4 sm:px-6 sm:py-8">
+  <main className="house-shell min-h-screen px-4 py-4 sm:px-6 sm:py-8">
     <div className="mx-auto w-full max-w-md sm:max-w-xl">{children}</div>
   </main>
 );
@@ -217,7 +217,7 @@ describe("mobile entry rendered gate", () => {
     // Guard against the test passing vacuously if either root ever renders
     // nothing at all.
     expect(mobile).toContain("Athlete access");
-    expect(mobile).toContain("min-h-screen bg-slate-100");
+    expect(mobile).toContain("house-shell min-h-screen");
   });
 
   it("gated DOM comparison cannot see a missing provider — which is why the structural check exists", () => {

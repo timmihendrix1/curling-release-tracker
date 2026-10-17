@@ -67,10 +67,14 @@ copied.** A change to the shared modules reaches Web and mobile at once.
   surfaces the iOS `OSStatus`, or an Android `contains(key)` check separated from a
   decryption failure.
 
-  **Device evidence now exists, within limits.** The user reported (2026-09-30) that
-  `journal_mode = wal` and `synchronous = 2` (FULL) are actually in force, that written
-  values survive a restart in airplane mode, and that a never-written key reads as absent.
-  **Unmeasured:** failed and uncertain commit reporting, reopen-after-interruption,
+  **Device evidence now exists, within limits.** The user reported (2026-09-30, physical
+  iPhone) that `journal_mode = wal` and `synchronous = 2` (FULL) are actually in force, that
+  written values survive a restart in airplane mode, and that a never-written key reads as
+  absent. On 2026-10-15 the user ran the transaction and checkpoint scenarios on a
+  **disposable iOS Simulator** through the real plugin, including a process stop with a
+  transaction open (canonical record: "M3b1 real-engine simulator evidence" in
+  `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7). **Unmeasured:** physical-device
+  transaction acceptance, a naturally occurring commit failure, termination during a commit,
   backup/restore, power-loss survival, any capacity limit, and anything about Android. So
   the engine is settled for the **adapter** while **source retirement stays unjustified**.
 
@@ -80,14 +84,16 @@ copied.** A change to the shared modules reaches Web and mobile at once.
   differing installation store ids seen before activation; a pre-activation record whose
   source marker is missing, which cannot be told apart from later source clearing and is
   therefore blocked; and the human-authorised resolution of a blocked source-generation
-  divergence. **Two further migration requirements follow from the credential decision:**
+  divergence. A **proposed, unapproved** design brief for the first two is in Stage M3b0 §7;
+  it settles neither. **Two further migration requirements follow from the credential decision:**
   transferring the existing session out of WebView storage, and handling the interruption
   where one of the two separate stores is written and the other is not. Migration of
   existing on-device data between storage engines is a **separate, still-required**
   operation from the deferred browser import.
 - **Not implemented:** native Google sign-in (the rest of M2), the rest of M3
-  (durable storage composition, migration and its capacity measurement), Brower capture
-  (M4), Android (M5).
+  (storage migration, production cutover and a recorded operating envelope — the
+  composition exists only behind its off-by-default flag, above), Brower capture (M4),
+  Android (M5).
 
 This is **not** a distributable app.
 
@@ -287,9 +293,13 @@ exists in the old store. Blocking before anything is opened is what makes that u
 
 **It does not touch your training data.** It does not reset, clear, migrate or copy any of it,
 it does not sign you out, and it does not transfer the sign-in session that is already there —
-a further reason it cannot show you your data. (It does create an empty native database file
-before it blocks, so "nothing at all happened on the device" would be too strong a claim; your
-existing data is untouched either way.) Going back is the ordinary sequence:
+a further reason it cannot show you your data. **It also creates no database file.** An earlier
+revision of this page said it created an empty one before blocking; that is wrong against the
+current ordering. `composeNativeStorage` asks the activation authority for a verdict *before*
+it loads the adapter module, and the one shipped authority reports `unavailable`, so the
+adapter is never constructed — and constructing one would still open nothing, because
+`createNativeSqliteStore` opens the database lazily on its first operation. Going back is the
+ordinary sequence:
 
 ```bash
 npm run mobile:build && npm run ios:sync
@@ -305,9 +315,13 @@ parameter, no stored preference, no developer toggle — that can make it mount.
 `synchronous = 2` (FULL), `page_size = 4096`, `sqlite_version = 3.53.4`, a successful
 "Verify after app restart" **in airplane mode**, all five synthetic fixtures matched at
 994,669 bytes total, the never-written key absent, and 55 ms for the reported verification.
-**Still not measured:** failed and uncertain commit reporting, reopen after an interrupted
-commit, backup/restore, power-loss survival, any capacity limit, and anything on Android.
-This section is the procedure; the remaining results are the user's to produce.
+**Also performed on a disposable iOS Simulator (user-reported, 2026-10-15)**, together with
+the checkpoint scenarios below; the canonical record is "M3b1 real-engine simulator evidence"
+in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7, and the two runs are kept separate.
+**Still not measured:** physical-device transaction acceptance, a naturally occurring commit
+failure, termination during a commit, backup/restore, power-loss survival, any capacity
+limit, and anything on Android. This section is the procedure; the remaining results are the
+user's to produce.
 
 ### What this installs
 
@@ -338,6 +352,13 @@ device** with the same bundle identifier (`local.dev.curlingperformance`) — it
 app, not a second one. To go back to an ordinary build afterwards, run
 `npm run mobile:build && npm run ios:sync` and Run again.
 
+> **Do not install this build over a data-bearing installation.** The synthetic database
+> keeps the panel away from application data, but it does not make replacing the
+> installation you train with an authorised action. The user's only physical iPhone holds
+> real training data and must not receive the diagnostics build; the 2026-10-15 run used a
+> fresh, disposable simulator instead. These instructions describe how a build is installed,
+> not permission to install it on that device.
+
 ### Procedure
 
 | # | Step | What to record |
@@ -346,16 +367,23 @@ app, not a second one. To go back to an ordinary build afterwards, run
 | 2 | Press **Write synthetic fixtures** | Per-fixture bytes and elapsed milliseconds, especially for the ~1 MiB whole-document JSON |
 | 3 | Press **Verify in this app session** | Pass/fail. This proves round-tripping only |
 | 4 | Press **Update and remove a test key** | Pass/fail for write, overwrite, removal and genuine absence |
-| 5 | Press **Close and reopen the database** | Pass/fail after the connection was closed and reopened |
+| 5 | Press **Close and reopen the database** | Pass/fail after the connection was closed, its native handle released and a fresh connection opened. If any of those steps fails the panel names it and verifies nothing |
 | 6 | Put the device in **Airplane Mode**, repeat steps 2–5 | Whether anything differs offline. It should not: this is entirely local |
 | 7 | **Force-quit** the app (swipe it away from the app switcher). Do not merely background it | — |
 | 8 | Relaunch, open the panel, press **Verify after app restart** — and press nothing else first | "Verified after app restart" with the earlier run id and timestamp. If it says the fixtures were written by this session, the force-quit did not take effect. If it says the last run did not finish writing, step 2 was interrupted — repeat from step 2 |
 | 9 | Repeat 7–8 after leaving the device idle/locked for a while | Whether anything is lost |
-| 10 | Press **Delete the synthetic data** when finished | Confirmation naming the synthetic database |
+| 10 | Press **Delete the synthetic data** when finished, then **Delete** in the confirmation | The confirmation names the synthetic database and everything it holds (fixtures, run record, test key, checkpoint evidence). **Cancel** deletes nothing |
 
 **Do not skip step 8's "press nothing else first".** Writing the fixtures again before
 verifying destroys the very evidence the restart check depends on — which is also why the
 panel writes nothing when it opens.
+
+**Stopping the process on a simulator.** Step 7's app-switcher swipe is the physical-device
+method. In the user-reported 2026-10-15 simulator run, the process was stopped with Xcode's
+**Stop** and started again with **Run**. Whichever method is used, the panel is the check:
+**Verify after app restart** must report fixtures written by an *earlier* session. If it
+reports this session, the process did not restart. Backgrounding the app or reloading the
+web view is not a process stop.
 
 A run marks itself in progress **before** it touches the first fixture and marks itself
 complete only after every write is acknowledged. So an interrupted or failed write cannot be
@@ -370,6 +398,129 @@ values written before a force-quit are still there after relaunch. It establishe
 **nothing** about power loss, nothing about OS-initiated eviction over weeks, nothing about
 Android, and **no safe capacity** — the fixture sizes are measurement points, not a limit.
 It also says nothing about the migration protocol, which is unimplemented.
+
+## Manual procedure — checkpoints and transactions
+
+**Run once on a disposable iOS Simulator (user-reported, 2026-10-15); never run on a physical
+device.** The results of that run, and what it does not establish, are recorded once in
+"M3b1 real-engine simulator evidence" in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
+Physical-device transaction results are still outstanding: do not record them as measured
+until they have actually been run.
+
+### What a checkpoint is, and why this exists
+
+Stage M3b4's migration is specified as a sequence of **checkpoints**: one transaction commits
+a batch of payload rows **and** the progress record describing them, so an interruption leaves
+either a whole checkpoint or the previous one — never half of either
+(`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §5.1). That design rests on engine behaviour: what
+a failed commit reports, and what a store looks like when it is reopened after an interrupted
+one. These actions gather that evidence **before** the migration is written. So far they have
+been observed on a disposable simulator only, with the process stopped **before** a commit; a
+naturally occurring commit failure and termination **during** a commit have not been
+observed on any device.
+
+Payloads here are **attempt-scoped**, unlike the restart fixtures. The fixtures are
+deliberately byte-identical between runs because their question is "did these bytes survive";
+a checkpoint's question is "did *this attempt* commit", and deterministic bytes would answer it
+wrongly — an earlier successful attempt would leave rows indistinguishable from the ones the
+current attempt meant to write. Every payload is therefore derived from the attempt id and the
+checkpoint number, and verification regenerates the expected bytes rather than trusting
+anything stored.
+
+### The actions
+
+| Action | What it does | What a pass means |
+| --- | --- | --- |
+| **Commit a checkpoint** | Opens a transaction, writes 3 payload rows and a matching progress record inside it, commits, then closes the connection, releases its native handle, opens a fresh one and reads | Rows and progress committed **together** and read back exactly after a verified reopen |
+| **Roll back a checkpoint** | The same, ending in an explicit `ROLLBACK` | **No part** of the checkpoint committed, and the previously committed checkpoint is intact byte for byte |
+| **Fail a statement inside a transaction** | Stages rows, then issues a statement that violates `value TEXT NOT NULL` | Reported as a **statement** failure, never as a commit failure; no commit was attempted; the last committed checkpoint is preserved |
+| **Lose the acknowledgement after commit** | Issues a **real** commit, then discards the answer unread | Classified **committed** — from the reopened store alone. A lost acknowledgement is not a lost commit |
+| **Lose the acknowledgement before commit** | Stages rows, issues **no** commit, discards the transaction | Classified **not committed**, previous checkpoint intact |
+| **Prepare an interrupted checkpoint** | Stages rows and **leaves the transaction open** | The panel shows the open transaction and refuses every other action |
+| **Inspect stored checkpoint** | Reads and classifies whatever is stored | Read-only. It never writes, repairs or replays |
+| **Delete the synthetic checkpoint data** | Asks for confirmation naming the synthetic database and the 4 checkpoint keys, then removes only those | The restart fixtures and their run record are untouched |
+
+The two "lose the acknowledgement" actions are a **diagnostic simulation**. The transaction
+underneath is the real engine doing real work; what is injected is the app never hearing the
+answer. A fault injected after a successful commit is **not** a naturally occurring native
+commit failure, and nothing here should be reported as one.
+
+### How a result is classified
+
+Every verdict comes from **reading a freshly reopened store**, never from what the commit call
+returned. A rejected or discarded commit result is **never** proof of rollback. "Freshly
+reopened" means the connection was closed, its native handle released and a new connection
+opened, each step confirmed. If any step fails, the result names it and gives **no verdict**:
+a read through a connection that may never have closed is not evidence.
+
+| Observation | Verdict |
+| --- | --- |
+| The progress record names this attempt and every row matches its regenerated value | **Committed** |
+| No checkpoint for this attempt, and either the previous progress record is **unchanged** with every row matching, or — if there was none — the progress record and every payload row read successfully as absent | **Not committed** |
+| Partial, mismatched, malformed, unreadable or incomplete evidence — including payload rows with no progress record, and any failed read | **Unresolved** |
+
+### When a transaction's outcome is unknown
+
+The panel shows one of two banners while the store owns a transaction:
+
+- **"A transaction is open and uncommitted"** — the engine acknowledged it (a prepared
+  interruption). Roll it back or abandon it.
+- **"A transaction's outcome is unknown"** — something failed or answered unreadably: the
+  start, a rollback, the connection close or the native handle release. Whether a transaction
+  is still open at the engine cannot be said, so the store keeps refusing every other action.
+  **Roll back** or **Abandon** remain available. Abandon completes only when the connection is
+  closed **and** its native handle released; pressing it again resumes at the step that
+  failed. If neither completes, force-quit and relaunch the app (disposable test installation
+  only), then press **Inspect stored checkpoint** first.
+
+**Unresolved is a real outcome, not a test failure.** It is exactly the state a migration must
+be able to handle, and the panel never promotes it to either of the others. Nothing is
+replayed in response: deciding what to do about an unresolved checkpoint is the migration's
+job, and that is an open design item (Stage M3b0 §7).
+
+### The interruption rehearsal — DISPOSABLE TEST INSTALLATION ONLY
+
+> **Do not perform this on a data-bearing iPhone.** Use a disposable test installation or a
+> simulator. The steps below force-quit an application mid-transaction; nothing in them
+> touches application data, but a force-quit is still a deliberate interruption. It has been
+> run once, on a disposable simulator (2026-10-15), and **never on a physical device**.
+> **Do not uninstall, reset or re-sign the app you train with.**
+
+This section is the procedure, not a report; results are recorded in
+`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
+
+| # | Step | What to record |
+| --- | --- | --- |
+| 1 | Press **Commit a checkpoint** | The verdict, and the attempt id in the detail lines. This is the checkpoint that must survive |
+| 2 | Press **Prepare an interrupted checkpoint** | **Write down both ids the panel shows**: the *prepared* attempt (which must NOT appear afterwards) and the *previous committed* attempt (which must still be there) |
+| 3 | Confirm every other action is refused | The panel shows the open transaction and disables the exercises |
+| 4 | **Force-quit** the app — swipe it away from the app switcher | — |
+| 5 | Relaunch, open the panel, press **Inspect stored checkpoint** and **nothing else first** | The attempt id reported. It must be the *previous committed* one from step 2, and the record must be internally consistent |
+| 6 | Repeat 2–5 in **Airplane Mode** | Whether anything differs offline. It should not: this is entirely local |
+
+**Step 5's "nothing else first" is the whole point.** Any other action writes, and writing
+before looking destroys the evidence. This is also why the panel runs nothing on open.
+
+**On a simulator**, step 4 is a process stop instead of an app-switcher swipe: the 2026-10-15
+run used Xcode's **Stop**, then **Run**. Step 5's inspection must report the checkpoint as
+written by an *earlier* session; if it says this session, the process did not restart and
+nothing was rehearsed.
+
+**What this rehearsal cannot do.** The app is not killed automatically, and it must not be:
+backgrounding is **not** process death, a web-view reload is **not** process death, and an
+ordinary close/reopen is **not** a crash. Only the manual force-quit supplies the
+interruption, which is why the attempt ids are carried on paper rather than in a marker — a
+setup record written to the database could itself be mistaken for a committed checkpoint.
+
+### What these actions can never establish
+
+- **Nothing about power loss.** An acknowledged commit is not proof that bytes reached stable
+  storage. Establishing that needs a device that actually loses power.
+- **Nothing about a naturally occurring commit failure.** Every failure here is either a
+  deliberate constraint violation or an injected lost acknowledgement.
+- **Nothing about backup and restore**, no capacity limit, and **nothing about Android**.
+- **Nothing about migration readiness.** No migration runner, source enumerator or activation
+  record exists, and none is added by this tooling.
 
 ## Development placeholders
 

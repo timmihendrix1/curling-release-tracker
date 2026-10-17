@@ -8,6 +8,7 @@ import { computeRawAssessmentMetrics } from "../lib/assessment/metrics";
 import { RELEASE_TIME_CORE_ASSESSMENT_V1 } from "../lib/assessment/templates";
 import type { AssessmentRun } from "../lib/assessment/types";
 import { formatAssessmentSeconds } from "../lib/assessment/resultFormatting";
+import TrainingHeader from "./TrainingHeader";
 import { surfaceClass } from "./Surface";
 
 type AssessmentLandingProps = {
@@ -73,6 +74,9 @@ export default function AssessmentLanding({
 
   return (
     <div className="space-y-4">
+      <TrainingHeader title="Find your baseline." eyebrow="Assessments">
+        Repeat the same protocol. Compare your progress.
+      </TrainingHeader>
       {/* The page-level PageHeader (TrackerApp.tsx) already identifies this
           screen as "Assess" with a one-line description, so this no longer
           repeats that heading (DESIGN_SYSTEM.md §32 Priority 2). */}

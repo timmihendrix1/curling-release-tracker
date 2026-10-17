@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import InfoButton from "./InfoButton";
 import {
   areDefaultExerciseLibraryFilters,
   availableExerciseDifficultyFilters,
@@ -17,6 +18,7 @@ import {
   EXERCISE_LIBRARY_RESET_FILTERS_LABEL,
   UNRATED_DIFFICULTY_LABEL,
   activeFilterCountLabel,
+  exerciseLibraryExplanation,
   exerciseDifficultyLabel,
   exerciseDiscoveryCategoryLabel,
   exerciseParticipationModeLabel,
@@ -117,6 +119,7 @@ export default function ExerciseLibraryFilterBar({
         >
           Filters
         </button>
+        <InfoButton explanation={exerciseLibraryExplanation()} />
 
         {!isDefault && (
           <button

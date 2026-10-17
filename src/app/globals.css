@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4f6f7;
+  --foreground: #20282b;
+  --house-canvas: #f4f6f7;
+  --house-surface: #ffffff;
+  --house-ink: #20282b;
+  --house-muted: #626e73;
+  --house-deep: #163a40;
+  --house-accent: #356d72;
+  --house-mid: #93b7ba;
+  --house-tint: #e7eff0;
+  --house-line: #dee5e7;
+  --house-nav-clearance: calc(6rem + env(safe-area-inset-bottom));
 }
 
 @theme inline {
@@ -12,17 +22,10 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 /*
@@ -34,7 +37,76 @@ body {
  * no reserved clearance is needed beyond ordinary page padding.
  */
 .app-content-clearance {
-  padding-bottom: calc(4.75rem + env(safe-area-inset-bottom));
+  padding-bottom: var(--house-nav-clearance);
+}
+
+/* House is a scoped presentation vocabulary. Existing Surface consumers keep
+   their readable light backgrounds, including active automatic capture. */
+.house-shell { background: var(--house-canvas); color: var(--house-ink); }
+.house-hero {
+  background: var(--house-deep); color: white; border-radius: 2rem;
+  padding: clamp(1.25rem, 5vw, 1.75rem);
+}
+.house-hero-muted { color: var(--house-mid); }
+.house-title { font-size: clamp(1.5rem, 6vw, 1.875rem); font-weight: 500; line-height: 1.2; overflow-wrap: anywhere; }
+.house-action {
+  display: inline-flex; align-items: center; justify-content: center; gap: .75rem;
+  min-height: 3.5rem; width: 100%; padding: .75rem 1rem; border-radius: 1.25rem;
+  background: var(--house-deep); color: white; font-weight: 500;
+  transition: background-color .15s;
+}
+.house-action:hover:not(:disabled) { background: var(--house-accent); }
+.house-action-inverse { background: white; color: var(--house-deep); }
+.house-action-inverse:hover:not(:disabled) { background: var(--house-tint); }
+.house-action:disabled { opacity: .5; cursor: not-allowed; }
+.house-action:focus-visible, .house-link:focus-visible, .house-select:focus-visible {
+  outline: 2px solid var(--house-accent); outline-offset: 4px;
+}
+.house-hero .house-action:focus-visible { outline-color: white; }
+.house-link { display: inline-flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; color: var(--house-accent); border-radius: .5rem; }
+.house-nav { box-shadow: 0 4px 24px rgb(22 58 64 / 8%); }
+.house-nav-active { background: var(--house-tint); color: var(--house-accent); }
+.house-nav-inactive { color: var(--house-muted); }
+.house-nav-inactive:hover { background: var(--house-canvas); }
+.house-list { border-top: 1px solid var(--house-line); }
+.house-list > li { border-bottom: 1px solid var(--house-line); padding: 1rem 0; }
+.house-select {
+  min-height: 44px; min-width: 0; padding: .625rem .5rem; border-radius: .875rem;
+  background: var(--house-tint); color: var(--house-ink); font-size: .875rem;
+}
+.house-select[aria-pressed="true"] { background: var(--house-deep); color: white; }
+.house-measurements { display: grid; gap: 1.5rem; }
+.house-measurement { min-width: 0; }
+.house-measurement label { display: block; color: var(--house-mid); font-size: .75rem; }
+.house-number-row { display: flex; align-items: baseline; gap: .5rem; min-width: 0; }
+.house-number {
+  width: 100%; min-width: 0; min-height: 80px; border-radius: .5rem;
+  border: 0; border-bottom: 1px solid rgb(147 183 186 / 45%);
+  padding: .25rem 0; background: transparent; color: white; caret-color: white;
+  font-size: clamp(2.75rem, 15vw, 5.5rem); font-weight: 400;
+  font-variant-numeric: tabular-nums; letter-spacing: -.045em; line-height: 1.2;
+}
+.house-number::placeholder { color: var(--house-mid); opacity: .7; }
+.house-number#shot-entry-release-time::placeholder { font-size: 1.125rem; letter-spacing: normal; }
+.house-number:focus-visible { outline: 2px solid var(--house-mid); outline-offset: 5px; }
+.house-number[aria-invalid="true"] { border-bottom-color: #fca5a5; }
+.house-unit { color: var(--house-mid); font-size: .875rem; white-space: nowrap; }
+.house-targets { display: grid; gap: .75rem; padding: .5rem 0; }
+.house-target-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; }
+.house-target-row strong { font-size: 1.75rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.house-target-row small { display: block; color: var(--house-muted); font-size: .75rem; }
+.house-support { border-top: 1px solid var(--house-line); padding-top: .75rem; color: var(--house-muted); }
+.house-support > summary { min-height: 44px; cursor: pointer; padding: .625rem 0; font-size: .875rem; }
+.house-support > summary:focus-visible { outline: 2px solid var(--house-accent); outline-offset: 2px; }
+
+/* Two independent measurements remain legible on narrow phones. No tiny
+   side-by-side fields and no absolute-positioned fake instrument display. */
+@media (min-width: 480px) {
+  .house-measurements-both { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+  .house-measurements-both .house-number { font-size: 3.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .house-action { transition: none; }
 }
 
 @media (min-width: 640px) {
@@ -42,3 +114,147 @@ body {
     padding-bottom: 1rem;
   }
 }
+
+/* Shared House controls and surfaces across Train, Assessments, Analyze and Settings. */
+.house-training { color: var(--house-ink); }
+.house-training .surface-hero {
+  border: 1px solid var(--house-line);
+  border-radius: 1.75rem;
+  padding: clamp(1rem, 4vw, 1.75rem);
+  box-shadow: 0 8px 30px -24px #163a4060;
+}
+.house-training .surface-primary, .house-training .surface-secondary {
+  border-color: var(--house-line);
+  border-radius: 1.5rem;
+  box-shadow: none;
+}
+.house-training .surface-inset, .house-training .surface-utility {
+  background: var(--house-tint);
+  border-radius: 1rem;
+}
+.house-training :where(.bg-slate-900) { background-color: var(--house-deep); }
+.house-training :where(button.bg-slate-900:hover:not(:disabled)) { background-color: var(--house-accent); }
+.house-training :where(.bg-slate-100, .bg-slate-200) { background-color: var(--house-tint); }
+.house-training :where(.text-slate-900, .text-slate-800) { color: var(--house-ink); }
+.house-training :where(.text-slate-500, .text-slate-600) { color: var(--house-muted); }
+.house-training :where(input:not(.house-number):not([type=checkbox]):not([type=radio]), select, textarea) {
+  border-color: var(--house-line);
+  font-size: max(1rem, 1em);
+}
+.house-training :where(button, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--house-accent);
+  outline-offset: 3px;
+}
+.house-training :where(button) { min-height: 44px; }
+.house-training :where(button[aria-pressed=true], button[aria-checked=true], button[aria-selected=true]) {
+  background-color: var(--house-deep);
+  color: white;
+}
+.house-training-header { position: relative; overflow: hidden; }
+.house-training-mark {
+  position: absolute; width: 10rem; height: 10rem;
+  right: -3.5rem; top: -3rem; color: var(--house-mid); opacity: .32;
+  pointer-events: none;
+}
+.house-exercise-row {
+  display: flex; width: 100%; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 1.15rem 1.25rem; text-align: left;
+  background: white; border: 1px solid var(--house-line); border-radius: 1.25rem;
+  transition: border-color .15s, background-color .15s;
+}
+.house-exercise-row:hover { background: var(--house-tint); border-color: var(--house-mid); }
+.house-exercise-row h3 { font-weight: 550; line-height: 1.4; }
+.house-exercise-row p { color: var(--house-muted); font-size: .75rem; margin-top: .4rem; }
+.house-training-disclosure {
+  border-top: 1px solid var(--house-line); padding: .25rem 0;
+}
+.house-training-disclosure > summary {
+  padding: .8rem .25rem; min-height: 44px; cursor: pointer;
+  font-size: .9rem; font-weight: 500; color: var(--house-ink);
+}
+.house-training-disclosure > div { padding: .5rem .25rem 1rem; }
+.house-training .house-training-focus {
+  background: var(--house-deep); color: white; border-radius: 1.5rem; padding: 1.5rem;
+}
+.house-training .house-training-focus :where(p, span) { color: inherit; }
+.house-training .house-training-focus :where(input) { color: var(--house-ink); }
+.house-training .house-score-picker button {
+  min-height: 64px; padding: .65rem .15rem; font-size: 1.5rem; border-radius: 1rem;
+}
+.house-training .house-score-picker small { display: block; font-size: .65rem; opacity: .8; font-weight: 400; }
+.house-training .house-training-note { border: 0; background: transparent; padding: .5rem .25rem; }
+.house-training .house-training-note textarea { background: white; }
+.house-plan-actions { display: grid; gap: .5rem; margin-top: 1rem; }
+.house-plan-actions details { border-top: 1px solid var(--house-line); }
+.house-plan-actions summary { min-height: 44px; padding: .75rem .25rem; cursor: pointer; font-size: .8rem; color: var(--house-muted); }
+.house-plan-actions details > div { display: flex; flex-wrap: wrap; gap: .5rem; padding-bottom: .5rem; }
+@media (prefers-reduced-motion: reduce) { .house-exercise-row { transition: none; } }
+
+.house-training .house-measured-field {
+  padding: 1.5rem; border-radius: 1.5rem; background: var(--house-deep); color: white;
+}
+.house-training .house-measured-field span { color: #c7dbdd; }
+.house-training .house-measured-field input {
+  color: white; font-size: 2.5rem; font-weight: 500; border: 0;
+  border-bottom: 1px solid #93b7ba; border-radius: 0; background: transparent;
+  padding: .65rem 0; font-variant-numeric: tabular-nums;
+}
+.house-training .house-measured-field input::placeholder { color: #93b7ba; font-size: 1.5rem; }
+
+.house-training .house-score-picker {
+  background: var(--house-deep); padding: .5rem; border-radius: 1.5rem; gap: .2rem;
+}
+.house-training .house-score-picker button[aria-pressed=true] {
+  background: white; color: var(--house-deep); box-shadow: 0 0 0 2px var(--house-mid);
+}
+.house-training .house-score-picker button[aria-pressed=false] {
+  background: #28515a; color: #e7eff0;
+}
+.house-training button:disabled { opacity: .45; cursor: not-allowed; }
+.house-training .house-hero :focus-visible { outline-color: var(--house-mid); }
+.house-training .house-score-picker button:focus-visible { outline-color: white; }
+
+.house-training button[aria-label^="About "] {
+  width: 44px; min-width: 44px;
+  background: radial-gradient(circle, var(--house-tint) 10px, transparent 11px);
+}
+
+.house-training .house-exercise-category:disabled { opacity: 1; cursor: default; }
+
+/* Rink-side refinement: one input task, quiet context, native document scrolling. */
+.house-entry-stack { display: flex; flex-direction: column; gap: 1rem; }
+.house-entry-stack > .house-manual-fallback { order: 2; }
+.house-live-average { border-top: 1px solid var(--house-line); padding: 1rem .25rem; }
+.house-category-tile { display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; min-height: 72px; padding: 1rem; border-radius: 1.25rem;
+  background: var(--house-surface); color: var(--house-deep); text-align: left; }
+.house-category-tile:hover { background: var(--house-tint); }
+.house-home .house-list > li { padding: .65rem 0; }
+.house-home-shell { --house-nav-clearance: calc(5rem + env(safe-area-inset-bottom)); }
+@media (max-width: 639px) and (max-height: 740px) {
+  .house-home { gap: .5rem; }
+  .house-home > :not(:last-child) { margin-bottom: .5rem; }
+  .house-home .house-hero { padding: 1rem; }
+  .house-home .house-title { font-size: 1.4rem; margin-top: .5rem; }
+  .house-home .house-hero > .my-3 { min-height: 2.5rem; margin-block: .5rem; }
+  .house-home .house-hero svg { width: 3rem; }
+  .house-home .house-action { min-height: 44px; }
+  .house-home .house-list > li { padding: .4rem 0; }
+}
+.house-settings-row { display: flex; width: 100%; align-items: center; justify-content: space-between;
+  gap: 1rem; padding: 1.1rem 0; text-align: left; border-bottom: 1px solid var(--house-line); }
+.house-settings-row:last-child { border-bottom: 0; }
+.house-settings-row:disabled { opacity: .45; }
+.house-settings-row small { display: block; color: var(--house-muted); margin-top: .25rem; font-size: .75rem; }
+.house-training .house-confirm button { min-height: 48px; }
+
+/* Consistent top rhythm across destinations; account actions belong in Settings. */
+.house-status-row { display: flex; justify-content: flex-end; align-items: center; min-height: 28px; }
+.house-status-row > div { margin-bottom: 0; }
+.house-training-header { min-height: 108px; padding: 20px; }
+.house-home .house-training-header { padding: 20px; }
+.house-account-section { padding: .5rem .25rem; border-bottom: 1px solid var(--house-line); }
+.house-completion-notice { padding: .5rem .25rem; color: var(--house-accent); font-size: .875rem; }
+.house-analysis-filters .house-filter-grid > * { min-width: 0; min-height: 44px; }
+.house-analysis-select { text-overflow: ellipsis; }
+.house-analysis-select:hover { background: var(--house-canvas); }

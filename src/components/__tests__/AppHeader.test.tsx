@@ -13,9 +13,7 @@ describe("AppHeader", () => {
     expect(
       screen.getByRole("heading", { name: "Curling Performance" })
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Train, assess and understand your performance.")
-    ).toBeInTheDocument();
+    expect(screen.queryByText("Train, assess and understand your performance.")).not.toBeInTheDocument();
   });
 
   it("no longer shows the old product title", () => {
@@ -24,9 +22,9 @@ describe("AppHeader", () => {
     expect(screen.queryByText("Curling Release Tracker")).not.toBeInTheDocument();
   });
 
-  it("mentions Assess now that it's a real, usable capability (Phase B)", () => {
-    render(<AppHeader />);
-
-    expect(screen.getByText(/assess/i)).toBeInTheDocument();
+  it("keeps Home identity to a single heading", () => {
+    const { container } = render(<AppHeader />);
+    expect(container.querySelectorAll("h1")).toHaveLength(1);
+    expect(container.querySelector("p")).toBeNull();
   });
 });

@@ -181,7 +181,9 @@ export default function TrainingPlanEditor({
                     : handleStrategyLabel(step)}
                 </p>
 
-                <div className="mt-3 flex flex-wrap gap-2">
+                <details className="house-training-disclosure mt-3">
+                  <summary>Step options</summary>
+                  <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={() => moveStep(index, -1)}
@@ -223,7 +225,8 @@ export default function TrainingPlanEditor({
                   >
                     Delete
                   </button>
-                </div>
+                  </div>
+                </details>
               </li>
             ))}
           </ol>

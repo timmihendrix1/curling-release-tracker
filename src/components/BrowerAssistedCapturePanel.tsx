@@ -8,7 +8,6 @@ import {
   browerIntervalSeconds,
 } from "../lib/brower/chronDecoder";
 import {
-  describeBrowerBaseline,
   browerShotRange,
   type BrowerCandidate,
   type BrowerCaptureContext,
@@ -102,16 +101,6 @@ function useControllerView(
   }, [controller]);
 
   return view;
-}
-
-/** One candidate's provenance, as a single line for the Details disclosure. */
-function describeCandidateProvenance(candidate: BrowerCandidate): string {
-  const value = `${browerIntervalSeconds(candidate.intervalMs).toFixed(3)}s`;
-  const position = `record ${candidate.recordKey}, split ${candidate.splitIndex} of ${candidate.recordSplitCount}`;
-  if (candidate.precedingCumulativeMs === undefined) {
-    return `${value} — ${position}, measured from the start of the record.`;
-  }
-  return `${value} — ${position}, between ${formatBrowerTruncatedHundredths(candidate.precedingCumulativeMs)}s and ${formatBrowerTruncatedHundredths(candidate.cumulativeMs)}s on the running total.`;
 }
 
 function CandidateRow({
@@ -278,7 +267,6 @@ export default function BrowerAssistedCapturePanel({
   }, []);
 
   const { capture } = view;
-  const baseline = describeBrowerBaseline(capture);
   const shotRange = context === null ? null : browerShotRange(context);
   const automatic = shotRange !== null;
 
@@ -445,34 +433,6 @@ export default function BrowerAssistedCapturePanel({
         ? "No time filter — choose the interval for each shot"
         : `${shotRange.label} · ${shotRange.minMs / 1000}–${shotRange.maxMs / 1000} s`;
 
-  const observedRecordKeys = Object.keys(capture.observed);
-  const details: string[] = [
-    observedRecordKeys.length === 0
-      ? "No timer record has been observed on this connection yet."
-      : `Timer record${observedRecordKeys.length === 1 ? "" : "s"} seen: ${observedRecordKeys.join(", ")}.`,
-    baseline.splitCount === 0
-      ? "The timer has reported no times on this connection yet."
-      : `${baseline.splitCount} time${baseline.splitCount === 1 ? "" : "s"} across ${baseline.recordCount} timer record${baseline.recordCount === 1 ? "" : "s"} already known and excluded.`,
-  ];
-  if (capture.filteredCandidateCount > 0) {
-    details.push(
-      `${capture.filteredCandidateCount} ${capture.filteredCandidateCount === 1 ? "interval" : "intervals"} outside the selected range hidden since setup confirmation.`
-    );
-  }
-  if (capture.rejectedAssemblyCount > 0) {
-    details.push(
-      `${capture.rejectedAssemblyCount} packet${capture.rejectedAssemblyCount === 1 ? "" : "s"} could not be read as a complete record and produced no measurement.${capture.lastRejectionReason !== undefined ? ` Last reason: ${capture.lastRejectionReason}` : ""}`
-    );
-  }
-  if (capture.phase === "suspended" && capture.suspendedReason !== undefined) {
-    details.push(`Why measurements paused: ${capture.suspendedReason}`);
-  }
-  if (awaitingClearUpdate && view.notice !== null) {
-    details.push(view.notice);
-  }
-  for (const candidate of [...capture.candidates].reverse()) {
-    details.push(describeCandidateProvenance(candidate));
-  }
 
   return (
     <section className={surfaceClass("primary", "space-y-3")} aria-label="Timer Measurements">
@@ -622,16 +582,18 @@ export default function BrowerAssistedCapturePanel({
         </p>
       )}
 
-      <details className="rounded-xl border border-slate-200 bg-white">
-        <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-medium text-slate-700">
-          Details
-        </summary>
-        <ul className="space-y-2 border-t border-slate-100 px-3 py-3 text-xs text-slate-600">
-          {details.map((entry, index) => (
-            <li key={index}>{entry}</li>
-          ))}
-        </ul>
-      </details>
+      {capture.rejectedAssemblyCount > 0 && (
+        <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+          A timer reading could not be received completely. No measurement was added.
+          {capture.lastRejectionReason && ` ${capture.lastRejectionReason}`}
+        </p>
+      )}
+      {capture.phase === "suspended" && capture.suspendedReason && (
+        <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+          Measurements paused: {capture.suspendedReason}
+        </p>
+      )}
+
     </section>
   );
 }

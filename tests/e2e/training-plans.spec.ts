@@ -117,8 +117,10 @@ test("keeps a saved plan whose Exercise was retired from discovery fully usable"
   await page.getByRole("tab", { name: "Training Plans" }).click();
   await expect(page.getByText("Saved Split-Time Plan")).toBeVisible();
 
+  await page.getByText("Plan options", { exact: true }).first().click();
   await page.getByRole("button", { name: "Edit" }).first().click();
   await expect(page.getByText("Draw Split Time")).toBeVisible();
+  await page.getByText("Step options", { exact: true }).last().click();
   await page.getByRole("button", { name: "Edit" }).last().click();
   await expect(page.getByRole("heading", { name: "Edit Step" })).toBeVisible();
   // The retired Exercise keeps its own snapshot selectable, so editing never forces a
@@ -162,10 +164,12 @@ test("keeps a historical diagram available offline after the app starts", async 
   // Every diagram request fails, so only the cache can satisfy this.
   await page.route("**/exercise-diagrams/**", (route) => route.abort());
   await page.goto("/");
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await goToTrain(page);
   await page.getByRole("tab", { name: "Training Plans" }).click();
+  await page.getByText("Plan options", { exact: true }).first().click();
   await page.getByRole("button", { name: "Edit" }).first().click();
+  await page.getByText("Step options", { exact: true }).last().click();
   await page.getByRole("button", { name: "Edit" }).last().click();
   await page.getByText("View setup and diagram").click();
 
@@ -177,7 +181,7 @@ test("keeps a historical diagram available offline after the app starts", async 
     .toBe(cached);
 
   await page.reload();
-  await page.waitForSelector("text=Today's Plan");
+  await page.getByTestId("house-home").waitFor();
   await expect(page.evaluate((key) => localStorage.getItem(key), cacheKey)).resolves.toBe(cached);
   await page.unroute("**/exercise-diagrams/**");
 });
@@ -194,7 +198,7 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
 
   await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
   await expect(page.getByText("0 of 2 planned stones")).toBeVisible();
@@ -205,7 +209,7 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   // Alternating handles, starting In — after one saved shot Out Handle is expected.
   await expect(
     page.locator("h2", { hasText: "Add Shot" }).locator("..").getByRole("button", { name: "Out Handle" })
-  ).toHaveClass(/bg-slate-900/);
+  ).toHaveAttribute("aria-pressed", "true");
 
   // Reload mid-plan — the active step, shot count and created block must all
   // survive. Reload itself lands on Home by default (same as any other active
@@ -216,7 +220,7 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await goToTrain(page);
   await expect(page.getByText(/Step 1 of 2/)).toBeVisible();
   await expect(page.getByText("1 of 2 planned stones")).toBeVisible();
-  await expect(page.getByText("Active Training Block", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
 
   await addShot(page, "3.80");
   await expect(page.getByText("2 of 2 planned stones")).toBeVisible();
@@ -234,14 +238,14 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
   await expect(page.getByText("This is the last planned exercise.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Next Exercise" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Finish Training" }).click();
-  await expect(page.getByRole("heading", { name: "Finish Training" })).toBeVisible();
+  await page.getByRole("button", { name: "Complete Session" }).click();
+  await expect(page.getByRole("heading", { name: "Complete Session" })).toBeVisible();
   await expect(page.getByText("Save this completed training to history?")).toBeVisible();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
 
-  await expect(page.getByText("Training finished")).toBeVisible();
-  await expect(page.getByText("Saved to history.", { exact: false })).toBeVisible();
-  await expect(page.getByText("Completed", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
+  await expect(page.getByText("Training saved.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start New Training" })).toHaveCount(0);
 
   await goToAnalyze(page);
   await expect(page.getByText("Blocks and Sessions")).toBeVisible();
@@ -311,6 +315,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await page.getByRole("button", { name: "4 points, 100 percent" }).click();
   await page.getByRole("button", { name: "Record Stone" }).click();
   await expect(page.getByText("1 stone recorded")).toBeVisible();
+  await page.getByText("Result details and stones", { exact: true }).click();
   await expect(page.getByText(/2.5 rotations/)).toBeVisible();
 
   // The typed Exercise runtime and its result must survive the same reload boundary
@@ -318,6 +323,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await page.reload();
   await goToTrain(page);
   await expect(page.getByText(/Step 2 of 4/)).toBeVisible();
+  await page.getByText("Result details and stones", { exact: true }).click();
   await expect(page.getByText("Stone 1 · Inhandle · 4\/4 \(100%\) · 2.5 rotations")).toBeVisible();
   await expect(page.getByText("Next: Release Time")).toBeVisible();
   // Next Exercise completes the Shotmaking step itself — no separate Complete
@@ -343,10 +349,10 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await page.getByRole("button", { name: "Record Measurement" }).click();
   await expect(page.getByText(/2.5 rotations/)).toHaveCount(2);
 
-  await page.getByRole("button", { name: "Finish Training" }).click();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
-  await expect(page.getByText("Training finished")).toBeVisible();
-  await expect(page.getByText("Completed", { exact: true })).toHaveCount(4);
+  await page.getByRole("button", { name: "Complete Session" }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
+  await expect(page.getByText("Training saved.", { exact: true })).toBeVisible();
 });
 
 test("moves on early, finishes mid-plan and reports planned versus actual factually", async ({
@@ -357,7 +363,7 @@ test("moves on early, finishes mid-plan and reports planned versus actual factua
   await page.getByRole("tab", { name: "Training Plans" }).click();
   await page.getByRole("button", { name: "Start" }).click();
   await page.getByRole("button", { name: "Start Training" }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 
   // One stone of two planned, then straight on — the planned count is guidance.
   await addShot(page, "3.70");
@@ -372,19 +378,16 @@ test("moves on early, finishes mid-plan and reports planned versus actual factua
   await expect(page.getByText(/Step 2 of 2/)).toBeVisible();
   await expect(page.getByText("0 of 2 planned stones")).toBeVisible();
 
-  await page.getByRole("button", { name: "Finish Training" }).click();
+  await page.getByRole("button", { name: "Complete Session" }).click();
   await expect(
     page.getByText("Save this training to history?", { exact: false })
   ).toBeVisible();
-  await page.getByRole("button", { name: "Finish", exact: true }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
 
-  await expect(page.getByText("Training finished")).toBeVisible();
-  await expect(page.getByText("Ended early", { exact: true })).toBeVisible();
-  await expect(page.getByText("Nothing recorded", { exact: true })).toBeVisible();
-  await expect(page.getByText("Completed", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("1 of 2 planned stones")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
+  await expect(page.getByText("Training saved.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start New Training" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Start New Training" }).click();
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 
   // The partial plan is still an ordinary, saved Training Session.

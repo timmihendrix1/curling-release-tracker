@@ -8,7 +8,7 @@ import SportingSyncStatusControl from "./SportingSyncStatusControl";
 const secondaryButtonClassName =
   "min-h-11 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 
-export default function IdentityAccountControl({ onOpenTeams }: { onOpenTeams: () => void }) {
+export default function IdentityAccountControl({ onOpenTeams, compact = false, showSync = true, showTeams = true }: { onOpenTeams: () => void; compact?: boolean; showSync?: boolean; showTeams?: boolean }) {
   const identity = useOptionalIdentity();
   const cloudSync = useSportingCloudSync();
   const [signingOut, setSigningOut] = useState(false);
@@ -18,17 +18,18 @@ export default function IdentityAccountControl({ onOpenTeams }: { onOpenTeams: (
 
   return (
     <div data-testid="identity-account-control" className="mb-2 flex flex-wrap items-center justify-end gap-2 text-sm">
-      <div className="mr-auto min-w-0">
+      {!compact && <div className="mr-auto min-w-0">
         <p className="truncate font-medium text-slate-800">{session.displayName}</p>
         {session.email && <p className="truncate text-xs text-slate-500">{session.email}</p>}
-      </div>
-      {identity.state.kind === "ready_offline" && (
+      </div>}
+      {showSync && identity.state.kind === "ready_offline" && (
         <span role="status" className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
           Offline
         </span>
       )}
-      {cloudSync && <SportingSyncStatusControl cloudSync={cloudSync} />}
-      <button type="button" onClick={onOpenTeams} className={secondaryButtonClassName}>Teams</button>
+      {showSync && cloudSync && <SportingSyncStatusControl cloudSync={cloudSync} />}
+      {!compact && <>
+      {showTeams && <button type="button" onClick={onOpenTeams} className={secondaryButtonClassName}>Teams</button>}
       <button
         type="button"
         disabled={signingOut}
@@ -40,6 +41,7 @@ export default function IdentityAccountControl({ onOpenTeams }: { onOpenTeams: (
       >
         {signingOut ? "Signing out…" : "Sign out"}
       </button>
+      </>}
     </div>
   );
 }

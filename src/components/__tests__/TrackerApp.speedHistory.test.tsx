@@ -39,7 +39,7 @@ function navButton(label: string) {
 
 async function expandArchivedSession(title: string) {
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Analyze").click();
   await waitFor(() => screen.getByText("Blocks and Sessions"));
 

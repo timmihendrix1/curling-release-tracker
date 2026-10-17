@@ -45,7 +45,7 @@ beforeEach(() => {
 async function openAnalyze(history: Session[]) {
   localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(history));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   screen.getAllByRole("button", { name: "Analyze" })[0].click();
   await waitFor(() => screen.getByText("Blocks and Sessions"));
 }

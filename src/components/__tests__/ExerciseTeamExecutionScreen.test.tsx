@@ -97,7 +97,7 @@ describe("ExerciseTeamExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
 
     expect(await screen.findByText(/2.5 rotations/)).toBeInTheDocument();
-    expect(screen.getByText(/100% average · 4\/4 points/)).toBeInTheDocument();
+    expect(screen.getByText(/100% average · 1 scored/)).toBeInTheDocument();
     expect(screen.getByText(/Planned rotation: Athlete B delivers next/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Apply Planned Rotation" }));
@@ -150,7 +150,7 @@ describe("ExerciseTeamExecutionScreen", () => {
 
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Correct recorded stone" })).not.toBeInTheDocument());
     expect(screen.getByText(/No scored stones/)).toBeInTheDocument();
-    expect(screen.getByText(/100% average · 4\/4 points/)).toBeInTheDocument();
+    expect(screen.getByText(/100% average · 1 scored/)).toBeInTheDocument();
     expect(screen.getByText(/Stone 1 · Athlete B/)).toBeInTheDocument();
     expect(screen.getByText(/1 Sweeper · Sweeping used/)).toBeInTheDocument();
   });

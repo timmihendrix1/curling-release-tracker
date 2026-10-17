@@ -1,3 +1,4 @@
+import TrainingHeader from "./TrainingHeader";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import { exerciseDiscoveryCategory } from "../lib/exercises/discovery";
 import { exerciseDiscoveryCategoryLabel } from "../lib/exercises/presentation";
@@ -30,15 +31,9 @@ export default function ExerciseSoloSetupScreen({
         ← Back to Exercise Library
       </button>
 
-      <section className={surfaceClass("hero")}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          {exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo setup
-        </p>
-        <h2 className="mt-1 text-xl font-semibold text-slate-900">{version.title}</h2>
-        <p className="mt-2 text-sm text-slate-600">
-          Prepare the exercise, then confirm when you are ready to record.
-        </p>
-      </section>
+      <TrainingHeader title={version.title} eyebrow={`${exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo setup`}>
+        Prepare the exercise, then start when you are ready.
+      </TrainingHeader>
 
       <section className={surfaceClass("primary")}>
         <ExerciseSetupOverview

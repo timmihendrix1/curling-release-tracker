@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   freshLoad,
+  completedBlockAnalysis,
   goToAnalyze,
   setupFixedBlock,
   setupVariableSmartRandomBlock,
@@ -36,7 +37,8 @@ async function addShot(
 
 async function startNewSession(page: import("@playwright/test").Page) {
   await startNewSessionFromManagement(page);
-  await page.getByRole("button", { name: "Start", exact: true }).click();
+  await page.getByRole("button", { name: "Complete", exact: true }).click();
+
   await page.getByRole("heading", { level: 2, name: "Exercises" }).waitFor();
 }
 
@@ -78,7 +80,7 @@ test("Category Progress: switching Training Category shows only comparable block
   await page.getByRole("button", { name: "New Training Block" }).click();
   await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
   await addShot(page, 3.6);
   await addShot(page, 4.0);
 
@@ -113,6 +115,7 @@ test("Multi-session Scatterplot combines shots across sessions and blocks", asyn
   await goToAnalyze(page);
   await page.getByLabel("Training Category").selectOption("variable");
 
+  await page.getByText("Detailed Analysis", { exact: true }).click();
   const scatterCard = page.locator("div", {
     has: page.getByText("Target vs. Actual", { exact: false }),
   }).last();
@@ -130,9 +133,9 @@ test("Metric Info popover opens with an explanation and closes with Escape", asy
   await setupFixedBlock(page);
   await addShot(page, 3.8);
 
-  await page.getByText("Live Performance").click();
+  const analysis = await completedBlockAnalysis(page);
 
-  const infoButton = page.getByRole("button", { name: "About Average Error" });
+  const infoButton = analysis.getByRole("button", { name: "About Average Error" });
   await infoButton.click();
 
   await expect(
@@ -155,11 +158,12 @@ test("Chart Info popover distinguishes a statistical outlier from a Major Miss",
   await setupFixedBlock(page);
   await addShot(page, 3.8);
 
-  // Handle Analysis lives inside Active Training's collapsed-by-default
-  // Live Performance section (compositional redesign).
-  await page.getByText("Live Performance").click();
+  // Detailed charts belong to the completed session in Analyze.
+  await completedBlockAnalysis(page);
+  await page.getByText("Detailed Analysis", { exact: true }).click();
+  const analysis = page.locator("details").filter({ has: page.locator("summary", { hasText: "Detailed Analysis" }) });
 
-  const boxplotInfo = page.getByRole("button", { name: "About Handle Boxplot" });
+  const boxplotInfo = analysis.getByRole("button", { name: "About Handle Boxplot" });
   await boxplotInfo.click();
   await expect(
     page.getByText("Statistical outliers are not the same as Major Misses.")

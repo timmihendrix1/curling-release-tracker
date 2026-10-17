@@ -13,7 +13,7 @@ test("a running sequence survives reload as paused, with progress intact", async
   await setupFixedBlock(page);
   await startAutoCapture(page, { count: 5, handleMode: "Fixed In" });
 
-  await captureManualResultInput(page).fill("3.70");
+  await (await captureManualResultInput(page)).fill("3.70");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("1 / 5 shots")).toBeVisible();
 
@@ -28,7 +28,7 @@ test("a running sequence survives reload as paused, with progress intact", async
   await page.getByRole("button", { name: "Resume" }).click();
   await expect(page.getByText("Running", { exact: true })).toBeVisible();
 
-  await captureManualResultInput(page).fill("3.72");
+  await (await captureManualResultInput(page)).fill("3.72");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(page.getByText("2 / 5 shots")).toBeVisible();
 });

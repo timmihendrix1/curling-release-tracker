@@ -75,7 +75,7 @@ function thresholdModeOptionFor(
 }
 
 function selectClassName(): string {
-  return "rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500";
+  return "house-analysis-select min-h-11 min-w-0 w-full rounded-xl border-0 bg-transparent px-3 py-2 text-sm text-[var(--house-ink)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--house-accent)]";
 }
 
 /**
@@ -302,11 +302,11 @@ export default function HistoryFilterBar({
     filters.targetRange !== undefined;
 
   return (
-    <div className="sticky top-0 z-20 -mx-4 bg-slate-100/95 px-4 pb-3 pt-3 backdrop-blur sm:-mx-6 sm:px-6">
+    <div className="house-analysis-filters sticky top-0 z-20 bg-[var(--house-canvas)]/95 py-2 backdrop-blur">
       {/* Utility-level control (Epic 1) — no shadow, so it never competes
           with the screen's Hero summary below it. */}
-      <div className="rounded-xl border border-slate-200 bg-white p-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="rounded-2xl bg-white p-1">
+        <div className="house-filter-grid grid grid-cols-2 gap-1 sm:grid-cols-3">
           <select
             aria-label="Training Category"
             className={selectClassName()}

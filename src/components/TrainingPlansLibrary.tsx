@@ -81,7 +81,8 @@ export default function TrainingPlansLibrary({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <h2 className="px-1 text-lg font-medium">Your training plans.</h2>
       {plans.map((plan) => {
         const executable = isPlanExecutable(plan);
 
@@ -103,7 +104,7 @@ export default function TrainingPlansLibrary({
               </p>
             )}
 
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="house-plan-actions">
               <button
                 type="button"
                 onClick={() => onStart(plan)}
@@ -113,6 +114,9 @@ export default function TrainingPlansLibrary({
                 Start
               </button>
 
+              <details>
+                <summary aria-label={`Plan options: ${plan.name}`}>Plan options</summary>
+                <div>
               <button
                 type="button"
                 onClick={() => onEdit(plan)}
@@ -136,6 +140,8 @@ export default function TrainingPlansLibrary({
               >
                 Delete
               </button>
+                </div>
+              </details>
             </div>
           </div>
         );

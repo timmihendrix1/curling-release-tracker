@@ -47,7 +47,7 @@ describe("unreadable domain storage survives hydration and autosave", () => {
     localStorage.setItem(key, bytes);
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     // Exercise the app enough to run the save effects for every domain.
     navButton("Train").click();
@@ -63,7 +63,7 @@ describe("unreadable domain storage survives hydration and autosave", () => {
     localStorage.setItem(TRAINING_PLANS_KEY, '{"schemaVersion":2,"plans":[');
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     // Training itself still starts and records, and its own key is written normally.
     navButton("Train").click();
@@ -81,7 +81,7 @@ describe("unreadable domain storage survives hydration and autosave", () => {
 
   it("still writes a genuinely absent plan library once the athlete creates one", async () => {
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
 

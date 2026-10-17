@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { parseReleaseTime } from "../lib/timeInput";
 import { surfaceClass } from "./Surface";
 
@@ -27,6 +27,7 @@ export default function AssessmentAttemptEntry({
   maxInvalidAttempts,
   captureStatusMessage,
 }: AssessmentAttemptEntryProps) {
+  const inputId = useId();
   const [value, setValue] = useState("");
   const submittingRef = useRef(false);
 
@@ -51,10 +52,11 @@ export default function AssessmentAttemptEntry({
     // Immediately accessible, essential control — but must not compete with
     // the Current Planned Shot Hero above it (Epic 1).
     <div className={surfaceClass("primary")}>
-      <p className="text-sm font-medium text-slate-700">Enter measured time</p>
-
-      <div className="mt-2 flex gap-2">
+      <div className="house-measured-field">
+      <label htmlFor={inputId} className="text-sm font-medium">Enter measured time (s)</label>
+      <div className="mt-2 flex flex-col gap-3">
         <input
+          id={inputId}
           type="text"
           inputMode="decimal"
           value={value}
@@ -67,17 +69,18 @@ export default function AssessmentAttemptEntry({
           }}
           placeholder="3.75 or 375"
           enterKeyHint="done"
-          className="flex-1 rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900"
+          className="w-full min-w-0"
         />
         <button
           type="button"
           onClick={handleSubmit}
-          className="rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+          className="house-action house-action-inverse"
         >
           Record
         </button>
       </div>
 
+      </div>
       {captureStatusMessage && (
         <p className="mt-2 text-xs text-slate-500">{captureStatusMessage}</p>
       )}

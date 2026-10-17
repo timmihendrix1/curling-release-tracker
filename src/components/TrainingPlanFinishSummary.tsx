@@ -7,6 +7,7 @@ import {
   type PlanStepOutcome,
   type PlanStepSummary,
 } from "../lib/trainingPlans/progress";
+import TrainingHeader from "./TrainingHeader";
 import { surfaceClass } from "./Surface";
 
 /**
@@ -68,30 +69,14 @@ export default function TrainingPlanFinishSummary({
 
   return (
     <div className="space-y-4">
-      <section className={surfaceClass("hero")}>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-          Training finished
-        </p>
-
-        <h2 className="mt-1 text-xl font-semibold text-slate-900">
-          {planExecution?.sourcePlanName ?? session.title}
-        </h2>
-
-        <p className="mt-2 text-sm text-slate-600">
-          {saved
-            ? "Saved to history. Everything recorded in this training is kept, including any exercise you ended before its planned volume."
-            : "Nothing was recorded, so no training was saved to history."}
-        </p>
-
-        {saved && (
-          <p className="mt-3 text-sm text-slate-700">
-            {recordedStones} stone{recordedStones === 1 ? "" : "s"} recorded
-            {exerciseCount > 0 && (
-              <> · {exerciseCount} exercise{exerciseCount === 1 ? "" : "s"}</>
-            )}
-          </p>
-        )}
-      </section>
+      <TrainingHeader eyebrow="Training finished" title={planExecution?.sourcePlanName ?? session.title}>
+        <p>{saved ? "Saved to history. All recorded work is kept." : "Nothing was recorded, so no training was saved to history."}</p>
+        {saved && <p className="mt-4 text-white">
+          <strong className="text-4xl font-medium tabular-nums">{recordedStones}</strong>{" "}
+          stone{recordedStones === 1 ? "" : "s"} recorded
+          {exerciseCount > 0 && <> · {exerciseCount} exercise{exerciseCount === 1 ? "" : "s"}</>}
+        </p>}
+      </TrainingHeader>
 
       {steps.length > 0 && (
         <section className={surfaceClass("primary")}>
@@ -101,9 +86,9 @@ export default function TrainingPlanFinishSummary({
             {steps.map((summary) => (
               <li
                 key={summary.stepNumber}
-                className={surfaceClass("inset", "flex items-start justify-between gap-3")}
+                className={surfaceClass("inset", "flex flex-wrap items-start justify-between gap-3")}
               >
-                <div>
+                <div className="min-w-0 flex-1 basis-36">
                   <p className="text-sm font-medium text-slate-900">
                     {summary.stepNumber}. {summary.title}
                   </p>

@@ -718,7 +718,7 @@ function hasCorrectedDiagram(definition: CorpusDefinition): boolean {
 
 /** The Exercise Version an athlete opens today. */
 export function currentCorpusVersionNumber(definition: CorpusDefinition): number {
-  return hasCorrectedDiagram(definition) ? 2 : 1;
+  return hasCorrectedDiagram(definition) ? 3 : 2;
 }
 
 function buildVersion(
@@ -889,8 +889,18 @@ export function buildSwissCurlingCorpusExercises(): Exercise[] {
 export function buildSwissCurlingCorpusVersions(): ExerciseVersion[] {
   return DEFINITIONS.flatMap((definition) => {
     const current = currentCorpusVersionNumber(definition);
-    return Array.from({ length: current }, (_, index) =>
+    const previousVersions = Array.from({ length: current - 1 }, (_, index) =>
       buildVersion(definition, index + 1)
     );
+    const previous = previousVersions[previousVersions.length - 1];
+    return [...previousVersions, {
+      ...previous,
+      id: `${definition.id}-v${current}`,
+      version: current,
+      sourceReferenceGoal: {
+        text: `Source reference goal: ${definition.sourceGoal} This is descriptive context only and is not evaluated by the app.`,
+        evaluated: false as const,
+      },
+    }];
   });
 }

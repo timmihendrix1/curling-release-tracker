@@ -43,7 +43,7 @@ test("Training Category Help: Fixed, Variable and Blind Weight each explain purp
   // Opening/closing Info popovers never affected the actual selection —
   // Blind Weight (selected above) is still what gets submitted.
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 });
 
 test("Measurement Mode Help: Backline – Hog and Hog – Hog explain the difference", async ({
@@ -65,7 +65,7 @@ test("Measurement Mode Help: Backline – Hog and Hog – Hog explain the differ
 
   // Selecting Measurement Mode still works after reading both explanations.
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
-  await page.waitForSelector("text=Active Training Block");
+  await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
 });
 
 test("Accuracy Thresholds Help explains On Target / Acceptable / Major Miss at Setup time", async ({

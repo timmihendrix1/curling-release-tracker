@@ -117,7 +117,7 @@ export default function AssessmentTrendChart({ points, comparisonThresholdLabel 
                   type="monotone"
                   dataKey="value"
                   name={METRIC_OPTIONS.find((option) => option.key === metric)?.label}
-                  stroke="#0f172a"
+                  stroke="#163a40"
                   strokeWidth={2}
                   dot={{ r: 4 }}
                   connectNulls

@@ -89,13 +89,9 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
     render(<ExerciseSummaryCard version={syntheticVersion()} onOpen={vi.fn()} />);
 
     expect(screen.getByText("Synthetic Freeze Ladder")).toBeInTheDocument();
-    expect(screen.getByText("Synthetic goal statement.")).toBeInTheDocument();
-    expect(screen.getByText("Shotmaking")).toBeInTheDocument();
-    expect(screen.getByText("Freeze")).toBeInTheDocument();
-    expect(screen.getByText("Level 2–4")).toBeInTheDocument();
-    expect(screen.getByText("Team")).toBeInTheDocument();
-    expect(screen.getByText("Sweeping required")).toBeInTheDocument();
-    expect(screen.getByText("1–2 Sweepers")).toBeInTheDocument();
+    expect(screen.getByText("Team · Level 2–4")).toBeInTheDocument();
+    // Detailed instruction and classification stay in the generic detail view.
+    expect(screen.queryByText("Synthetic goal statement.")).toBeNull();
     expect(
       screen.getByRole("button", { name: "View Details: Synthetic Freeze Ladder" })
     ).toBeInTheDocument();

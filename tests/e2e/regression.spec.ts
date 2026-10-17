@@ -19,7 +19,7 @@ test("classic manual entry, Analyze navigation, and New Block still work", async
   await shotEntryPanel.getByRole("button", { name: "draw", exact: true }).click();
   await shotEntryPanel.getByRole("button", { name: "Save Shot" }).click();
 
-  await expect(page.getByText("1 shot total")).toBeVisible();
+  await expect(page.getByText("1 stone recorded")).toBeVisible();
   // Recent Shots is collapsed by default (Epic 2).
   await page.getByText(/Recent Shots/).click();
   await expect(page.getByText("#1 · In · draw")).toBeVisible();
@@ -31,9 +31,9 @@ test("classic manual entry, Analyze navigation, and New Block still work", async
   await expect(page.getByText("Blocks and Sessions")).toBeVisible();
 
   await goToTrain(page);
-  await expect(
-    page.getByText("Active Training Block", { exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
+  await page.getByText("Exercise settings", { exact: true }).click();
+  await expect(page.getByText("Current exercise", { exact: true })).toBeVisible();
 
   // New Training Block still works when no capture sequence is running.
   await page.getByRole("button", { name: "New Training Block" }).click();

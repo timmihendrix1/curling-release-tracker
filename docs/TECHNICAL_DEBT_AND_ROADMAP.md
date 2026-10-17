@@ -996,11 +996,12 @@ Tolerance Profile"/"Default Profile" entries for the domain concepts.
 
 ---
 
-## Fixed Weight measured quantities (Stage A reviewed; Stage B implemented)
+## Fixed Weight measured quantities (Stages A and B reviewed)
 
-**Status: Stage A implemented and independently reviewed. Stage B implemented;
-independent review outstanding. Rollout readiness and real-device iOS/TCi acceptance
-are separate, unmet gates.** Canonical
+**Status: Stages A and B are both implemented and independently reviewed**, Stage B's
+review having completed before commit `d801315` (2026-10-08). **Rollout readiness
+(deployed old clients), native-storage migration/cutover, and real-device iOS/TCi
+acceptance are separate, still-unmet gates** that this review did not address. Canonical
 product source: `docs/FIXED_WEIGHT_SPEED_AND_CAPTURE_SPECIFICATION.md`. Architecture:
 `docs/adr/0051-fixed-weight-measured-quantities-and-per-side-tolerances.md`.
 
@@ -1975,7 +1976,10 @@ needs to make, not something engineering can resolve by itself:
    Keystore, decided 2026-09-30) and a readiness gate exist. **All existing local data is
    preserved; a pilot reset is rejected; existing data must be migrated and verified before
    cutover.** **User-reported device evidence now exists** for the configured pragmas and for
-   restart recovery, and **not** for failed/uncertain commits, reopen-after-interruption,
+   restart recovery (physical iPhone, 2026-09-30); the diagnostic transaction scenarios have
+   run on a **simulator only** (user-reported, 2026-10-15; canonical record in
+   `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7). **Not** measured: physical-device
+   transaction acceptance, naturally occurring commit failures, termination during a commit,
    backup/restore, power-loss survival, any capacity limit or Android — so the engine is
    settled for the adapter while **source retirement stays unjustified** and no operating
    envelope is recorded. **Nothing is migrated and nothing is cut over:** composition asks an
@@ -1992,9 +1996,12 @@ needs to make, not something engineering can resolve by itself:
    installation store ids observed before activation; a pre-activation record with a missing
    source marker, indistinguishable from later source clearing and therefore blocked
    conservatively; and the human-authorised resolution of a blocked source-generation
-   divergence. **Two further migration requirements follow from S2** and are not additions to
-   that count: transferring the credentials already in WebView storage, and handling the
-   interruption where one of the two separate stores is written and the other is not. Cloud
+   divergence. The suggested next step for the first two is a **proposed, unapproved**
+   design-and-review brief in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7 ("P-1/P-2
+   provenance design brief"); it settles neither blocker. **Two further migration
+   requirements follow from S2** and are not additions to that count: transferring the
+   credentials already in WebView storage, and handling the interruption where one of the
+   two separate stores is written and the other is not. Cloud
    synchronisation of
    authored Training Plans and other local-only domains remains a separate, unscheduled
    feature. **Three product decisions remain genuinely open**, each blocking a named stage:

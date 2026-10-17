@@ -4,7 +4,7 @@ import AuthenticatedSportingPersistence from "../components/ProfileScopedSportin
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-4 sm:px-6 sm:py-8">
+    <main className="house-shell min-h-screen px-4 py-4 sm:px-6 sm:py-8">
       <div className="mx-auto w-full max-w-md sm:max-w-xl">
         <IdentityProvider>
           <AuthenticatedSportingPersistence>

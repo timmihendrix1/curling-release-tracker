@@ -1,93 +1,100 @@
 import type { Session } from "../types";
+import { blockModeLabel, getActiveBlock } from "../lib/trainingBlocks";
+import { resolveBlockMeasurement } from "../lib/measurement/quantities";
+import { sessionHasArchivableActivity } from "../lib/exercises/sessionIntegration";
+import { countRecordedStones, isPlanExecutionActive } from "../lib/trainingPlans/progress";
 import DeviceStatusCard from "./DeviceStatusCard";
 import FutureCapabilitiesSection from "./FutureCapabilitiesSection";
-import { surfaceClass } from "./Surface";
 import TodayPlanCard from "./TodayPlanCard";
-import TrainingOverview from "./TrainingOverview";
+import TrainingHeader from "./TrainingHeader";
 
 type HomeScreenProps = {
   currentSession: Session | null;
   sessionHistory: Session[];
   onStartTraining: () => void;
   onOpenAnalyze: () => void;
+  onOpenSettings?: () => void;
   onManageTeams?: () => void;
   hasActiveAssessmentRun?: boolean;
   onResumeAssessment?: () => void;
+  /** The Team runner takes precedence in Train; never show a different resume destination. */
+  activeTeamExerciseTitle?: string;
 };
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 18) return "Good afternoon";
-  return "Good evening";
-}
-
-/**
- * The app's daily entry point — "what is relevant today?", not an analytics
- * dashboard. Composes small, single-purpose sections; see
- * docs/PLATFORM_NAVIGATION_AND_HOME_EXPERIENCE.md for section order and
- * rationale, and docs/adr/0009 for why Assess has no section here yet.
- *
- * Greeting is a plain heading in the normal page flow (no card, no shadow) —
- * it is not a section with its own weight, just a quiet time-of-day cue
- * above Today's Plan, the actual primary section.
- */
+/** A read-only preview of the mounted Profile's state; all actions use the shell's guards. */
 export default function HomeScreen({
   currentSession,
   sessionHistory,
   onStartTraining,
   onOpenAnalyze,
+  onOpenSettings,
   onManageTeams = () => {},
   hasActiveAssessmentRun = false,
   onResumeAssessment,
+  activeTeamExerciseTitle,
 }: HomeScreenProps) {
-  const currentSessionHasShots = (currentSession?.shots.length ?? 0) > 0;
-  const mostRecentHistorySession =
-    sessionHistory.length > 0
-      ? sessionHistory.reduce((latest, session) =>
-          new Date(session.date) > new Date(latest.date) ? session : latest
-        )
-      : null;
-
-  const hasAnyTraining = currentSessionHasShots || mostRecentHistorySession !== null;
-  const lastTrainingLabel = currentSessionHasShots
-    ? "Today"
-    : mostRecentHistorySession
-      ? new Date(mostRecentHistorySession.date).toLocaleDateString()
-      : "";
-  const totalSessions = sessionHistory.length + (currentSessionHasShots ? 1 : 0);
+  const block = currentSession ? getActiveBlock(currentSession) : undefined;
+  const execution = currentSession?.exerciseExecutions?.find(
+    (item) => item.id === currentSession.activeExerciseExecutionId
+  );
+  const plan = currentSession?.planExecution;
+  const hasActivePlan = !!(currentSession && plan && isPlanExecutionActive(currentSession, plan));
+  const count = currentSession ? countRecordedStones(currentSession) : 0;
+  // The empty, automatically-created Session is not a training. Conversely a
+  // configured block/execution is resumable even before its first stone.
+  const hasTraining = !!(block || execution || hasActivePlan || (currentSession && sessionHasArchivableActivity(currentSession)));
+  const quantities = block ? resolveBlockMeasurement(block).quantities : [];
+  const measurementLabel = quantities.length === 2 ? "Time + Speed" : quantities[0] === "speed" ? "Speed" : "Time";
+  const training = activeTeamExerciseTitle
+    ? { title: activeTeamExerciseTitle, detail: "Team training" }
+    : hasTraining && currentSession
+      ? {
+          title: hasActivePlan ? plan!.sourcePlanName : execution?.exerciseVersionSnapshot.title ?? block?.name ?? currentSession.title,
+          detail: hasActivePlan ? "Training plan" : execution ? "Exercise in progress" : block ? `${blockModeLabel(block.mode)} · ${measurementLabel}` : "Current training",
+          stones: count,
+        }
+      : undefined;
+  const recent = [...sessionHistory]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 2);
 
   return (
-    <div className="space-y-4">
-      <h2 className="px-1 text-base font-medium text-slate-500">
-        {greeting()}
-      </h2>
-
+    <div className="house-home space-y-4" data-testid="house-home">
+      <TrainingHeader title="Your training." eyebrow="Curling Performance" />
       <TodayPlanCard
+        training={training}
         onStartTraining={onStartTraining}
         hasActiveAssessmentRun={hasActiveAssessmentRun}
         onResumeAssessment={onResumeAssessment}
       />
-
-      {/* Recent progress and platform status are both compact, thin
-          sections — one shared surface with an internal divider reads as
-          "recent activity", not two more equal-weight cards competing with
-          Today's Plan (compositional redesign, not just restyling). */}
-      <div className={surfaceClass("secondary")}>
-        <TrainingOverview
-          variant="bare"
-          hasAnyTraining={hasAnyTraining}
-          lastTrainingLabel={lastTrainingLabel}
-          totalSessions={totalSessions}
-          onOpenAnalyze={onOpenAnalyze}
-        />
-
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <DeviceStatusCard variant="bare" />
+      <section aria-labelledby="recent-training-title" className="px-1">
+        <div className="flex items-center justify-between gap-3">
+          <h2 id="recent-training-title" className="text-base font-medium">Recent training</h2>
+          <button type="button" onClick={onOpenAnalyze} className="house-link px-1 text-sm">See all</button>
         </div>
-      </div>
-
-      <FutureCapabilitiesSection onManageTeams={onManageTeams} />
+        {recent.length === 0 ? (
+          <p className="house-list py-4 text-sm text-[var(--house-muted)]">No training completed yet.</p>
+        ) : (
+          <ul className="house-list">
+            {recent.map((session) => (
+              <li key={session.id}>
+                <p className="break-words text-sm font-medium">{session.title}</p>
+                <p className="mt-1 text-xs text-[var(--house-muted)]">
+                  <time dateTime={session.date}>{new Date(session.date).toLocaleDateString()}</time>
+                  {" · "}{countRecordedStones(session)} {countRecordedStones(session) === 1 ? "stone" : "stones"} recorded
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <details className="house-support">
+        <summary>Teams &amp; devices</summary>
+        <div className="space-y-5 pt-2">
+          <DeviceStatusCard variant="bare" onOpenSettings={onOpenSettings} />
+          <FutureCapabilitiesSection onManageTeams={onManageTeams} />
+        </div>
+      </details>
     </div>
   );
 }

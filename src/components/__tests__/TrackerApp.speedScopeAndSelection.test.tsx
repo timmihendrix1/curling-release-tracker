@@ -52,9 +52,9 @@ function stored(): Session {
 async function openTraining(state: Session) {
   localStorage.setItem(CURRENT_SESSION_KEY, JSON.stringify(state));
   render(<TrackerApp />);
-  await waitFor(() => screen.getByText("No scheduled session."));
+  await waitFor(() => screen.getByTestId("house-home"));
   navButton("Train").click();
-  await waitFor(() => screen.getByText("Active Training Block"));
+  await waitFor(() => screen.getByText("Current exercise"));
   await act(async () => {});
 }
 
@@ -200,9 +200,9 @@ describe("a Speed block is always recordable", () => {
     cleanup();
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     expect(screen.getByLabelText("Speed (m/s)")).toBeInTheDocument();
   });
@@ -218,11 +218,11 @@ describe("the live summary never denies recorded stones", () => {
 
     await openTraining(state);
 
-    const summary = screen.getByText("Live Performance").closest("summary");
+    const summary = screen.getByRole("region", { name: "Live Performance" });
     expect(summary?.textContent).not.toContain("No shots yet");
     // The stone exists; what is absent is a TIME value, and that is said separately.
-    expect(summary?.textContent).toContain("1 shot");
-    expect(summary?.textContent).toContain("no release time recorded yet");
+    expect(summary?.textContent).toContain("1 stone recorded");
+    expect(summary?.textContent).toContain("Average time—0 measurements");
   });
 });
 
@@ -249,7 +249,7 @@ describe("history selection distinguishes quantity from timing interval", () => 
   async function openAnalyze(history: Session[]) {
     localStorage.setItem(SESSION_HISTORY_KEY, JSON.stringify(history));
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));
   }
@@ -378,18 +378,18 @@ describe("history selection distinguishes quantity from timing interval", () => 
 // --- Finish flow ----------------------------------------------------------------
 
 describe("direct training can be finished", () => {
-  it("offers Finish Training and archives everything recorded", async () => {
+  it("offers Complete Session and archives everything recorded", async () => {
     const block = speedBlock();
     const state = measurementSession([block], []);
     state.shots = [speedShot(block, 2.45, { sessionId: state.id })];
 
     await openTraining(state);
 
-    const finish = screen.getByRole("button", { name: "Finish Training" });
+    const finish = screen.getByRole("button", { name: "Complete Session" });
     expect(finish).toBeInTheDocument();
 
     fireEvent.click(finish);
-    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await waitFor(() => {
       const history = JSON.parse(
@@ -409,8 +409,8 @@ describe("direct training can be finished", () => {
 
     await openTraining(state);
 
-    fireEvent.click(screen.getByRole("button", { name: "Finish Training" }));
-    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete Session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Complete" }));
 
     await waitFor(() => {
       const history = JSON.parse(

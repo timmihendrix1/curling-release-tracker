@@ -14,20 +14,12 @@
 
 # Implementation Status (first vertical slice)
 
-This document describes the long-term, five-section navigation model
-(Home / Train / Assess / Analyze / Settings). The first implemented slice
-deliberately narrows this:
+The current primary navigation is **Home / Train / Analyze / Settings**. Assessments
+are an entry within Train (approved 2026-10-09; see `DESIGN_SYSTEM.md`, House rink-side
+refinement). The internal `assess` view remains for recovery and guard compatibility;
+Assessment Runs, templates, capture ownership and comparisons remain independent of
+Training Sessions. The older five-section target model below is historical context.
 
-- **Home, Train, Assess, Analyze, and Settings are all implemented** as real, active
-  navigation items — see `docs/SYSTEM_ARCHITECTURE.md`'s "Platform Navigation" section,
-  `docs/adr/0009`, and `docs/adr/0011` for Assess specifically.
-- **Assess became a real, active navigation item in Phase B** (the Release Time Core
-  Assessment v1 execution flow): `AssessScreen.tsx` drives the full Landing → Overview
-  → Guided Introduction → Threshold/Setup → Warm-up → Scored Execution →
-  Pause/Resume/Abandon → Completion Summary flow, on top of the domain and
-  local-persistence foundation built in Phase A (`src/lib/assessment/` — see
-  `docs/SYSTEM_ARCHITECTURE.md`'s "Assessments" section, `docs/adr/0010`, and
-  `docs/adr/0011`).
 - **The full Result screen, Assessment history/detail views, and Analyze integration
   (Phase C) are now implemented**: the Completion Summary's "View Full Results" action,
   `AssessmentLanding`'s "Latest Completed Assessment" card, and a new Assessments tab
@@ -39,9 +31,9 @@ deliberately narrows this:
   section. The Assessment product and domain model this screen implements is defined in
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` — read it before any further
   Assess implementation work, alongside this document.
-- **Train has two entry paths inside the existing `"train"` view** — no new
+- **Train offers Exercises, Training Plans and Assessments** — no new
   navigation item for either: `TrainLanding.tsx` offers **Exercises** (the default)
-  and **Training Plans**.
+  and **Training Plans**, with **Assessments** opening the guarded assessment view.
   - **Profile-owned mixed Training Plans are implemented**, per
     `docs/TRAINING_SYSTEM_AND_PLANS.md` and `docs/SYSTEM_ARCHITECTURE.md`'s "Training
     Plans" section.
@@ -63,36 +55,24 @@ deliberately narrows this:
   or scheduling data model.
 - **Athlete Experience** (Personal / Coach Guided / Team Training) is described below
   as a concept but has no selection UI, persistence, or Home-branching behavior yet.
-- **Home's implemented information hierarchy** (first-review UX pass) narrows this
-  document's Home Structure section further, to keep Home compact and
-  athlete-centered rather than a long list of equally-weighted cards:
-  - **Greeting** is a plain, time-of-day heading directly above Today's Plan — not a
-    standalone full-width card. It carries no invented name personalization.
-  - **Quick Access** was not built as its own section — "Start Training" already lives
-    in Today's Plan, and the only other quick action (opening Analyze) is a secondary
-    "View Analyze" control inside Training Overview instead, so a session-history
-    figure and its natural next action sit together.
-  - **Performance Snapshot** is implemented as **Training Overview** — the same
-    Last Training / Total Sessions facts, under an honestly-scoped name, since these
-    are activity data, not validated performance metrics. "Performance Snapshot" (as a
-    visible title) does not appear anywhere in the current implementation.
-  - **Teams** is a compact "Available now" surface with a direct Manage action.
-    **Schedule and Coach** share the quieter dashed "Coming next" container
-    (`FutureCapabilitiesSection` + `FutureCapabilityItem`). Implemented functionality
-    is never labelled "Coming soon".
-  - **Devices** keeps its own card, positioned between Training Overview and Coming
-    next: more prominent than a "Coming soon" placeholder (it's real, current
-    behavior), less prominent than Today's Plan. Its supporting copy reads
-    "External timing systems will be supported here." — deliberately not "...will
-    appear here when connected", which could be read as implying a connection is
-    already possible today.
-  - The app-wide title shown above the navigation is currently **"Curling
-    Performance"** with the subtitle "Train and understand your performance." — a
-    provisional, visible-only product name (see `AppHeader.tsx`), not a final
-    branding decision and not reflected in package/PWA metadata. The subtitle
-    deliberately names only capabilities that are actually available today (Train,
-    Analyze); Assess is not mentioned here until it exists as a real, usable
-    capability (see the Assess bullet above).
+- **Home's implemented information hierarchy** follows the approved House direction
+  in `DESIGN_SYSTEM.md`:
+  - The stable House header shows **Your training.** with **Curling Performance**
+    above a single primary current-training surface.
+  - An existing training shows a factual recorded-stone count and **Resume training**.
+    A configured training remains resumable before its first stone; the empty
+    automatically-created Session instead offers **Start Training**. Team execution
+    takes precedence when it is the Train destination, without borrowing Solo counts.
+  - **Recent training** lists the two newest archived Sessions. **See all** opens
+    Analyze; rows do not imply an unimplemented direct-detail action.
+  - Active Assessments retain their separate **Resume Assessment** action.
+  - **Teams & devices** groups supporting controls in a disclosure. Team **Manage**
+    remains available, and **Manage devices** opens Settings. Home makes no claim
+    about the current hardware connection. Schedule and Coach remain planned.
+  - The Home heading retains **Curling Performance**. All four destinations share
+    the same sync-row and House-header geometry; account management is below the Settings header.
+  - Shared navigation uses four labeled destinations and retains existing guards.
+    Its floating mobile surface accommodates narrow screens and safe-area spacing.
 
 Treat every section below as the target model this implementation is working toward,
 not as a description of what exists today — check `SYSTEM_ARCHITECTURE.md` for current
@@ -693,3 +673,9 @@ I want to measure my current level.
 I want to understand my performance.
 
 Every future feature should naturally strengthen one of these three pillars.
+
+### Session completion and active navigation
+
+Complete Session returns directly to the Train landing after acknowledged archiving,
+with a brief saved/empty notice. It does not insert a finish screen. Active exercises
+have no Assessment-start shortcut; the Train landing remains the entry for new Assessments.

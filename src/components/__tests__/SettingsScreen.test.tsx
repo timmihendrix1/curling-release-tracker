@@ -113,7 +113,7 @@ describe("SettingsScreen", () => {
       />
     );
 
-    const clearDataHeading = screen.getByRole("heading", { name: "Clear Data" });
+    const clearDataHeading = screen.getByText("Delete training history");
     const dataManagementHeading = screen.getByRole("heading", {
       name: "Data Management",
     });
@@ -123,10 +123,10 @@ describe("SettingsScreen", () => {
     });
 
     // Different containing sections, not siblings in the same card.
-    expect(clearDataHeading.closest("div")).not.toBe(
-      dataManagementHeading.closest("div")
+    expect(clearDataHeading.closest("details")).not.toBe(
+      dataManagementHeading.closest("details")
     );
-    expect(clearButton.closest("div")).not.toBe(exportButton.closest("div"));
+    expect(clearButton.closest("details")).not.toBe(exportButton.closest("details"));
   });
 
   it("calls the export/clear callbacks when history exists", () => {
@@ -180,7 +180,7 @@ describe("SettingsScreen", () => {
     );
 
     expect(screen.getByText("Accuracy Tolerances")).toBeInTheDocument();
-    expect(screen.getByText("1 profile saved · Default: Elite")).toBeInTheDocument();
+    expect(screen.getByText("1 saved · Elite")).toBeInTheDocument();
 
     screen.getByRole("button", { name: "Manage Accuracy Tolerances" }).click();
     expect(onManageAccuracyTolerances).toHaveBeenCalledTimes(1);
@@ -213,7 +213,7 @@ describe("SettingsScreen", () => {
 
     expect(screen.getByText("Smart Random Profiles")).toBeInTheDocument();
     expect(
-      screen.getByText("1 profile saved · Default: Full Weight Range")
+      screen.getByText("1 saved · Full Weight Range")
     ).toBeInTheDocument();
 
     screen.getByRole("button", { name: "Manage Smart Random Profiles" }).click();
@@ -273,6 +273,6 @@ describe("SettingsScreen", () => {
 
     // Both the Accuracy Tolerances and Smart Random Profiles sections show
     // this same empty-state copy when nothing has been saved yet.
-    expect(screen.getAllByText("No profiles saved yet.")).toHaveLength(2);
+    expect(screen.getAllByText("0 saved")).toHaveLength(2);
   });
 });

@@ -1,11 +1,17 @@
 import { useState, useSyncExternalStore } from "react";
+import ConfirmModal from "../../../src/components/ConfirmModal";
 import {
   DURABILITY_CLAIM_LABELS,
   getNativeStorageDiagnosticsController,
   type DiagnosticsLogEntry,
   type NativeStorageDiagnosticsController,
 } from "./nativeStorageDiagnosticsController";
+import { allCheckpointKeys } from "./syntheticCheckpoints";
 import { SYNTHETIC_FIXTURES } from "./syntheticFixtures";
+
+/** The two destructive cleanups. Each needs an explicit confirmation that names
+ * the database and exactly what will be deleted. */
+type PendingDeletion = "all_synthetic_data" | "checkpoint_data";
 
 /**
  * The opt-in native storage diagnostics surface.
@@ -44,7 +50,12 @@ export default function NativeStorageDiagnosticsLauncher() {
   return <DiagnosticsPanel controller={controller} onClose={() => setOpen(false)} />;
 }
 
-function DiagnosticsPanel({
+/**
+ * Exported for tests only, so the panel can be rendered against a stub
+ * controller. The launcher above is the only production user, and it always
+ * supplies the one shared controller.
+ */
+export function DiagnosticsPanel({
   controller,
   onClose,
 }: {
@@ -54,6 +65,16 @@ function DiagnosticsPanel({
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const native = snapshot.platform === "ios" || snapshot.platform === "android";
 
+  const pending = snapshot.pendingTransaction;
+  /**
+   * Which deletion is awaiting confirmation. Opening or cancelling it deletes
+   * nothing. Confirming does not bypass anything either: the controller re-checks
+   * the busy and transaction state when the action actually runs, and the store
+   * refuses cleanup while it owns a transaction, so a confirmation left open
+   * while a transaction was prepared still ends in a refusal.
+   */
+  const [confirming, setConfirming] = useState<PendingDeletion | null>(null);
+
   const actions: { label: string; run: () => void }[] = [
     { label: "Write synthetic fixtures", run: () => void controller.writeFixtures() },
     { label: "Verify in this app session", run: () => void controller.verifyCurrentSession() },
@@ -61,7 +82,36 @@ function DiagnosticsPanel({
     { label: "Close and reopen the database", run: () => void controller.closeAndReopen() },
     { label: "Verify after app restart", run: () => void controller.verifyAfterRestart() },
     { label: "Read effective SQLite settings", run: () => void controller.readSettings() },
-    { label: "Delete the synthetic data", run: () => void controller.clearSyntheticDatabase() },
+    { label: "Delete the synthetic data", run: () => setConfirming("all_synthetic_data") },
+  ];
+
+  /** The checkpoint scenarios. Separate from the list above because they are a
+   * different question — not "did this value survive" but "did this batch commit
+   * as one unit, and can the app tell". */
+  const checkpointActions: { label: string; run: () => void }[] = [
+    { label: "Commit a checkpoint", run: () => void controller.runCommittedCheckpoint() },
+    { label: "Roll back a checkpoint", run: () => void controller.runExplicitRollback() },
+    {
+      label: "Fail a statement inside a transaction",
+      run: () => void controller.runStatementFailure(),
+    },
+    {
+      label: "Lose the acknowledgement after commit",
+      run: () => void controller.runLostAcknowledgementAfterCommit(),
+    },
+    {
+      label: "Lose the acknowledgement before commit",
+      run: () => void controller.runLostAcknowledgementBeforeCommit(),
+    },
+    {
+      label: "Prepare an interrupted checkpoint",
+      run: () => void controller.prepareInterruption(),
+    },
+    { label: "Inspect stored checkpoint", run: () => void controller.inspectStoredCheckpoint() },
+    {
+      label: "Delete the synthetic checkpoint data",
+      run: () => setConfirming("checkpoint_data"),
+    },
   ];
 
   return (
@@ -110,14 +160,15 @@ function DiagnosticsPanel({
         <section className="rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
           <p className="mt-1 text-sm text-slate-600">
-            One at a time. A second press while an action is running is refused, not queued.
+            One at a time. A second press while an action is running is refused, not queued, and
+            every action here is unavailable while a transaction is open.
           </p>
           <div className="mt-3 grid gap-2">
             {actions.map((action) => (
               <button
                 key={action.label}
                 type="button"
-                disabled={snapshot.busy}
+                disabled={snapshot.busy || pending !== null}
                 onClick={action.run}
                 className="min-h-11 rounded-2xl border border-slate-300 bg-slate-50 px-4 text-sm font-medium text-slate-800 disabled:opacity-50"
               >
@@ -128,6 +179,96 @@ function DiagnosticsPanel({
           {snapshot.busy && (
             <p className="mt-3 text-sm text-slate-600">Running: {snapshot.activity}…</p>
           )}
+        </section>
+
+        {pending && (
+          <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <h2 className="text-sm font-semibold">
+              {pending.unresolved
+                ? "A transaction's outcome is unknown"
+                : "A transaction is open and uncommitted"}
+            </h2>
+            <p className="mt-1">
+              {pending.unresolved
+                ? "Something in this transaction's lifecycle failed, so whether it is still open at the engine is not known. The store still owns it and refuses every other action."
+                : "The engine acknowledged this transaction and it has not been committed. Every other action is refused until it is resolved. Write both ids down before force-quitting the app."}
+            </p>
+            <dl className="mt-3 space-y-1 font-mono text-xs">
+              <div className="flex justify-between gap-4">
+                <dt>{pending.unresolved ? "Owned attempt" : "Prepared attempt"}</dt>
+                <dd className="break-all text-right">{pending.attemptId}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt>Checkpoint</dt>
+                <dd>{pending.checkpointNumber}</dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt>Previous committed attempt</dt>
+                <dd className="break-all text-right">{pending.baselineAttemptId ?? "none"}</dd>
+              </div>
+            </dl>
+            {pending.unresolved && (
+              <div className="mt-3 space-y-1">
+                {pending.uncertainty && <p className="font-medium">{pending.uncertainty}</p>}
+                <p>
+                  The transaction could not be ended, so its outcome is unknown. Roll it back or
+                  abandon it. If neither completes, force-quit and relaunch the app, then inspect
+                  the stored checkpoint.
+                </p>
+              </div>
+            )}
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                disabled={snapshot.busy}
+                onClick={() => void controller.rollbackPreparedTransaction()}
+                className="min-h-11 rounded-2xl border border-amber-400 bg-white px-4 text-sm font-medium text-amber-900 disabled:opacity-50"
+              >
+                Roll back the prepared transaction
+              </button>
+              <button
+                type="button"
+                disabled={snapshot.busy}
+                onClick={() => void controller.abandonPreparedTransaction()}
+                className="min-h-11 rounded-2xl border border-amber-400 bg-white px-4 text-sm font-medium text-amber-900 disabled:opacity-50"
+              >
+                Abandon the prepared transaction
+              </button>
+            </div>
+          </section>
+        )}
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-4">
+          <h2 className="text-sm font-semibold text-slate-900">Checkpoints and transactions</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            A checkpoint is several payload rows plus the progress record describing them,
+            committed as one unit. These actions exercise that unit committing, rolling back,
+            failing part-way, and ending without the app learning the outcome.
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            The two &ldquo;lose the acknowledgement&rdquo; actions are a{" "}
+            <span className="font-medium">diagnostic simulation</span>: the transaction
+            underneath is real, and what is injected is the app never hearing the answer. A
+            rejected or discarded result is never read as proof of rollback — every verdict comes
+            from reading the store again.
+          </p>
+          <div className="mt-3 grid gap-2">
+            {checkpointActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                disabled={snapshot.busy || pending !== null}
+                onClick={action.run}
+                className="min-h-11 rounded-2xl border border-slate-300 bg-slate-50 px-4 text-sm font-medium text-slate-800 disabled:opacity-50"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-slate-600">
+            None of this establishes power-loss survival. Only a device that actually loses
+            power can, and this panel neither simulates that nor claims it.
+          </p>
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
@@ -188,6 +329,29 @@ function DiagnosticsPanel({
           )}
         </section>
       </div>
+      {confirming !== null && (
+        <ConfirmModal
+          title={
+            confirming === "all_synthetic_data"
+              ? "Delete all synthetic diagnostic data?"
+              : "Delete the synthetic checkpoint data?"
+          }
+          message={
+            confirming === "all_synthetic_data"
+              ? `Every row of the synthetic database "${snapshot.databaseName}" will be deleted: the restart fixtures and their run record, the test key, and all checkpoint evidence (the progress record and its payload rows). No other database is touched — the app's own records and credentials are not in this one. This cannot be undone.`
+              : `The ${allCheckpointKeys().length} synthetic checkpoint keys in "${snapshot.databaseName}" will be deleted: the progress record and its payload rows. Any checkpoint evidence not yet inspected is lost. The restart fixtures, their run record and everything outside this synthetic database are not touched. This cannot be undone.`
+          }
+          confirmLabel="Delete"
+          isDanger
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const target = confirming;
+            setConfirming(null);
+            if (target === "all_synthetic_data") void controller.clearSyntheticDatabase();
+            else void controller.clearCheckpointData();
+          }}
+        />
+      )}
     </div>
   );
 }

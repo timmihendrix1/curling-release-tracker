@@ -171,7 +171,7 @@ describe("TrackerApp — Training Plans execution", () => {
   it("continues from a middle Release Time step to the next planned Exercise", async () => {
     seedReleaseTimeInMiddlePlan();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
     screen.getByRole("tab", { name: "Training Plans" }).click();
@@ -209,7 +209,7 @@ describe("TrackerApp — Training Plans execution", () => {
   it("executes a profile-owned Technique → Shotmaking → Measured plan through the existing runners", async () => {
     seedMixedTrainingPlan();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
     screen.getByRole("tab", { name: "Training Plans" }).click();
@@ -249,7 +249,7 @@ describe("TrackerApp — Training Plans execution", () => {
     expect(screen.getByText("Next: Release Time")).toBeInTheDocument();
     screen.getByRole("button", { name: "Next Exercise" }).click();
 
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
     expect(screen.getByText(/Step 4 of 4/)).toBeInTheDocument();
     expect(screen.getByText("This is the last planned exercise.")).toBeInTheDocument();
     addShot("3.75");
@@ -257,10 +257,10 @@ describe("TrackerApp — Training Plans execution", () => {
     expect(screen.queryByRole("button", { name: "Next Exercise" })).toBeNull();
   });
 
-  it("drives a full plan through both steps to completion, then archives it via Finish Training", async () => {
+  it("drives a full plan through both steps to completion, then archives it via Complete Session", async () => {
     seedTrainingPlan();
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
@@ -275,7 +275,7 @@ describe("TrackerApp — Training Plans execution", () => {
     );
 
     screen.getByRole("button", { name: "Start Training" }).click();
-    await waitFor(() => screen.getByText("Active Training Block"));
+    await waitFor(() => screen.getByText("Current exercise"));
 
     // Step 1: alternating handles starting In.
     expect(screen.getByText(/Step 1 of 2/)).toBeInTheDocument();
@@ -289,7 +289,7 @@ describe("TrackerApp — Training Plans execution", () => {
     // Add Shot card's own button is the first one in the DOM.)
     expect(
       screen.getAllByRole("button", { name: "Out Handle" })[0]
-    ).toHaveClass("bg-slate-900");
+    ).toHaveAttribute("aria-pressed", "true");
 
     addShot("3.80");
     await waitFor(() => screen.getByText("2 of 2 planned stones"));
@@ -311,13 +311,14 @@ describe("TrackerApp — Training Plans execution", () => {
     addShot("3.78");
     await waitFor(() => screen.getByText("3 of 2 planned stones"));
 
-    screen.getByRole("button", { name: "Finish Training" }).click();
-    await waitFor(() => screen.getByRole("heading", { name: "Finish Training" }));
-    expect(screen.getByRole("button", { name: "Finish" })).not.toHaveClass("bg-red-600");
-    screen.getByRole("button", { name: "Finish" }).click();
+    screen.getByRole("button", { name: "Complete Session" }).click();
+    await waitFor(() => screen.getByRole("heading", { name: "Complete Session" }));
+    expect(screen.getByRole("button", { name: "Complete" })).not.toHaveClass("bg-red-600");
+    screen.getByRole("button", { name: "Complete" }).click();
 
-    await waitFor(() => screen.getByText("Training finished"));
-    expect(screen.getAllByText("Completed")).toHaveLength(2);
+    await waitFor(() => screen.getByRole("heading", { name: "Exercises", level: 2 }));
+    expect(screen.getByText("Training saved.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start New Training" })).toBeNull();
 
     navButton("Analyze").click();
     await waitFor(() => screen.getByText("Blocks and Sessions"));
@@ -361,7 +362,7 @@ describe("TrackerApp — Training Plans execution", () => {
     );
 
     render(<TrackerApp />);
-    await waitFor(() => screen.getByText("No scheduled session."));
+    await waitFor(() => screen.getByTestId("house-home"));
 
     navButton("Train").click();
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
