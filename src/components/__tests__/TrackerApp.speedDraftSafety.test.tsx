@@ -104,6 +104,7 @@ describe("a manual measurement draft belongs to the exercise it was typed for", 
     // Leaving the exercise is guarded; confirming genuinely discards.
     fireEvent.click(screen.getByRole("button", { name: "Discard and Continue" }));
 
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     fireEvent.click(screen.getByRole("radio", { name: "Speed (m/s)" }));
     fireEvent.change(screen.getByLabelText("Target Speed (m/s)"), {
       target: { value: "3.1" },

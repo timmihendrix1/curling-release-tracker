@@ -196,8 +196,8 @@ describe("a later durable write resolves an earlier failure it contains", () => 
     // The stone is removed before any write succeeds, so the next successful write
     // genuinely does not carry it. Resolving the failure on that write would claim
     // durability for data no write ever contained.
-    const recent = screen.getByText(/Recent Shots/).closest("details");
-    if (!recent) throw new Error("expected the Recent Shots list");
+    const recent = screen.getByText(/Recorded stones/).closest("details");
+    if (!recent) throw new Error("expected the Recorded stones list");
     recent.setAttribute("open", "");
     fireEvent.click(within(recent).getByRole("button", { name: "Delete" }));
 

@@ -8,12 +8,20 @@
 // fabricated timing interval and 3.75s target it never measured. Both would be
 // invisible afterwards, because the result is a perfectly valid time-only block.
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingSetup, { type TrainingSetupValue } from "../TrainingSetup";
 import { createTrainingBlock } from "../../lib/trainingBlocks";
 
 afterEach(cleanup);
+
+function render(...args: Parameters<typeof baseRender>) {
+  const result = baseRender(...args);
+  const change = screen.queryByRole("button", { name: "Change" });
+  if (change) fireEvent.click(change);
+  return result;
+}
+
 
 function renderSetup(onSubmit = vi.fn()) {
   render(<TrainingSetup submitLabel="Start Training" onSubmit={onSubmit} />);

@@ -288,8 +288,8 @@ describe("TrackerApp — Training Plans execution", () => {
     // (The Live Performance filter below also has an "Out Handle" chip — the
     // Add Shot card's own button is the first one in the DOM.)
     expect(
-      screen.getAllByRole("button", { name: "Out Handle" })[0]
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByRole("combobox", { name: "Handle" })
+    ).toHaveValue("out");
 
     addShot("3.80");
     await waitFor(() => screen.getByText("2 of 2 planned stones"));

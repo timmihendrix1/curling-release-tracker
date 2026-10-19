@@ -193,8 +193,8 @@ describe("the draft carries the whole recording intent", () => {
     typeSpeed("2.41");
     const entry = screen.getByRole("heading", { name: "Add Shot" }).closest("div");
     if (!entry) throw new Error("expected the entry panel");
-    fireEvent.click(within(entry).getByRole("button", { name: "Out Handle" }));
-    fireEvent.click(within(entry).getByRole("button", { name: /^takeout$/i }));
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Handle" }), { target: { value: "out" } });
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Shot type" }), { target: { value: "takeout" } });
 
     // Switching entry mode unmounts and remounts the control.
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
@@ -281,6 +281,7 @@ describe("pending state belongs to its own training", () => {
 
     // A second exercise starts empty; the previous one's confirmation is not its.
     fireEvent.click(screen.getByRole("button", { name: "New Training Block" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     fireEvent.click(screen.getByRole("radio", { name: "Speed (m/s)" }));
     fireEvent.change(screen.getByLabelText("Target Speed (m/s)"), {
       target: { value: "2.40" },

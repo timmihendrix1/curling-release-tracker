@@ -115,7 +115,7 @@ describe("TrackerApp — Assess integration", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
     fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByText("Ready to train."));
     fireEvent.click(screen.getByRole("button", { name: "Start Training" }));
     await waitFor(() => screen.getByText("Current exercise"));
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));

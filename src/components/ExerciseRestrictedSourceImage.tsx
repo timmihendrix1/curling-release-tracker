@@ -32,6 +32,7 @@ type ExerciseRestrictedSourceImageProps = {
   diagram: SourceImageDiagram;
   /** Required for the image to render; absence always fails closed. */
   exerciseAssetResolver?: ExerciseAssetResolver;
+  contained?: boolean;
 };
 
 /**
@@ -48,16 +49,23 @@ type ExerciseRestrictedSourceImageProps = {
 function LabelledDiagramImage({
   diagram,
   src,
+  contained = false,
 }: {
   diagram: SourceImageDiagram;
   src: string;
+  contained?: boolean;
 }) {
+  const [loadedImage, setLoadedImage] = useState<{ src: string; ratio: number } | null>(null);
+  const ratio = loadedImage?.src === src ? loadedImage.ratio : 1;
   return (
     // The source is produced by the resolver (currently a cached Data URL), so it is
     // intentionally rendered without next/image optimization.
-    <div className="relative w-full [container-type:inline-size]">
+    <div className="relative w-full [container-type:inline-size]" style={contained ? { width: `min(100%, calc(var(--house-diagram-size) * ${ratio}))` } : undefined}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={diagram.accessibleSummary} className="h-auto w-full" />
+      <img src={src} alt={diagram.accessibleSummary} className="h-auto w-full" onLoad={contained ? (event) => {
+        const image = event.currentTarget;
+        if (image.naturalHeight > 0) setLoadedImage({ src, ratio: image.naturalWidth / image.naturalHeight });
+      } : undefined} />
       {diagram.localizedTextOverlays?.map((overlay) => (
         <span
           key={overlay.id}
@@ -97,6 +105,7 @@ function LabelledDiagramImage({
 export default function ExerciseRestrictedSourceImage({
   diagram,
   exerciseAssetResolver,
+  contained = false,
 }: ExerciseRestrictedSourceImageProps) {
   const unavailable: ExerciseAssetAccess = { available: false };
   const dialogTitleId = useId();
@@ -209,10 +218,10 @@ export default function ExerciseRestrictedSourceImage({
   }, [enlarged, closeEnlargement]);
 
   return (
-    <figure className="w-full">
+    <figure className={contained ? "house-contained-diagram w-full" : "w-full"}>
       {access.available ? (
-        <div className="w-full">
-          <LabelledDiagramImage diagram={diagram} src={access.src} />
+        <div className={contained ? "flex w-full justify-center" : "w-full"}>
+          <LabelledDiagramImage diagram={diagram} src={access.src} contained={contained} />
         </div>
       ) : (
         <div

@@ -156,11 +156,14 @@ export default function AutoCapture({
       <div className={surfaceClass(level)}>
         <h2 className="text-xl font-semibold text-slate-900">Auto Capture</h2>
 
-        <p className="mt-2 text-sm text-slate-600">
+        <details className="house-training-disclosure mt-2">
+          <summary>How Auto Capture works</summary>
+        <p className="pb-3 text-sm text-slate-600">
           {isDevEnvironment
             ? "Have a timing result (or the Simulator, in development mode) automatically save each shot as it comes in."
             : "Have a timing result automatically save each shot as it comes in."}
         </p>
+        </details>
 
         {captureSequence?.status === "completed" && (
           <>

@@ -24,6 +24,7 @@ function selectReleaseTime() {
   const card = screen.getByRole("heading", { name: "Release Time" }).closest("section");
   if (!card) throw new Error("Missing Release Time picker card");
   fireEvent.click(within(card).getByRole("button", { name: "Select Exercise" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
 }
 
 describe("TrainingPlanStepEditor — Smart Random Profiles", () => {

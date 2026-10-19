@@ -153,7 +153,7 @@ describe("an incoming device stone never rewrites an in-progress manual draft", 
     });
     const entry = screen.getByRole("heading", { name: "Add Shot" }).closest("div");
     if (!entry) throw new Error("expected the entry panel");
-    fireEvent.click(within(entry).getByRole("button", { name: "Out Handle" }));
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Handle" }), { target: { value: "out" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Shot" }));
     await waitFor(() => expect(stored().shots).toHaveLength(1));
 
@@ -166,7 +166,7 @@ describe("an incoming device stone never rewrites an in-progress manual draft", 
       .getByRole("heading", { name: "Add Shot" })
       .closest("div");
     expect(
-      within(nextEntry as HTMLElement).getByRole("button", { name: "In Handle" })
-    ).toHaveAttribute("aria-pressed", "true");
+      within(nextEntry as HTMLElement).getByRole("combobox", { name: "Handle" })
+    ).toHaveValue("in");
   });
 });

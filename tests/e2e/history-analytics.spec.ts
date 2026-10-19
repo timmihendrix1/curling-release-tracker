@@ -30,7 +30,7 @@ async function addShot(
   handle: "In" | "Out" = "In"
 ) {
   const panel = shotEntryPanel(page);
-  await panel.getByRole("button", { name: `${handle} Handle`, exact: true }).click();
+  await panel.getByRole("combobox", { name: "Handle", exact: true }).selectOption(handle === "Out" ? "out" : "in");
   await panel.locator('input[inputmode="decimal"]').first().fill(String(releaseTime));
   await panel.getByRole("button", { name: "Save Shot", exact: true }).click();
 }
@@ -78,6 +78,7 @@ test("Category Progress: switching Training Category shows only comparable block
   await addShot(page, 3.8);
 
   await page.getByRole("button", { name: "New Training Block" }).click();
+  await page.getByRole("button", { name: "Change", exact: true }).click();
   await page.getByRole("button", { name: "Variable Weight", exact: true }).click();
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
   await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();

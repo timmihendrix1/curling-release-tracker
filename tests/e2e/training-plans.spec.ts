@@ -208,8 +208,8 @@ test("creates and executes a Training Plan end to end, surviving a mid-plan relo
 
   // Alternating handles, starting In — after one saved shot Out Handle is expected.
   await expect(
-    page.locator("h2", { hasText: "Add Shot" }).locator("..").getByRole("button", { name: "Out Handle" })
-  ).toHaveAttribute("aria-pressed", "true");
+    page.locator("h2", { hasText: "Add Shot" }).locator("..").getByRole("combobox", { name: "Handle", exact: true })
+  ).toHaveValue("out");
 
   // Reload mid-plan — the active step, shot count and created block must all
   // survive. Reload itself lands on Home by default (same as any other active
@@ -311,6 +311,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   ).toBeVisible();
   await expect(page.getByText(/Step 2 of 4/)).toBeVisible();
   await page.getByRole("button", { name: "Inhandle" }).click();
+  await page.getByText("Additional measurement", { exact: true }).click();
   await page.getByLabel("Rotation Count (optional)").fill("2.5");
   await page.getByRole("button", { name: "4 points, 100 percent" }).click();
   await page.getByRole("button", { name: "Record Stone" }).click();
@@ -347,7 +348,7 @@ test("creates and executes a profile-owned mixed Technique, Shotmaking and Relea
   await expect(page.getByText("This is the last planned exercise.")).toBeVisible();
   await page.getByLabel(/Rotation Count/).fill("2.5");
   await page.getByRole("button", { name: "Record Measurement" }).click();
-  await expect(page.getByText(/2.5 rotations/)).toHaveCount(2);
+  await expect(page.getByRole("region", { name: "Live measurements" })).toContainText("Mean 2.5 rotations");
 
   await page.getByRole("button", { name: "Complete Session" }).click();
   await page.getByRole("button", { name: "Complete", exact: true }).click();

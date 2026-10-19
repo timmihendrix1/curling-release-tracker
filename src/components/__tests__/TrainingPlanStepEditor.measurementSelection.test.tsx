@@ -26,6 +26,7 @@ function selectReleaseTime() {
   const card = screen.getByRole("heading", { name: "Release Time" }).closest("section");
   if (!card) throw new Error("Missing Release Time picker card");
   fireEvent.click(within(card).getByRole("button", { name: "Select Exercise" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
 }
 
 function savedStep(onSave: ReturnType<typeof vi.fn>): ReleaseTimingPlanStep {
@@ -100,6 +101,7 @@ describe("a Fixed Weight plan step keeps what it measures", () => {
       <TrainingPlanStepEditor initialStep={step} onSave={vi.fn()} onCancel={vi.fn()} />
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByRole("radio", { name: "Speed (m/s)" })).toHaveAttribute(
       "aria-checked",
       "true"

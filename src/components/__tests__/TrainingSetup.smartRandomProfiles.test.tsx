@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingSetup from "../TrainingSetup";
 import type { SmartRandomProfile } from "../../lib/smartRandomProfiles/persistence";
 
 afterEach(cleanup);
+
+function render(...args: Parameters<typeof baseRender>) {
+  const result = baseRender(...args);
+  const change = screen.queryByRole("button", { name: "Change" });
+  if (change) fireEvent.click(change);
+  return result;
+}
+
 
 const fullRangeProfile: SmartRandomProfile = {
   id: "full",

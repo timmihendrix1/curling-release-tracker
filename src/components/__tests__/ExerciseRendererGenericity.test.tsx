@@ -133,7 +133,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
     expect(screen.getByText("The 0–4 scale")).toBeInTheDocument();
     expect(screen.getByText("Compatible Measurements")).toBeInTheDocument();
     expect(screen.getByTestId("exercise-structured-diagram")).toBeInTheDocument();
-    expect(screen.getByText(/2–4 training athletes/)).toBeInTheDocument();
+    expect(screen.getAllByText(/2–4 training athletes/)[0]).toBeInTheDocument();
   });
 
   it("shows the synthetic Exercise's own version number, not a hard-coded one", () => {
@@ -180,7 +180,7 @@ describe("generic rendering of an Exercise the catalog does not contain", () => 
         />
       );
 
-      expect(screen.getByText(expected)).toBeInTheDocument();
+      expect(screen.getAllByText(expected)[0]).toBeInTheDocument();
       expect(document.body.textContent).not.toMatch(/From \d+ training athlete/);
       unmount();
     }

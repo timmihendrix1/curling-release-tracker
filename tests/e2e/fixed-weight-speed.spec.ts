@@ -65,8 +65,8 @@ test("Speed setup hides every time control and records a speed-only stone", asyn
 
   // Scoped to the shot list: the same figures legitimately appear in the capture
   // area's target display and in the live summary too.
-  const recent = page.locator("details", { has: page.getByText("Recent Shots") });
-  await recent.getByText("Recent Shots").click();
+  const recent = page.locator("details", { has: page.getByText("Recorded stones") });
+  await recent.getByText("Recorded stones").click();
   await expect(recent.getByText("2.45 m/s")).toBeVisible();
   // +0.05 m/s sits exactly on the On Target boundary, which is inclusive for the
   // inner category (ADR-0051) — so this is On Target, not Acceptable.
@@ -117,8 +117,8 @@ test("Both records one stone with two measurements, and completes a missing one 
   await page.reload();
   await goToTrain(page);
   await page.getByRole("button", { name: "Complete Session", exact: true }).waitFor();
-  const reloaded = page.locator("details", { has: page.getByText("Recent Shots") });
-  await reloaded.getByText("Recent Shots").click();
+  const reloaded = page.locator("details", { has: page.getByText("Recorded stones") });
+  await reloaded.getByText("Recorded stones").click();
   await expect(reloaded.getByText(/3\.70s/).first()).toBeVisible();
   await expect(reloaded.getByText(/2\.38 m\/s/).first()).toBeVisible();
 });
@@ -189,7 +189,8 @@ test("Desktop: the same journey works at a wide viewport", async ({ page }) => {
     .catch(() => {});
   await page.getByRole("button", { name: "View Details: Release Time" }).click();
   await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
-  await page.waitForSelector("text=Set Up Training Block");
+  await page.waitForSelector("text=Ready to train.");
+  await page.getByRole("button", { name: "Change", exact: true }).click();
 
   await page.getByRole("radio", { name: "Both" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
@@ -200,8 +201,8 @@ test("Desktop: the same journey works at a wide viewport", async ({ page }) => {
   await page.getByLabel("Speed (m/s) — optional").fill("2.42");
   await page.getByRole("button", { name: "Save Shot", exact: true }).click();
 
-  const list = page.locator("details", { has: page.getByText("Recent Shots") });
-  await list.getByText("Recent Shots").click();
+  const list = page.locator("details", { has: page.getByText("Recorded stones") });
+  await list.getByText("Recorded stones").click();
   await expect(list.getByText(/3\.80s/).first()).toBeVisible();
   await expect(list.getByText(/2\.42 m\/s/).first()).toBeVisible();
 });
@@ -218,6 +219,7 @@ test("a stone left half-measured in an earlier exercise stays completable", asyn
   await page.getByRole("button", { name: "Save Shot", exact: true }).click();
 
   await page.getByRole("button", { name: "New Training Block" }).click();
+  await page.getByRole("button", { name: "Change", exact: true }).click();
   await page.getByRole("radio", { name: "Speed (m/s)" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
@@ -248,6 +250,7 @@ test("a Speed block created while Auto Capture was selected is still recordable"
   // Switch to Auto Capture WITHOUT starting a sequence, then create a Speed block.
   await page.getByRole("tab", { name: "Auto Capture" }).click();
   await page.getByRole("button", { name: "New Training Block" }).click();
+  await page.getByRole("button", { name: "Change", exact: true }).click();
   await page.getByRole("radio", { name: "Speed (m/s)" }).click();
   await page.getByLabel("Target Speed (m/s)").fill("2.40");
   await page.getByRole("button", { name: "Start Block", exact: true }).click();
@@ -314,8 +317,8 @@ test("a failed save keeps the stone recoverable and a retry persists it once", a
   await expect(page.getByText("Shot saved.")).toBeVisible();
 
   // Exactly one stone — a retry re-persists, it never records a second.
-  await page.getByText("Recent Shots").click();
-  await expect(page.getByText(/Recent Shots \(1\)/)).toBeVisible();
+  await page.getByText("Recorded stones").click();
+  await expect(page.getByText(/Recorded stones \(1\)/)).toBeVisible();
 });
 
 test("Analyze's Speed selection governs the figures it reports", async ({ page }) => {

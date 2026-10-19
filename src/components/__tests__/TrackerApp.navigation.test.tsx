@@ -26,7 +26,7 @@ async function openReleaseTimingSetup() {
   fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
   fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
   fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-  await waitFor(() => screen.getByText("Set Up Training Block"));
+  await waitFor(() => screen.getByText("Ready to train."));
 }
 
 describe("TrackerApp — top-level navigation", () => {

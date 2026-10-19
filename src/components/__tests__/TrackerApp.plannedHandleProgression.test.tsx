@@ -236,7 +236,7 @@ describe("a new stone started before the previous write acknowledges", () => {
     // The plan would expect Out; the athlete deliberately chooses In for this one.
     const entry = screen.getByRole("heading", { name: "Add Shot" }).closest("div");
     if (!entry) throw new Error("expected the entry panel");
-    fireEvent.click(within(entry).getByRole("button", { name: "In Handle" }));
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Handle" }), { target: { value: "in" } });
     typeSpeed("2.42");
     saveShot();
 
@@ -280,7 +280,7 @@ describe("a new stone started before the previous write acknowledges", () => {
 
     const entry = screen.getByRole("heading", { name: "Add Shot" }).closest("div");
     if (!entry) throw new Error("expected the entry panel");
-    fireEvent.click(within(entry).getByRole("button", { name: "In Handle" }));
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Handle" }), { target: { value: "in" } });
 
     // Choosing a handle is not editing a measurement: the outstanding stone's values
     // stay on screen, so a failure would still be recoverable from them.
@@ -303,7 +303,7 @@ describe("a new stone started before the previous write acknowledges", () => {
     // A selection made for the next stone before any measurement is entered for it.
     const entry = screen.getByRole("heading", { name: "Add Shot" }).closest("div");
     if (!entry) throw new Error("expected the entry panel");
-    fireEvent.click(within(entry).getByRole("button", { name: /^takeout$/i }));
+    fireEvent.change(within(entry).getByRole("combobox", { name: "Shot type" }), { target: { value: "takeout" } });
 
     typeSpeed("2.42");
     saveShot();

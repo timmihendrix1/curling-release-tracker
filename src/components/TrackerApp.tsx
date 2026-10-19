@@ -52,6 +52,7 @@ import TargetAccuracyDashboardCards from "./TargetAccuracyDashboardCards";
 import TargetActualScatterChart from "./TargetActualScatterChart";
 import TargetErrorChart from "./TargetErrorChart";
 import ExerciseSoloExecutionScreen from "./ExerciseSoloExecutionScreen";
+import CompleteSessionAction from "./CompleteSessionAction";
 import ExerciseSoloSetupScreen from "./ExerciseSoloSetupScreen";
 import ExerciseTeamExecutionScreen from "./ExerciseTeamExecutionScreen";
 import ExerciseTeamSetupScreen from "./ExerciseTeamSetupScreen";
@@ -4754,7 +4755,7 @@ export default function TrackerApp() {
       )}
 
       {activeView === "train" && (
-        <div className="house-training space-y-5" data-testid="house-training">
+        <div className={`house-training space-y-4 ${!activeTeamExerciseDraft && !pendingTeamExerciseVersion && !lastCompletedTeamSessionId ? "house-flow" : ""}`} data-testid="house-training">
           {activeTeamExerciseDraft ? (
             <ExerciseTeamExecutionScreen
               exerciseAssetResolver={exerciseAssetResolver}
@@ -4842,6 +4843,9 @@ export default function TrackerApp() {
                 />
               )}
               <ExerciseSoloExecutionScreen
+                key={displayedExerciseExecution.id}
+                sessionCompletionError={planTransitionError}
+                onRetrySessionSave={retryableSessionSave ? retryFailedSessionSave : null}
                 exerciseAssetResolver={exerciseAssetResolver}
                 execution={displayedExerciseExecution}
                 writable={sessionWritable}
@@ -4849,55 +4853,20 @@ export default function TrackerApp() {
                 onBackToLibrary={handleBackToExerciseLibrary}
                 onStartNewSession={handleFinishPlannedTraining}
                 withinTrainingPlan={isTrainingPlanActive}
+                progressionActions={isTrainingPlanActive && planExecution && (
+                  <TrainingPlanStepTransition
+                    appearance="house"
+                    nextStepLabel={nextPlanStepLabel}
+                    onNextExercise={handleContinueToNextPlanStep}
+                    onFinishTraining={handleFinishPlannedTraining}
+                    disabled={!sessionWritable}
+                    errorMessage={planTransitionError}
+                    onRetry={retryableSessionSave ? retryFailedSessionSave : null}
+                  />
+                )}
               />
 
               {outstandingSessionWork}
-
-              {isTrainingPlanActive && planExecution && (
-                <TrainingPlanStepTransition
-                  appearance="house"
-                  nextStepLabel={nextPlanStepLabel}
-                  onNextExercise={handleContinueToNextPlanStep}
-                  onFinishTraining={handleFinishPlannedTraining}
-                  disabled={!sessionWritable}
-                  errorMessage={planTransitionError}
-                  onRetry={retryableSessionSave ? retryFailedSessionSave : null}
-                />
-              )}
-
-              {/* Direct training gets the same clear ending a planned training has,
-                  in the same place: next to the recording task, not as a red
-                  "Start New Session" buried under the charts and the export. Ending a
-                  training is not a destructive action and never carried the red
-                  treatment that one implied. */}
-              {!isTrainingPlanActive && (
-                <div className={surfaceClass("secondary")}>
-                  <button
-                    type="button"
-                    onClick={handleFinishPlannedTraining}
-                    disabled={!sessionWritable}
-                    className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Complete Session
-                  </button>
-
-
-                  {planTransitionError && (
-                    <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3">
-                      <p className="text-sm text-red-700">{planTransitionError}</p>
-                      {retryableSessionSave && (
-                        <button
-                          type="button"
-                          onClick={retryFailedSessionSave}
-                          className="mt-2 min-h-11 w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-                        >
-                          Try Saving Again
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ) : !activeBlock || !activeBlockAnalysis ? (
             // Release Timing keeps its existing setup/runner, but is reached
@@ -4907,41 +4876,9 @@ export default function TrackerApp() {
               completionNotice={finishedTrainingSummary ? finishedTrainingSummary.saved ? "Training saved." : "Training ended. No stones recorded." : undefined}
               exerciseAssetResolver={exerciseAssetResolver}
               releaseTimingSetupContent={
-                // One Hero setup surface, composed around the actual decision
-                // order from docs/INFORMATION_ARCHITECTURE_AND_SCREEN_PHILOSOPHY.md's
-                // Train Information Priority — training objective and
-                // configuration first, session naming last as the clearly
-                // optional detail it is (compositional redesign, not a
-                // Session-card-then-Block-card stack).
-                <div className={surfaceClass("hero")}>
-                  {pendingReleaseTimingExerciseVersion && (
-                    <div
-                      role="status"
-                      className="house-training-focus mb-5"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                        From Exercise Library
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">
-                        {pendingReleaseTimingExerciseVersion.title}
-                      </p>
-                      {/* What the athlete needs to decide next — not how the app is
-                          wired internally. "Runner" is an implementation word and
-                          means nothing at the rink. */}
-                      <p className="mt-1 text-xs text-slate-600">
-                        Choose your mode, measurement and target.
-                      </p>
-                    </div>
-                  )}
-                  <h2 className="text-xl font-semibold text-slate-900">
-                    Set Up Training Block
-                  </h2>
-
-                  <p className="mt-2 text-sm text-slate-600">
-                    Choose what you&apos;re training, then start.
-                  </p>
-
-                  <div className="mt-5">
+                <div className="space-y-4">
+                  <TrainingHeader title="Ready to train." eyebrow="Train / Release Time" />
+                  <div>
                     <TrainingSetup
                       submitLabel="Start Training"
                       onSubmit={handleCreateFirstBlock}
@@ -4963,7 +4900,7 @@ export default function TrackerApp() {
                       the block name already uses. Leaving them expanded put two
                       optional text fields between the athlete and Start Training,
                       which is the opposite of the simplification this stage is for. */}
-                  <details className="mt-6 border-t border-slate-100 pt-4">
+                  <details className="house-training-disclosure">
                     <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-600">
                       Session Name and Notes
                       <span className="ml-2 text-xs font-normal text-slate-400">
@@ -5017,6 +4954,10 @@ export default function TrackerApp() {
             />
           ) : (
             <>
+              <div className="house-live-context">
+                <p className="house-flow-section-title">{activeBlock.name}</p>
+                <p className="text-xs text-[var(--house-muted)]">{blockModeLabel(activeBlock.mode)} · {activeBlockMeasurement.quantities.map((quantity) => quantity === "time" ? "Time" : "Speed").join(" + ")}{activeBlockMeasurement.quantities.includes("time") && ` · ${measurementModeLabel(activeBlock.measurementMode ?? "back-hog")}`}</p>
+              </div>
               {activeBlock.mode === "blind" ? (
                 <>
                   {shotEntryTarget && (
@@ -5183,6 +5124,24 @@ export default function TrackerApp() {
                 </div>
               )}
 
+              <section aria-label="Live Performance" className="house-live-average">
+                <p className="text-sm text-[var(--house-muted)]">{activeBlockShots.length} {activeBlockShots.length === 1 ? "stone" : "stones"} recorded</p>
+                <div className="flex flex-wrap gap-4">
+                  {activeBlockMeasurement.quantities.map((quantity) => {
+                    const values = activeBlockShots.map((shot) => shotMeasuredValue(shot, quantity))
+                      .filter((value): value is number => value !== null);
+                    return <div key={quantity}>
+                      <p className="text-xs text-[var(--house-muted)]">Average {quantity === "speed" ? "speed" : "time"}</p>
+                      <p className="text-2xl font-medium tabular-nums">
+                        {values.length === 0 ? "—" : quantity === "speed"
+                          ? formatMeasuredSpeed(average(values)) : formatReleaseTime(average(values))}
+                      </p>
+                      <p className="text-xs text-[var(--house-muted)]">{values.length} {values.length === 1 ? "measurement" : "measurements"}</p>
+                    </div>;
+                  })}
+                </div>
+              </section>
+
               {outstandingSessionWork}
 
               {isTrainingPlanActive && trainingPlanProgressSummary && planExecution && (
@@ -5207,57 +5166,10 @@ export default function TrackerApp() {
                 />
               )}
 
-              {/* Direct training gets the same clear ending a planned training has,
-                  in the same place: next to the recording task, not as a red
-                  "Start New Session" buried under the charts and the export. Ending a
-                  training is not a destructive action and never carried the red
-                  treatment that one implied. */}
-              {!isTrainingPlanActive && (
-                <div className="house-support">
-                  <button
-                    type="button"
-                    onClick={handleFinishPlannedTraining}
-                    disabled={!sessionWritable}
-                    className="min-h-11 w-full rounded-2xl border border-[var(--house-accent)] px-4 py-3 text-sm font-medium text-[var(--house-deep)] disabled:opacity-50"
-                  >
-                    Complete Session
-                  </button>
-
-
-                  {planTransitionError && (
-                    <div role="alert" className="mt-3 rounded-xl bg-red-50 p-3">
-                      <p className="text-sm text-red-700">{planTransitionError}</p>
-                      {retryableSessionSave && (
-                        <button
-                          type="button"
-                          onClick={retryFailedSessionSave}
-                          className="mt-2 min-h-11 w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700"
-                        >
-                          Try Saving Again
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <section aria-label="Live Performance" className="house-live-average">
-                <p className="text-sm text-[var(--house-muted)]">{activeBlockShots.length} {activeBlockShots.length === 1 ? "stone" : "stones"} recorded</p>
-                <div className="mt-2 flex flex-wrap gap-6">
-                  {activeBlockMeasurement.quantities.map((quantity) => {
-                    const values = activeBlockShots.map((shot) => shotMeasuredValue(shot, quantity))
-                      .filter((value): value is number => value !== null);
-                    return <div key={quantity}>
-                      <p className="text-xs text-[var(--house-muted)]">Average {quantity === "speed" ? "speed" : "time"}</p>
-                      <p className="text-2xl font-medium tabular-nums">
-                        {values.length === 0 ? "—" : quantity === "speed"
-                          ? formatMeasuredSpeed(average(values)) : formatReleaseTime(average(values))}
-                      </p>
-                      <p className="text-xs text-[var(--house-muted)]">{values.length} {values.length === 1 ? "measurement" : "measurements"}</p>
-                    </div>;
-                  })}
-                </div>
-              </section>
+              {!isTrainingPlanActive && <CompleteSessionAction
+                onComplete={handleFinishPlannedTraining} disabled={!sessionWritable}
+                errorMessage={planTransitionError}
+                onRetry={retryableSessionSave ? retryFailedSessionSave : null} />}
 
                   {/* Secondary action — kept visually subordinate to the
                       block identity beside it and to the primary shot-entry
@@ -5272,7 +5184,7 @@ export default function TrackerApp() {
                       New Training Block
                     </button>
                   )}
-              <details className="house-support">
+              <details className="house-training-disclosure">
                 <summary>Exercise settings</summary>
               {/* Essential context, not the Hero — the current target/capture
                   task below carries the strongest surface (Epic 1). */}
@@ -5340,18 +5252,9 @@ export default function TrackerApp() {
                   stays collapsed by default and below Live Performance
                   ("Editing previous shots is an exception workflow.
                   Monitoring performance is the primary workflow."). */}
-              <details className="group rounded-2xl border border-slate-200 bg-white">
-                <summary className="cursor-pointer list-none rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 marker:content-none group-open:rounded-b-none">
-                  <span className="flex items-center justify-between gap-2">
-                    <span>
-                      Recent Shots ({filteredActiveBlockShots.length})
-                    </span>
-                    <span className="text-xs text-slate-400 group-open:hidden">Show</span>
-                    <span className="hidden text-xs text-slate-400 group-open:inline">Hide</span>
-                  </span>
-                </summary>
-
-                <div className="border-t border-slate-100 p-4">
+              <details className="house-training-disclosure">
+                <summary>Recorded stones ({filteredActiveBlockShots.length})</summary>
+                <div>
                   <div className="space-y-2">
                   {filteredActiveBlockShots.map((shot) => {
                     const isEditing =

@@ -258,3 +258,90 @@ body {
 .house-analysis-filters .house-filter-grid > * { min-width: 0; min-height: 44px; }
 .house-analysis-select { text-overflow: ellipsis; }
 .house-analysis-select:hover { background: var(--house-canvas); }
+
+/* Approved Figma refinement: scoped to the Solo Exercise and Train flow. */
+.house-flow { font-size: 14px; line-height: 1.5; padding-inline: 8px; }
+.house-flow-title { font-size: 24px; line-height: 30px; font-weight: 500; overflow-wrap: anywhere; }
+.house-flow-section-title { font-size: 16px; line-height: 24px; font-weight: 500; }
+.house-flow .house-training-header h2 { font-size: 24px; line-height: 30px; letter-spacing: normal; }
+.house-flow-primary, .house-flow-secondary {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 48px; padding: 12px 16px; border-radius: 20px;
+  font-size: 14px; line-height: 20px; font-weight: 500;
+}
+.house-flow-primary { background: var(--house-deep); color: white; }
+.house-flow-primary:hover:not(:disabled) { background: var(--house-accent); }
+.house-flow-secondary { border: 1px solid var(--house-line); color: var(--house-deep); background: transparent; }
+.house-flow-secondary:hover:not(:disabled) { background: var(--house-tint); }
+.house-flow-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 44px; padding: 10px 0; color: var(--house-accent); font-size: 14px; line-height: 20px; font-weight: 500; }
+.house-exercise-detail > .house-flow-link { justify-content: flex-start; }
+:where(.house-flow-primary, .house-flow-secondary, .house-flow-link):focus-visible {
+  outline: 2px solid var(--house-accent); outline-offset: 3px;
+}
+:where(.house-flow-primary, .house-flow-secondary, .house-flow-link):disabled { opacity: .45; cursor: not-allowed; }
+.house-flow-recording { padding: 20px; border-radius: 24px; background: var(--house-surface); }
+.house-flow-recording h3 { margin-top: 0; font-size: 16px; line-height: 24px; font-weight: 500; }
+.house-flow .house-score-picker { padding: 8px; gap: 4px; border-radius: 24px; }
+.house-flow .house-score-picker button { font-size: 24px; line-height: 30px; font-weight: 500; min-height: 64px; border-radius: 16px; }
+.house-flow .house-score-picker button[aria-pressed=false] { background: var(--house-accent); }
+.house-flow .house-score-picker button[aria-pressed=true] { box-shadow: none; }
+.house-flow .house-training-disclosure, .house-training-setup .house-training-disclosure { padding: 0; }
+.house-flow .house-training-disclosure > summary, .house-training-setup .house-training-disclosure > summary {
+  display: flex; align-items: center; gap: 6px; min-height: 48px; padding: 12px 0;
+  list-style: none; font-size: 14px; line-height: 20px; font-weight: 500;
+}
+.house-flow .house-training-disclosure > summary::-webkit-details-marker,
+.house-training-setup .house-training-disclosure > summary::-webkit-details-marker { display: none; }
+.house-flow .house-training-disclosure > summary::after,
+.house-training-setup .house-training-disclosure > summary::after { content: "▸"; margin-left: auto; color: var(--house-muted); }
+.house-flow .house-training-disclosure[open] > summary::after,
+.house-training-setup .house-training-disclosure[open] > summary::after { content: "▾"; }
+.house-flow .house-training-disclosure > div { padding: 4px 0 16px; }
+.house-configuration-summary { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.house-configuration-summary > :first-child { min-width: 0; }
+.house-configuration-summary .house-flow-link { flex-shrink: 0; }
+.house-note-editor { display: block; width: 100%; min-height: 76px; padding: 20px; border: 1px solid var(--house-line);
+  border-radius: 24px; background: white; color: var(--house-ink); font-size: 16px; line-height: 24px; resize: vertical; }
+.house-live-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  color: var(--house-muted); font-size: 12px; line-height: 18px; }
+.house-summary-value { color: var(--house-accent); font-size: 14px; font-weight: 500; text-align: right; }
+.house-result-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 4px 0; }
+.house-result-metrics strong { display: block; font-size: 28px; line-height: 36px; font-weight: 500; }
+.house-result-metrics span { display: block; color: var(--house-muted); font-size: 12px; line-height: 18px; }
+.house-flow .house-live-average { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; border: 0; padding: 0; }
+.house-flow .house-live-average > p { font-size: 12px; }
+.house-flow .house-live-average > div { justify-content: flex-end; text-align: right; }
+.house-flow .house-live-average .text-2xl { font-size: 16px; line-height: 24px; color: var(--house-accent); }
+.house-flow .house-entry-stack .house-hero { padding: 20px; border-radius: 32px; }
+.house-flow .house-primary-entry .house-hero { display: flex; flex-direction: column; gap: 16px; }
+.house-flow .house-primary-entry .house-hero > .mb-4 { margin-bottom: 0; }
+.house-flow .house-primary-entry .house-hero .house-select { background: transparent; color: var(--house-mid); border: 1px solid #356d72; border-radius: 12px; }
+.house-flow .house-primary-entry .house-hero .house-select[aria-pressed=true] { background: #356d72; color: white; }
+.house-flow .house-primary-entry .house-action { min-height: 48px; background: white; color: var(--house-deep); font-size: 14px; }
+.house-flow .house-primary-entry .house-action:hover:not(:disabled) { background: var(--house-tint); }
+.house-flow .house-number { font-size: clamp(48px, 19.5vw, 76px); line-height: 92px; padding: 0; border-bottom: 0; }
+.house-flow .house-number#shot-entry-release-time::placeholder { font-size: 18px; letter-spacing: normal; }
+.house-flow .house-target-row strong { font-size: 16px; line-height: 24px; }
+.house-flow .house-targets { padding: 0; }
+.house-contained-diagram { --house-diagram-size: min(calc(100vw - 48px), 342px); display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.house-contained-diagram > figcaption { order: 1; }
+.house-contained-diagram > div:first-child { order: 0; }
+.house-contained-diagram > button { order: 2; align-self: flex-start; }
+@media (max-width: 359px) {
+  .house-flow-recording { padding: 16px; }
+  .house-flow .house-score-picker { padding: 4px; gap: 2px; }
+  .house-flow .house-score-picker button { min-height: 60px; }
+  .house-live-summary { gap: 8px; }
+}
+.house-flow .house-primary-entry .house-capture-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-top: 1px solid var(--house-mid); padding-top: 4px; }
+.house-flow .house-primary-entry .house-capture-metadata select { min-height: 44px; width: 100%; padding: 4px 0; border: 0; border-radius: 0; background: transparent; color: white; font-size: 14px; }
+.house-capture-metadata option { color: var(--house-ink); background: white; }
+/* Focus and programmatic scrolling must also clear the floating navigation. */
+html:has(.house-flow) { scroll-padding-bottom: var(--house-nav-clearance); }
+@media (min-width: 640px) { html:has(.house-flow) { scroll-padding-bottom: 1rem; } }
+
+.house-flow .house-private-note[open] > summary::after { display: none; }
+.house-contained-diagram > button { width: auto; padding: 10px 0; margin: 0; background: transparent; color: var(--house-accent); }
+.house-contained-diagram > figcaption { margin: 0; }
+.house-contained-diagram > figcaption > span { text-align: left; font-weight: 400; }

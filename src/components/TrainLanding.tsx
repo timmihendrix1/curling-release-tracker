@@ -248,11 +248,12 @@ export default function TrainLanding({
     focusTab(next);
   }
 
+  const showEntryTabs = mode !== "exercises" || exercisesSubView.screen === "library";
   return (
     <div className="space-y-4">
       {exercisesSubView.screen === "library" && <TrainingHeader title="Choose your focus." eyebrow="Train" />}
       {completionNotice && exercisesSubView.screen === "library" && <p role="status" className="house-completion-notice">{completionNotice}</p>}
-      <div
+      {showEntryTabs && <div
         ref={tablistRef}
         role="tablist"
         aria-label="Training entry point"
@@ -278,7 +279,7 @@ export default function TrainLanding({
             {label}
           </button>
         ))}
-      </div>
+      </div>}
 
       {onOpenAssessments && mode === "exercises" && exercisesSubView.screen === "library" && (
         <button type="button" onClick={onOpenAssessments} className="house-link w-full px-1 text-sm">
@@ -286,9 +287,9 @@ export default function TrainLanding({
         </button>
       )}
       <div
-        role="tabpanel"
+        role={showEntryTabs ? "tabpanel" : undefined}
         id={panelId}
-        aria-labelledby={tabId(mode)}
+        aria-labelledby={showEntryTabs ? tabId(mode) : undefined}
         className="space-y-4"
       >
         {mode === "exercises" && exercisesSubView.screen === "library" && (
@@ -344,7 +345,7 @@ export default function TrainLanding({
                     versionId: openExerciseVersion.id,
                   });
                 }}
-                className="-mx-1 inline-flex min-h-11 items-center rounded-lg px-1 text-sm font-medium text-slate-600 transition hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
+                className="house-flow-link w-full justify-start"
               >
                 ← Back to {openExerciseVersion.title}
               </button>

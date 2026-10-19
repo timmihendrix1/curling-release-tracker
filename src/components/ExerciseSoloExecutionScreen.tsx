@@ -1,6 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import TrainingHeader from "./TrainingHeader";
+import ExercisePrivateNote from "./ExercisePrivateNote";
+import CompleteSessionAction from "./CompleteSessionAction";
 import type { Handle } from "../types";
 import {
   abandonExerciseExecution,
@@ -24,7 +27,6 @@ import {
 } from "../lib/exercises/presentation";
 import ConfirmModal from "./ConfirmModal";
 import ExerciseExecutionReference from "./ExerciseExecutionReference";
-import { surfaceClass } from "./Surface";
 import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 
 type ExerciseSoloExecutionScreenProps = {
@@ -34,6 +36,9 @@ type ExerciseSoloExecutionScreenProps = {
   onBackToLibrary: () => void;
   onStartNewSession: () => void;
   withinTrainingPlan?: boolean;
+  progressionActions?: ReactNode;
+  sessionCompletionError?: string | null;
+  onRetrySessionSave?: (() => void) | null;
   exerciseAssetResolver?: ExerciseAssetResolver;
 };
 
@@ -57,9 +62,22 @@ export default function ExerciseSoloExecutionScreen({
   writable,
   onReplace,
   onBackToLibrary,
+  onStartNewSession,
+  sessionCompletionError,
+  onRetrySessionSave,
   withinTrainingPlan = false,
+  progressionActions,
   exerciseAssetResolver,
 }: ExerciseSoloExecutionScreenProps) {
+  const recordingRef = useRef<HTMLDivElement>(null);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const noteWasOpen = useRef(false);
+  useEffect(() => {
+    if (!noteOpen && noteWasOpen.current) {
+      recordingRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)")?.focus();
+    }
+    noteWasOpen.current = noteOpen;
+  }, [noteOpen]);
   const [actualHandle, setActualHandle] = useState<Handle | null>(null);
   const [score, setScore] = useState<0 | 1 | 2 | 3 | 4 | null>(null);
   const [rotationCount, setRotationCount] = useState("");
@@ -239,16 +257,17 @@ export default function ExerciseSoloExecutionScreen({
   }
 
   return (
-    <div className="space-y-4">
-      <header className="px-1 py-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-          {exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo · {active ? "In progress" : execution.status === "completed" ? "Completed" : "Abandoned"}
-        </p>
-        <h2 className="mt-2 text-2xl font-medium leading-tight tracking-tight text-slate-900">{version.title}</h2>
-      </header>
-
+    <div className="house-solo-execution space-y-4">
+      {active ? (
+        <header className="space-y-3">
+          <p className="text-xs uppercase text-slate-500">{exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} · Solo</p>
+          <h2 className="house-flow-title">{version.title}</h2>
+          {shotmaking && !noteOpen && <p className="text-xs text-slate-500">Stone {result.attempts.length + 1}</p>}
+        </header>
+      ) : <TrainingHeader title={version.title} eyebrow={execution.status === "completed" ? "Exercise completed" : "Exercise abandoned"} />}
+      <div ref={recordingRef} hidden={noteOpen} className="space-y-4">
       {active && version.primaryFocus === "technique" && version.guidance.kind === "observation" && (
-        <section className={surfaceClass("hero")}>
+        <section className="house-flow-recording">
           <h3 className="text-lg font-semibold text-slate-900">Observe and discuss</h3>
           <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-slate-700">
             {version.guidance.observations.map((observation) => (
@@ -260,10 +279,7 @@ export default function ExerciseSoloExecutionScreen({
       )}
 
       {active && shotmaking && (
-        <section className={surfaceClass("hero")}>
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Stone {result.attempts.length + 1}
-          </p>
+        <section className="house-flow-recording">
           <h3 className="mt-1 text-lg font-semibold text-slate-900">Record outcome</h3>
 
           <fieldset className="mt-4">
@@ -288,7 +304,9 @@ export default function ExerciseSoloExecutionScreen({
           </fieldset>
 
           {rotationProtocol && (
-            <label className="mt-4 block text-sm font-medium text-slate-700">
+            <details className="house-training-disclosure mt-4">
+              <summary>Additional measurement</summary>
+            <label className="block text-sm font-medium text-slate-700">
               {rotationProtocol.name} <span className="font-normal text-slate-500">(optional)</span>
               <input
                 type="number"
@@ -301,11 +319,12 @@ export default function ExerciseSoloExecutionScreen({
                 placeholder="e.g. 2.5"
               />
             </label>
+            </details>
           )}
 
           <fieldset className="mt-4">
             <legend className="text-sm font-medium text-slate-700">
-              Self-assessed outcome
+              Outcome
             </legend>
             <div className="house-score-picker mt-2 grid grid-cols-5 gap-2">
               {([0, 1, 2, 3, 4] as const).map((value) => (
@@ -328,17 +347,14 @@ export default function ExerciseSoloExecutionScreen({
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              This is your own judgement,
-              not a platform-standardised rubric.
-            </p>
+
           </fieldset>
 
           <button
             type="button"
             onClick={recordScore}
             disabled={!writable || actualHandle === null || score === null}
-            className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="house-flow-primary mt-4"
           >
             Record Stone
           </button>
@@ -347,9 +363,9 @@ export default function ExerciseSoloExecutionScreen({
             type="button"
             aria-expanded={showExclusion}
             onClick={() => setShowExclusion((shown) => !shown)}
-            className="mt-3 min-h-11 w-full rounded-xl px-4 py-3 text-sm font-medium text-slate-600 underline hover:text-slate-800"
+            className="house-flow-link mt-3 w-full"
           >
-            Do not score this stone
+            Exclude this attempt
           </button>
 
           {showExclusion && (
@@ -398,7 +414,7 @@ export default function ExerciseSoloExecutionScreen({
       )}
 
       {active && measured && standaloneProtocol && (
-        <section className={surfaceClass("hero")}>
+        <section className="house-flow-recording">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
             Observation {result.attempts.length + 1}
           </p>
@@ -456,88 +472,60 @@ export default function ExerciseSoloExecutionScreen({
         </section>
       )}
 
-      <section className={surfaceClass("secondary", "house-training-note")}>
-        <label className="text-sm font-semibold text-slate-900" htmlFor="exercise-private-note">
-          Private athlete note
-        </label>
-        <p className="mt-1 text-xs text-slate-500">
-          Only you can read or edit this note. It is not shared with a Team or coach.
-        </p>
-        <textarea
-          id="exercise-private-note"
-          value={result.privateNote ?? ""}
-          onChange={(event) => updateNote(event.target.value)}
-          disabled={!writable}
-          rows={2}
-          className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
-          placeholder="Add your observation…"
-        />
-      </section>
 
-      {error && (
-        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>
-      )}
-
-      {active ? (
-        <div className="space-y-2">
-          <button
-            type="button"
-            onClick={complete}
-            disabled={
-              !writable ||
-              ((shotmaking || measured) && result.attempts.length === 0)
-            }
-            className="min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Complete Exercise
-          </button>
-
-        </div>
-      ) : !withinTrainingPlan ? (
-        <button
-          type="button"
-          onClick={onBackToLibrary}
-          className="house-select w-full"
-        >
-          Back to Exercise Library
-        </button>
-      ) : null}
-
+      </div>
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      {!active && !withinTrainingPlan && <p className="text-sm text-slate-500">Your session stays open for another exercise.</p>}
       {shotSummary && (
-        <section className={surfaceClass(active ? "secondary" : "hero")}>
-          <h3 className="text-lg font-semibold text-slate-900">
-            {active ? "Live result" : "Exercise result"}
-          </h3>
-          {shotSummary.scoredStoneCount === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">No scored stones yet.</p>
-          ) : (
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-slate-100 p-3">
-                <p className="text-xs text-slate-500">Average</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">
-                  {shotSummary.averagePercentage?.toFixed(0)}%
-                </p>
-              </div>
-              {!active && <div className="rounded-xl bg-slate-100 p-3">
-                <p className="text-xs text-slate-500">Points</p>
-                <p className="mt-1 text-xl font-semibold text-slate-900">
-                  {shotSummary.points}/{shotSummary.maximumPoints}
-                </p>
-              </div>}
-            </div>
-          )}
-          <p className="mt-3 text-sm text-slate-600">
-            {shotSummary.scoredStoneCount} scored · {shotSummary.excludedAttemptCount} excluded
-          </p>
-          {shotSummary.excludedAttemptCount > 0 && (
-            <ul className="mt-2 text-xs text-slate-500">
-              {Object.entries(shotSummary.excludedReasonCounts).map(([reason, count]) => (
-                <li key={reason}>{exclusionLabel(reason as ShotmakingExclusionReason)}: {count}</li>
-              ))}
-            </ul>
-          )}
-          <details className="house-training-disclosure mt-3" open={!active}>
-            <summary>Result details and stones</summary>
+        <section aria-label={active ? "Live result" : "Exercise result"}>
+          {!active && <h3 className="sr-only">Exercise result</h3>}
+          {active ? <div className="house-live-summary">
+            <span>{shotSummary.scoredStoneCount} scored · {shotSummary.excludedAttemptCount} excluded</span>
+            <span className="house-summary-value">{shotSummary.averagePercentage === null ? "—" : `${shotSummary.averagePercentage.toFixed(0)}% avg.`}</span>
+          </div> : <div className="house-result-metrics">
+            <div><strong>{shotSummary.scoredStoneCount}</strong><span>scored stones</span></div>
+            <div><strong>{shotSummary.averagePercentage === null ? "—" : `${shotSummary.averagePercentage.toFixed(0)}%`}</strong><span>average</span></div>
+          </div>}
+        </section>
+      )}
+      {measured && <section aria-label={active ? "Live measurements" : "Exercise result"}>
+        {!active && <h3 className="sr-only">Exercise result</h3>}
+        {measurementSummaries.length === 0 ? <p className="text-sm text-slate-500">No measurements yet.</p> : measurementSummaries.map((summary) => (
+          <div key={`${summary.protocolId}@${summary.protocolVersion}`} className="house-live-summary">
+            <span>{summary.count} {summary.count === 1 ? "measurement" : "measurements"}</span>
+            <span className="house-summary-value">Mean {measurementLabel(summary.protocolId, summary.protocolVersion, summary.mean)}</span>
+          </div>
+        ))}
+      </section>}
+      {!active && !shotmaking && !measured && <section>
+        <h3 className="sr-only">Exercise result</h3>
+        <p>{execution.status === "completed" ? "Completed without a score. Technique exercises remain observation-only." : "Abandoned without a score. Any private note remains available."}</p>
+      </section>}
+      {!shotmaking && !measured && <ExercisePrivateNote value={result.privateNote ?? ""}
+        onChange={updateNote} disabled={!writable} prominent />}
+      <div hidden={active && noteOpen} className="space-y-4">
+      {active ? <button type="button" onClick={complete}
+        disabled={!writable || ((shotmaking || measured) && result.attempts.length === 0)}
+        className={shotmaking || measured ? "house-flow-secondary" : "house-flow-primary"}>Complete Exercise</button>
+        : !withinTrainingPlan && <>
+          <button type="button" onClick={onBackToLibrary} className="house-flow-primary">Back to Exercise Library</button>
+        </>}
+      {withinTrainingPlan && progressionActions}
+      {!withinTrainingPlan && <CompleteSessionAction onComplete={onStartNewSession} disabled={!writable}
+        subtle={active} errorMessage={sessionCompletionError} onRetry={onRetrySessionSave} />}
+      </div>
+      {(shotmaking || measured) && <ExercisePrivateNote value={result.privateNote ?? ""} onChange={updateNote} disabled={!writable}
+        prominent={false} onOpenChange={setNoteOpen} onBackToRecording={active ? () => {
+          const control = recordingRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)");
+          control?.focus();
+        } : undefined} />}
+      {shotSummary && <details className="house-training-disclosure">
+        <summary>Result details and stones</summary>
+        <div>
+          <p className="text-xs text-slate-500">This is your own judgement, not a platform-standardised rubric.</p>
+          <p className="text-sm text-slate-500">{shotSummary.points}/{shotSummary.maximumPoints} points · {shotSummary.excludedAttemptCount} excluded</p>
+          {shotSummary.scoredStoneCount === 0 && <p className="text-sm text-slate-500">No scored stones yet.</p>}
+          {Object.entries(shotSummary.excludedReasonCounts).map(([reason, count]) => <p key={reason} className="text-xs text-slate-500">{exclusionLabel(reason as ShotmakingExclusionReason)}: {count}</p>)}
           {!active && shotSummary.scoredStoneCount > 0 && (
             <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
               <div>
@@ -597,80 +585,23 @@ export default function ExerciseSoloExecutionScreen({
               </ol>
             </div>
           )}
-          </details>
-        </section>
-      )}
 
-      {measured && (
-        <section className={surfaceClass(active ? "secondary" : "hero")}>
-          <h3 className="text-lg font-semibold text-slate-900">
-            {active ? "Live measurements" : "Exercise result"}
-          </h3>
-          {measurementSummaries.length === 0 ? (
-            <p className="mt-2 text-sm text-slate-500">No measurements yet.</p>
-          ) : (
-            <div className="mt-3 space-y-3">
-              {measurementSummaries.map((summary) => (
-                <div
-                  key={`${summary.protocolId}@${summary.protocolVersion}`}
-                  className="rounded-xl bg-slate-100 p-3"
-                >
-                  <p className="text-xs text-slate-500">
-                    {summary.count} {summary.count === 1 ? "measurement" : "measurements"}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold text-slate-900">
-                    Mean {measurementLabel(
-                      summary.protocolId,
-                      summary.protocolVersion,
-                      summary.mean
-                    )}
-                  </p>
-                  {!active && <p className="mt-1 text-xs text-slate-600">
-                    Range {summary.minimum}–{summary.maximum}
-                  </p>}
-                </div>
-              ))}
-            </div>
-          )}
-          {result.attempts.length > 0 && (
-            <ol className="mt-4 space-y-2 border-t border-slate-200 pt-4 text-sm text-slate-600">
-              {result.attempts.map((attempt) => (
-                <li key={attempt.id} className="rounded-lg bg-slate-100 px-3 py-2">
-                  <span className="font-medium text-slate-800">
-                    Observation {attempt.sequenceNumber}
-                  </span>
-                  {attempt.actualHandle && (
-                    <span>{` · ${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"}`}</span>
-                  )}
-                  {attempt.measurements.map((measurement) => (
-                    <span key={measurement.id}>{` · ${measurementLabel(
-                      measurement.protocolId,
-                      measurement.protocolVersion,
-                      measurement.value
-                    )}`}</span>
-                  ))}
-                </li>
-              ))}
-            </ol>
-          )}
-          <p className="mt-3 text-xs text-slate-500">
-            These are factual values only. No target, score or pass/fail result is applied.
-          </p>
-        </section>
-      )}
-
-      {!active && !shotmaking && !measured && (
-        <section className={surfaceClass("hero")}>
-          <h3 className="text-lg font-semibold text-slate-900">Exercise result</h3>
-          <p className="mt-2 text-sm text-slate-600">
-            {execution.status === "completed"
-              ? "Completed without a score. Technique exercises remain observation-only."
-              : "Abandoned without a score. Any private note remains available."}
-          </p>
-        </section>
-      )}
-
-
+        </div>
+      </details>}
+      {measured && <details className="house-training-disclosure">
+        <summary>Result details and stones</summary>
+        <div>
+          {measurementSummaries.map((summary) => <p key={`${summary.protocolId}@${summary.protocolVersion}`} className="text-sm">Range {measurementLabel(summary.protocolId, summary.protocolVersion, summary.minimum)}–{measurementLabel(summary.protocolId, summary.protocolVersion, summary.maximum)}</p>)}
+          <ol className="space-y-2 text-sm">
+            {result.attempts.map((attempt) => <li key={attempt.id}>
+              Observation {attempt.sequenceNumber}
+              {attempt.actualHandle && ` · ${attempt.actualHandle === "in" ? "Inhandle" : "Outhandle"}`}
+              {attempt.measurements.map((measurement) => <span key={measurement.id}> · {measurementLabel(measurement.protocolId, measurement.protocolVersion, measurement.value)}</span>)}
+            </li>)}
+          </ol>
+          <p className="text-xs text-slate-500">These are factual values only. No target, score or pass/fail result is applied.</p>
+        </div>
+      </details>}
       {active && (
         <ExerciseExecutionReference version={version} exerciseAssetResolver={exerciseAssetResolver}>
           <p className="text-xs text-slate-500">

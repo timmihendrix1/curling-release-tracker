@@ -248,7 +248,29 @@ export default function ShotEntry({
   if (appearance === "house" && level === "hero") {
     return (
       <div className="space-y-4" data-testid="house-shot-entry">
-        <h2 className="text-xs font-medium text-[var(--house-muted)]">Add Shot</h2>
+        <div className="house-targets" aria-label="Targets for Next Shot">
+          {measurement.quantities.map((quantity) => {
+            const config = measurement[quantity];
+            if (!config) return null;
+            const isTime = quantity === "time";
+            return (
+              <div key={quantity} className="house-target-row">
+                <div>
+                  <p className="text-sm font-medium">{isTime ? "Target time" : "Target speed"}</p>
+                  <small>On Target {toleranceBandLabel(config.tolerance.onTarget, quantity)}</small>
+                </div>
+                {isTime && target?.editable ? (
+                  <input aria-label="Target Time" type="text" inputMode="decimal" value={manualTargetInput}
+                    onChange={(event) => { if (/^[0-9.,]*$/.test(event.target.value)) setManualTargetInput(event.target.value); }}
+                    className="min-h-11 w-28 rounded-xl border border-slate-300 bg-white px-3 text-lg" />
+                ) : (
+                  <strong>{isTime ? formatReleaseTime(target?.value ?? config.target) : formatSpeed(config.target)}</strong>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <h2 className="sr-only">Add Shot</h2>
         <div className="house-hero">
           <div className="mb-4 flex items-center justify-between gap-3">
             <span className="house-hero-muted text-xs">{measuresBoth ? "Time + Speed" : measuresSpeed ? "Your speed" : "Your release time"}</span>
@@ -295,44 +317,22 @@ export default function ShotEntry({
               );
             })}
           </div>
-        </div>
-        <div className="house-targets" aria-label="Targets for Next Shot">
-          {measurement.quantities.map((quantity) => {
-            const config = measurement[quantity];
-            if (!config) return null;
-            const isTime = quantity === "time";
-            return (
-              <div key={quantity} className="house-target-row">
-                <div>
-                  <p className="text-sm font-medium">{isTime ? "Target time" : "Target speed"}</p>
-                  <small>On Target {toleranceBandLabel(config.tolerance.onTarget, quantity)}</small>
-                </div>
-                {isTime && target?.editable ? (
-                  <input aria-label="Target Time" type="text" inputMode="decimal" value={manualTargetInput}
-                    onChange={(event) => { if (/^[0-9.,]*$/.test(event.target.value)) setManualTargetInput(event.target.value); }}
-                    className="min-h-11 w-28 rounded-xl border border-slate-300 bg-white px-3 text-lg" />
-                ) : (
-                  <strong>{isTime ? formatReleaseTime(target?.value ?? config.target) : formatSpeed(config.target)}</strong>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {measuresBoth && <p className="text-xs text-[var(--house-muted)]">Enter either measurement or both. Add a missing measurement to the saved stone later.</p>}
-        <div role="group" aria-label="Handle" className="grid grid-cols-2 gap-2">
-          {(["in", "out"] as Handle[]).map((value) => (
-            <button key={value} type="button" aria-pressed={handle === value} onClick={() => setHandle(value)} className="house-select">
-              {value === "in" ? "In Handle" : "Out Handle"}
-            </button>
-          ))}
-        </div>
-        <div role="group" aria-label="Shot type" className="grid grid-cols-2 gap-2">
-          {(["draw", "takeout"] as ShotType[]).map((value) => (
-            <button key={value} type="button" aria-pressed={shotType === value} onClick={() => setShotType(value)} className="house-select capitalize">{value}</button>
-          ))}
+        {measuresBoth && <p className="house-hero-muted text-xs">Enter either measurement or both. Add a missing measurement to the saved stone later.</p>}
+        <div className="house-capture-metadata">
+          <label><span className="sr-only">Handle</span>
+            <select aria-label="Handle" value={handle} onChange={(event) => setHandle(event.target.value as Handle)}>
+              <option value="in">Inhandle</option><option value="out">Outhandle</option>
+            </select>
+          </label>
+          <label><span className="sr-only">Shot type</span>
+            <select aria-label="Shot type" value={shotType} onChange={(event) => setShotType(event.target.value as ShotType)}>
+              <option value="draw">Draw</option><option value="takeout">Takeout</option>
+            </select>
+          </label>
         </div>
         {shownError && <p id="house-shot-error" role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{shownError}</p>}
         <button type="button" onClick={handleSaveShot} disabled={disabled} className="house-action">Save Shot</button>
+        </div>
       </div>
     );
   }

@@ -81,17 +81,11 @@ function typeSpeed(value: string) {
 }
 
 function chooseHandle(handle: "in" | "out") {
-  fireEvent.click(
-    within(entryCard()).getByRole("button", {
-      name: handle === "out" ? "Out Handle" : "In Handle",
-    })
-  );
+  fireEvent.change(within(entryCard()).getByRole("combobox", { name: "Handle" }), { target: { value: handle } });
 }
 
 function chooseShotType(type: "draw" | "takeout") {
-  fireEvent.click(
-    within(entryCard()).getByRole("button", { name: new RegExp(`^${type}$`, "i") })
-  );
+  fireEvent.change(within(entryCard()).getByRole("combobox", { name: "Shot type" }), { target: { value: type } });
 }
 
 function saveShot() {
@@ -270,7 +264,7 @@ describe("an acknowledgement arriving mid-edit settles only what it wrote", () =
     // selection made for the next stone is the athlete's and survives.
     await waitFor(() => expect(timeField()).toHaveValue(""));
     expect(speedField()).toHaveValue("");
-    expect(within(entryCard()).getByRole("button", { name: "Out Handle" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(entryCard()).getByRole("combobox", { name: "Handle" })).toHaveValue("out");
 
     typeSpeed("2.42");
     saveShot();

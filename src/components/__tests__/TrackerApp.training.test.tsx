@@ -21,7 +21,7 @@ describe("TrackerApp — active Training live summary", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
     fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-    await waitFor(() => screen.getByText("Set Up Training Block"));
+    await waitFor(() => screen.getByText("Ready to train."));
 
     screen.getByRole("button", { name: "Start Training" }).click();
     await waitFor(() => screen.getByText("Current exercise"));

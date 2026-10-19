@@ -7,6 +7,7 @@ import ExerciseStructuredDiagram from "./ExerciseStructuredDiagram";
 type ExerciseDiagramViewProps = {
   diagram: ExerciseDiagram;
   exerciseAssetResolver?: ExerciseAssetResolver;
+  contained?: boolean;
 };
 
 /**
@@ -22,6 +23,7 @@ type ExerciseDiagramViewProps = {
 export default function ExerciseDiagramView({
   diagram,
   exerciseAssetResolver,
+  contained = false,
 }: ExerciseDiagramViewProps) {
   switch (diagram.kind) {
     case "structured-platform-diagram":
@@ -32,6 +34,7 @@ export default function ExerciseDiagramView({
         <ExerciseRestrictedSourceImage
           diagram={diagram}
           exerciseAssetResolver={exerciseAssetResolver}
+          contained={contained}
         />
       );
 

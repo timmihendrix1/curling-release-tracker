@@ -176,6 +176,7 @@ describe("a Speed block is always recordable", () => {
     // Select Auto Capture WITHOUT starting a sequence, then move to a Speed block.
     fireEvent.click(screen.getByRole("tab", { name: "Auto Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "New Training Block" }));
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     fireEvent.click(screen.getByRole("radio", { name: "Speed (m/s)" }));
     fireEvent.change(screen.getByLabelText("Target Speed (m/s)"), {
       target: { value: "2.4" },

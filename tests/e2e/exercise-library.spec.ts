@@ -111,7 +111,7 @@ test.describe("Exercise Library and Solo execution", () => {
     // separate top-level shortcut.
     await expect(tabs.nth(0)).toHaveAttribute("aria-selected", "true");
     await expect(page.getByRole("heading", { level: 2, name: "Exercises" })).toBeVisible();
-    await expect(page.getByText("Set Up Training Block")).toHaveCount(0);
+    await expect(page.getByText("Ready to train.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByRole("button", { name: /^Shotmaking/ })).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByRole("button", { name: /^Technique/ })).toHaveAttribute("aria-expanded", "false");
@@ -175,8 +175,8 @@ test.describe("Exercise Library and Solo execution", () => {
     for (const title of CURATED_TITLES) {
       await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-      await page.getByText("Setup and instructions", { exact: true }).click();
-      await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
+      await page.getByText("People and equipment", { exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Setup and play", exact: true })).toBeVisible();
       await expect(
         page.getByRole("button", { name: /Start Exercise|Continue to Timing Setup/i })
       ).toHaveCount(1);
@@ -547,8 +547,8 @@ test.describe("Exercise Library and Solo execution", () => {
     for (const title of CURATED_TITLES) {
       await openExerciseDetail(page, title);
       await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-      await page.getByText("Setup and instructions", { exact: true }).click();
-      await expect(page.getByText("Instructions", { exact: true })).toBeVisible();
+      await page.getByText("People and equipment", { exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Setup and play", exact: true })).toBeVisible();
       await expectNoHorizontalOverflow(page);
       await page.getByRole("button", { name: "← Back to Exercises" }).click();
     }
@@ -574,7 +574,7 @@ test.describe("Exercise Library and Solo execution", () => {
     await expect(page.getByText("39 exercises")).toBeVisible();
     await openExerciseDetail(page, "Release Time");
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
-    await expect(page.getByText("Set Up Training Block")).toBeVisible();
+    await expect(page.getByText("Ready to train.")).toBeVisible();
     await page.getByRole("button", { name: "Start Training" }).click();
     await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeVisible();
   });
@@ -612,19 +612,20 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.getByRole("button", { name: "Inhandle" }).click();
     await page.getByRole("button", { name: "0 points, 0 percent" }).click();
     await page.getByRole("button", { name: "Record Stone" }).click();
-    await expect(page.getByText("Average", { exact: true }).locator("..")).toContainText("0%");
+    await expect(page.getByRole("region", { name: "Live result" })).toContainText("0% avg.");
     await expect(page.getByText("1 scored · 0 excluded")).toBeVisible();
 
     await page.getByRole("button", { name: "Outhandle" }).click();
-    await page.getByRole("button", { name: "Do not score this stone" }).click();
+    await page.getByRole("button", { name: "Exclude this attempt" }).click();
     await page.getByLabel("Reason").selectOption("outcome-not-observable");
     await page.getByRole("button", { name: "Record Excluded Stone" }).click();
     await expect(page.getByText("1 scored · 1 excluded")).toBeVisible();
+    await page.getByText("Result details and stones", { exact: true }).click();
     await expect(page.getByText("Outcome not observable: 1")).toBeVisible();
 
     await page.getByRole("button", { name: "Complete Exercise" }).click();
     await expect(page.getByRole("heading", { name: "Exercise result" })).toBeVisible();
-    await expect(page.getByText("0/4", { exact: true })).toBeVisible();
+    await expect(page.getByText("0/4 points · 1 excluded", { exact: true })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -635,8 +636,9 @@ test.describe("Exercise Library and Solo execution", () => {
     await openExerciseDetail(page, "Release Time");
     await page.getByRole("button", { name: "Continue to Timing Setup" }).click();
 
-    await expect(page.getByRole("status").filter({ hasText: "From Exercise Library" }))
-      .toContainText("From Exercise Library");
+    await expect(page.getByRole("heading", { name: "Ready to train." })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change", exact: true })).toHaveAttribute("aria-expanded", "false");
+    await page.getByRole("button", { name: "Change", exact: true }).click();
     await expect(page.getByRole("button", { name: "Fixed Weight", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Variable Weight", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Blind Weight", exact: true })).toBeVisible();
@@ -659,15 +661,18 @@ test.describe("Exercise Library and Solo execution", () => {
     await page.getByRole("button", { name: "Inhandle" }).click();
     await page.getByRole("button", { name: "Record Measurement" }).click();
 
-    await expect(page.getByText("2.5 rotations")).toHaveCount(2);
-    await expect(page.getByText("· Inhandle", { exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Live measurements" })).toContainText("Mean 2.5 rotations");
+    await page.getByText("Result details and stones", { exact: true }).click();
+    await expect(page.getByText("Range 2.5 rotations–2.5 rotations", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Observation 1 · Inhandle/)).toBeVisible();
     await expect(page.getByRole("button", { name: /points/ })).toHaveCount(0);
 
     await page.reload();
     await goToTrain(page);
     await expect(page.getByRole("heading", { name: "Rotation Count", exact: true })).toBeVisible();
-    await expect(page.getByText("2.5 rotations")).toHaveCount(2);
+    await expect(page.getByRole("region", { name: "Live measurements" })).toContainText("Mean 2.5 rotations");
     await page.getByRole("button", { name: "Complete Exercise" }).click();
+    await page.getByText("Result details and stones", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Exercise result" })).toBeVisible();
     await expect(page.getByText(/No target, score or pass\/fail result is applied/)).toBeVisible();
     await expectNoHorizontalOverflow(page);

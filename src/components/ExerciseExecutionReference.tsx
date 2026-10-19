@@ -16,11 +16,11 @@ export default function ExerciseExecutionReference({
   children,
 }: Props) {
   return (
-    <details className="rounded-2xl border border-slate-200 bg-white px-4 shadow-sm">
-      <summary className="flex min-h-11 cursor-pointer items-center py-3 text-sm font-semibold text-slate-800">
+    <details className="house-training-disclosure">
+      <summary >
         Exercise setup and reference
       </summary>
-      <div className="space-y-4 border-t border-slate-100 py-4">
+      <div className="space-y-4">
         {children}
         <ExerciseSetupOverview
           version={version}

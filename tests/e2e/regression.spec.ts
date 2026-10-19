@@ -15,13 +15,13 @@ test("classic manual entry, Analyze navigation, and New Block still work", async
     .locator("..");
 
   await shotEntryPanel.getByPlaceholder("3.75 or 375").fill("3.80");
-  await shotEntryPanel.getByRole("button", { name: "In Handle" }).click();
-  await shotEntryPanel.getByRole("button", { name: "draw", exact: true }).click();
+  await shotEntryPanel.getByRole("combobox", { name: "Handle", exact: true }).selectOption("in");
+  await shotEntryPanel.getByRole("combobox", { name: "Shot type", exact: true }).selectOption("draw");
   await shotEntryPanel.getByRole("button", { name: "Save Shot" }).click();
 
   await expect(page.getByText("1 stone recorded")).toBeVisible();
-  // Recent Shots is collapsed by default (Epic 2).
-  await page.getByText(/Recent Shots/).click();
+  // Recorded stones is collapsed by default (Epic 2).
+  await page.getByText(/Recorded stones/).click();
   await expect(page.getByText("#1 · In · draw")).toBeVisible();
 
   // Analyze navigation must still work (this was the subject of an earlier, separate

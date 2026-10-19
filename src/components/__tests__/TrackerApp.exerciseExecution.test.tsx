@@ -35,7 +35,7 @@ function persistedSession() {
 describe("TrackerApp Solo Exercise execution", () => {
   it("shows physical setup without creating a result and starts with one confirmation", async () => {
     await openExercise("Release Point");
-    expect(screen.getByRole("heading", { name: "Setup and instructions" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Setup and play" })).toBeInTheDocument();
     expect(persistedSession().exerciseExecutions).toBeUndefined();
     fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
     expect(screen.queryByRole("button", { name: "Setup Complete — Start Exercise" })).toBeNull();
@@ -86,15 +86,16 @@ describe("TrackerApp Solo Exercise execution", () => {
       });
     });
     expect(screen.getByText("100%")).toBeInTheDocument();
-    expect(screen.getByText("4/4")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Result details and stones"));
+    expect(screen.getByText(/4\/4 points/)).toBeVisible();
   });
 
   it("routes a Measured Library Exercise into the existing Release Timing setup and snapshots provenance", async () => {
     await openExercise("Release Time");
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("From Exercise Library");
-    expect(screen.getByRole("status")).toHaveTextContent("Release Time");
+    expect(screen.getByRole("heading", { name: "Ready to train." })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Change" }));
     expect(screen.getByRole("button", { name: "Fixed Weight" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Variable Weight" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Blind Weight" })).toBeInTheDocument();
@@ -147,7 +148,7 @@ describe("TrackerApp Solo Exercise execution", () => {
     await waitFor(() => screen.getByRole("heading", { level: 2, name: "Exercises" }));
     fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
     expect(screen.queryByRole("tab", { name: "Quick Start" })).toBeNull();
-    expect(screen.queryByText("Set Up Training Block")).toBeNull();
+    expect(screen.queryByText("Ready to train.")).toBeNull();
     expect(
       screen.getByRole("button", { name: "View Details: Release Time" })
     ).toBeInTheDocument();

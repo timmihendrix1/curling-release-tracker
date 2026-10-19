@@ -17,7 +17,7 @@ import { exerciseDiscoveryCategory } from "../../lib/exercises/discovery";
 
 afterEach(cleanup);
 
-const TIMING_SETUP_MARKER = "Set Up Training Block (test hero)";
+const TIMING_SETUP_MARKER = "Ready to train. (test hero)";
 const CURATED_TITLES = [
   "Release Point",
   "Eight Guards, Progressively Longer",
@@ -158,7 +158,8 @@ describe("Train entry paths", () => {
     expect(screen.getByText("16 exercises")).toBeInTheDocument();
     openDetail("Eight Guards, Progressively Longer");
     expect(screen.getByRole("button", { name: /Back to Exercises/ })).toBeInTheDocument();
-
+    expect(screen.queryByRole("tablist")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     fireEvent.click(tab("Training Plans"));
     openExercises();
 
@@ -189,7 +190,7 @@ describe("Exercise Library", () => {
     expect(release.parentElement).not.toHaveTextContent("Not rated");
     expect(screen.queryByText("0–2 Sweepers")).toBeNull();
     fireEvent.click(release);
-    fireEvent.click(screen.getByText("Setup and instructions"));
+    fireEvent.click(screen.getByText("People and equipment"));
     expect(screen.getByText("Sweeping")).toBeVisible();
   });
 
@@ -343,7 +344,7 @@ describe("Exercise detail", () => {
     openDetail("Release Point");
 
     expect(screen.getByRole("heading", { name: "Release Point" })).toBeInTheDocument();
-    expect(screen.getByText("Instructions")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Setup and play" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
     expect(screen.getByText("39 exercises")).toBeInTheDocument();
@@ -382,7 +383,7 @@ describe("Exercise detail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start Exercise" }));
     expect(onStartExercise).toHaveBeenCalledOnce();
     expect(screen.getByRole("heading", { name: "Release Point" })).toBeInTheDocument();
-    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tablist")).toBeNull();
   });
 
   it("disables Exercise start while Session persistence is not writable", () => {
@@ -436,7 +437,7 @@ describe("Exercise detail", () => {
     openDetail("Release Time");
 
     fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-    expect(tab("Exercises")).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.getByText(TIMING_SETUP_MARKER)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "← Back to Release Time" })).toBeInTheDocument();
     expect(onEntryPathChange).not.toHaveBeenCalledWith("plans");
@@ -451,13 +452,12 @@ describe("Exercise detail", () => {
     // section headings for the consolidated cards, sub-headings for the blocks
     // inside them, and disclosure summaries for the supporting detail.
     for (const heading of [
-      "Goal",
-      "Setup and instructions",
+      "Setup and play",
+      "People and equipment",
       "Participants",
       "Equipment",
       "Sweeping",
-      "Instructions",
-      "How it is evaluated",
+      "Guidance and scoring",
       "Volume and reference goal",
       "Variations",
     ]) {
@@ -470,7 +470,7 @@ describe("Exercise detail", () => {
     openExercises();
     openDetail("Release Point");
 
-    expect(screen.getByText("What to look for")).toBeInTheDocument();
+    expect(screen.getByText("Guidance and scoring")).toBeInTheDocument();
     expect(
       screen.getByText("Look for a release location that remains close to the agreed reference.")
     ).toBeInTheDocument();
@@ -575,10 +575,8 @@ describe("Exercise detail", () => {
     openExercises();
     openDetail("Release Time");
 
-    const measurementsSummary = screen.getByText("Compatible Measurements");
+    const measurementsSummary = screen.getByText("Variations and measurements");
     expect(measurementsSummary).toBeInTheDocument();
-    // The count is in the summary, so a collapsed section still says how many.
-    expect(measurementsSummary.textContent).toContain("2");
     // Reference protocols remain available on demand, with the start action visible.
     expect(measurementsSummary.closest("details")).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: "Continue to Timing Setup" })).toBeVisible();

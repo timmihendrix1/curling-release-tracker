@@ -1229,15 +1229,14 @@ no component hard-codes this text a second time.
 `InfoButton.tsx` renders **either** shape (`AnalyticsExplanation | FeatureExplanation`,
 distinguished by a `"purpose" in explanation` type guard) through the same popover/sheet
 shell, keyboard/Escape/focus behavior, and `aria-label` pattern — not a second Info
-component. `TrainingSetup.tsx` places one `InfoButton` per Training Mode option, one per
-Measurement Mode option, and one on the Accuracy Tolerance section heading (reusing
+component. `TrainingSetup.tsx` places one shared `InfoButton` for Training Mode, one for
+Measurement Mode (both describe the current selection), and one on the Accuracy Tolerance section heading (reusing
 `analyticsExplanations.ts`'s existing On Target/Acceptable/Major Miss definitions via a
 new `accuracyThresholdsSetupExplanation()`, framed for someone about to choose a
-tolerance rather than someone reading a result). Each per-option Info button is a
-**sibling** of that option's selection `<button>` inside a small `position: relative`
-wrapper `<div>` — never nested inside the selection button — so it can never produce an
-invalid `<button>`-in-`<button>` and clicking it can never also select that option
-(sibling elements don't receive each other's click events).
+tolerance rather than someone reading a result). Help and selection remain separate
+buttons; help never changes the selected option. Configuration starts collapsed behind
+Change/Done, applicable targets stay visible, tolerances use Adjust and naming remains
+optional. The editors preserve their drafts across disclosure changes.
 
 ### History information hierarchy
 
@@ -3188,7 +3187,12 @@ names and renders strictly validated metadata-only cards in the existing Team in
 - `ExerciseSoloExecutionScreen.tsx` — ADR-0030's generic capture-first Solo rink screen. It branches on
   focus/guidance semantics, never catalog identity: observation-only Technique, actual
   handle plus 0-4/exclusion Shotmaking capture, private note, lifecycle actions and
-  descriptive current/final results.
+  descriptive current/final results. Shotmaking/Measured notes use a native disclosure
+  that keeps recording mounted while temporarily hidden; Technique shows notes directly.
+  `ExercisePrivateNote` changes presentation only. `CompleteSessionAction` delegates to
+  the existing guarded Session transition. Plan progression is supplied by the shell
+  alongside recording, before optional references; standalone Library continuation is
+  absent in an active plan.
 - `ExerciseTeamSetupScreen.tsx` / `ExerciseTeamExecutionScreen.tsx` — ADR-0036's generic
   cache-bounded Team setup and durable one-device Technique/Shotmaking capture. Both use
   declared focus/guidance/protocol semantics rather than catalog identity.
@@ -3428,20 +3432,16 @@ renderer's notice is the second line of defence.
   `localizedTextOverlays[].backgroundColor` is now optional and the corpus declares none,
   so a label cannot cover a stone, an arrow or a target-zone boundary. A background is
   still honoured for a historical Version whose image kept its own text.
-- `ExerciseDetail.tsx` — **one generic renderer**, following the specification's fixed
-  information order (spec 14.3) across **five** surfaces rather than one card per
-  section (DESIGN_SYSTEM.md §10.2/§10.5 and its "Card Hierarchy" refactor priority):
-  a hero (title, classification badges, Exercise version); "Goal" (goal,
-  why it matters, then the Diagram); "Setup and instructions" (setup steps, Participants,
-  Equipment, Sweeping, Instructions as divider-separated blocks); the focus-appropriate
-  "What to look for" / "How it is evaluated" (with volume and the descriptive source
-  reference goal); and one grouped container holding Variations and Compatible Measurements
-  as progressive-disclosure rows. One compact source footer appears at the very bottom. A Measured Exercise's
-  Compatible Measurements row opens by default — branching on the declared Primary
-  Exercise Focus, never on which Exercise it is.
+- `ExerciseDetail.tsx` — **one generic renderer**, following spec 14.3 and the
+  approved 2026-10-19 House refinement: contextual Back, title/category, goal, complete
+  contained diagram with enlargement, authored setup and ordered instructions, then
+  Solo Start and the independently gated Team setup action. Library tabs stay on
+  discovery; child detail/setup views use contextual Back without resetting filters.
+  People/equipment, guidance/scoring, variations/measurements and Exercise details are
+  initially collapsed supporting disclosures. Full authored content remains available.
 - **The immutable Exercise Version is shown for every Exercise** ("Exercise version N"
-  in the hero). The compact source footer is visually subordinate and does not duplicate
-  full provenance metadata already retained in the content model.
+  in Exercise details). One compact attribution footer remains at the bottom; provenance
+  metadata is retained in the content model.
 - Touch targets follow DESIGN_SYSTEM.md §29.1: the Back action and every disclosure
   summary carry a ~44 px minimum height, protected by bounding-box assertions in
   `tests/e2e/exercise-library.spec.ts`.
@@ -4059,9 +4059,9 @@ local component state.
 
 | Component | Responsibility |
 |---|---|
-| `TrainingSetup.tsx` | Block creation/edit form: mode, measurement mode, target source, Smart Random range, Accuracy Threshold preset/custom picker, inline validation; an `InfoButton` per Training Mode/Measurement Mode option plus one for Accuracy Tolerance |
+| `TrainingSetup.tsx` | Compact block creation/edit form: Change/Done for mode/quantities/interval, visible targets/ranges, Adjust for tolerance, optional naming; shared selection-aware help and existing numeric snapshot/validation semantics |
 | `NewTrainingBlock.tsx` | Modal wrapping `TrainingSetup` for mid-session block switches; also renders the outgoing block's summary cards |
-| `ShotEntry.tsx` | Fixed/Variable Weight single-step shot capture (release time, handle, shot type, optional editable target) |
+| `ShotEntry.tsx` | Fixed/Variable Weight single-step capture: independent time/speed inputs, nearby targets, compact native handle/shot-type selectors and inverse Save Shot on the House measurement surface; existing parent-owned draft and acknowledgement semantics |
 | `BlindShotEntry.tsx` | Blind Weight's 3-phase capture UI, wired to `blindWeight.ts` |
 | `ReleaseTrendChart.tsx` | Per-block chart: target/release/(prediction if present) over shot number, with a combined tooltip |
 | `DashboardCard.tsx` | Shared metric-tile presentational component (label/value/optional sublabel/tone/explanation) used by Analyze and result summaries; active training shows count and independent per-quantity averages |

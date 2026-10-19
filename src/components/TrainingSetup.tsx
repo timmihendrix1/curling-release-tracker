@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { STANDARD_ACCURACY_THRESHOLDS } from "../lib/accuracyThresholds";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import { accuracyThresholdsSetupExplanation } from "../lib/analyticsExplanations";
@@ -291,6 +291,9 @@ export default function TrainingSetup({
     });
 
   const [showToleranceEditor, setShowToleranceEditor] = useState(false);
+  const [showConfiguration, setShowConfiguration] = useState(false);
+  const configurationId = useId();
+  const [targetError, setTargetError] = useState<"time" | "speed" | null>(null);
 
   const smartRandomAvailable = isSmartRandomAvailable(measurementMode);
 
@@ -390,6 +393,7 @@ export default function TrainingSetup({
     : "Not valid yet";
 
   function handleSubmit() {
+    setTargetError(null);
     if (showSmartRandomRange && smartRandomRangeValidation?.valid === false) {
       // The inline error under the range fields already explains why.
       return;
@@ -414,6 +418,7 @@ export default function TrainingSetup({
       !showSmartRandomRange &&
       (parsedTargetTime === null || parsedTargetTime <= 0)
     ) {
+      setTargetError("time");
       alert("Please enter a valid target time.");
       return;
     }
@@ -425,6 +430,7 @@ export default function TrainingSetup({
       : null;
 
     if (measuresSpeed && parsedTargetSpeed === null) {
+      setTargetError("speed");
       alert("Please enter a target speed in metres per second.");
       return;
     }
@@ -509,7 +515,17 @@ export default function TrainingSetup({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="house-training-setup space-y-4">
+      <div className="house-configuration-summary">
+        <div className="text-xs text-slate-500" aria-live="polite">
+          <p>{blockModeLabel(mode)} · {effectiveSelection === "both" ? "Time + Speed" : effectiveSelection === "speed" ? "Speed" : "Time"}</p>
+          {measuresTime && <p>{measurementModeLabel(measurementMode)}</p>}
+        </div>
+        <button type="button" className="house-flow-link" aria-expanded={showConfiguration} aria-controls={configurationId}
+          aria-label={showConfiguration ? "Done changing configuration" : "Change"}
+          onClick={() => setShowConfiguration((open) => !open)}>{showConfiguration ? "Done" : "Change"}</button>
+      </div>
+      <div id={configurationId} hidden={!showConfiguration} className="space-y-4">
       <div>
         {/* Training objective comes first — the IA's #1 priority question
             for Train is "what kind of training am I about to do?". One shared
@@ -619,10 +635,6 @@ export default function TrainingSetup({
         </div>
       )}
 
-      <div className="border-t border-slate-200 pt-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Target Configuration
-        </h3>
       </div>
 
       {mode === "variable" && (
@@ -778,6 +790,9 @@ export default function TrainingSetup({
         </div>
       )}
 
+      {targetError && <p role="alert" className="text-sm text-red-700">
+        {targetError === "time" ? "Please enter a valid target time." : "Please enter a target speed in metres per second."}
+      </p>}
       {/* One compact summary and one Adjust action, rather than a preset row, a
           template picker and a pair of fields all competing permanently for space. */}
       <div>
@@ -788,7 +803,7 @@ export default function TrainingSetup({
           <InfoButton explanation={accuracyThresholdsSetupExplanation()} />
         </header>
 
-        <div className="mt-2 flex items-start justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
+        <div className="house-configuration-summary">
           <div className="min-w-0 text-xs text-slate-600">
             {measuresTime && (
               <p>
@@ -808,7 +823,7 @@ export default function TrainingSetup({
             type="button"
             aria-expanded={showToleranceEditor}
             onClick={() => setShowToleranceEditor((open) => !open)}
-            className="min-h-11 shrink-0 rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100"
+            className="house-flow-link"
           >
             {showToleranceEditor ? "Done" : "Adjust"}
           </button>
@@ -855,9 +870,9 @@ export default function TrainingSetup({
 
       {/* Optional detail, deliberately behind a disclosure — naming a block is the
           lowest-priority decision on this screen and should not occupy it. */}
-      <details className="border-t border-slate-100 pt-4">
-        <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-slate-600">
-          More Settings
+      <details className="house-training-disclosure">
+        <summary>
+          More settings
         </summary>
 
         <div className="pt-2">
@@ -884,7 +899,7 @@ export default function TrainingSetup({
           <button
             type="button"
             onClick={onCancel}
-            className="min-h-11 flex-1 rounded-xl bg-slate-200 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-300"
+            className="house-flow-secondary flex-1"
           >
             Cancel
           </button>
@@ -894,7 +909,7 @@ export default function TrainingSetup({
           type="button"
           onClick={handleSubmit}
           disabled={disabled}
-          className="min-h-11 flex-1 rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+          className="house-flow-primary flex-1"
         >
           {submitLabel}
         </button>

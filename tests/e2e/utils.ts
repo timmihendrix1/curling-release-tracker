@@ -240,10 +240,14 @@ export async function seedProfileScopedSportingValue(
 /** Opens the established timing setup through the Release Time Measured Exercise. */
 export async function openReleaseTimingSetup(page: Page) {
   const alreadyOnSetup = await page
-    .getByText("Set Up Training Block")
+    .getByText("Ready to train.")
     .isVisible()
     .catch(() => false);
-  if (alreadyOnSetup) return;
+  if (alreadyOnSetup) {
+    const change = page.getByRole("button", { name: "Change", exact: true });
+    if (await change.isVisible()) await change.click();
+    return;
+  }
 
   await goToTrain(page);
   const techniqueCategory = page.getByRole("button", {
@@ -258,7 +262,8 @@ export async function openReleaseTimingSetup(page: Page) {
   await page
     .getByRole("button", { name: "Continue to Timing Setup" })
     .click();
-  await page.waitForSelector("text=Set Up Training Block");
+  await page.waitForSelector("text=Ready to train.");
+  await page.getByRole("button", { name: "Change", exact: true }).click();
 }
 
 /** Creates the first Training Block of a fresh session using Release Time's defaults

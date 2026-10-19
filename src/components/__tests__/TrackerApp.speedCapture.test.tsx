@@ -360,8 +360,8 @@ describe("results present each measurement on its own terms", () => {
     state.shots = [speedShot(block, 2.5, { sessionId: state.id })];
     await openTrainingWith(state);
 
-    const list = screen.getByText(/Recent Shots/).closest("details");
-    if (!list) throw new Error("expected the Recent Shots list");
+    const list = screen.getByText(/Recorded stones/).closest("details");
+    if (!list) throw new Error("expected the Recorded stones list");
     list.setAttribute("open", "");
 
     expect(list.textContent).toContain("2.50 m/s");
@@ -378,8 +378,8 @@ describe("results present each measurement on its own terms", () => {
     state.shots = [timeShot(block, 3.8, { sessionId: state.id })];
     await openTrainingWith(state);
 
-    const list = screen.getByText(/Recent Shots/).closest("details");
-    if (!list) throw new Error("expected the Recent Shots list");
+    const list = screen.getByText(/Recorded stones/).closest("details");
+    if (!list) throw new Error("expected the Recorded stones list");
     list.setAttribute("open", "");
 
     expect(list.textContent).toContain("3.80s");

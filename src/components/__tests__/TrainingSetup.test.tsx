@@ -1,10 +1,18 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingSetup from "../TrainingSetup";
 
 afterEach(cleanup);
+
+function render(...args: Parameters<typeof baseRender>) {
+  const result = baseRender(...args);
+  const change = screen.queryByRole("button", { name: "Change" });
+  if (change) fireEvent.click(change);
+  return result;
+}
+
 
 describe("TrainingSetup — Training Category / Measurement Mode help", () => {
   it("shows one shared Info button for the Training Mode group, describing the selected option", () => {

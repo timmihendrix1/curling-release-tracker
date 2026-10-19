@@ -1092,21 +1092,18 @@ Version 1 scope.
 
 ## 14.3 Standard detail structure
 
-Every Exercise detail uses the same information order:
+The [approved House refinement (2026-10-19)](https://www.figma.com/design/AEilVMS2cLx4PUpwkZWkUP?node-id=7-260)
+defines the generic information order: back navigation; House title/category; goal;
+complete diagram and enlargement; Setup and play with authored setup and ordered
+instructions; Solo Start and the supported Team setup action; supporting disclosures;
+source attribution. Practical constraints needed to prepare the exercise correctly
+remain visible with setup.
 
-1. title, focus, category, difficulty and source;
-2. short goal and why it matters;
-3. Ice Sheet Diagram where applicable;
-4. setup, participants, roles, equipment and sweeping policy;
-5. ordered instructions;
-6. observation guidance and the generic 0–4 capture explanation where applicable;
-7. source reference goal or completion guidance;
-8. curated variations;
-9. compatible Measurements; and
-10. start action.
-
-The structure is inspired by the Swiss Curling collection, but the application uses its
-own mobile-first design and progressive disclosure.
+Supporting disclosures group People and equipment, Guidance and scoring, Variations
+and measurements, and Exercise details. They retain why it matters, participant roles,
+sweeping/equipment requirements, observation/scoring explanations, volume/reference
+goals, variations, protocols and version metadata. Empty sections are omitted. This
+reorders presentation only; it changes neither content versions nor execution semantics.
 
 ## 14.4 Exercise start flow
 
@@ -1132,6 +1129,13 @@ begins, the rink screen is capture-first: Shotmaking evaluation or Measurement e
 placed ahead of supporting instructions and diagram. Technique instead places its
 observation prompt and private note first. The full setup, instructions and diagram
 remain available in a collapsed reference below the capture surface.
+
+Shotmaking and standalone Measured Exercise notes are initially collapsed; an Added
+indicator identifies an existing private note without exposing its text. Technique
+keeps the observation prompt and private note directly visible. Opening/closing notes
+preserves recording drafts and existing note-save semantics. Exercise completion shows
+factual results and leaves a standalone Session open for another Exercise; Complete
+Session remains a separate guarded action. Active plans retain their own progression.
 
 ---
 

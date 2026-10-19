@@ -10,13 +10,21 @@
 // fully editable — while the thing that actually guards correctness, a template's
 // quantity, remains immutable once saved.
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingSetup from "../TrainingSetup";
 import AccuracyToleranceProfileForm from "../AccuracyToleranceProfileForm";
 import type { AccuracyToleranceProfile } from "../../lib/accuracyToleranceProfiles/persistence";
 
 afterEach(cleanup);
+
+function render(...args: Parameters<typeof baseRender>) {
+  const result = baseRender(...args);
+  const change = screen.queryByRole("button", { name: "Change" });
+  if (change) fireEvent.click(change);
+  return result;
+}
+
 
 const NOW = "2026-10-06T10:00:00.000Z";
 

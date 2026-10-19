@@ -8,7 +8,7 @@
 // with the athlete changing nothing. A small enough tolerance could even round to
 // zero and become invalid.
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import TrainingSetup, { type TrainingSetupValue } from "../TrainingSetup";
 import TrainingPlanStepEditor from "../TrainingPlanStepEditor";
@@ -19,6 +19,14 @@ import type { TrainingPlanStep } from "../../types";
 
 afterEach(cleanup);
 
+function render(...args: Parameters<typeof baseRender>) {
+  const result = baseRender(...args);
+  const change = screen.queryByRole("button", { name: "Change" });
+  if (change) fireEvent.click(change);
+  return result;
+}
+
+
 function selectReleaseTime() {
   fireEvent.change(screen.getByRole("searchbox", { name: "Search exercises" }), {
     target: { value: "Release Time" },
@@ -28,6 +36,7 @@ function selectReleaseTime() {
     .closest("section");
   if (!card) throw new Error("Missing Release Time picker card");
   fireEvent.click(within(card).getByRole("button", { name: "Select Exercise" }));
+  fireEvent.click(screen.getByRole("button", { name: "Change" }));
 }
 
 const PRECISE_SPEED_TOLERANCE = {

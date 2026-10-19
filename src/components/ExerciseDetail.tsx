@@ -25,7 +25,6 @@ import type { ExerciseAssetResolver } from "../lib/exercises/exerciseAssets";
 import type { ExerciseVersion } from "../lib/exercises/types";
 import TrainingHeader from "./TrainingHeader";
 import ExerciseDiagramView from "./ExerciseDiagramView";
-import { surfaceClass } from "./Surface";
 
 type ExerciseDetailProps = {
   version: ExerciseVersion;
@@ -44,26 +43,6 @@ function Badge({ children }: { children: string }) {
     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
       {children}
     </span>
-  );
-}
-
-/**
- * One coherent responsibility per surface, not one surface per paragraph — see
- * DESIGN_SYSTEM.md §10.2 and its "Card Hierarchy" refactor priority ("stop
- * treating every section as an equally elevated card").
- */
-function SectionCard({ title, children }: { title: string; children: ReactNode }) {
-  if (title !== "Goal" && title !== "Setup and instructions") return (
-    <details className="house-training-disclosure">
-      <summary>{title}</summary>
-      <div className="space-y-3 text-sm text-slate-600">{children}</div>
-    </details>
-  );
-  return (
-    <section className={surfaceClass("primary")}>
-      <h3 className="text-base font-semibold text-slate-900">{title}</h3>
-      <div className="mt-3 space-y-3 text-sm text-slate-600">{children}</div>
-    </section>
   );
 }
 
@@ -89,33 +68,6 @@ function Block({
       )}
       <div className={title ? "mt-1.5 space-y-1.5" : "space-y-1.5"}>{children}</div>
     </div>
-  );
-}
-
-/**
- * One progressive-disclosure row. The summary carries a ~44 px touch height
- * (DESIGN_SYSTEM.md §29.1) and keeps the native disclosure marker, so the
- * affordance is not carried by text alone.
- */
-function DetailDisclosure({
-  title,
-  badge,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  badge?: string;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <details open={defaultOpen} className="border-t border-slate-200 first:border-t-0">
-      <summary className="min-h-11 cursor-pointer py-3 text-base font-semibold text-slate-900">
-        {title}
-        {badge && <span className="ml-1.5 text-sm font-normal text-slate-500">{badge}</span>}
-      </summary>
-      <div className="pb-3 text-sm text-slate-600">{children}</div>
-    </details>
   );
 }
 
@@ -150,38 +102,36 @@ export default function ExerciseDetail({
     version.recommendedVolume !== undefined || version.sourceReferenceGoal !== undefined;
 
   return (
-    <div className="space-y-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="-mx-1 inline-flex min-h-11 items-center px-1 text-sm font-medium text-slate-500 underline transition hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500"
-      >
+    <div className="house-exercise-detail space-y-4">
+      <button type="button" onClick={onBack} className="house-flow-link w-full">
         ← {EXERCISE_DETAIL_BACK_LABEL}
       </button>
-
       <TrainingHeader title={version.title} eyebrow={exerciseDiscoveryCategoryLabel(exerciseDiscoveryCategory(version))} />
-      {/* One start action. Physical setup stays on this page and in the running reference. */}
-      <section className={surfaceClass("primary")}>
-        <h3 className="text-base font-semibold text-slate-900">
-          {version.primaryFocus === "measured" ? "Set up this exercise" : "Ready to practise?"}
-        </h3>
-        <p className="mt-2 text-sm text-slate-600">
-          {version.primaryFocus === "technique" &&
-            "Practise Solo with a private note, or set up a shared Team observation. The app records no technique score."}
-          {version.primaryFocus === "shotmaking" &&
-            "Record a handle and a 0–4 outcome for each stone."}
-          {version.primaryFocus === "measured" && usesReleaseTimingRunner &&
-            "Choose your target and how to measure: time, speed or both in Fixed Weight."}
-          {version.primaryFocus === "measured" && measuredRunnerKind === "exercise-execution" &&
-            "Start an open-ended measured exercise. Record each observed value, then complete the exercise when you are finished."}
-          {version.primaryFocus === "measured" && runnerUnsupported &&
-            "This combination of measurements is not available yet."}
-        </p>
+      <p>{version.goal}</p>
+      {version.diagram && (
+        <ExerciseDiagramView diagram={version.diagram} exerciseAssetResolver={exerciseAssetResolver} contained />
+      )}
+      <section className="space-y-4" aria-labelledby="exercise-setup-title">
+        <h3 id="exercise-setup-title" className="house-flow-section-title">Setup and play</h3>
+        <ul className="space-y-2">
+          {version.setupInstructions.map((step) => <li key={step.id}>{step.text}</li>)}
+        </ul>
+        {(participation.minTrainingAthletes > 1 || sweeping.policy === "required") && (
+          <p className="text-xs text-slate-500">
+            {exerciseTrainingAthleteCountLabel(participation.minTrainingAthletes, participation.maxTrainingAthletes)}
+            {" · "}{exerciseSweepingPolicyLabel(sweeping.policy)} · {exerciseSweeperCountSummary(sweeping)}
+          </p>
+        )}
+        <ol className="list-decimal space-y-3 pl-4">
+          {version.executionInstructions.map((step) => <li key={step.id}>{step.text}</li>)}
+        </ol>
+      </section>
+      <div className="space-y-2">
         <button
           type="button"
           onClick={onStart}
           disabled={startDisabled || runnerUnsupported}
-          className="mt-4 min-h-11 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="house-flow-primary"
         >
           {usesReleaseTimingRunner ? "Continue to Timing Setup" : "Start Exercise"}
         </button>
@@ -190,59 +140,17 @@ export default function ExerciseDetail({
             type="button"
             onClick={onStartTeam}
             disabled={teamStartDisabled}
-            className="mt-3 min-h-11 w-full rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+            className="house-flow-link w-full"
           >
             Set Up Team Exercise
           </button>
         )}
-      </section>
 
-
+        {runnerUnsupported && <p role="status" className="text-sm text-slate-500">This combination of measurements is not available yet.</p>}
+      </div>
       <details className="house-training-disclosure">
-        <summary>Exercise details</summary>
-        <div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {version.shotFamily && <Badge>{exerciseShotFamilyLabel(version.shotFamily)}</Badge>}
-          {version.difficulty && <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>}
-          <Badge>{exerciseTrainingPurposeLabel(version.primaryTrainingPurpose)}</Badge>
-          {version.additionalTrainingPurposes.map((purpose) => (
-            <Badge key={purpose}>{exerciseTrainingPurposeLabel(purpose)}</Badge>
-          ))}
-        </div>
-
-        <p className="mt-3 text-xs text-slate-500">
-          {exerciseVersionLabel(version.version)}
-        </p>        </div>
-      </details>
-
-      {/* 2. Goal and why it matters, with 3. the Diagram illustrating it. */}
-      <SectionCard title="Goal">
-        <Block first>
-          <p>{version.goal}</p>
-          <p>{version.whyItMatters}</p>
-        </Block>
-
-        {version.diagram && (
-          <Block>
-            <ExerciseDiagramView
-              diagram={version.diagram}
-              exerciseAssetResolver={exerciseAssetResolver}
-            />
-          </Block>
-        )}
-      </SectionCard>
-
-      {/* 4. Setup, participants, roles, equipment and sweeping, then
-             5. the ordered instructions — one "how to run this" surface. */}
-      <SectionCard title="Setup and instructions">
-        <Block first>
-          <ul className="list-disc space-y-1 pl-4">
-            {version.setupInstructions.map((step) => (
-              <li key={step.id}>{step.text}</li>
-            ))}
-          </ul>
-        </Block>
-
+        <summary>People and equipment</summary>
+        <div className="space-y-3 text-sm text-slate-600">
         <Block title="Participants">
           {!["Usable Solo or in a Team. An observer is optional.", "Solo or in a Team. One athlete delivers at a time.", "Usable Solo or in a Team. A second person can take the time.", "Solo or in a Team. A second person can take the time.", "Usable Solo or in a Team. Another participant may count the rotations."].includes(participation.summary) && <p>{participation.summary}</p>}
           <p className="text-xs text-slate-500">
@@ -289,18 +197,13 @@ export default function ExerciseDetail({
           <p>{sweeping.note}</p>
         </Block>
 
-        <Block title="Instructions">
-          <ol className="list-decimal space-y-2 pl-4">
-            {version.executionInstructions.map((step) => (
-              <li key={step.id}>{step.text}</li>
-            ))}
-          </ol>
-        </Block>
-      </SectionCard>
 
-      {/* 6. Observation guidance or the generic 0-4 explanation, then
-             7. volume and the descriptive source reference goal. */}
-      <SectionCard title={guidance.kind === "observation" ? "What to look for" : "How it is evaluated"}>
+        </div>
+      </details>
+      <details className="house-training-disclosure">
+        <summary>Guidance and scoring</summary>
+        <div className="space-y-3 text-sm text-slate-600">
+          <p>{version.whyItMatters}</p>
         {guidance.kind === "observation" ? (
           <Block first>
             <ul className="list-disc space-y-1 pl-4">
@@ -353,14 +256,15 @@ export default function ExerciseDetail({
             )}
           </Block>
         )}
-      </SectionCard>
 
-      {/* 8. Variations and 9. compatible Measurements — supporting detail,
-          gathered into one grouped container behind progressive disclosure. */}
+        </div>
+      </details>
       {(version.variations.length > 0 || measurementProtocols.length > 0) && (
-        <section className={surfaceClass("secondary")}>
+        <details className="house-training-disclosure">
+          <summary>Variations and measurements</summary>
+          <div className="space-y-4 text-sm text-slate-600">
           {version.variations.length > 0 && (
-            <DetailDisclosure title="Variations">
+            <Block title="Variations" first>
               <ul className="list-disc space-y-1 pl-4">
                 {version.variations.map((variation) => (
                   <li key={variation.id}>
@@ -369,14 +273,11 @@ export default function ExerciseDetail({
                   </li>
                 ))}
               </ul>
-            </DetailDisclosure>
+            </Block>
           )}
 
           {measurementProtocols.length > 0 && (
-            <DetailDisclosure
-              title="Compatible Measurements"
-              badge={String(measurementProtocols.length)}
-            >
+            <Block title="Compatible Measurements" first={version.variations.length === 0}>
               <ul className="space-y-3">
                 {measurementProtocols.map(({ protocol, requirement }) => (
                   <li key={`${protocol.id}-${protocol.version}`}>
@@ -395,11 +296,29 @@ export default function ExerciseDetail({
                   </li>
                 ))}
               </ul>
-            </DetailDisclosure>
+            </Block>
           )}
-        </section>
+        </div>
+        </details>
       )}
 
+
+      <details className="house-training-disclosure">
+        <summary>Exercise details</summary>
+        <div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {version.shotFamily && <Badge>{exerciseShotFamilyLabel(version.shotFamily)}</Badge>}
+          {version.difficulty && <Badge>{exerciseDifficultyLabel(version.difficulty)}</Badge>}
+          <Badge>{exerciseTrainingPurposeLabel(version.primaryTrainingPurpose)}</Badge>
+          {version.additionalTrainingPurposes.map((purpose) => (
+            <Badge key={purpose}>{exerciseTrainingPurposeLabel(purpose)}</Badge>
+          ))}
+        </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          {exerciseVersionLabel(version.version)}
+        </p>        </div>
+      </details>
 
       <p className="px-1 text-xs text-slate-500">
         Source: {source.attribution}

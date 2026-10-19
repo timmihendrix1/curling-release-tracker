@@ -24,7 +24,7 @@ for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }
     await expect(page.getByRole("region", { name: "Start training" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Resume training", exact: true })).toHaveCount(0);
     await page.mouse.move(0, 0);
-    await page.screenshot({ path: info.outputPath(`home-empty-${viewport.width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`home-empty-${viewport.width}.png`), fullPage: true, animations: "disabled" });
 
     await openReleaseTimingSetup(page);
     await page.getByRole("radio", { name: "Both", exact: true }).click();
@@ -39,16 +39,16 @@ for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }
     const speed = entry.getByLabel("Speed (m/s) — optional");
     await time.fill("3.75");
     await speed.fill("2,38");
-    await entry.getByRole("button", { name: "Out Handle" }).click();
-    await entry.getByRole("button", { name: "takeout" }).click();
-    await expect(entry.getByRole("button", { name: "Out Handle" })).toHaveAttribute("aria-pressed", "true");
+    await entry.getByRole("combobox", { name: "Handle", exact: true }).selectOption("out");
+    await entry.getByRole("combobox", { name: "Shot type", exact: true }).selectOption("takeout");
+    await expect(entry.getByRole("combobox", { name: "Handle", exact: true })).toHaveValue("out");
     for (const field of [time, speed]) {
       const box = (await field.boundingBox())!;
       expect(box.width).toBeGreaterThan(80);
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
     }
     await page.mouse.move(0, 0);
-    await page.screenshot({ path: info.outputPath(`training-both-${viewport.width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`training-both-${viewport.width}.png`), fullPage: true, animations: "disabled" });
     await entry.screenshot({ path: info.outputPath(`both-${viewport.width}.png`) });
     await entry.getByRole("button", { name: "Save Shot", exact: true }).click();
     await expect(page.getByText("1 stone recorded", { exact: true })).toBeVisible();
@@ -56,7 +56,7 @@ for (const viewport of [{ width: 320, height: 700 }, { width: 390, height: 844 }
     const hero = page.getByRole("region", { name: "Current training" });
     await expect(hero.getByText("1", { exact: true })).toBeVisible();
     await page.mouse.move(0, 0);
-    await page.screenshot({ path: info.outputPath(`home-active-${viewport.width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`home-active-${viewport.width}.png`), fullPage: true, animations: "disabled" });
     await hero.getByRole("button", { name: "Resume training" }).click();
     await expect(page.getByText("1 stone recorded", { exact: true })).toBeVisible();
   });
@@ -104,6 +104,7 @@ test("House Time capture keeps shorthand entry and accessible keyboard submissio
   await expect(time).toHaveValue("");
   await time.fill("3.80");
   await entry.screenshot({ path: info.outputPath("time-entered.png") });
+  await page.screenshot({ path: info.outputPath("time-training.png"), fullPage: true, animations: "disabled" });
 });
 
 for (const width of [320, 390]) {
@@ -113,11 +114,11 @@ for (const width of [320, 390]) {
     await goToTrain(page);
     await page.getByLabel("Search exercises").fill("Eight Guards");
     await assertFits(page);
-    await page.screenshot({ path: info.outputPath(`library-${width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`library-${width}.png`), fullPage: true, animations: "disabled" });
     await page.getByRole("button", { name: "View Details: Eight Guards, Progressively Longer" }).click();
-    await expect(page.getByRole("heading", { name: "Setup and instructions" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Setup and play" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Start Exercise", exact: true })).toBeVisible();
-    await page.screenshot({ path: info.outputPath(`detail-${width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`detail-${width}.png`), fullPage: true, animations: "disabled" });
     await page.getByRole("button", { name: "Start Exercise", exact: true }).click();
     await expect(page.getByRole("button", { name: "Setup Complete — Start Exercise" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Assessments", exact: true })).toHaveCount(0);
@@ -134,9 +135,11 @@ for (const width of [320, 390]) {
     await resultDetails.locator("summary").click();
     await expect(page.getByRole("heading", { name: "Attempt log" })).toBeVisible();
     await resultDetails.locator("summary").click();
+    await page.locator("summary").filter({ hasText: "Private athlete note" }).click();
     await page.getByLabel("Private athlete note").fill("Release felt consistent.");
+    await page.getByRole("button", { name: "Back to recording" }).click();
     await assertFits(page);
-    await page.screenshot({ path: info.outputPath(`shotmaking-${width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`shotmaking-${width}.png`), fullPage: true, animations: "disabled" });
     await page.getByRole("button", { name: "Complete Exercise", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Exercise result" })).toBeVisible();
     await expect(page.getByLabel("Private athlete note")).toHaveValue("Release felt consistent.");
@@ -145,7 +148,7 @@ for (const width of [320, 390]) {
     await expect(page.getByRole("heading", { name: "Exercises", exact: true })).toBeVisible();
     await expect(page.getByText("Training saved.", { exact: true })).toBeVisible();
     await assertFits(page);
-    await page.screenshot({ path: info.outputPath(`finished-${width}.png`), fullPage: true });
+    await page.screenshot({ path: info.outputPath(`finished-${width}.png`), fullPage: true, animations: "disabled" });
   });
 }
 
@@ -162,7 +165,7 @@ for (const mode of ["Variable Weight", "Blind Weight", "Auto Capture"]) {
       await page.getByLabel("Measured release time", { exact: true }).fill("3.80");
       await page.getByRole("button", { name: "Review Shot" }).click();
       await assertFits(page);
-      await page.screenshot({ path: info.outputPath("blind-review-320.png"), fullPage: true });
+      await page.screenshot({ path: info.outputPath("blind-review-320.png"), fullPage: true, animations: "disabled" });
       await page.getByRole("button", { name: "Save Shot & Continue" }).click();
     } else if (mode === "Auto Capture") {
       await startAutoCapture(page, { count: 2, handleMode: "Fixed In" });
@@ -175,12 +178,12 @@ for (const mode of ["Variable Weight", "Blind Weight", "Auto Capture"]) {
       await page.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(manual.getByRole("button", { name: "Add", exact: true })).toBeDisabled();
       await assertFits(page);
-      await page.screenshot({ path: info.outputPath("auto-paused-320.png"), fullPage: true });
+      await page.screenshot({ path: info.outputPath("auto-paused-320.png"), fullPage: true, animations: "disabled" });
     } else {
       const entry = page.getByTestId("house-shot-entry");
       await entry.getByLabel("Release Time (s)", { exact: true }).fill("3.80");
       await assertFits(page);
-      await page.screenshot({ path: info.outputPath("variable-320.png"), fullPage: true });
+      await page.screenshot({ path: info.outputPath("variable-320.png"), fullPage: true, animations: "disabled" });
       await entry.getByRole("button", { name: "Save Shot", exact: true }).click();
     }
     await expect(page.getByText("1 stone recorded", { exact: true })).toBeVisible();
@@ -209,7 +212,7 @@ test("Shotmaking offers families, then one start; diagram corners remain uncut",
     return false;
   });
   expect(clipped).toBe(false);
-  await page.screenshot({ path: info.outputPath("guard-detail-uncut.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("guard-detail-uncut.png"), fullPage: true, animations: "disabled" });
   await page.getByRole("button", { name: "Start Exercise", exact: true }).click();
   await expect(page.getByRole("button", { name: "Record Stone", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Setup Complete — Start Exercise" })).toHaveCount(0);
@@ -244,15 +247,15 @@ test("House Assessments, Analyze, Settings and completion dialog share the phone
   await goToAssess(page);
   await expect(page.getByRole("heading", { name: "Find your baseline." })).toBeVisible();
   await assertFits(page);
-  await page.screenshot({ path: info.outputPath("assessments-390.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("assessments-390.png"), fullPage: true, animations: "disabled" });
   await goToAnalyze(page);
   await expect(page.getByRole("heading", { name: "See your progress." })).toBeVisible();
   await assertFits(page);
-  await page.screenshot({ path: info.outputPath("analyze-390.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("analyze-390.png"), fullPage: true, animations: "disabled" });
   await primaryNav(page).getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Make it yours." })).toBeVisible();
   await assertFits(page);
-  await page.screenshot({ path: info.outputPath("settings-390.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("settings-390.png"), fullPage: true, animations: "disabled" });
   await openReleaseTimingSetup(page);
   await page.getByRole("button", { name: "Start Training", exact: true }).click();
   await page.getByLabel("Release Time (s)").fill("3.75");
@@ -265,7 +268,7 @@ test("House Assessments, Analyze, Settings and completion dialog share the phone
   await expect(dialog.getByRole("button", { name: "Complete", exact: true })).toBeFocused();
   await page.keyboard.press("Tab");
   await expect(dialog.getByRole("button", { name: "Cancel" })).toBeFocused();
-  await page.screenshot({ path: info.outputPath("complete-session-390.png"), fullPage: true });
+  await page.screenshot({ path: info.outputPath("complete-session-390.png"), fullPage: true, animations: "disabled" });
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Complete Session", exact: true })).toBeFocused();

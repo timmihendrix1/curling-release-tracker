@@ -64,7 +64,7 @@ async function openReleaseTimingSetup() {
   fireEvent.click(screen.getByRole("button", { name: /^Technique/ }));
   fireEvent.click(screen.getByRole("button", { name: "View Details: Release Time" }));
   fireEvent.click(screen.getByRole("button", { name: "Continue to Timing Setup" }));
-  await waitFor(() => screen.getByText("Set Up Training Block"));
+  await waitFor(() => screen.getByText("Ready to train."));
 }
 
 async function startTrainingAndAddOneShot() {
@@ -167,7 +167,7 @@ describe("Session archive transition — pending-write UI safety", () => {
     // present regardless — asserting on the dialog's own elements specifically.)
     expect(screen.queryByRole("heading", { name: "Complete Session" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Complete" })).toBeNull();
-    expect(screen.queryByText("Set Up Training Block")).toBeNull();
+    expect(screen.queryByText("Ready to train.")).toBeNull();
     expect(screen.getByText("Current exercise")).toBeInTheDocument();
     expect(screen.getByText("1 shot total")).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem(SESSION_HISTORY_KEY) ?? "[]")).toHaveLength(0);

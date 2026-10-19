@@ -507,7 +507,7 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     expect(
       screen.getByRole("button", { name: "Continue to Timing Setup" })
     ).toBeDisabled();
-    expect(screen.queryByText("Set Up Training Block")).toBeNull();
+    expect(screen.queryByText("Ready to train.")).toBeNull();
 
     // Manual timing entry / Auto Capture / Timing Simulator are all
     // structurally unreachable, not merely disabled: since block creation
@@ -517,6 +517,8 @@ describe("TrackerApp — write-protection (read_failed) across every effect-pers
     expect(screen.queryByPlaceholderText("3.75 or 375")).toBeNull();
     expect(screen.queryByRole("tab", { name: "Auto Capture" })).toBeNull();
     expect(screen.queryByText("Timing Simulator")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Back to Exercises/ }));
 
     // Training Plan "Start" — a second, independent Session-mutating entry
     // point, reachable even though Training Plans itself is a separate,

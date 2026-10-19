@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { useState } from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   EIGHT_GUARDS_VERSION_ID,
@@ -102,7 +102,7 @@ describe("ExerciseSoloExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "3 points, 75 percent" }));
     fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
 
-    expect(screen.getByText("Average").parentElement).toHaveTextContent("75%");
+    expect(screen.getByRole("region", { name: "Live result" })).toHaveTextContent("75% avg.");
     expect(screen.queryByText("3/4")).toBeNull();
     expect(screen.getByText("1 scored · 0 excluded")).toBeInTheDocument();
     expect(screen.queryByText(/Inhandle: 75% · 1 scored/)).toBeNull();
@@ -112,7 +112,7 @@ describe("ExerciseSoloExecutionScreen", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Outhandle" }));
-    fireEvent.click(screen.getByRole("button", { name: "Do not score this stone" }));
+    fireEvent.click(screen.getByRole("button", { name: "Exclude this attempt" }));
     fireEvent.change(screen.getByLabelText("Reason"), {
       target: { value: "other" },
     });
@@ -128,13 +128,52 @@ describe("ExerciseSoloExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Complete Exercise" }));
     const result = screen.getByRole("heading", { name: "Exercise result" }).closest("section");
     expect(result).not.toBeNull();
-    expect(within(result as HTMLElement).getByText("3/4")).toBeInTheDocument();
+    expect(within(result as HTMLElement).getByText("75%")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Result details and stones"));
+    expect(screen.getByText(/3\/4 points/)).toBeVisible();
+  });
+
+  it("opens a private note without losing a pending score, handle or optional measurement", async () => {
+    render(<Harness initial={createShotmakingExecution()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Outhandle" }));
+    fireEvent.click(screen.getByRole("button", { name: "3 points, 75 percent" }));
+    fireEvent.click(screen.getByText("Additional measurement"));
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), { target: { value: "2.5" } });
+    expect(screen.getByLabelText("Private athlete note")).not.toBeVisible();
+    fireEvent.click(screen.getByText("Private athlete note", { selector: "summary" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back to recording" })).toBeVisible());
+    expect(screen.getByRole("button", { name: "Record Stone", hidden: true })).not.toBeVisible();
+    fireEvent.change(screen.getByLabelText("Private athlete note"), { target: { value: "Keep this observation." } });
+    fireEvent.click(screen.getByRole("button", { name: "Back to recording" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record Stone" })).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Outhandle" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "3 points, 75 percent" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText(/Rotation Count/)).toHaveValue(2.5);
+    expect(screen.getByText("· Added")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Inhandle" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
+    expect(screen.getByText("1 scored · 0 excluded")).toBeVisible();
+    fireEvent.click(screen.getByText("Private athlete note", { selector: "summary" }));
+    await waitFor(() => expect(screen.getByLabelText("Private athlete note")).toBeVisible());
+    expect(screen.getByLabelText("Private athlete note")).toHaveValue("Keep this observation.");
+  });
+
+  it("retains the measurement draft while the measured exercise note is open", async () => {
+    render(<Harness initial={createMeasuredExecution()} />);
+    fireEvent.change(screen.getByLabelText(/Rotation Count/), { target: { value: "3.5" } });
+    fireEvent.click(screen.getByText("Private athlete note", { selector: "summary" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back to recording" })).toBeVisible());
+    fireEvent.click(screen.getByRole("button", { name: "Back to recording" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Record Measurement" })).toBeVisible());
+    expect(screen.getByLabelText(/Rotation Count/)).toHaveValue(3.5);
+    expect(screen.getByRole("button", { name: "Complete Exercise" })).toBeDisabled();
   });
 
   it("records optional Rotation Count in whole or half rotations", () => {
     render(<Harness initial={createShotmakingExecution()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
+    fireEvent.click(screen.getByText("Additional measurement"));
     fireEvent.change(screen.getByLabelText(/Rotation Count/), { target: { value: "2.5" } });
     fireEvent.click(screen.getByRole("button", { name: "4 points, 100 percent" }));
     fireEvent.click(screen.getByRole("button", { name: "Record Stone" }));
@@ -160,7 +199,9 @@ describe("ExerciseSoloExecutionScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "Inhandle" }));
     fireEvent.click(screen.getByRole("button", { name: "Record Measurement" }));
 
-    expect(screen.getAllByText(/2.5 rotations/)).toHaveLength(2);
+    expect(screen.getByRole("region", { name: "Live measurements" })).toHaveTextContent("Mean 2.5 rotations");
+    fireEvent.click(screen.getByText("Result details and stones"));
+    expect(screen.getByText("Range 2.5 rotations–2.5 rotations")).toBeVisible();
     expect(screen.getByText(/Factual values only/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Complete Exercise" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Complete Exercise" }));

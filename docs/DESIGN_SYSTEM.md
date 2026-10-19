@@ -1,5 +1,33 @@
 # Design System
 
+## Simplified Exercise and Training flow — approved 2026-10-19
+
+The owner approved the [House training refinement](https://www.figma.com/design/AEilVMS2cLx4PUpwkZWkUP?node-id=2-2),
+including the [complete Exercise detail](https://www.figma.com/design/AEilVMS2cLx4PUpwkZWkUP?node-id=7-260).
+This supersedes earlier presentation guidance for these views only:
+
+- Exercise detail shows goal, complete diagram, setup and ordered instructions before
+  Start. Library tabs stay on discovery; detail and setup use their contextual Back action.
+  People/equipment, guidance/scoring, variations/measurements and metadata are
+  supporting disclosures. Authored content and immutable versions are preserved.
+- Release Time setup starts with a configuration summary and Change/Done; applicable
+  targets remain visible. Tolerances use Adjust and naming remains optional.
+- Recording is the dominant task. Shotmaking and Measured Exercise notes are initially
+  collapsed, including an Added indicator; Technique keeps observation and note visible.
+  Closing supporting content preserves recording drafts and uses no new save workflow.
+- Exercise completion leaves the Session open. The result offers Library continuation
+  and a distinct Complete Session action, using the existing guarded archive transition.
+- At 390px, Train uses a 342px content column, 16px rhythm, 48px primary/secondary
+  actions with 20px radii, and the existing petrol surfaces and four-destination navigation.
+  Smaller screens reflow with 44px touch targets. Fixed Figma viewport heights, review
+  annotations and example values are not application behavior or defaults.
+- Web retains Geist; native retains its existing offline system fonts. Actual sync,
+  errors, configured measurements, Auto Capture, Blind prediction and plan progression
+  remain functional even where a representative Figma state does not show them.
+
+This is a presentation refinement, not a new scoring, permission or persistence model.
+The application keeps native document scrolling, complete source diagrams and enlargement.
+
 ## Approved House direction — 2026-10-08
 
 The owner approved [D / House](https://www.figma.com/design/vjcNv1awEflVVwvNmovNFy?node-id=10-159).
