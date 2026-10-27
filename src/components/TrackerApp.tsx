@@ -1,5 +1,7 @@
 "use client";
 
+import { useNativeTrackerBinding } from "./persistence/nativeTrackerContext";
+import type { NativeTrainingIntent } from "../lib/persistence/nativeTrackerTypes";
 import TrainingHeader from "./TrainingHeader";
 
 import {
@@ -9,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type KeyboardEvent,
 } from "react";
 import IdentityAccountControl from "./identity/IdentityAccountControl";
@@ -462,7 +465,30 @@ function settleManualDraftAfterDurableWrite(
   return draft;
 }
 
+const WEB_TRAINING_PRESENTATION = Object.freeze({ mode: "normal" as const, credentialPaused: false });
+const webTrainingSnapshot = () => WEB_TRAINING_PRESENTATION;
+const webTrainingSubscribe = () => () => {};
+
 export default function TrackerApp() {
+  const nativeBinding = useNativeTrackerBinding();
+  const nativeTracker = nativeBinding?.tracker ?? null;
+  const trackerIncarnation = useRef<object>({});
+  const nativeContext = useRef({ view: DEFAULT_ACTIVE_VIEW as string, overlays: new Set<string>() });
+  const nativePresentation = useSyncExternalStore(nativeTracker?.subscribe ?? webTrainingSubscribe, nativeTracker?.getSnapshot ?? webTrainingSnapshot, webTrainingSnapshot);
+  function reportNativeContext() { nativeTracker?.context(trackerIncarnation.current, nativeContext.current.view, nativeContext.current.overlays.size > 0); }
+  function reportNativeOverlay(key: string, shown: boolean) { if (shown) nativeContext.current.overlays.add(key); else nativeContext.current.overlays.delete(key); reportNativeContext(); }
+  const reportInvitationContext = useCallback((shown: boolean) => {
+    if (shown) nativeContext.current.overlays.add("invitation"); else nativeContext.current.overlays.delete("invitation");
+    nativeTracker?.context(trackerIncarnation.current, nativeContext.current.view, nativeContext.current.overlays.size > 0);
+  }, [nativeTracker]);
+  useEffect(() => {
+    if (!nativeTracker) return;
+    const incarnation = trackerIncarnation.current;
+    nativeTracker.attach(incarnation);
+    nativeTracker.context(incarnation, nativeContext.current.view, nativeContext.current.overlays.size > 0);
+    return () => nativeTracker.detach(incarnation);
+  }, [nativeTracker]);
+
   const exerciseAssetResolver = useMemo<ExerciseAssetResolver>(
     () => createPublicExerciseAssetResolver(),
     []
@@ -485,7 +511,7 @@ export default function TrackerApp() {
     accuracyToleranceProfiles: accuracyToleranceProfilesRepository,
     smartRandomProfiles: smartRandomProfilesRepository,
   } = useSportingRepositories();
-  const [activeView, setActiveView] =
+  const [activeView, setActiveViewState] =
     useState<ActiveView>(DEFAULT_ACTIVE_VIEW);
 
   // Keep the selected Train pillar across short transitions in and out of an
@@ -500,12 +526,12 @@ export default function TrackerApp() {
     useState<string | null>(null);
   const [pendingSoloExerciseVersion, setPendingSoloExerciseVersion] =
     useState<ExerciseVersion | null>(null);
-  const [pendingTeamExerciseVersion, setPendingTeamExerciseVersion] =
+  const [pendingTeamExerciseVersion, setPendingTeamExerciseVersionState] =
     useState<ExerciseVersion | null>(null);
-  const [lastCompletedTeamSessionId, setLastCompletedTeamSessionId] =
+  const [lastCompletedTeamSessionId, setLastCompletedTeamSessionIdState] =
     useState<string | null>(null);
 
-  const [currentSession, setCurrentSession] =
+  const [currentSession, setCurrentSessionState] =
     useState<Session | null>(null);
 
   const [sessionHistory, setSessionHistory] = useState<
@@ -528,7 +554,7 @@ export default function TrackerApp() {
     );
   const [
     showAccuracyToleranceProfilesManager,
-    setShowAccuracyToleranceProfilesManager,
+    setShowAccuracyToleranceProfilesManagerState,
   ] = useState(false);
 
   // Smart Random Profiles — a small, independent persisted domain (its own
@@ -540,18 +566,26 @@ export default function TrackerApp() {
     useState<SmartRandomProfilesState>(createEmptySmartRandomProfilesState());
   const [
     showSmartRandomProfilesManager,
-    setShowSmartRandomProfilesManager,
+    setShowSmartRandomProfilesManagerState,
   ] = useState(false);
 
   // Team Foundation (docs/adr/0022) — entirely cloud-backed, so unlike the two
   // profile managers above this owns no local persisted state here; TeamsScreen
   // fetches everything itself once mounted.
-  const [showTeamsScreen, setShowTeamsScreen] = useState(false);
+  const [showTeamsScreen, setShowTeamsScreenState] = useState(false);
 
   // Development-only Brower TCi BLE hardware diagnostic. Like the Timing Simulator it
   // is gated on IS_DEV at every mount point, and the screen itself refuses to construct
   // its controller outside development — see BrowerBleDiagnosticScreen.tsx.
-  const [showBleDiagnostic, setShowBleDiagnostic] = useState(false);
+  const [showBleDiagnostic, setShowBleDiagnosticState] = useState(false);
+
+  const setActiveView = useCallback((value: ActiveView) => { nativeContext.current.view = value; nativeTracker?.context(trackerIncarnation.current, value, nativeContext.current.overlays.size > 0); setActiveViewState(value); }, [nativeTracker]);
+  function setPendingTeamExerciseVersion(value: ExerciseVersion | null) { reportNativeOverlay("teamSetup", value !== null); setPendingTeamExerciseVersionState(value); }
+  function setLastCompletedTeamSessionId(value: string | null) { reportNativeOverlay("teamResult", value !== null); setLastCompletedTeamSessionIdState(value); }
+  function setShowTeamsScreen(value: boolean) { reportNativeOverlay("teams", value); setShowTeamsScreenState(value); }
+  function setShowBleDiagnostic(value: boolean) { reportNativeOverlay("ble", value); setShowBleDiagnosticState(value); }
+  function setShowAccuracyToleranceProfilesManager(value: boolean) { reportNativeOverlay("accuracyManager", value); setShowAccuracyToleranceProfilesManagerState(value); }
+  function setShowSmartRandomProfilesManager(value: boolean) { reportNativeOverlay("randomManager", value); setShowSmartRandomProfilesManagerState(value); }
 
   // The canonical application-owned Profile.id, and the scope every accepted external
   // measurement is attributed to. Optional because presentational component tests mount
@@ -931,9 +965,8 @@ export default function TrackerApp() {
   // still processed one at a time, each reading the immediately-preceding result's
   // already-committed session — never a torn/stale read of the other's in-flight work.
   const sessionRef = useRef<Session | null>(currentSession);
-  useEffect(() => {
-    sessionRef.current = currentSession;
-  }, [currentSession]);
+  // Hydration and every mutation now update this ref synchronously before State.
+  // An older render effect must not overwrite a newer committed capture value.
   // Authoritative mirror of sessionHistory — same rationale and pattern as sessionRef
   // (see docs/adr/0014-session-archive-write-ordering.md's Strict-Mode/staleness
   // hardening pass): the session-archive transition below reads this ref, never the
@@ -1003,10 +1036,23 @@ export default function TrackerApp() {
     }
     // Every commit is stamped with its ordering position before it becomes visible,
     // so a persistence acknowledgement can tell which commit a write speaks for.
-    stampSessionSequence(nextSession);
+    const sequence = stampSessionSequence(nextSession);
+    if (nativeTracker && !nativeTracker.commit(trackerIncarnation.current, nextSession, sequence)) return false;
     sessionRef.current = nextSession;
-    setCurrentSession(nextSession);
+    setCurrentSessionState(nextSession);
+    return true;
   }
+
+  // Evaluate actual UI updaters once, outside React's replayable updater callback.
+  function setCurrentSession(update: Session | null | ((current: Session | null) => Session | null)) {
+    const next = typeof update === "function" ? update(sessionRef.current) : update;
+    if (next) commitSession(next);
+  }
+  function sessionMutationAllowed() { return sessionHydration === "ready" && (!nativeTracker || nativeTracker.captureIntent(trackerIncarnation.current) !== null); }
+  function normalSportingMutationAllowed() { return !nativeTracker || nativeTracker.normalMutation(trackerIncarnation.current); }
+  function captureNativeIntent(): NativeTrainingIntent | null { return nativeTracker?.captureIntent(trackerIncarnation.current) ?? null; }
+  function resumeNativeIntent(intent: NativeTrainingIntent | null) { return !nativeTracker || nativeTracker.resumeIntent(trackerIncarnation.current, intent); }
+
 
   /** The Assessment-domain counterpart to commitSession — see the comment on assessmentStateRef above. */
   function commitAssessmentState(next: AssessmentPersistedState) {
@@ -1078,8 +1124,10 @@ export default function TrackerApp() {
     // to be current later". A result received while no capture was active belongs to
     // no capture at all and is rejected rather than adopted by the next one.
     const ownership = currentTrainingCaptureOwnership();
+    const nativeIntent = captureNativeIntent();
     captureQueueRef.current = captureQueueRef.current
       .then(() => {
+        if (!resumeNativeIntent(nativeIntent)) return;
         processQueuedTimingResult(result, ownership);
       })
       .catch((error) => {
@@ -1157,7 +1205,7 @@ export default function TrackerApp() {
     // Simulator's own subscription gate above, closes both the automatic
     // (simulator) and manual/capture-sequence paths, which both funnel
     // through this one function.
-    if (sessionHydration !== "ready") return null;
+    if (!sessionMutationAllowed()) return null;
 
     // Same rule as manual entry: a terminal Session transition has already chosen its
     // archive snapshot, so a capture accepted now could not be part of it.
@@ -1234,7 +1282,7 @@ export default function TrackerApp() {
       outcome = { status: "invalid", reason: message };
     }
 
-    commitSession(nextSession);
+    if (!commitSession(nextSession)) return null;
     applyCaptureOutcomeFeedback(outcome);
     // Returned so a caller that must report the real result to the person who triggered
     // it (the assisted Brower acceptance below) can do so, instead of assuming success.
@@ -1341,7 +1389,7 @@ export default function TrackerApp() {
     // forever (absent a future retry), so the provider is never started in that case,
     // closing the risk of a timing result being generated as processable input for a
     // session that never actually became ready.
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     // Exactly one subscription per mounted effect instance. React (including Strict
     // Mode's dev-only mount→cleanup→mount double-invoke) always runs this cleanup
@@ -1543,6 +1591,15 @@ export default function TrackerApp() {
     return stampSessionSequence(session);
   }
 
+  const hydrateCurrentSession = useCallback((value: Session) => {
+    const existing = sessionSequencesRef.current.get(value);
+    const sequence = existing ?? ++sessionSequenceRef.current;
+    sessionSequencesRef.current.set(value, sequence);
+    nativeTracker?.hydrated(trackerIncarnation.current, value, sequence);
+    sessionRef.current = value;
+    setCurrentSessionState(value);
+  }, [nativeTracker]);
+
   /**
    * Resolves once a write that genuinely speaks for this commit has settled.
    *
@@ -1725,6 +1782,18 @@ export default function TrackerApp() {
     sessionSaveWaitersRef.current = remaining;
   }, [commitManualSubmissions, commitPendingCompletions]);
 
+  const prepareSessionWrite = useCallback((value: Session): (() => Promise<PersistenceWriteResult>) => {
+    if (!nativeTracker) return () => sessionRepository.saveCurrent(value);
+    const job = nativeTracker.prepareCurrent(trackerIncarnation.current, value, sessionSequencesRef.current.get(value) ?? 0);
+    return async () => {
+      const settled = await nativeTracker.persistCurrent(job);
+      // This detached DTO describes the actual write, including its original order.
+      if (settled.written) sessionSequencesRef.current.set(settled.written, settled.sequence);
+      settleSessionSaveWaiters(settled.written ?? value, settled.result);
+      return settled.result;
+    };
+  }, [nativeTracker, sessionRepository, settleSessionSaveWaiters]);
+
   /**
    * Resolves once a repository write has actually acknowledged a session containing
    * this shot, or with `pending` if none has within the bound.
@@ -1764,16 +1833,17 @@ export default function TrackerApp() {
    * it can never create a second shot — the shot already exists and is untouched here.
    */
   async function retryBrowerSave(expected: { sessionId: string; shotId: string }): Promise<BrowerSaveAcknowledgement> {
+    const nativeIntent = captureNativeIntent();
     return runSessionWrite(async () => {
       const session = sessionRef.current;
-      if (browerAuthorityRef.current.sessionHydration !== "ready" ||
+      if (!resumeNativeIntent(nativeIntent) || browerAuthorityRef.current.sessionHydration !== "ready" ||
           session?.id !== expected.sessionId ||
           !session.shots.some((shot) => shot.id === expected.shotId)) {
         return { kind: "save_failed", error: { kind: "unknown", message: "The original measurement is no longer in this training." } };
       }
       try {
-        const result = await sessionRepository.saveCurrent(session);
-        settleSessionSaveWaiters(session, result);
+        const result = await prepareSessionWrite(session)();
+        if (!nativeTracker) settleSessionSaveWaiters(session, result);
         return result.ok ? { kind: "saved" } : { kind: "save_failed", error: result.error };
       } catch {
         return { kind: "save_failed", error: { kind: "unknown", message: "The save did not report a result." } };
@@ -1806,6 +1876,7 @@ export default function TrackerApp() {
       ],
     };
 
+    const nativeIntent = captureNativeIntent();
     return new Promise<BrowerAcceptOutcome>((resolve) => {
       captureQueueRef.current = captureQueueRef.current
         .then(async () => {
@@ -1814,6 +1885,7 @@ export default function TrackerApp() {
           // The first asks the controller whether this candidate is still live in the
           // same connection and arming window: backgrounding, a disconnect, a discard,
           // a pause, a re-arm or an unmount between the tap and here must all revoke it.
+          if (!resumeNativeIntent(nativeIntent)) { resolve({ status: "rejected", message: "This training cannot accept changes right now." }); return; }
           const revoked = browerController.verifyCandidateStillLive(candidate);
           if (revoked !== null) {
             resolve({ status: "rejected", message: revoked });
@@ -1898,7 +1970,7 @@ export default function TrackerApp() {
         if (cancelled) return;
 
         if (currentResult.status === "value") {
-          setCurrentSession(currentResult.value);
+          hydrateCurrentSession(currentResult.value);
           // Home is the normal entry point (see docs/adr/0009), except for the one
           // active training situation reload can hand back: a Capture Sequence that
           // was running or paused when the page closed.
@@ -1909,9 +1981,9 @@ export default function TrackerApp() {
             setActiveView("train");
           }
         } else if (currentResult.status === "absent") {
-          setCurrentSession(createNewSession());
+          hydrateCurrentSession(createNewSession());
         } else {
-          setCurrentSession(currentResult.fallback);
+          hydrateCurrentSession(currentResult.fallback);
         }
 
         if (historyResult.status === "value") {
@@ -2055,6 +2127,8 @@ export default function TrackerApp() {
     sessionRepository,
     smartRandomProfilesRepository,
     trainingPlansRepository,
+    hydrateCurrentSession,
+    setActiveView,
   ]);
 
   useEffect(() => {
@@ -2080,8 +2154,8 @@ export default function TrackerApp() {
       sessionSequencesRef.current.set(saved, sessionSequenceRef.current);
     }
 
-    void runSessionWrite(() => sessionRepository.saveCurrent(saved))
-      .then((result) => settleSessionSaveWaiters(saved, result))
+    void runSessionWrite(prepareSessionWrite(saved))
+      .then((result) => { if (!nativeTracker) settleSessionSaveWaiters(saved, result); })
       .catch(() =>
         // A repository is not supposed to throw, but a waiter must never be left
         // hanging by one that does — an unacknowledged write is reported as a failure,
@@ -2091,7 +2165,7 @@ export default function TrackerApp() {
           error: { kind: "unknown", message: "The save did not report a result." },
         })
       );
-  }, [currentSession, sessionHydration, sessionRepository, settleSessionSaveWaiters]);
+  }, [currentSession, sessionHydration, sessionRepository, settleSessionSaveWaiters, nativeTracker, prepareSessionWrite]);
 
   useEffect(() => {
     if (historyFiltersHydration !== "ready") return;
@@ -2104,8 +2178,11 @@ export default function TrackerApp() {
     // See the matching guard in the current-session save effect above.
     if (sessionHistory === lastArchivedHistoryRef.current) return;
 
-    sessionRepository.saveHistory(sessionHistory);
-  }, [sessionHistory, sessionHydration, sessionRepository]);
+    if (nativeTracker) {
+      const job = nativeTracker.prepareHistory(trackerIncarnation.current, sessionHistory);
+      void nativeTracker.persistHistory(job);
+    } else void sessionRepository.saveHistory(sessionHistory);
+  }, [sessionHistory, sessionHydration, sessionRepository, nativeTracker]);
 
   useEffect(() => {
     if (!assessmentState) return;
@@ -2152,10 +2229,10 @@ export default function TrackerApp() {
   // Also false while a terminal Session transition is in flight — see
   // sessionTransitionPending. This is what disables Add Shot and every other
   // session-mutating control for the duration of the archive write.
-  const sessionWritable = sessionHydration === "ready" && !sessionTransitionPending;
-  const trainingPlansWritable = trainingPlansHydration === "ready";
-  const accuracyProfilesWritable = accuracyProfilesHydration === "ready";
-  const smartRandomProfilesWritable = smartRandomProfilesHydration === "ready";
+  const sessionWritable = sessionHydration === "ready" && !sessionTransitionPending && (nativePresentation.mode === "normal" || nativePresentation.mode === "continuing");
+  const trainingPlansWritable = trainingPlansHydration === "ready" && nativePresentation.mode === "normal";
+  const accuracyProfilesWritable = accuracyProfilesHydration === "ready" && nativePresentation.mode === "normal";
+  const smartRandomProfilesWritable = smartRandomProfilesHydration === "ready" && nativePresentation.mode === "normal";
 
   const activeBlock = getActiveBlock(currentSession);
   const activeTeamExerciseDraft = sportingCloudSync?.activeTeamExerciseDraft ?? null;
@@ -2565,7 +2642,7 @@ export default function TrackerApp() {
     );
 
   function handleChangeActiveBlockTargetTime(newTargetTime: number) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     setCurrentSession((session) => {
       if (!session) return session;
@@ -2616,7 +2693,7 @@ export default function TrackerApp() {
   }
 
   function handleChangeSessionTitle(title: string) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     setCurrentSession((session) => {
       if (!session) return session;
@@ -2629,7 +2706,7 @@ export default function TrackerApp() {
   }
 
   function handleChangeSessionNotes(notes: string) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     setCurrentSession((session) => {
       if (!session) return session;
@@ -2653,7 +2730,7 @@ export default function TrackerApp() {
   function handleAddShot(input: AddShotInput): boolean {
     // Returns whether the stone was actually accepted, so the entry control knows
     // whether it may clear the athlete's input. A refusal must never look like a save.
-    if (sessionHydration !== "ready") return false;
+    if (!sessionMutationAllowed()) return false;
     // A terminal Session transition has already chosen which stones it is archiving;
     // one accepted now would be counted on screen and then dropped. Refused rather
     // than accepted-and-lost — the entry field keeps its value for an immediate retry.
@@ -2809,7 +2886,7 @@ export default function TrackerApp() {
       status: "pending",
     };
 
-    commitSession(committed);
+    if (!commitSession(committed)) return false;
 
     // ACCEPTED is not SAVED. The stone is in the session and will be written, but the
     // athlete's typed values stay exactly where they are until storage acknowledges
@@ -2943,8 +3020,8 @@ export default function TrackerApp() {
     // above. The ordinary save effect calls it for its own writes; a write issued
     // directly here must do the same, or a successful retry would sit forever as
     // "Saving…".
-    void runSessionWrite(() => sessionRepository.saveCurrent(target))
-      .then((result) => settleSessionSaveWaiters(target, result))
+    void runSessionWrite(prepareSessionWrite(target))
+      .then((result) => { if (!nativeTracker) settleSessionSaveWaiters(target, result); })
       .catch(() =>
         // A THROWN write is a failure like any other, not an unhandled rejection that
         // leaves the athlete with no outcome at all.
@@ -2969,7 +3046,7 @@ export default function TrackerApp() {
   async function handleCompleteShotMeasurement(
     request: CompletionRequest
   ): Promise<CompletionOutcome> {
-    if (sessionHydration !== "ready") {
+    if (!sessionMutationAllowed()) {
       return {
         status: "rejected",
         message: "This training isn't ready to accept changes yet.",
@@ -3054,7 +3131,7 @@ export default function TrackerApp() {
       { ...descriptor, status: "pending" },
     ]);
     setCompletionConfirmation(null);
-    commitSession(completed);
+    if (!commitSession(completed)) return { status: "rejected", message: "This training cannot accept changes right now." };
 
     return new Promise<CompletionOutcome>((resolve) => {
       registerSessionPersistenceAck(
@@ -3205,8 +3282,8 @@ export default function TrackerApp() {
       }
     );
 
-    void runSessionWrite(() => sessionRepository.saveCurrent(target))
-      .then((result) => settleSessionSaveWaiters(target, result))
+    void runSessionWrite(prepareSessionWrite(target))
+      .then((result) => { if (!nativeTracker) settleSessionSaveWaiters(target, result); })
       .catch(() =>
         settleSessionSaveWaiters(target, {
           ok: false,
@@ -3216,7 +3293,7 @@ export default function TrackerApp() {
   }
 
   function handleStartCaptureSequence(config: AutoCaptureStartConfig) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     if (!session || !activeBlock) return;
@@ -3259,7 +3336,7 @@ export default function TrackerApp() {
   }
 
   function handlePauseCaptureSequence() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
@@ -3271,7 +3348,7 @@ export default function TrackerApp() {
   }
 
   function handleResumeCaptureSequence() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
@@ -3283,7 +3360,7 @@ export default function TrackerApp() {
   }
 
   function handleCancelCaptureSequence() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     setConfirmAction({
       title: "Cancel Auto Capture?",
@@ -3311,7 +3388,7 @@ export default function TrackerApp() {
   }
 
   function handleUndoLastCapturedShot() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     if (!session || !session.captureSequence) return;
@@ -3335,7 +3412,7 @@ export default function TrackerApp() {
   }
 
   function handleManualCaptureResult(value: number) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
     if (!activeBlock) return;
     // A manual fallback reading is still a TIME reading and needs the interval it
     // was measured over; a block without one cannot accept it.
@@ -3347,7 +3424,7 @@ export default function TrackerApp() {
   }
 
   function handleDeleteShot(shotId: string) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     setCurrentSession((session) => {
       if (!session) return session;
@@ -3393,7 +3470,7 @@ export default function TrackerApp() {
   }
 
   function handleSaveEditedShot() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
     if (!editingShot) return;
 
     const parsedTime = Number(editingShot.releaseTime);
@@ -3460,7 +3537,7 @@ export default function TrackerApp() {
   }
 
   function handleCreateFirstBlock(value: TrainingSetupValue) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const block = tryCreateTrainingBlock(value);
     if (!block) return;
@@ -3484,7 +3561,7 @@ export default function TrackerApp() {
 
   /** Starts through the runner selected by declared protocol semantics. */
   function handleStartExercise(version: ExerciseVersion): boolean {
-    if (sessionHydration !== "ready") return false;
+    if (!sessionMutationAllowed()) return false;
 
     const runnerKind = exerciseRunnerKind(EXERCISE_CATALOG, version);
     if (runnerKind === "release-timing") {
@@ -3505,7 +3582,7 @@ export default function TrackerApp() {
   }
 
   function startSoloExercise(version: ExerciseVersion): boolean {
-    if (sessionHydration !== "ready") return false;
+    if (!sessionMutationAllowed()) return false;
     const session = sessionRef.current;
     if (!session) return false;
     const compatibleProtocols = resolveMeasurementProtocols(
@@ -3533,7 +3610,7 @@ export default function TrackerApp() {
       return false;
     }
 
-    commitSession(attached.value);
+    if (!commitSession(attached.value)) return false;
     setPendingSoloExerciseVersion(null);
     setViewingExerciseExecutionId(created.value.id);
     setFinishedTrainingSummary(null);
@@ -3541,13 +3618,13 @@ export default function TrackerApp() {
   }
 
   function handleReplaceExerciseExecution(execution: ExerciseExecution): boolean {
-    if (sessionHydration !== "ready") return false;
+    if (!sessionMutationAllowed()) return false;
     const session = sessionRef.current;
     if (!session) return false;
     const replacement = replaceExerciseExecution(session, execution);
     if (!replacement.ok) return false;
 
-    commitSession(replacement.value);
+    if (!commitSession(replacement.value)) return false;
     setViewingExerciseExecutionId(execution.id);
     return true;
   }
@@ -3559,7 +3636,7 @@ export default function TrackerApp() {
   }
 
   function handleCreateNewBlock(value: TrainingSetupValue) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     // Pre-validate with a throwaway construction; addTrainingBlock's own
     // internal createTrainingBlock call is then guaranteed not to throw,
@@ -3579,7 +3656,7 @@ export default function TrackerApp() {
 
   /** Upserts a Training Plan into the library by id — create or rename/re-edit alike. */
   function handleSaveTrainingPlan(plan: TrainingPlan) {
-    if (trainingPlansHydration !== "ready") return;
+    if (trainingPlansHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setTrainingPlans((current) => {
       const library: TrainingPlansPersistedState = {
@@ -3602,7 +3679,7 @@ export default function TrackerApp() {
    * TrainingPlansLibrary already confirms this destructive action itself.
    */
   function handleDeleteTrainingPlan(planId: string) {
-    if (trainingPlansHydration !== "ready") return;
+    if (trainingPlansHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setTrainingPlans(
       (current) =>
@@ -3614,7 +3691,7 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateTrainingPlan(plan: TrainingPlan) {
-    if (trainingPlansHydration !== "ready") return;
+    if (trainingPlansHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     const copy = duplicatePlan(plan);
     setTrainingPlans(
@@ -3696,7 +3773,7 @@ export default function TrackerApp() {
    * attaching the immutable plan snapshot in one Session commit.
    */
   function handleStartTrainingPlan(plan: TrainingPlan) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const firstStep = plan.steps[0];
     if (!firstStep) return;
@@ -3728,7 +3805,7 @@ export default function TrackerApp() {
   function handleCreateAccuracyToleranceProfile(
     input: AccuracyToleranceProfileInput
   ) {
-    if (accuracyProfilesHydration !== "ready") return;
+    if (accuracyProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     const outcome = buildAccuracyToleranceProfile(input, new Date().toISOString());
     if (!outcome.ok) {
@@ -3745,7 +3822,7 @@ export default function TrackerApp() {
     profileId: string,
     input: Omit<AccuracyToleranceProfileInput, "id" | "createdAt">
   ) {
-    if (accuracyProfilesHydration !== "ready") return;
+    if (accuracyProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setAccuracyToleranceProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
@@ -3782,7 +3859,7 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateAccuracyToleranceProfile(profileId: string) {
-    if (accuracyProfilesHydration !== "ready") return;
+    if (accuracyProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setAccuracyToleranceProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
@@ -3797,7 +3874,7 @@ export default function TrackerApp() {
   }
 
   function handleDeleteAccuracyToleranceProfile(profileId: string) {
-    if (accuracyProfilesHydration !== "ready") return;
+    if (accuracyProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setAccuracyToleranceProfilesState((current) =>
       deleteAccuracyToleranceProfile(current, profileId)
@@ -3805,7 +3882,7 @@ export default function TrackerApp() {
   }
 
   function handleSetDefaultAccuracyToleranceProfile(profileId: string | null) {
-    if (accuracyProfilesHydration !== "ready") return;
+    if (accuracyProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setAccuracyToleranceProfilesState((current) => {
       const result = setDefaultAccuracyToleranceProfile(current, profileId);
@@ -3819,7 +3896,7 @@ export default function TrackerApp() {
   // "back-hog"; buildSmartRandomProfile still re-validates this rather than
   // trusting the caller.
   function handleCreateSmartRandomProfile(value: SmartRandomProfileFormValue) {
-    if (smartRandomProfilesHydration !== "ready") return;
+    if (smartRandomProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     const outcome = buildSmartRandomProfile(
       { ...value, measurementMode: "back-hog" },
@@ -3839,7 +3916,7 @@ export default function TrackerApp() {
     profileId: string,
     value: SmartRandomProfileFormValue
   ) {
-    if (smartRandomProfilesHydration !== "ready") return;
+    if (smartRandomProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setSmartRandomProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
@@ -3865,7 +3942,7 @@ export default function TrackerApp() {
   }
 
   function handleDuplicateSmartRandomProfile(profileId: string) {
-    if (smartRandomProfilesHydration !== "ready") return;
+    if (smartRandomProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setSmartRandomProfilesState((current) => {
       const existing = current.profiles.find((profile) => profile.id === profileId);
@@ -3877,7 +3954,7 @@ export default function TrackerApp() {
   }
 
   function handleDeleteSmartRandomProfile(profileId: string) {
-    if (smartRandomProfilesHydration !== "ready") return;
+    if (smartRandomProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setSmartRandomProfilesState((current) =>
       deleteSmartRandomProfile(current, profileId)
@@ -3885,7 +3962,7 @@ export default function TrackerApp() {
   }
 
   function handleSetDefaultSmartRandomProfile(profileId: string | null) {
-    if (smartRandomProfilesHydration !== "ready") return;
+    if (smartRandomProfilesHydration !== "ready" || !normalSportingMutationAllowed()) return;
 
     setSmartRandomProfilesState((current) => {
       const result = setDefaultSmartRandomProfile(current, profileId);
@@ -3904,7 +3981,7 @@ export default function TrackerApp() {
    * rather than a second, plan-specific guard.
    */
   function handleContinueToNextPlanStep() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     const planExecution = session?.planExecution;
@@ -3943,9 +4020,10 @@ export default function TrackerApp() {
   function enqueuePlanStepAdvance(intent: { sessionId: string; stepIndex: number }) {
     if (planStepAdvanceInFlightRef.current) return;
     planStepAdvanceInFlightRef.current = true;
+    const nativeIntent = captureNativeIntent();
 
     captureQueueRef.current = captureQueueRef.current
-      .then(() => performPlanStepAdvance(intent))
+      .then(() => { if (resumeNativeIntent(nativeIntent)) return performPlanStepAdvance(intent); })
       .catch((error) => {
         console.error("Unexpected error while advancing the Training Plan", error);
       })
@@ -3963,7 +4041,7 @@ export default function TrackerApp() {
    * queue reaches this call the closure may be arbitrarily stale.
    */
   async function performPlanStepAdvance(intent: { sessionId: string; stepIndex: number }) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     const session = sessionRef.current;
     const planExecution = session?.planExecution;
@@ -3992,7 +4070,7 @@ export default function TrackerApp() {
       planExecution: advanceToNextPlanStep(planExecution, materialized.runtime),
     };
 
-    commitSession(advanced);
+    if (!commitSession(advanced)) return;
 
     setPlanTransitionError(null);
     setRetryableSessionSave(null);
@@ -4036,9 +4114,9 @@ export default function TrackerApp() {
     setPlanTransitionError(null);
     setRetryableSessionSave(null);
 
-    void runSessionWrite(() => sessionRepository.saveCurrent(target))
+    void runSessionWrite(prepareSessionWrite(target))
       .then((result) => {
-        settleSessionSaveWaiters(target, result);
+        if (!nativeTracker) settleSessionSaveWaiters(target, result);
         if (result.ok) return;
         setPlanTransitionError(
           "That still could not be saved. Everything you recorded is still here — try again, or finish the training to save it."
@@ -4103,6 +4181,10 @@ export default function TrackerApp() {
       // click-time closure's `shots.length` — a capture result accepted while the
       // confirmation dialog was open could have added a shot after the click but
       // before this queued step actually runs.
+      if (nativeTracker && !normalSportingMutationAllowed()) {
+        setFinishedTrainingSummary(options.summarize && snapshot ? { session: snapshot, saved: false } : null);
+        return;
+      }
       commitSession(nextCurrentSession);
       setBlockFilter(DEFAULT_SHOT_FILTER);
       setViewingExerciseExecutionId(null);
@@ -4158,10 +4240,10 @@ export default function TrackerApp() {
     // on captureQueueRef can run until this whole function returns, so nothing can
     // mutate the session between this read and the eventual replacement below.
     const nextHistory = [previousSession, ...sessionHistoryRef.current];
-    const archiveResult = await runSessionWrite(() => sessionRepository.archiveAndReplace(
-      nextHistory,
-      nextCurrentSession
-    ));
+    const nativeArchive = nativeTracker?.prepareArchive(trackerIncarnation.current, previousSession, nextHistory, nextCurrentSession);
+    const nativeSettlement = nativeTracker && nativeArchive ? await runSessionWrite(() => nativeTracker.persistArchive(nativeArchive)) : null;
+    const archiveResult = nativeSettlement?.result ?? await runSessionWrite(() => sessionRepository.archiveAndReplace(nextHistory, nextCurrentSession));
+    const persistedHistory = nativeSettlement?.history ?? nextHistory;
 
     if (!archiveResult.ok && archiveResult.step === "history") {
       // History write failed: neither write took effect. Leave the completed
@@ -4182,9 +4264,9 @@ export default function TrackerApp() {
     // its authoritative ref together, so the ordinary, independent save effects don't
     // redundantly (and, in doing so, riskily) re-persist this same transition in their
     // own declaration order.
-    lastArchivedHistoryRef.current = nextHistory;
-    sessionHistoryRef.current = nextHistory;
-    setSessionHistory(nextHistory);
+    lastArchivedHistoryRef.current = persistedHistory;
+    sessionHistoryRef.current = persistedHistory;
+    setSessionHistory(persistedHistory);
 
     if (archiveResult.ok) {
       lastArchivedCurrentSessionRef.current = nextCurrentSession;
@@ -4199,6 +4281,14 @@ export default function TrackerApp() {
     // keeps a stale failure from a finished training out of the next one, and stops a
     // late callback from an old operation touching the new training's status.
     reconcileOperationsWithArchive(previousSession);
+    if (nativeSettlement?.stopAfterCompletion) {
+      // The history ACK is final. Keep the genuine outgoing data visible without
+      // creating or effect-saving an empty successor during the credential pause.
+      lastArchivedCurrentSessionRef.current = sessionRef.current;
+      setFinishedTrainingSummary(options.summarize ? { session: previousSession, saved: true } : null);
+      setPlanTransitionError(null);
+      return;
+    }
 
     commitSession(nextCurrentSession);
     setBlockFilter(DEFAULT_SHOT_FILTER);
@@ -4251,7 +4341,7 @@ export default function TrackerApp() {
    * training and keeps every recorded stone, attempt and note; it is not a discard.
    */
   function handleFinishPlannedTraining() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     // Truthful confirmation copy: "completed" is claimed only when every planned
     // volume has actually been reached, not merely because this is the last step.
@@ -4304,12 +4394,13 @@ export default function TrackerApp() {
       onConfirm: () => {
         if (sessionArchiveInFlightRef.current) return;
         sessionArchiveInFlightRef.current = true;
+        const nativeIntent = captureNativeIntent();
 
         // Enqueued onto the same queue every TimingResult goes through — see
         // performSessionArchiveTransition's doc comment above. An unexpected
         // exception must never leave captureQueueRef permanently rejected.
         captureQueueRef.current = captureQueueRef.current
-          .then(() => performSessionArchiveTransition(options))
+          .then(() => { if (resumeNativeIntent(nativeIntent)) return performSessionArchiveTransition(options); })
           .catch((error) => {
             console.error("Unexpected error while archiving the session", error);
           })
@@ -4409,7 +4500,7 @@ export default function TrackerApp() {
   }
 
   function handleOpenNewBlockModal() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed()) return;
 
     guardLeavingActiveWork(
       hasUnsavedBlindDraft
@@ -4568,7 +4659,7 @@ export default function TrackerApp() {
   }
 
   function handleDeleteHistorySession(sessionId: string) {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed() || !normalSportingMutationAllowed()) return;
 
     setConfirmAction({
       title: "Delete Session",
@@ -4577,6 +4668,7 @@ export default function TrackerApp() {
       confirmLabel: "Delete",
       isDanger: true,
       onConfirm: () => {
+        if (!normalSportingMutationAllowed()) return;
         setSessionHistory((currentHistory) =>
           currentHistory.filter(
             (session) => session.id !== sessionId
@@ -4589,7 +4681,7 @@ export default function TrackerApp() {
   }
 
   function handleClearSessionHistory() {
-    if (sessionHydration !== "ready") return;
+    if (!sessionMutationAllowed() || !normalSportingMutationAllowed()) return;
 
     setConfirmAction({
       title: "Clear Session History",
@@ -4598,6 +4690,7 @@ export default function TrackerApp() {
       confirmLabel: "Clear All",
       isDanger: true,
       onConfirm: () => {
+        if (!normalSportingMutationAllowed()) return;
         setSessionHistory([]);
         setConfirmAction(null);
       },
@@ -4687,7 +4780,11 @@ export default function TrackerApp() {
 
   return (
     <div className={`house-training app-content-clearance space-y-4 ${activeView === "home" ? "house-home-shell" : ""}`} >
-      <IdentityPendingTeamIntent onOpenAdminRequests={() => setShowTeamsScreen(true)} />
+      {nativePresentation.mode !== "normal" && <section role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <h2 className="font-semibold">{nativePresentation.mode === "completed" ? "Training saved on this device" : nativePresentation.credentialPaused ? "Sign-in storage is unavailable" : "Training changes are paused"}</h2>
+        <p>{nativePresentation.mode === "continuing" ? "You can keep recording in this training. Cloud sync and sign-in are paused. A new training cannot start." : nativePresentation.mode === "completed" ? "Cloud sync and sign-in are paused. Access must be checked again before another training can start." : "Training changes are paused. Your existing data has not been cleared."}</p>
+      </section>}
+      <IdentityPendingTeamIntent onOpenAdminRequests={() => setShowTeamsScreen(true)} onInvitationContext={reportInvitationContext} />
       <div className="house-status-row"><h1 className="sr-only">{activeView === "home" ? "Curling Performance" : activeView === "assess" ? "Assessments" : activeView.charAt(0).toUpperCase() + activeView.slice(1)}</h1><IdentityAccountControl compact onOpenTeams={() => setShowTeamsScreen(true)} /></div>
 
 
@@ -4927,8 +5024,10 @@ export default function TrackerApp() {
               onEntryPathChange={(path) => {
                 setPreferredTrainEntryPath(path);
               }}
-              plansTabDisabled={!trainingPlansWritable}
+              plansTabDisabled={trainingPlansHydration !== "ready"}
               startPlanDisabled={!sessionWritable}
+              planEditingDisabled={!trainingPlansWritable}
+              onPlanEditingChange={(editing) => reportNativeOverlay("planEditor", editing)}
               onStartExercise={handleStartExercise}
               onCancelReleaseTimingSetup={() =>
                 setPendingReleaseTimingExerciseVersion(null)
@@ -5702,7 +5801,7 @@ export default function TrackerApp() {
                 <AnalysisContextSummary context={historyAnalysisContext} variant="bare" />
 
                 <div className="mt-4 border-t border-slate-100 pt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                     What should I learn from this?
                   </p>
 
@@ -6114,7 +6213,12 @@ export default function TrackerApp() {
         />
       )}
 
-      {showTeamsScreen && <TeamsScreen onClose={() => setShowTeamsScreen(false)} />}
+      {showTeamsScreen && (nativeTracker && (!nativeBinding?.team || nativePresentation.mode !== "normal") ? (
+        <section role="alert" aria-label="Team access unavailable">
+          <p>Team access is unavailable. Check your sign-in before opening Teams.</p>
+          <button type="button" onClick={() => setShowTeamsScreen(false)}>Close</button>
+        </section>
+      ) : <TeamsScreen onClose={() => setShowTeamsScreen(false)} />)}
 
       {/* Owned by Settings, where it is opened. Gated on `activeView` as well as the
           flag so that ANY path which changes the view — including the three that call

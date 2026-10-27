@@ -1,0 +1,8 @@
+:root { font-family: system-ui, sans-serif; color: #0f172a; background: #f1f5f9; }
+body { margin: 0; padding: max(24px, env(safe-area-inset-top)) 20px max(24px, env(safe-area-inset-bottom)); }
+main { max-width: 36rem; margin: 0 auto; }
+h1 { font-size: 1.75rem; }
+p { line-height: 1.6; }
+button { min-height: 48px; padding: 12px 20px; font: inherit; border: 2px solid #0f172a; border-radius: 8px; color: white; background: #0f172a; }
+button:disabled { opacity: .6; }
+button:focus-visible { outline: 3px solid #0369a1; outline-offset: 4px; }

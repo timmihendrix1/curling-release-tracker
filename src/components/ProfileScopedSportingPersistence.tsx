@@ -26,6 +26,8 @@ import { resolveCloudConfig } from "../lib/supabase/config";
 import { getSupabaseBrowserClient } from "../lib/supabase/supabaseClient";
 import { createSupabaseSportingCloudService } from "../lib/supabase/supabaseSportingCloudService";
 import { createSupabaseTeamExerciseCloudService } from "../lib/supabase/supabaseTeamExerciseCloudService";
+import { useNativeTrackerBinding } from "./persistence/nativeTrackerContext";
+import type { NativeTrackerBinding } from "../lib/persistence/nativeTrackerTypes";
 import { useIdentity } from "./identity/IdentityProvider";
 import type { AthleteExerciseResult, ExerciseExecution } from "../lib/exercises/executionTypes";
 import type { TeamWorkspace } from "../lib/team/teamService";
@@ -234,7 +236,42 @@ function ProfileScopedSportingPersistenceInstance({
   );
 }
 
+function NativeProfileSportingPersistence({ binding, children }: { binding: NativeTrackerBinding; children: ReactNode }) {
+  const { application, profileId } = binding;
+  const manager = application.sync;
+  const [snapshot, setSnapshot] = useState(() => manager.getSnapshot());
+  const [state, setState] = useState<"preparing" | "ready" | "failed">("preparing");
+  const preparation = useRef<Promise<boolean> | null>(null);
+  useEffect(() => {
+    let active = true;
+    preparation.current ??= application.retireLegacyUnscopedData().then(async result => {
+      if (!result.ok) return false;
+      await manager.initialize(); return true;
+    }).catch(() => false);
+    void preparation.current.then(ready => { if (active) setState(ready ? "ready" : "failed"); });
+    return () => { active = false; };
+  }, [application, manager]);
+  useEffect(() => manager.subscribe(() => setSnapshot(manager.getSnapshot())), [manager]);
+  useEffect(() => {
+    if (state !== "ready") return;
+    const synchronize = () => void manager.synchronize();
+    window.addEventListener("online", synchronize);
+    return () => window.removeEventListener("online", synchronize);
+  }, [manager, state]);
+  if (state !== "ready") return <section role={state === "failed" ? "alert" : "status"}>{state === "failed" ? "Training data is unavailable. Access must be checked again." : "Preparing your training data…"}</section>;
+  return <SportingProfileIdContext.Provider value={profileId}>
+    <SportingCloudSyncContext.Provider value={{ ...snapshot, ...manager, retry: () => void manager.retry() }}>
+      <SportingPersistenceContext.Provider value={application.repositories}>{children}</SportingPersistenceContext.Provider>
+    </SportingCloudSyncContext.Provider>
+  </SportingProfileIdContext.Provider>;
+}
+
 export function ProfileScopedSportingPersistence(props: ProfileScopeProps) {
+  const native = useNativeTrackerBinding();
+  if (native !== null) {
+    if (native.profileId !== props.profileId) return <section role="alert">Training data is unavailable.</section>;
+    return <NativeProfileSportingPersistence key={props.profileId} binding={native}>{props.children}</NativeProfileSportingPersistence>;
+  }
   return <ProfileScopedSportingPersistenceInstance key={props.profileId} {...props} />;
 }
 

@@ -521,6 +521,8 @@ export type IdentityHarness = {
 };
 
 export type HarnessOptions = {
+  nativeOwnership?: import("../../identityTransitionCoordinator").NativeIdentityOwnership;
+  deletionGuards?: import("../../accountDeletionGuard").AccountDeletionGuardRepository;
   /** The URL this "page load" arrived with. */
   url?: string | null;
   /** The selector the Google preparation returns. */
@@ -623,6 +625,7 @@ export function createIdentityHarness(options: HarnessOptions = {}): IdentityHar
   };
 
   const coordinator = createIdentityTransitionCoordinator({
+    nativeOwnership: options.nativeOwnership,
     // The fake's own object is passed through UNCOPIED when no override is
     // supplied, so a test can still swap a method after construction.
     auth:
@@ -636,6 +639,7 @@ export function createIdentityHarness(options: HarnessOptions = {}): IdentityHar
     resolutions: createIdentityBarrierResolutionRepository(storage.adapter),
     trusted: createTrustedDeviceRepository(storage.adapter),
     intents: createPendingIntentRepository(storage.adapter),
+    deletionGuards: options.deletionGuards,
     liveGeneration,
     now,
     newId,

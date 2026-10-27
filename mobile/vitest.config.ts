@@ -1,3 +1,4 @@
+import { MOBILE_NEW_USER_BETA_DEFINE_NAME } from "./newUserBetaFlag";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
@@ -26,6 +27,7 @@ export default defineConfig({
   // so they cannot drift. A test that needs the flag-enabled tree renders the
   // composition root directly rather than flipping a define.
   define: {
+    [MOBILE_NEW_USER_BETA_DEFINE_NAME]: "false",
     [MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME]: "false",
     [MOBILE_NATIVE_STORAGE_DEFINE_NAME]: "false",
   },

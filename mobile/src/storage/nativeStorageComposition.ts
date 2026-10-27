@@ -10,13 +10,12 @@
 // is not a placeholder to be filled in casually — it is the barrier this stage
 // exists to put in place:
 //
-//   - the migration that would make a native target authoritative is Stage M3b4
-//     and does not exist;
+//   - the migration that would make a native target authoritative exists only as
+//     a dormant executor (Stage M3b4b) that this module does not invoke;
 //   - production cutover is Stage M3b5, a separate reviewed stage;
-//   - three engineering items still block M3b4 (docs/MOBILE_APP_MIGRATION.md
-//     Stage M3b0 §7): the missing pre-activation source marker (P-1), two
-//     differing provenance ids (P-2), and human-authorised recovery from a
-//     source-generation divergence.
+//   - what still blocks it is listed in docs/MOBILE_APP_MIGRATION.md Stage M3b0
+//     §7 — among others blocked-state recovery (U2), the fingerprint binding,
+//     credential transfer and physical-device acceptance.
 //
 // Reporting `ready` here would mount an existing installation's hydration
 // against an empty SQLite database and an empty Keychain. Every domain would

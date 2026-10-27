@@ -106,7 +106,7 @@ function revisionMutationResponse(data: unknown): TeamExerciseCloudResult<{
   } };
 }
 
-export function createSupabaseTeamExerciseCloudService(client: SupabaseClient): TeamExerciseCloudService {
+export function createSupabaseTeamExerciseCloudService(client: Pick<SupabaseClient, "from" | "rpc">): TeamExerciseCloudService {
   return {
     async listMyResults() {
       try {

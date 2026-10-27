@@ -28,13 +28,17 @@ import { resolveCloudConfig } from "../supabase/config";
 import type { NormalizedAuthChange } from "../supabase/authService";
 import { createSupabaseAuthService } from "../supabase/supabaseAuthService";
 import { createSupabaseIdentityService } from "../supabase/supabaseIdentityService";
+import { createSupabaseAccountDeletionService } from "../supabase/supabaseAccountDeletionService";
+import type { AccountDeletionService } from "./accountDeletion";
 import { getSupabaseBrowserClient } from "../supabase/supabaseClient";
 import {
   browserCallbackUrlAccess,
   createCallbackCaptureCell,
   type CallbackCaptureCell,
+  type CallbackUrlAccess,
 } from "../supabase/supabaseCallbackCapture";
 import { IDENTITY_BARRIER_STORAGE_KEY } from "./identityBarrier";
+import { DELETION_GUARD_PREFIX, DELETION_GUARD_RESOLUTION_PREFIX } from "./accountDeletionGuard";
 import {
   DEFAULT_IDENTITY_REPOSITORY_SET,
   type IdentityRepositorySet,
@@ -62,6 +66,7 @@ import {
 
 export { reduceGateState };
 export type { GateEvent, GateSession, GateState, PendingIntent };
+export type { AccountDeletionService, AccountDeletionState, AccountDeletionResult } from "./accountDeletion";
 
 /**
  * What the runtime resolved to.
@@ -79,10 +84,13 @@ export type DeepLinkCaptureOutcome =
   | { kind: "not_present" }
   | { kind: "invalid" }
   | { kind: "captured"; intent: PendingIntent }
-  | { kind: "blocked" };
+  | { kind: "blocked" }
+  /** Genuine opt-in native delivery refused storage; advisory notice, no saved/absent claim. */
+  | { kind: "not_captured" };
 
 export type IdentityRuntimeReady = {
   status: "ready";
+  accountDeletion?: AccountDeletionService;
   coordinator: IdentityTransitionCoordinator;
   /** One page-scoped startup. Every React lifecycle replay observes the same
    * promise rather than starting a second coordinator operation. */
@@ -132,6 +140,9 @@ export type IdentityRuntimeOverrides = {
   /** Replaces the whole dependency set — used by tests that need fakes for every
    * seam. When supplied, no Supabase client is constructed. */
   deps?: IdentityCoordinatorDeps;
+  /** Explicit dormant native composition uses its captured URL port. The Web
+   * path supplies none and retains its existing browser access. */
+  urlAccess?: CallbackUrlAccess;
 };
 
 /**
@@ -169,22 +180,25 @@ export function createIdentityRuntime(
 
     async function captureDeepLinkIntent(): Promise<DeepLinkCaptureOutcome> {
       try {
-        if (typeof window === "undefined") return { kind: "not_present" };
-        const url = new URL(window.location.href);
+        if (!overrides.urlAccess && typeof window === "undefined") return { kind: "not_present" };
+        const rawUrl = overrides.urlAccess ? overrides.urlAccess.readCurrentUrl() : window.location.href;
+        if (rawUrl === null) return { kind: "not_present" };
+        const url = new URL(rawUrl);
         const inviteToken = url.searchParams.get("inviteToken");
         const adminRequestId = url.searchParams.get("adminRequestId");
         if (inviteToken === null && adminRequestId === null) return { kind: "not_present" };
 
         const intent = selectDeepLinkIntent(
           { inviteToken, adminRequestId },
-          browserNow()
+          overrides.urlAccess && overrides.deps ? overrides.deps.now() : browserNow()
         );
         if (intent === null) {
           // Invalid input is not an intent and is never repaired. Remove only the
           // two application-owned Team parameters; unrelated URL state survives.
           url.searchParams.delete("inviteToken");
           url.searchParams.delete("adminRequestId");
-          window.history.replaceState(null, "", url.toString());
+          if (overrides.urlAccess) overrides.urlAccess.replaceCurrentUrl(url.toString());
+          else window.history.replaceState(null, "", url.toString());
           return { kind: "invalid" };
         }
 
@@ -192,7 +206,8 @@ export function createIdentityRuntime(
         if (captured.kind !== "applied") return { kind: "blocked" };
         url.searchParams.delete("inviteToken");
         url.searchParams.delete("adminRequestId");
-        window.history.replaceState(null, "", url.toString());
+        if (overrides.urlAccess) overrides.urlAccess.replaceCurrentUrl(url.toString());
+        else window.history.replaceState(null, "", url.toString());
         return { kind: "captured", intent };
       } catch {
         // Reading or rewriting browser URL state is part of the durable-capture
@@ -228,7 +243,8 @@ export function createIdentityRuntime(
       subscribeToBarrierChanges(listener) {
         if (typeof window === "undefined") return () => {};
         const onStorage = (event: StorageEvent) => {
-          if (event.key !== IDENTITY_BARRIER_STORAGE_KEY) return;
+          if (event.key !== IDENTITY_BARRIER_STORAGE_KEY && event.key !== null
+            && !event.key.startsWith(DELETION_GUARD_PREFIX) && !event.key.startsWith(DELETION_GUARD_RESOLUTION_PREFIX)) return;
           try {
             listener();
           } catch {
@@ -289,13 +305,14 @@ export function createIdentityRuntime(
       resolutions: repositories.resolutions,
       trusted: repositories.trusted,
       intents: repositories.intents,
+      deletionGuards: repositories.deletionGuards,
       liveGeneration: createLiveGenerationCounter(),
       now: browserNow,
       newId,
       resolveRedirectTarget: browserRedirectTarget,
       onProgress: relayProgress,
     });
-  return readyRuntime(coordinator, auth, repositories.intents);
+  return { ...readyRuntime(coordinator, auth, repositories.intents), accountDeletion: createSupabaseAccountDeletionService(client, repositories.deletionGuards, newId) };
 }
 
 /**

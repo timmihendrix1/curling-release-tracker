@@ -26,9 +26,17 @@
 // ## What it deliberately does not do
 //
 // It never resets, clears or discards anything, and it never falls back to a
-// second store. A blocked state is reported with a retry and the existing data
-// is left untouched — the alternative, "assume empty and carry on", is exactly
-// the silent-loss failure the design's withdrawn rule W2 describes.
+// second store. A blocked state that can change is reported with a retry and the
+// existing data is left untouched — the alternative, "assume empty and carry
+// on", is exactly the silent-loss failure the design's withdrawn rule W2
+// describes. The stage barrier (`migration_authority_unavailable`) is NOT
+// offered a retry: it is a fact about this build, retrying cannot change it, and
+// a "Try again" would wrongly suggest it could activate the transfer
+// (Stage M3b4c; docs/MOBILE_APP_MIGRATION.md Stage M3b0 §6).
+//
+// Migration recovery itself is not presented here: Stage M3b4c's
+// `NativeMigrationRecoveryView` presents a migration session's outcome, and no
+// shipped path creates one.
 //
 // ## Lifecycle
 //
@@ -67,6 +75,11 @@ type Attempt = {
   promise: Promise<StorageCompositionState>;
 };
 
+/** Whether retrying can change the outcome. The stage barrier cannot. */
+function retryCanHelp(failure: StorageCompositionFailure): boolean {
+  return !["migration_authority_unavailable", "composition_disposed", "storage_release_unconfirmed"].includes(failure.kind);
+}
+
 /**
  * One honest sentence per failure category. No platform text, no key name and no
  * store identifier reaches the screen (UX writing guidelines §15.2).
@@ -77,13 +90,15 @@ type Attempt = {
 function failureMessage(failure: StorageCompositionFailure): string {
   switch (failure.kind) {
     case "migration_authority_unavailable":
-      return "This build cannot open training data yet, because moving it to the device's durable store is not implemented. Your existing training data has not been opened, changed or removed.";
+      return "This build cannot open training data on this device yet, because moving it to the device's durable store is not switched on in this build. Checking again will not change this. Your existing training data has not been opened, changed or removed.";
     case "migration_blocked":
       return "Training data could not be opened because its storage is in a state this build will not act on automatically. Your existing training data has not been changed or removed.";
     case "platform_unsupported":
       return "Durable device storage is not available here, so training data has not been opened.";
     case "storage_unavailable":
       return "The device's training data store could not be opened. Your existing training data has not been changed or removed.";
+    case "storage_release_unconfirmed":
+      return "The app could not confirm that its storage connection was closed. Reopen the app before trying again. Existing data has not been removed.";
     case "credential_store_unavailable":
       return "Protected sign-in storage could not be opened, so training data has not been opened. You have not been signed out, and no training data has been changed or removed.";
     case "ownership_conflict":
@@ -230,13 +245,15 @@ export default function StorageCompositionGate({
       >
         <h1 className="text-lg font-semibold text-amber-950">Training data is unavailable</h1>
         <p className="mt-2 text-sm text-amber-900">{failureMessage(state.failure)}</p>
-        <button
-          type="button"
-          className="mt-4 min-h-11 rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white"
-          onClick={retry}
-        >
-          Try again
-        </button>
+        {retryCanHelp(state.failure) ? (
+          <button
+            type="button"
+            className="mt-4 min-h-11 rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white"
+            onClick={retry}
+          >
+            Try again
+          </button>
+        ) : null}
       </section>
     );
   }

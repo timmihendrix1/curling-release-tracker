@@ -544,6 +544,56 @@ this decision and is updated in the same stage.
   application records, state, UI, logs, analytics, errors, snapshots or reports. Claims such as
   "nothing is persisted" or "no token is in browser storage" are false and must not appear.
 
+**Dormant native exception — S5b independently accepted locally (2026-10-25).**
+For the explicit, unmounted native Identity-bootstrap host only, the existing
+`supabaseAuthService.ts` infrastructure boundary may privately read the bearer from
+the actual same-command SDK session result and attach it to the three fixed Self
+RPCs (`ensure_my_profile`, `get_my_gate_state`, `complete_personal_onboarding`) at
+the exact resolved provider REST base. The fourth fixed RPC,
+`get_current_legal_documents`, remains a public anon/authenticated Legal read.
+The original coordinator operation/expected account, credential generation, actual
+health and terminal intent fence every SEND. No token accessor, SDK, repository,
+generic runner or bearer escapes to the domain, UI, runtime or service caller.
+Exact architecture guards confine the new operation and public PostgREST package.
+The ordinary Web SDK and `authorizedFetch`'s one Team/asset helper/importer and
+ADR-0047 target rules remain unchanged. This bounded technical exception supplies
+the real native bootstrap coordinator and its required trusted checks; it grants
+no application mount, admitted-training exception, activation or release. The canonical
+contract and acceptance status are in `BETA_COMPLETION_SPECIFICATION.md` §S5b;
+§G's no-token-persistence/escape rules remain binding.
+
+**S5c extension — independently accepted locally (2026-10-25).**
+A separate dormant sporting-Identity host reuses the same private
+infrastructure bearer for the three existing personal sporting RPCs only after a
+genuine coordinator-created Profile/completion admission and current Self preflight.
+Its typed service is permanently construction-bound to that admission; caller Profile
+strings and public ready reports grant nothing. S5a/S5b and Web remain unchanged.
+Exact authority, conditional denial completion, transport/C4 and acceptance boundaries
+are accepted in `BETA_COMPLETION_SPECIFICATION.md` §S5c. This paragraph alone grants
+no implementation, app mount, broader token helper or activation acceptance.
+
+
+**S5d extension — independently accepted locally (2026-10-25).**
+The same dormant sporting runtime now supplies the existing typed account
+control/deletion/export service. A private RPC-only port supports the five fixed
+account RPCs; blocked state/cancellation binds actual provider Self without requiring
+ordinary complete Profile eligibility. Request/export still require genuine original
+Profile admission and matching Self. Actual own-denial continuation, current completed
+denial and final non-admitting control evidence are separate private facts; no public
+outcome, callback ACK or latest epoch grants authority. Exact contracts, actual
+Provider correlation preservation and proof requirements are canonical in
+`BETA_COMPLETION_SPECIFICATION.md` §S5d. No application caller/activation is added.
+
+**S5e extension — independently accepted locally (2026-10-25).**
+The same private admission and actual Self preflight may support exactly eight
+Team-exercise relations and seven existing RPCs through a private per-command
+public PostgrestClient with retry:false and an original-command/immutable-intent
+fetch closure. No generic query, new bearer read, Team HTTP/asset helper or SDK
+builder fabrication is permitted. Exact routes, query cardinality, original input
+capture and issued-sibling drain are canonical in
+`BETA_COMPLETION_SPECIFICATION.md` §S5e. Existing Web/native clients are unchanged;
+no app mount, Team-foundation completion or activation is implied.
+
 ### 21. Local records are trust hints, not a security boundary
 
 **Browser storage is not a security boundary.** A person able to alter it can forge a trusted-device
@@ -861,3 +911,54 @@ workflows; unclaimed Profiles; cross-device session continuation; final legal co
 expiry period; the paid personal tier's commercial name; re-acceptance rules for future legal versions;
 post-onboarding display-name editing; any future marketing-communication feature; or Exercise
 execution. It records no vendor price and claims no verification that has not been performed.
+
+
+**S5f extension — independently accepted locally (2026-10-25).**
+The same private native bearer boundary may support exactly the existing Team
+mapper's 20 RPC names/six relations and five closed own-API POST routes, using
+actual original Profile/Self, closed dependent-hook provenance and full command
+ownership. The own API uses the one validated configured HTTPS origin and exactly
+Content-Type plus the original bearer; no Supabase key/schema headers. No second
+session read, browser helper or public generic runner. Canonical scope and exact
+sequencing: `BETA_COMPLETION_SPECIFICATION.md` §S5f. Existing Web helper/importer
+and defaults remain unchanged; this is no app/activation/deployment acceptance.
+
+
+**S5g local repository boundary — independently accepted locally (2026-10-25).**
+The existing dormant native sporting host may expose only the actual seven typed
+base repositories, same-Profile sync-state repository, bounded target legacy
+retirement and personal export, over its original private pair/admission. Actual
+write acknowledgements remain factual; later effects require fresh original
+currency. Descriptor-owned input data preserves domain bytes and existing policies.
+No generic adapter/grant escapes; outer manager/decorator input capture, Q1 and
+actual App composition remain separate. Existing13-key inventory/type exports are
+runtime-frozen and policy-neutral. Canonical contract: BETA_COMPLETION_SPECIFICATION.md
+§S5g. No default activation, actual configuration, source/installation/device action.
+
+
+**S5h application-scope boundary — independently accepted locally (2026-10-25).**
+
+The dormant native host may compose one actual sync manager per genuine original
+Profile admission, wrapping the actual decorated repositories before argument
+ownership can be lost. Actual scheduled background lanes register before entry
+without delaying local base ACKs on cloud work. Snapshots are detached; foreign
+listener work is separately drained. Exact API, capture/factual-result/currentness
+fences and evidence are canonical in BETA_COMPLETION_SPECIFICATION.md §S5h.
+No App/Q1/default/configuration/installation/device or release acceptance.
+
+
+**S5i original training boundary — independently accepted locally (2026-10-25).**
+
+A genuine original native Tracker may continue only the same already-started Session
+under approved Q1, including further exercises/blocks, after its own positive pre-fault
+Current ACK and while original identity/context/domain remain current. This is separate
+from permanently retired ordinary scope. Actual History ACK ends the exception before
+successor I/O; original Current retains the existing recoverable history-first duplicate.
+Actual source revocation, complete capture-drain ownership and fresh healthy-remount
+proof are private; actual Account/Profile replacement vetoes the original admission,
+while unsigned status absence preserves incoming intent and blocked OTP recovery.
+The sole validated Account-control mapper supplies only a private negative-correlation
+hook; no second parser or public grant. Canonical contract: BETA_COMPLETION_SPECIFICATION.md
+§S5i; exact verification: TESTFLIGHT_READINESS.md. Full App/Flow/export/Team binding,
+URL/configuration/operational transfer and physical/release gates remain separate.
+No production activation or existing-device installation is authorized by this acceptance.

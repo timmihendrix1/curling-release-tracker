@@ -1,0 +1,33 @@
+// Erased contracts only. The genuine host, never application input, owns permits.
+import type { Session } from "../../types";
+import type { PersistenceWriteResult } from "./types";
+import type { SessionArchiveOutcome } from "../sessionRepository";
+import type { NativeSportingApplicationScope } from "./nativeSportingApplicationScope";
+import type { TeamService } from "../team/teamService";
+declare const receipt: unique symbol;
+export type NativeTrainingIntent = Readonly<{ [receipt]: "intent" }>;
+export type NativeCurrentJob = Readonly<{ [receipt]: "current" }>;
+export type NativeHistoryJob = Readonly<{ [receipt]: "history" }>;
+export type NativeArchiveJob = Readonly<{ [receipt]: "archive" }>;
+export type NativeTrainingPresentation = Readonly<{ mode: "normal" | "continuing" | "blocked" | "completed"; credentialPaused: boolean }>;
+export type NativeCurrentSettlement = Readonly<{ result: PersistenceWriteResult; written: Session | null; sequence: number }>;
+export type NativeArchiveSettlement = Readonly<{ result: SessionArchiveOutcome; history: Session[] | null; stopAfterCompletion: boolean }>;
+export type NativeTrackerPort = Readonly<{
+  attach(incarnation: object): void;
+  detach(incarnation: object): void;
+  context(incarnation: object, view: string, nonPersonalOverlay: boolean): void;
+  hydrated(incarnation: object, value: Session, sequence: number): void;
+  commit(incarnation: object, value: Session, sequence: number): boolean;
+  captureIntent(incarnation: object): NativeTrainingIntent | null;
+  resumeIntent(incarnation: object, intent: NativeTrainingIntent | null): boolean;
+  normalMutation(incarnation: object): boolean;
+  prepareCurrent(incarnation: object, value: Session, sequence: number): NativeCurrentJob;
+  prepareHistory(incarnation: object, value: Session[]): NativeHistoryJob;
+  prepareArchive(incarnation: object, terminal: Session, history: Session[], replacement: Session): NativeArchiveJob;
+  persistCurrent(job: NativeCurrentJob): Promise<NativeCurrentSettlement>;
+  persistHistory(job: NativeHistoryJob): Promise<PersistenceWriteResult>;
+  persistArchive(job: NativeArchiveJob): Promise<NativeArchiveSettlement>;
+  getSnapshot(): NativeTrainingPresentation;
+  subscribe(listener: () => void): () => void;
+}>;
+export type NativeTrackerBinding = Readonly<{ profileId: string; application: NativeSportingApplicationScope; tracker: NativeTrackerPort; team: TeamService | null }>;

@@ -10,6 +10,7 @@ type MailpitMessage = {
   ID?: unknown;
   Created?: unknown;
   To?: unknown;
+  Subject?: unknown;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,7 +35,9 @@ export async function readLatestOtp(email: string, notBefore: number): Promise<s
       : [];
     const candidate = messages.find((message) => {
       const created = typeof message.Created === "string" ? Date.parse(message.Created) : Number.NaN;
-      return messageIsForAccount(message, email) && Number.isFinite(created) && created >= notBefore - 1_000;
+      return messageIsForAccount(message, email)
+        && message.Subject === "Your local test sign-in code"
+        && Number.isFinite(created) && created >= notBefore - 1_000;
     });
     if (candidate && typeof candidate.ID === "string") {
       const detailResponse = await fetch(`${MAILPIT_API}/message/${encodeURIComponent(candidate.ID)}`);

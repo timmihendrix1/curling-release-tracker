@@ -1,13 +1,122 @@
 # ADR-0049 — Durable native local storage and in-app migration
 
+**Inactive pure components — implemented and independently reviewed (2026-10-22):**
+the S1 credential protocol/SDK-value/admitted-training reducer and the S2 installation-
+transfer inventory/codec/refusal-only decision component in `MOBILE_APP_MIGRATION.md`,
+“Adopted inactive pure contracts — S1 and S2”, are each independently accepted as
+complete pure inactive components with matching tests. S2 remains without production
+callers/imports. S1 has only the exact separately reviewed dormant bindings/owner and
+internal SQL/source-boundary consumers; no application startup invokes that owner. The canonical appendix records the current acceptance and evidence;
+C4's provider-return/ownership precondition remains in force. This does not complete
+native absence, SDK settlement, runtime composition, physical transfer, restore,
+activation or release gates. Here S1/S2 name implementation slices; **S2 below still
+names the separately settled protected-credential-store option**, not a completed
+installation-transfer mechanism.
+
+**Current bounded completion status — 2026-10-25.** The independently accepted dormant
+common source/SQL/protected executor, source retirement and same-resource runtime
+now feed the actual native AUTH/Identity, Account deletion/export, personal/Team
+services, local repositories, sole sync manager, original Q1 training and actual
+Provider/Tracker/Flow/Team composition through S5j. Native personal export retains
+its exact original owner to the final file-share edge; no generic readiness or
+admission Boolean escapes. Genuine first denial completion, duplicate completion
+and known/unavailable intent projection remain separate. Complete corrected CODE
+and final local baseline passed. Canonical contracts: BETA_COMPLETION_SPECIFICATION.md;
+exact evidence/limits: TESTFLIGHT_READINESS.md. These are local SDK/SQLite and injected
+platform-edge proofs, not physical Keychain or installation-transfer acceptance.
+S5k additionally accepts dormant exact native provider-configuration preparation and
+its genuine same-host entry, standard full SHA-256/primitive tuple framing and complete
+nested work ownership. Existing public helper shapes and manual/default paths remain;
+actual config changes refuse old Q/M/I without resetting application data. The older
+injective/preassigned requirement is a composition precondition; this assignment is
+cryptographically collision-resistant. Permitted F metadata is separate from preserved
+application raw values/credential items. Canonical contract/evidence: §S5k and Readiness.
+S5l additionally accepts native pending-intent replay correlation on the genuine
+coordinator lane, exact final-view membership and conditional dismissal/recovery.
+The actual Provider and Team UI follow replacement links without stale consumption.
+Only the new notification channel uses completion-only nested draining with exact
+already-owned disposal exclusion; default/live/hash behavior remains unchanged.
+Canonical contract/evidence: §S5l and TESTFLIGHT_READINESS.md.
+
+S5m additionally accepts dormant actual App launch/event intake on that same host,
+with explicit Team-origin opt-in, sequential exact native-context proofs, reentrant
+classification ownership and complete observed-work draining. Healthy capture
+refusal keeps ordinary startup/OTP recovery reachable; genuine faults retain their
+vetoes. Exact own-disposal exclusion is never a handle/absence/removal ACK. The new
+source-clock retainer preserves checked validation and identityFailed; legacy
+channels/defaults remain. Public CoreJS receipts are not physical unsubscribe ACKs.
+Canonical contract/evidence: §S5m and TESTFLIGHT_READINESS.md.
+
+The private V3 archive has standard SHA-256 byte binding, actual domain interpretation
+and historical catalog/registered-diagram compatibility checks (S6a–c). V1/V2 and
+named domain recoveries remain unchanged. S6d now privately observes a complete
+bounded actual WebView raw map with native receiver-bound reads, positive absences
+and fresh fences; excluded credentials/cache/foreign values are never read. This is
+source observation only, without writer exclusion, frozen-source, auth, transport
+or mount/publish/rollback authority. No default/application caller is added.
+S6e adds a private standard AES-256-GCM envelope with a separate fresh random
+recovery code, actual V3 revalidation and completion-owned temporary-byte wiping.
+It conveys no source/auth/transport/publication authority and has no app caller.
+ADR-0053 records the decision; corrected independent CODE and full local baseline
+are accepted. S6f adds a separately built observation-only helper with private
+native iOS/App routing, current foreground/data checks and terminal revocation;
+corrected independent CODE and the full local baseline are accepted. It is not
+the default/native webDir and issues no source-freeze or transfer grant. Actual
+original-container access, preservation-safe operational packaging and external
+writer exclusion remain blocked pending disposable physical evidence. Actual
+file/code delivery, target staging/readback/fresh-auth integration and
+configuration/device/release gates remain open. Native Team email links may
+continue opening Web under adopted MOBILE_APP_MIGRATION §6.5 until association/delivery
+is accepted. Canonical current contract/evidence: BETA_COMPLETION_SPECIFICATION.md
+§S6a–f and TESTFLIGHT_READINESS.md. No activation or Beta approval follows.
+
+
+Remaining: physical native URL delivery, actual configuration assignment/supported operational change,
+protected operational installation transfer, external writer exclusion, operational
+Q3 adoption and physical/hosted/Apple release gates. Q4 remains deferred. No production
+root/flag, actual configuration, real credentials or device installation is activated.
+Earlier slice-specific scope limits below do not supersede the current accepted
+composition or grant production cutover.
+
+**S5b native Identity binding — independently accepted locally (2026-10-25).**
+One dormant internally composed host joins S5a's actual resources
+to the real Identity coordinator and six SQL-backed repositories. Its public
+PostgREST client is private and supports only the four existing Identity RPCs.
+The three Self RPCs have a narrow private same-command bearer exception to
+ADR-0025 §20/G, stated there; public Legal needs no signed-in Profile. Original
+operation/account binding and actual native health veto every new admission,
+including offline startup. This is not the already-admitted training exception,
+application mount, Team/sporting transport, production configuration assignment
+or physical cutover. The canonical accepted contract is §S5b in
+`BETA_COMPLETION_SPECIFICATION.md`; actual verification is recorded in
+`TESTFLIGHT_READINESS.md`.
+
+**S5c sporting binding — independently accepted locally (2026-10-25).**
+A separate dormant host/runtime subtype uses the same private builder,
+with genuine coordinator-minted account/Profile/completion admission and exactly the
+three existing personal sporting RPCs. Old service instances cannot rebind to a new
+admission; background continuity does not remint one. Actual conditional denial and
+its full completion remain owned outside the SDK FIFO. Canonical accepted contract:
+`BETA_COMPLETION_SPECIFICATION.md` §S5c. Local sporting/app/Q1 composition and all
+physical/production gates remain open; actual bounded verification is recorded in
+`TESTFLIGHT_READINESS.md`.
+
 **Status:** **Product direction accepted. Decisions 1–6 and the credential policy are
 ACCEPTED AND IMPLEMENTED (Stages M3b1–M3b3, 2026-09-30). Decision 7 — the migration protocol —
-remains an UNRESOLVED DESIGN, and decision 10's cutover has NOT happened.**
+is an APPROVED DESIGN (user approval 2026-10-19, after Codex's clean independent review); its
+decision core (M3b4a) and its executor (M3b4b) are independently reviewed (clean) and approved
+(2026-10-20); the executor is dormant — no application path invokes it. U2's first-version
+recovery policy and UG-1–UG-4 are decided and adopted (2026-10-20). Its interface (M3b4c) is
+implemented as a dormant, dependency-injected layer that no shipped path constructs, and it is
+awaiting independent review and the user's approval. Decision 10's cutover has NOT happened.**
 
 This ADR is deliberately **not** marked accepted-and-implemented as a whole. The parts that
-decide where data lives and how it is composed are built and tested; the part that would move
-an existing installation's data there is not designed to a reviewable conclusion, and until it
-is, nothing cuts over.
+decide where data lives and how it is composed are built and tested. The part that would move
+an existing installation's data there is designed and approved, and it now exists as a DORMANT
+executor (M3b4b) that no application path invokes, verified only against a mocked engine,
+independently reviewed (clean) and approved. It is not integrated into the application, has no
+physical-device evidence, and is not activated — so nothing cuts over. Later bounded
+real-SQLite evidence is recorded in the current status amendment above.
 
 The user approved P6's *direction* on 2026-09-29: adopt durable native local storage behind
 the existing persistence boundary, rather than keeping WebView `localStorage` as the native
@@ -50,13 +159,64 @@ for the diagnostic transaction scenarios, including reopen after a process stop 
 transaction open (2026-10-15). There is **no** physical-device transaction evidence and no
 naturally occurring commit failure — so the engine is settled for the **adapter** while
 **source retirement stays unjustified**, and
-no operating envelope is recorded. **Nothing in decision 7 is implemented:** there is no
-activation record and no migration. **Decision 10's cutover has not happened**, and a
+no operating envelope is recorded. **Nothing in decision 7 executes in any build:** its design
+is approved (2026-10-19), its decision core (M3b4a) is approved, and its executor (M3b4b) exists
+only dormant, so no application startup writes an activation record, a fault latch or a
+migrated row; the separately reviewed S3f entry is also not invoked by startup. **Decision 10's cutover has not happened**, and a
 flag-enabled build deliberately does **not mount** rather than mounting against an empty
 store. The canonical, non-duplicated status is the **M3b1 and M3b3 implementation status**
 entries in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7.
 
-**Date:** 2026-09-30
+**Amendment, 2026-10-19 — the migration protocol's design is approved.** After Codex's clean
+independent review, the user approved the P-1/P-2 provenance resolution and the recovery model
+it rests on, including the RQ-1 resolution through a detected-fault latch. The approved rules
+are canonical in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §§5.1–5.7 (invariants I-1–I-13,
+record shapes, the provenance table, rows L0, A′1–A′7 and E′1–E′12, the action plans and the
+recovery tables), with acceptance cases R1–R77 and the approval record in Stage M3b0 §7.
+Decision 7 below is updated to match. **This approves the design only:** it does not authorise
+runtime implementation, the M3b4a decision function, production activation, source deletion or
+device installation, and it settles neither U2 nor the mid-session credential-failure behaviour.
+The M3b4a decision layer was authorised separately afterwards, once Codex's review of the
+documentation adoption was clean. After Codex's final review of M3b4a was clean, the user
+approved it and authorised M3b4b (2026-10-20): a dormant executor, with the source enumeration
+and the target transactions as migration-only capabilities outside every repository-facing
+contract. Nothing later — M3b4c, credential work, device rehearsal, activation — is authorised.
+
+**Amendment, 2026-10-20 — M3b4b approved and U2's first-version policy decided.** After Codex's
+final independent review of M3b4b was clean, the user approved it. Approval leaves it dormant,
+with class-M evidence only. The user then confirmed the first-version U2 recovery policy, which
+is canonical in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §6:
+- user-visible groups that follow the observed cause (three as confirmed, extended to four by
+  UG-1/UG-2 below);
+- automatic startup checks and an explicit recheck that continues under U1 only when every
+  approved guard passes, with no bypass of a fault, lease or contradiction;
+- an honest waiting state;
+- no general manual repair and no latch clearing;
+- an explicitly requested, data-minimised diagnostic report;
+- a help route whose contact action waits for a real channel.
+
+Genuine contradictions stay blocked until a separately specified targeted recovery exists, an
+availability limitation the user accepted. **This decided policy only.** It authorised no latch
+clearing, data repair, activation or cutover.
+
+**Amendment, 2026-10-20 — U2 adoption approved, UG-1–UG-4 approved, M3b4c authorised and
+implemented.** Codex's independent review of the U2 documentation adoption was clean, and the
+user approved it. The user then approved the presentation decisions UG-1–UG-4 (Stage M3b0
+§6.9):
+- a fourth, neutral group G4 for A3/A4 and for internal-check failures, without a recheck;
+- English interface copy with faithful translations;
+- already-known retirement findings shown only as subordinate, nonblocking notes.
+
+The user also authorised M3b4c as a bounded stage. M3b4c is implemented as a dormant presentation
+model, a session controller that owns an injected runner, and a recovery view and surface
+(`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7, "M3b4c implementation status"). It comes with a
+narrow, behaviour-preserving observability extension of the runner's reports and a gate
+correction that no longer offers a retry for the stage barrier. **No shipped path constructs a
+runner, a session or the view**, and the production activation authority still reports
+`unavailable`. M3b4c awaits independent review and the user's approval. It authorises no
+production migration, activation, credential work, source retirement or device installation.
+
+**Date:** 2026-09-30 (decision 7's design approved 2026-10-19)
 
 **Relates to:** ADR-0013 (application-owned persistence boundary), ADR-0024/ADR-0025
 (mandatory identity, trusted-device state), ADR-0026 (Profile-scoped local persistence),
@@ -64,6 +224,23 @@ ADR-0027 (cloud sporting backbone), ADR-0047 (trusted platform signal).
 **Does not revive** ADR-0015–ADR-0018's retired IndexedDB activation/migration track.
 
 ---
+
+
+**S5d account-control binding — independently accepted locally (2026-10-25).**
+The same dormant private pair is bound to the existing deletion guard mapper
+through per-operation domain I/O fences and typed RPC commands. Actual original
+coordinator scope, own successful denial and final non-admitting evidence govern
+continuation; blocked recovery preserves genuine fresh OTP correlation. No native
+storage schema/format/default, actual migration cleanup, installation transfer or
+physical acceptance changes. Canonical scope: `BETA_COMPLETION_SPECIFICATION.md` §S5d.
+
+**S5e Team-exercise binding — independently accepted locally (2026-10-25).**
+The same private pair/coordinator/SDK FIFO may support typed Team-exercise data,
+with actual original Profile/Self preflight and a private per-command public
+PostgrestClient (retry:false). Every parallel issued request retains its original
+immutable wire intent and is drained before command retirement. Exactly eight
+relations/seven RPCs and no local repository, HTTP/asset, schema/default or app
+change are permitted. Canonical contract: `BETA_COMPLETION_SPECIFICATION.md` §S5e.
 
 ## Context
 
@@ -108,8 +285,9 @@ them would be wrong:
 
 ## Decision
 
-**Decisions 1–6, 8 and 9 are accepted and implemented. Decision 7 is a proposal whose design
-is unresolved. Decision 10's cutover has not been performed.**
+**Decisions 1–6, 8 and 9 are accepted and implemented. Decision 7's design is approved
+(2026-10-19); its decision core (M3b4a) and its dormant executor (M3b4b) are approved, and U2's
+first-version recovery policy is decided. Decision 10's cutover has not been performed.**
 
 1. **Implement a native `RemovableStorageAdapter` behind the existing interface.** No new
    authority, no parallel sync engine, no second source of truth. Web keeps
@@ -190,23 +368,33 @@ is unresolved. Decision 10's cutover has not been performed.**
    **The unit of commit is one checkpoint transaction**, which writes a batch of key/value
    rows **and** the updated `copied` progress **together** — so committed progress and
    committed data can never disagree. Exactly the **last committed checkpoint** survives
-   process death; an interrupted checkpoint rolls back **entirely**. **Activation is a
-   separate final transaction** that re-validates evidence and sets `phase = "active"`; **a
-   validated committed activation, not any single API call, is the authority switch.**
+   process death; an interrupted checkpoint rolls back **entirely**. **Copying completion and
+   activation are separate final transactions** that each read complete target evidence inside
+   the transaction — `verified` only over a target whose rows equal the manifest, all matching
+   their fingerprints, with complete progress; `active` only after re-reading that evidence and
+   re-validating the source; **a validated committed activation, not any single API call, is the
+   authority switch.**
    **Only a validated `active` state mounts ordinary consumers**; a blocked state renders the
    recovery interface alone. Source cleanup may begin only after a committed activation.
 
    The activation record carries `schemaVersion` (of the **record**, never a domain record),
-   `phase` (`enumerating|copying|verified|active`), `migrationId`, `storeIdentity`, a
-   **manifest of eligible keys with a per-key content fingerprint**, `copied`, `activatedAt`
-   and retirement progress. **Provenance is created, not merely named:** an
-   `installationStoreId` is generated at first enumeration and written to *both* the target
-   record and a source marker. **The two writes are to different stores and are not atomic.** A
-   marker with no target record over an empty target is reconciled by adopting the id; **two
-   unresolved cases block before activation** — a pre-`active` record whose marker is missing
-   (indistinguishable from later source clearing, so it is never recreated) and two *different*
-   ids. **Not every interleaving is resolved**, and differing ids are not the only blocking
-   case; both remain **open M3b4 engineering blockers** (MOBILE_APP_MIGRATION.md §5.2, P-1/P-2). **Provenance is a pre-activation concern only.** After a
+   `phase` (`enumerating|copying|verified|active`), `migrationId`, `storeIdentity`,
+   **`entryKeys`** (the non-empty eligible key set enumerated when migration began), a
+   **manifest of eligible keys with a per-key content fingerprint** (a collision-resistant
+   digest; algorithm and WebView availability still to be verified), `copied`, `activatedAt`
+   and retirement progress, with a fixed **shape per phase** whose violation blocks. **Provenance
+   is created, not merely named — record first:** an `installationStoreId` is generated when
+   migration begins, committed into the target record **first**, and written into a source
+   marker only after that commit is confirmed; no automatic path ever removes the marker. **The
+   two writes are to different stores and are not atomic.** Under that order a marker without
+   a record means a committed record was lost, so it **blocks** and is never adopted. **P-1** — a
+   pre-`active` record whose marker is positively absent — continues only under approved guards:
+   in `enumerating` while every recorded entry key is still in the source and nothing is staged;
+   from `copying` on only when every staging, conflict and set-and-content check passes, the
+   marker then being re-written under the record's **existing** id. **P-2** — two *different*
+   ids — **blocks in every pre-activation phase**; the foreign marker is never overwritten or
+   adopted, and its recovery belongs to the open recovery item. Unreadable and malformed markers
+   block (MOBILE_APP_MIGRATION.md §5.2). **Provenance is a pre-activation concern only.** After a
    validated committed activation the target is authoritative and a missing, cleared or
    unreadable source never blocks ordinary access — it only makes retirement unavailable.
 
@@ -237,16 +425,27 @@ is unresolved. Decision 10's cutover has not been performed.**
    from the source, and re-enumeration alone would silently produce a manifest lacking a key
    that vanished before it was copied. **Disappearance is never inferred to be a user deletion,
    a failed source read is never read as an empty source, and re-enumeration alone never proves
-   a coherent generation.** Resolving a blocked divergence is human-authorised and is
-   the third **open M3b4 design item**, not an automatic behaviour (see the Consequences
-   section for the full inventory).
+   a coherent generation.** U2's first-version policy keeps a genuine divergence **blocked**.
+   It offers no "use the staged copy", fresh enumeration or acceptance of missing data.
+   Resolving a divergence needs a separately specified, reviewed and explicitly authorised
+   targeted recovery procedure, which does not exist. It is never an automatic behaviour
+   (`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §6.5).
 
-   **An uncertain commit result is not proof of rollback.** It is resolved by reopening the
-   store and inspecting durable state: progress and rows both present ⇒ committed, not
-   replayed; neither present ⇒ replayed once; one without the other ⇒ the atomicity invariant
-   was violated ⇒ blocked. **Only a validated `active` state permits mounting the normal
-   identity, sync and sporting consumers**; every blocked state may render the failure/recovery
-   interface and nothing else.
+   **An uncertain commit result is not proof of rollback, and nothing is replayed from
+   memory.** A fresh process decides from validated durable state alone: progress is read from
+   the durable `copied`, so a committed batch is never chosen again and an uncommitted one's keys
+   are simply chosen afresh; progress and rows that disagree block. A process that survives the
+   unknown outcome also compares the reopened state with what it issued: the before- or
+   after-state continues exactly as a fresh process would, while **a state matching neither is
+   a detected fault** — migration stops at once, the only further write is a target-only
+   **fault latch**, and a present (or unreadable) latch blocks every later launch, even over a
+   record that reads `active`. No automatic path and no general user control clears it: removal
+   needs a later, separately specified targeted recovery procedure, and none exists (Stage
+   M3b0 §6.5). A latch that did not
+   persist degrades to undetected corruption, which is stated as a residual. **Only a validated
+   `active` state with no latch permits mounting the normal identity, sync and sporting
+   consumers**; every blocked, halted or faulted state may render the failure/recovery interface
+   and nothing else.
 
    **Source retirement requires the engine's committed-transaction acknowledgement** — never
    read-back alone — and **re-verifies each key's fingerprint immediately before deleting it**,
@@ -350,7 +549,27 @@ inventory:
   not detectable from either side alone, and must be handled explicitly. S1 would not have
   removed this class either — it would only have given both halves the same lifecycle.
 
-**IMPLEMENTATION BLOCKER — the native credential path is CLOSED, and the requirement is NOT
+**2026-10-24 iOS amendment — locally implemented, device acceptance open.** The user
+authorized an application-owned read-only Keychain bridge. `CredentialKeychainReader`
+calls Apple's `SecItemCopyMatching` with the existing writer's exact prefixed
+generic-password account attributes, app-accessible groups (the project declares
+no sharing entitlement) and non-synchronizable
+items. Only `errSecItemNotFound` establishes absence; other errors and invalid UTF-8
+fail closed. Empty strings remain values. A non-interactive `LAContext` prevents
+an authentication prompt. A separately reviewed bounded extension now adds an
+explicitly called, attributes-only inventory of the fixed app credential namespace,
+including unexpected synchronized/foreign-service residue as a blocking outcome.
+It returns no credential data and is not an item-absence, owner-freshness or readiness
+permit. Its local implementation/code-review status and exact limits are canonical
+in BETA_COMPLETION_SPECIFICATION.md. There is no repair, custom encryption or plugin
+fork. Writes/removals retain the audited plugin and its previous-value-loss
+semantics. Capacitor bridge logging is disabled because responses can contain
+credentials. The injected native contract tests and unsigned compilation are local
+evidence only; real Keychain/device failure behavior and the cross-store migration
+are still separate gates. Android continues to report `no_absence_evidence`.
+
+**Upstream dependency finding (superseded for iOS reads by the amendment above): the
+native credential requirement was NOT
 complete.** The contract requires **item-specific missing-versus-failed evidence**: only a
 positively established absence may become the `null` the SDK reads as "no session". **No
 audited Capacitor-8 dependency supplies it.**
@@ -367,10 +586,10 @@ audited Capacitor-8 dependency supplies it.**
 **An earlier "readability marker" is WITHDRAWN as an invalid inference.** Reading a separate
 marker key successfully establishes nothing about another key: an item-specific read or
 decoding failure, or a transient failure followed by a successful marker read, produces the
-identical observation. No global probe, delay or retry replaces it. **The binding therefore
-reports `no_absence_evidence`, the store turns that into a failure, and a native composition
-cannot become ready on a device** — a second barrier alongside the unavailable activation
-authority. **What would close it:** a dependency surfacing, per read, the iOS `OSStatus` (or a
+identical observation. No global probe, delay or retry replaces it. **The Android binding
+therefore still reports `no_absence_evidence`**; iOS uses the new per-item reader.
+The native composition remains gated by unavailable activation authority.
+The dependency gap requires surfacing, per read, the iOS `OSStatus` (or a
 boolean derived from `errSecItemNotFound`) or an Android `sharedPreferences.contains(key)`
 check distinguished from a decryption failure. Alternatives audited and rejected:
 `capacitor-secure-storage-plugin` 0.13.0 (worse — it fabricates an empty string on a failed
@@ -427,11 +646,19 @@ everything and returning a result nobody reads). Exposing a getter would not hav
 - **A validated activated target does not depend on the old source.** If the WebView store is
   cleared or becomes unreadable after activation, ordinary access is unaffected; only
   retirement stalls.
-- **Three open design items block Stage M3b4** (not M3b1): provenance reconciliation when two
-  different `installationStoreId` values are observed before activation; a pre-activation
-  record whose source marker is missing, which cannot be distinguished from later source
-  clearing and is therefore blocked conservatively; and the human-authorised resolution of a
-  blocked generation divergence. This ADR does not declare the migration protocol complete.
+- **The migration protocol's design is approved (2026-10-19); its decision core (M3b4a) and
+  its executor (M3b4b) are approved, and the executor exists only dormant — no application
+  path runs a migration.** P-1 and P-2
+  are closed at the design level — P-1 continues only under approved guards, and P-2 blocks in
+  every pre-activation phase. **Blocked-state recovery has a decided first-version policy**
+  (U2 and UG-1–UG-4, 2026-10-20; Stage M3b0 §6). Its interface (M3b4c) is implemented as a
+  dormant, dependency-injected layer and awaits independent review. Targeted recovery
+  procedures — divergence resolution, data selection and latch clearing — are deferred, and the
+  concrete help channel is an operational follow-up. M3b4's completion also needs protected-store
+  absence-versus-failure evidence, secure credential transfer and cross-store interruption
+  recovery, the fingerprint algorithm, and the remaining engine, restore-pairing and
+  physical-device evidence. The canonical inventory is in `docs/MOBILE_APP_MIGRATION.md` Stage
+  M3b0 §7. This ADR does not declare the migration complete or ready.
 - **Migrated keys stay ordinary mutable application records.** After activation the manifest is
   historical evidence, not an existence or content constraint, so legitimate removals, changes
   and new keys are correct behaviour rather than migration failures.
@@ -465,8 +692,10 @@ everything and returning a result nobody reads). Exposing a getter would not hav
   Both statements are now wrong and are corrected here rather than left to contradict the
   status above: user-reported device evidence exists for the configured pragmas and for
   restart recovery, and decisions 4, 5, 6, 8, 9 and the credential policy are implemented
-  (Stages M3b1–M3b3). What remains true is that **decision 7's migration protocol is
-  unimplemented and decision 10's cutover has not happened**, and that the evidence
+  (Stages M3b1–M3b3). What remains true is that **decision 7's migration protocol — an
+  approved design since 2026-10-19 — executes nothing in any build (its executor, M3b4b, is
+  dormant), and decision 10's cutover has not
+  happened**, and that the evidence
   decision 7 rests on is incomplete: the transaction scenarios have run on a simulator only
   (2026-10-15), and physical-device transaction acceptance, a naturally occurring commit
   failure and termination during a commit are **not** measured. The canonical,
@@ -494,8 +723,79 @@ everything and returning a result nobody reads). Exposing a getter would not hav
   commit-failure evidence are not taken** — so **source retirement remains unjustified** and
   no operating envelope is recorded.
 - **Decision 4 (initialise before mount, gate on one readiness verdict):** implemented.
-- **Decision 7 (the migration protocol):** **UNRESOLVED.** Three open engineering items
-  remain (see Consequences), plus the two S2 requirements named above. Not implemented.
+- **Decision 7 (the migration protocol):** **DESIGN APPROVED by the user on 2026-10-19**, after
+  Codex's clean independent review. **Its decision core (M3b4a) was independently reviewed
+  (clean) and approved by the user on 2026-10-20. Its executor (M3b4b) was likewise
+  independently reviewed (clean) after earlier blocking defects were corrected, and the user
+  approved it on 2026-10-20. It stays dormant with class-M evidence only; nothing is verified
+  on a real engine or device, and the fingerprint binding (I-7) stays open**
+  (`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7, "M3b4a implementation status" and "M3b4b
+  implementation status"). **U2's first-version recovery policy is decided (2026-10-20; Stage
+  M3b0 §6), its documentation adoption was reviewed clean and approved, and UG-1–UG-4 were
+  approved (2026-10-20). Its interface (M3b4c) is implemented and locally verified with
+  component and class-M controller evidence, dormant, and awaiting Codex's independent review
+  and the user's approval** (Stage M3b0 §7, "M3b4c implementation status"). Targeted recovery
+  procedures and the concrete help channel stay deferred. The two S2 requirements named above and the evidence listed under Consequences
+  also remain open.
 - **Decision 10 (cutover in M3b5 and nowhere earlier):** the constraint is implemented and
   enforced — a flag-enabled build consults an activation authority that is unavailable and
   therefore **does not mount**. **The cutover itself has not been performed.**
+
+
+**S5f Team/API binding — independently accepted locally (2026-10-25).**
+The same held resources may serve all29 existing typed Team methods with original
+Profile/Self/FIFO ownership, per-command retry:false public clients and closed
+purpose-specific dependent hooks. Five own-API routes use only the configured
+HTTPS origin and the actual same-command bearer. No second AUTH/store, schema,
+config assignment, app mount, operational transfer or activation. Canonical
+contract: `BETA_COMPLETION_SPECIFICATION.md` §S5f.
+
+
+**S5g native local sporting binding — independently accepted locally (2026-10-25).**
+The existing dormant native sporting host may expose only the actual seven typed
+base repositories, same-Profile sync-state repository, bounded target legacy
+retirement and personal export, over its original private pair/admission. Actual
+write acknowledgements remain factual; later effects require fresh original
+currency. Descriptor-owned input data preserves domain bytes and existing policies.
+No generic adapter/grant escapes; outer manager/decorator input capture, Q1 and
+actual App composition remain separate. Existing13-key inventory/type exports are
+runtime-frozen and policy-neutral. Canonical contract: BETA_COMPLETION_SPECIFICATION.md
+§S5g. No default activation, actual configuration, source/installation/device action.
+
+
+**S5h native manager binding — independently accepted locally (2026-10-25).**
+
+The dormant native host may compose one actual sync manager per genuine original
+Profile admission, wrapping the actual decorated repositories before argument
+ownership can be lost. Actual scheduled background lanes register before entry
+without delaying local base ACKs on cloud work. Snapshots are detached; foreign
+listener work is separately drained. Exact API, capture/factual-result/currentness
+fences and evidence are canonical in BETA_COMPLETION_SPECIFICATION.md §S5h.
+No App/Q1/default/configuration/installation/device or release acceptance.
+
+
+**S5i original training boundary — independently accepted locally (2026-10-25).**
+
+A genuine original native Tracker may continue only the same already-started Session
+under approved Q1, including further exercises/blocks, after its own positive pre-fault
+Current ACK and while original identity/context/domain remain current. This is separate
+from permanently retired ordinary scope. Actual History ACK ends the exception before
+successor I/O; original Current retains the existing recoverable history-first duplicate.
+Actual source revocation, complete capture-drain ownership and fresh healthy-remount
+proof are private; actual Account/Profile replacement vetoes the original admission,
+while unsigned status absence preserves incoming intent and blocked OTP recovery.
+The sole validated Account-control mapper supplies only a private negative-correlation
+hook; no second parser or public grant. Canonical contract: BETA_COMPLETION_SPECIFICATION.md
+§S5i; exact verification: TESTFLIGHT_READINESS.md. App/Flow/export/Team is now
+separately accepted under §S5j; URL/configuration/operational transfer and physical/
+release gates remain separate.
+No production activation or existing-device installation is authorized by this acceptance.
+
+
+S6g cross-reference: the dormant iOS-only encrypted archive quarantine prerequisite
+is now locally implemented and independently accepted (ADR-0054; canonical scope
+in `MOBILE_APP_MIGRATION.md`, “S6g — protected archive quarantine”; actual verification
+in `TESTFLIGHT_READINESS.md`). Its sole private owner consumes actual S6e opening;
+normal application builds remain free of concrete quarantine code. This does not
+adopt C8–C10, publish sporting rows, supply identity/source authority or complete
+operational installation transfer. The observation-only S6f helper is unchanged.

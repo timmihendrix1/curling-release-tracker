@@ -60,3 +60,6 @@ next-env.d.ts
 # Vitest writes its cache next to the config's root, which is mobile/ — the
 # repository-root /node_modules rule above does not reach it.
 /mobile/node_modules/
+
+# Generated isolated observation-helper artifact; source stays reviewable.
+/transfer-source/dist/

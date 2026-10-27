@@ -43,6 +43,32 @@ async function bundledStylesheet(): Promise<string> {
   return contents.join("\n");
 }
 
+// These literals also belong to accepted SQL discovery/eligibility, which must
+// reject foreign control rows before an ordinary adapter can open. They cannot
+// alone identify the dormant executor in an explicitly opted-in SQL artifact.
+function admitsOnlyExistingSqlControlReferences(js: string): boolean {
+  const names = js.match(/curling\.nativeMigration\.[A-Za-z0-9_.-]*/g) ?? [];
+  const sqlOptIn = js.includes(DIAGNOSTIC_DATABASE_NAME) || js.includes("curling-sporting-v1");
+  if (!sqlOptIn) return names.length === 0; // strict default artifact absence
+  if (!js.includes("SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name;")) return false;
+  // Actual SQL adapter: two prefix refusals, D/F addresses. Shared eligibility:
+  // source/D/F addresses. Pin exact membership AND multiplicity, never a prefix
+  // exemption. Any new address or duplicate requires its own provenance review.
+  const expected = new Map([
+    ["curling.nativeMigration.", 2],
+    ["curling.nativeMigration.activationRecord.v1", 2],
+    ["curling.nativeMigration.faultLatch.v1", 2],
+    ["curling.nativeMigration.sourceMarker.v1", 1],
+  ]);
+  if (names.length !== 7) return false;
+  for (const name of names) {
+    const remaining = expected.get(name);
+    if (remaining === undefined || remaining === 0) return false;
+    expected.set(name, remaining - 1);
+  }
+  return [...expected.values()].every(remaining => remaining === 0);
+}
+
 describe("mobile production bundle", () => {
   beforeAll(async () => {
     try {
@@ -306,6 +332,60 @@ describe("mobile production bundle", () => {
     expect(js).not.toContain("00000000-0000-4000-8000-000000000001");
     expect(js).not.toContain("createUnscopedSportingRepositoriesForTests");
     expect(js).not.toMatch(/process\s*\.\s*env/);
+  });
+
+  it("ships no native-migration executor in ANY build mode (Stage M3b4b is dormant)", async () => {
+    // The migration runner, its evidence collector and its bindings are imported
+    // by no application root, so no build — default, diagnostics or native
+    // storage — may contain them. Ordinary opted-in SQL discovery does need
+    // the exact pre-existing control addresses; it supplies no migration grant.
+    const js = await bundledScript();
+    expect(admitsOnlyExistingSqlControlReferences(js)).toBe(true);
+    // Boolean assertions keep an unexpected full built bundle (which contains
+    // public configuration) out of failure diagnostics.
+    for (const marker of [
+      "The migration runner needs every dependency",
+      "curling-installation-transfer",
+      "curling-protected-installation-v1",
+      "installation_transfer_quarantine_v1",
+      "installation_transfer_publication_v1", "installation_transfer_live_v1",
+      "installation_transfer_prepared_v1",
+      "installation_transfer_sporting_v1", "installation_transfer_pair_v1", "installation_transfer_binding_v1", "installation_transfer_identity_v1", "installation-source-denial/v1", "installation-source-denial/v2", "installation_transfer_source_denial_v1", "admitSourceAwareTransferPreparation", "evaluateTransferSourceDenial", "createInstallationTransferIdentityOwner", "publishTransferIdentityRuntime", "createConfiguredInstallationTransferIdentityHost", "createConfiguredInstallationTransferApplicationHost", "createInstallationTransferApplication", "createInstallationTransferHostOwner", "createTransferSourceGuardOwner", "createTransferAccountControlObservation", "readTransferAccountControlObservation", "createPublicationTransferCredentialMigrationPort", "publicationTransferCredentialCapability", "curling-installation-publication-v1", "installation-publication-anchor/v1", "installation-published-wire/v1", "installation-published-sporting/v1",
+      "u16:",
+      "source_observation",
+      "The data check has ended. Reopen the helper to check again.",
+    ]) expect(js.includes(marker)).toBe(false);
+  });
+
+  it("the SQL control exception rejects default, extra, duplicate and unproven references", () => {
+    const addresses = [
+      "curling.nativeMigration.", "curling.nativeMigration.",
+      "curling.nativeMigration.activationRecord.v1", "curling.nativeMigration.activationRecord.v1",
+      "curling.nativeMigration.faultLatch.v1", "curling.nativeMigration.faultLatch.v1",
+      "curling.nativeMigration.sourceMarker.v1",
+    ].join(" ");
+    const schema = "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name;";
+    for (const mode of [DIAGNOSTIC_DATABASE_NAME, "curling-sporting-v1"]) {
+      const admitted = `${mode} ${schema} ${addresses}`;
+      expect(admitsOnlyExistingSqlControlReferences(admitted)).toBe(true);
+      expect(admitsOnlyExistingSqlControlReferences(`${mode} ${addresses}`)).toBe(false);
+      expect(admitsOnlyExistingSqlControlReferences(`${admitted} curling.nativeMigration.future.v2`)).toBe(false);
+      expect(admitsOnlyExistingSqlControlReferences(`${admitted} curling.nativeMigration.sourceMarker.v1`)).toBe(false);
+      expect(admitsOnlyExistingSqlControlReferences(admitted.replace("sourceMarker", "unexpected"))).toBe(false);
+    }
+    expect(admitsOnlyExistingSqlControlReferences(`${schema} ${addresses}`)).toBe(false);
+    expect(admitsOnlyExistingSqlControlReferences("curling.nativeMigration.sourceMarker.v1")).toBe(false);
+    expect(admitsOnlyExistingSqlControlReferences("ordinary default artifact")).toBe(true);
+  });
+
+  it("ships no migration recovery interface in ANY build mode (Stage M3b4c is dormant)", async () => {
+    // The recovery session, presentation model and view are imported by no
+    // application root. Their own fixed strings are the markers.
+    const js = await bundledScript();
+    expect(js).not.toContain("A migration session needs an already-constructed runner");
+    expect(js).not.toContain("Storage transfer diagnostic report");
+    expect(js).not.toContain("Conflicting data — recovery required");
+    expect(js).not.toContain("The transfer cannot continue in this version");
   });
 
   it("deploys no Web SQLite ENGINE in any build, and the plugin's web stub fails closed", async () => {

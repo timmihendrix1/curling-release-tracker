@@ -21,6 +21,8 @@ export interface ExecutedStatement {
   requested: string;
   /** What the platform actually handed to SQLite, after its own rewriting. */
   executed: string[];
+  /** For `run(..., false)`: whether a native transaction was open at the time. */
+  inTransaction?: boolean;
 }
 
 export interface PluginFaithfulEngineState {
@@ -41,6 +43,12 @@ export interface PluginFaithfulEngineState {
   openCount: number;
   closeCount: number;
   tables: Set<string>;
+  /**
+   * Every bridge call that TOOK EFFECT, in order: `open`, `close`, `release`
+   * (the engine's native-handle release), `begin`, `commit`, `rollback`,
+   * `run:<sql>` and `query:<sql>`. For ordering assertions (Stage M3b4b).
+   */
+  trace: string[];
 }
 
 export type PluginPlatform = "ios" | "android";
@@ -115,6 +123,16 @@ function androidExecSqlGuard(command: string): void {
   }
 }
 
+/** Test-only installed-plugin execute preprocessing, also usable before real
+ * disposable SQLite. This is a source-derived model, not native execution. */
+export function preprocessPluginExecute(platform: PluginPlatform, statements: string): string[] {
+  if (platform === "ios") return [iosPreprocessExecute(statements)];
+  return androidStatementsArray(statements).map(command => {
+    const result = command.endsWith(";") ? command : command + ";";
+    androidExecSqlGuard(result); return result;
+  });
+}
+
 /** The tiny slice of SQL these tests need, applied to the ACTIVE row map —
  * the committed rows outside a transaction, the working copy inside one. */
 function applyStatement(
@@ -122,12 +140,12 @@ function applyStatement(
   rows: Map<string, string>,
   sql: string,
   values: unknown[]
-): void {
+): number {
   const statement = sql.trim().replace(/;$/, "").trim();
   if (statement.length === 0) {
     // `sqlite3_exec("")` succeeds and does nothing. This is the whole point of
     // the iOS regression: silence, not failure.
-    return;
+    return 0;
   }
   const upper = statement.toUpperCase();
 
@@ -135,10 +153,10 @@ function applyStatement(
     const assignment = /^PRAGMA\s+(\w+)\s*=\s*(\S+)$/i.exec(statement);
     if (assignment) {
       state.pragmas.set(assignment[1].toLowerCase(), assignment[2].toUpperCase());
-      return;
+      return 0;
     }
     const read = /^PRAGMA\s+(\w+)$/i.exec(statement);
-    if (read) return;
+    if (read) return 0;
     throw new PluginStatementError("unsupported pragma");
   }
 
@@ -146,7 +164,7 @@ function applyStatement(
     const name = /CREATE TABLE(?: IF NOT EXISTS)?\s+(\w+)/i.exec(statement);
     if (!name) throw new PluginStatementError("unparseable CREATE TABLE");
     state.tables.add(name[1]);
-    return;
+    return 0;
   }
 
   if (upper.startsWith("INSERT INTO")) {
@@ -159,24 +177,44 @@ function applyStatement(
       if (values.length !== 1) throw new PluginStatementError("expected one bound value");
       if (state.acceptNotNullViolation) {
         rows.set(String(values[0]), "");
-        return;
+        return 1;
       }
       throw new PluginStatementError("NOT NULL constraint failed: records.value");
     }
     if (values.length !== 2) throw new PluginStatementError("expected two bound values");
-    rows.set(String(values[0]), String(values[1]));
-    return;
+    const key = String(values[0]);
+    // `key TEXT PRIMARY KEY`: a plain INSERT over an existing key is a
+    // constraint violation, exactly as SQLite reports it. Only a statement that
+    // carries the upsert clause replaces the value.
+    if (!/ON\s+CONFLICT/i.test(statement) && rows.has(key)) {
+      throw new PluginStatementError("UNIQUE constraint failed: records.key");
+    }
+    rows.set(key, String(values[1]));
+    return 1;
+  }
+
+  if (upper.startsWith("UPDATE")) {
+    if (!state.tables.has("records")) throw new PluginStatementError("no such table: records");
+    if (!/^UPDATE\s+records\s+SET\s+value\s*=\s*\?\s+WHERE\s+key\s*=\s*\?$/i.test(statement)) {
+      throw new PluginStatementError("unsupported UPDATE");
+    }
+    if (values.length !== 2) throw new PluginStatementError("expected two bound values");
+    const key = String(values[1]);
+    // An UPDATE matching no row succeeds and changes nothing.
+    if (!rows.has(key)) return 0;
+    rows.set(key, String(values[0]));
+    return 1;
   }
 
   if (upper.startsWith("DELETE FROM")) {
     if (!state.tables.has("records")) throw new PluginStatementError("no such table: records");
     if (upper.includes("WHERE")) {
       if (values.length !== 1) throw new PluginStatementError("expected one bound value");
-      rows.delete(String(values[0]));
-      return;
+      return rows.delete(String(values[0])) ? 1 : 0;
     }
+    const count = rows.size;
     rows.clear();
-    return;
+    return count;
   }
 
   throw new PluginStatementError("unsupported statement");
@@ -189,6 +227,26 @@ function queryRows(
   values: unknown[]
 ): Record<string, unknown>[] {
   const statement = sql.trim().replace(/;$/, "").trim();
+
+  // Fixed discovery observations for the model's actual tables. Unknown
+  // queries still throw below; this is not an empty-success fallback.
+  if (statement === "PRAGMA schema_version") return [{ schema_version: state.tables.size }];
+  if (statement === "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name") {
+    return [...state.tables].flatMap(name => [
+      { type: "index", name: `sqlite_autoindex_${name}_1`, tbl_name: name, sql: null },
+      { type: "table", name, tbl_name: name, sql: `CREATE TABLE ${name} (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)` },
+    ]).sort((a, b) => a.type < b.type ? -1 : a.type > b.type ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+  }
+  if (statement === "PRAGMA table_info('records')") return state.tables.has("records") ? [
+    { cid: 0, name: "key", type: "TEXT", notnull: 1, dflt_value: null, pk: 1 },
+    { cid: 1, name: "value", type: "TEXT", notnull: 1, dflt_value: null, pk: 0 },
+  ] : [];
+  if (statement === "PRAGMA index_list('records')") return state.tables.has("records") ? [
+    { seq: 0, name: "sqlite_autoindex_records_1", unique: 1, origin: "pk", partial: 0 },
+  ] : [];
+  if (statement === "PRAGMA index_info('sqlite_autoindex_records_1')") return state.tables.has("records") ? [
+    { seqno: 0, cid: 0, name: "key" },
+  ] : [];
 
   const pragmaAssignment = /^PRAGMA\s+(\w+)\s*=\s*(\S+)$/i.exec(statement);
   if (pragmaAssignment) {
@@ -212,6 +270,20 @@ function queryRows(
 
   if (/^SELECT\s+sqlite_version\(\)/i.test(statement)) {
     return [{ version: "3.45.0" }];
+  }
+
+  if (/^SELECT\s+key\s+FROM\s+records\s+ORDER\s+BY\s+key$/i.test(statement)) {
+    if (!state.tables.has("records")) throw new PluginStatementError("no such table: records");
+    // SQLite BINARY compares UTF-8 bytes; JS default sort compares UTF-16.
+    // U+E000 sorts before a supplementary character in SQLite, after it in JS.
+    const encoded = [...rows.keys()].map(key => ({ key, bytes: new TextEncoder().encode(key) }));
+    encoded.sort((a, b) => {
+      for (let i = 0; i < Math.min(a.bytes.length, b.bytes.length); i++) {
+        if (a.bytes[i] !== b.bytes[i]) return a.bytes[i] - b.bytes[i];
+      }
+      return a.bytes.length - b.bytes.length;
+    });
+    return encoded.map(({ key }) => ({ key }));
   }
 
   if (/^SELECT\s+value\s+FROM\s+records\s+WHERE\s+key\s*=\s*\?$/i.test(statement)) {
@@ -253,6 +325,55 @@ export interface PluginFaithfulFaults {
   closeConnectionRejects?: boolean;
   /** Opening a connection rejects. */
   openRejects?: boolean;
+  /**
+   * What ROLLBACK does when NO transaction is active. The installed plugin
+   * differs per platform: iOS issues `ROLLBACK TRANSACTION;` through
+   * `sqlite3_exec`, which SQLite rejects; Android's `Database.rollbackTransaction`
+   * only calls `endTransaction()` `if (isAvailTrans())` and otherwise returns 0,
+   * which the plugin resolves as `{ changes: { changes: 0 } }` — an
+   * acknowledgement. `"platform"` models exactly that. The default, `"reject"`,
+   * is the pre-M3b4b model kept for the existing diagnostics tests; it is
+   * faithful for iOS only. Every M3b4b migration test passes `"platform"`.
+   */
+  rollbackWithoutTransaction?: "reject" | "platform";
+  /**
+   * Targeted fault hooks (Stage M3b4b). Each is consulted at the named bridge
+   * call and states its native EFFECT explicitly:
+   *   - `reject_before_effect`: the call rejects and nothing happened natively;
+   *   - `reject_after_effect`: the effect happened, then the bridge rejected;
+   *   - `malformed_after_effect`: the effect happened, then an unreadable answer;
+   *   - `hang`: the call never answers (a process death mid-call). Nothing
+   *     happened natively; the connection's working copy is discarded when the
+   *     test builds a new engine over the same state.
+   */
+  onBegin?: () => BridgeFault;
+  /** Receives the working copy that COMMIT would make durable. */
+  onCommit?: (working: ReadonlyMap<string, string>) => BridgeFault;
+  onRollback?: () => Exclude<BridgeFault, "reject_after_effect">;
+  onRun?: (statement: string, values: readonly unknown[]) => BridgeFault;
+  /** Returns a replacement envelope for a query, or `undefined` for the real one. */
+  onQuery?: (statement: string, values: readonly unknown[]) => { reject: true } | { envelope: unknown } | undefined;
+  onClose?: () => "ok" | "reject_before_effect";
+  onCloseConnection?: () => "ok" | "reject_before_effect";
+  /**
+   * Awaited at the start of a bridge call, BEFORE its effect: a controllable
+   * promise that holds the call open until the test releases it. The call has
+   * been issued from the caller's side; nothing has happened natively yet.
+   */
+  gate?: (call: BridgeCall) => Promise<void> | void;
+}
+
+export interface BridgeCall {
+  readonly kind: "create" | "open" | "begin" | "commit" | "rollback" | "run" | "query";
+  readonly statement?: string;
+  readonly values?: readonly unknown[];
+}
+
+export type BridgeFault = "ok" | "reject_before_effect" | "reject_after_effect" | "malformed_after_effect" | "hang";
+
+/** A promise that never settles: the bridge call never answers. */
+function never<T>(): Promise<T> {
+  return new Promise<T>(() => undefined);
 }
 
 export interface PluginFaithfulEngineOptions {
@@ -277,6 +398,7 @@ export function createPluginFaithfulEngineState(): PluginFaithfulEngineState {
     openCount: 0,
     closeCount: 0,
     tables: new Set(),
+    trace: [],
   };
 }
 
@@ -302,15 +424,20 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
 
   const connection = {
     async open(): Promise<void> {
+      if (faults.gate) await faults.gate({ kind: "open" });
       if (faults.openRejects) throw new PluginBridgeError("Open: injected failure");
       open = true;
       state.openCount += 1;
+      state.trace.push("open");
     },
     async close(): Promise<void> {
       // Rejected BEFORE effect: the connection, and any transaction on it, is
       // still exactly as it was.
-      if (faults.closeRejects) throw new PluginBridgeError("Close: injected failure");
+      if (faults.closeRejects || faults.onClose?.() === "reject_before_effect") {
+        throw new PluginBridgeError("Close: injected failure");
+      }
       state.closeCount += 1;
+      state.trace.push("close");
       closeNow();
     },
     /**
@@ -322,11 +449,18 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
      */
     async beginTransaction(): Promise<unknown> {
       if (!open) throw new PluginStatementError("Database not opened");
+      if (faults.gate) await faults.gate({ kind: "begin" });
+      const hook = faults.onBegin?.() ?? "ok";
+      if (hook === "hang") return never();
+      if (hook === "reject_before_effect") throw new PluginBridgeError("BeginTransaction: injected failure");
       if (transactionRows !== null) {
         throw new PluginStatementError("cannot start a transaction within a transaction");
       }
       state.executed.push({ requested: "BEGIN TRANSACTION;", executed: ["BEGIN TRANSACTION;"] });
+      state.trace.push("begin");
       transactionRows = new Map(state.rows);
+      if (hook === "reject_after_effect") throw new PluginBridgeError("BeginTransaction: injected lost acknowledgement");
+      if (hook === "malformed_after_effect") return { changes: "unreadable" };
       // Both faults strike AFTER the transaction exists natively.
       if (faults.beginRejectsAfterEffect) {
         throw new PluginBridgeError("BeginTransaction: injected lost acknowledgement");
@@ -336,10 +470,18 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
     },
     async commitTransaction(): Promise<unknown> {
       if (!open) throw new PluginStatementError("Database not opened");
+      if (faults.gate) await faults.gate({ kind: "commit" });
       if (transactionRows === null) {
         throw new PluginStatementError("cannot commit - no transaction is active");
       }
+      const hook = faults.onCommit?.(transactionRows) ?? "ok";
+      if (hook === "hang") return never();
+      if (hook === "reject_before_effect") {
+        // The COMMIT failed natively; the transaction is still open.
+        throw new PluginBridgeError("CommitTransaction: injected failure");
+      }
       state.executed.push({ requested: "COMMIT TRANSACTION;", executed: ["COMMIT TRANSACTION;"] });
+      state.trace.push("commit");
       // The whole working copy becomes durable AT ONCE. Rows and their progress
       // record cannot land separately, which is the property being modelled.
       // Mutated in place: a test holding this Map is how one device's storage is
@@ -347,25 +489,34 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
       state.rows.clear();
       for (const [key, value] of transactionRows) state.rows.set(key, value);
       transactionRows = null;
-      if (faults.commitRejectsAfterEffect) {
+      if (faults.commitRejectsAfterEffect || hook === "reject_after_effect") {
         throw new PluginBridgeError("CommitTransaction: injected lost acknowledgement");
       }
+      if (hook === "malformed_after_effect") return { changes: null };
       return TRANSACTION_ACK;
     },
     async rollbackTransaction(): Promise<unknown> {
       if (!open) throw new PluginStatementError("Database not opened");
-      if (faults.rollbackRejects) {
+      if (faults.gate) await faults.gate({ kind: "rollback" });
+      const hook = faults.onRollback?.() ?? "ok";
+      if (hook === "hang") return never();
+      if (faults.rollbackRejects || hook === "reject_before_effect") {
         throw new PluginBridgeError("RollbackTransaction: injected failure");
       }
       if (transactionRows === null) {
+        if (faults.rollbackWithoutTransaction === "platform" && platform === "android") {
+          // `if (isAvailTrans()) endTransaction(); return 0;`
+          return TRANSACTION_ACK;
+        }
         throw new PluginStatementError("cannot rollback - no transaction is active");
       }
       state.executed.push({
         requested: "ROLLBACK TRANSACTION;",
         executed: ["ROLLBACK TRANSACTION;"],
       });
+      state.trace.push("rollback");
       transactionRows = null;
-      if (faults.rollbackResolvesMalformed) return {};
+      if (faults.rollbackResolvesMalformed || hook === "malformed_after_effect") return {};
       return TRANSACTION_ACK;
     },
     async execute(statements: string, transaction: boolean): Promise<unknown> {
@@ -407,23 +558,39 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
      */
     async run(statement: string, values: unknown[], transaction: boolean): Promise<unknown> {
       if (!open) throw new PluginStatementError("Database not opened");
+      if (faults.gate) await faults.gate({ kind: "run", statement, values });
+      const hook = faults.onRun?.(statement, values) ?? "ok";
+      if (hook === "hang") return never();
+      if (hook === "reject_before_effect") throw new PluginBridgeError("Run: injected failure");
+      let changes: number;
       if (transaction) {
         if (transactionRows !== null) {
           throw new PluginStatementError("cannot start a transaction within a transaction");
         }
         // Its own transaction: applied and durable the moment it succeeds.
         state.executed.push({ requested: statement, executed: [statement] });
-        applyStatement(state, state.rows, statement, values);
-        return {};
+        changes = applyStatement(state, state.rows, statement, values);
+      } else {
+        // Part of a transaction somebody else owns.
+        state.executed.push({ requested: statement, executed: [statement], inTransaction: transactionRows !== null });
+        changes = applyStatement(state, activeRows(), statement, values);
       }
-      // Part of a transaction somebody else owns.
-      state.executed.push({ requested: statement, executed: [statement] });
-      applyStatement(state, activeRows(), statement, values);
-      return {};
+      state.trace.push(`run:${statement}`);
+      if (hook === "reject_after_effect") throw new PluginBridgeError("Run: injected lost acknowledgement");
+      if (hook === "malformed_after_effect") return { changes: { changes: "1" } };
+      // The plugin's `run` answer on both platforms (iOS `runSQL`, Android
+      // `runSQL`): the change count from `total_changes()`, the last row id and
+      // any RETURNING values.
+      return { changes: { changes, lastId: -1, values: [] } };
     },
     async query(statement: string, values: unknown[]): Promise<{ values?: unknown }> {
       if (!open) throw new PluginStatementError("Database not opened");
+      if (faults.gate) await faults.gate({ kind: "query", statement, values });
       state.executed.push({ requested: statement, executed: [statement] });
+      state.trace.push(`query:${statement}`);
+      const override = faults.onQuery?.(statement, values);
+      if (override && "reject" in override) throw new PluginBridgeError("Query: injected failure");
+      if (override && "envelope" in override) return override.envelope as { values?: unknown };
       return { values: queryRows(state, activeRows(), statement, values) };
     },
   };
@@ -451,14 +618,17 @@ export function createPluginFaithfulEngine(options: PluginFaithfulEngineOptions)
       // close therefore gets the old, still-open connection back — the hazard
       // the adapter's reopen boundary must not certify.
       async createConnection() {
+        if (faults.gate) await faults.gate({ kind: "create" });
+        state.trace.push("create");
         return connection;
       },
       // iOS `CapacitorSQLite.closeConnection`: closes the database if it is
       // open (which ends any transaction), then drops the dictionary entry.
       async closeConnection() {
-        if (faults.closeConnectionRejects) {
+        if (faults.closeConnectionRejects || faults.onCloseConnection?.() === "reject_before_effect") {
           throw new PluginBridgeError("CloseConnection: injected failure");
         }
+        state.trace.push("release");
         closeNow();
       },
     },

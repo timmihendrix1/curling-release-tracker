@@ -55,8 +55,8 @@ function wrapConnection(db: SQLiteDBConnection): NativeSqliteConnection {
     // (`UtilsSQLCipher.beginTransaction` / `commitTransaction` /
     // `rollbackTransaction`) and maintains the plugin's own
     // transaction-active flag. They are used ONLY by the diagnostics-only
-    // transaction owner in `nativeSqliteAdapter.ts`; no repository-facing
-    // contract exposes them.
+    // transaction owner and the migration-only target capability in
+    // `nativeSqliteAdapter.ts`; no repository-facing contract exposes them.
     beginTransaction: () => db.beginTransaction(),
     commitTransaction: () => db.commitTransaction(),
     rollbackTransaction: () => db.rollbackTransaction(),

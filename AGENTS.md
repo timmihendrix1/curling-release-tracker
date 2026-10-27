@@ -29,3 +29,13 @@ Do not split the prompt across several code blocks or place required instruction
 During review, remain read-only unless the user explicitly requests an implementation change.
 
 Review the complete resulting state, not merely the newest incremental diff and not merely Claude's report.
+
+## Fortschritt im Zweiten Gehirn nachführen
+
+Tim hat am 24.10.2026 die fortlaufende Nachführung relevanter Projektfortschritte beauftragt. Vor Projektarbeit `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/AGENTS.md` und `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/03 Bereiche/Prozesse/Projektfortschritt und Wochenreview.md` lesen; danach nur die passende Vorhabenseite und auftragsrelevante Quellen.
+
+Vor der Abschlussantwort nach substanziellen Ergebnissen, Prüfbefunden, Entscheidungen oder neuen/behobenen Blockaden die kanonische Vorhabenseite mit Datum, Ergebnis, Quelle/Artefakt, tatsächlich ausgeführter Prüfung und verbleibender Entscheidung ergänzen; Steuerungsfelder und `updated` nachführen sowie einen kurzen Pflegeeintrag in `log.md` ergänzen. Die Übersicht liest die Eigenschaften direkt aus. Keine Detailaufgaben duplizieren und keine fachlichen Entwürfe eigenmächtig bestätigen.
+
+Vor Schreiben den aktuellen Dateistand erneut lesen und parallele Änderungen erhalten. Ein Repository-Review bleibt im Repository read-only; der separat beauftragte Nachtrag erfolgt im Vault. Ein ausdrückliches Schreibverbot für den gesamten Auftrag geht vor. Im Abschluss den tatsächlich gespeicherten Nachtrag verlinken; bei fehlendem Schreibzugriff den fertigen Text bereitstellen und die Speicherung als offen benennen. Diese Dokumentationspflicht erweitert keine Implementierungs-, Veröffentlichungs- oder externe Übertragungsfreigabe.
+
+Kanonische Vorhabenseite: `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/02 Projekte/Curling Trainingsapp/Curling Trainingsapp.md`.

@@ -141,15 +141,17 @@ describe("a flag-enabled build shows a blocking state instead of mounting the ap
     });
 
     const alert = screen.getByRole("alert");
-    expect(alert).toHaveTextContent("not implemented");
+    expect(alert).toHaveTextContent("not switched on in this build");
     // No silent fallback and no reset. The claim is about the user's TRAINING
     // DATA, deliberately not an absolute "nothing on this device changed":
     // opening the native database creates its file before the credential step
     // runs, so the stronger claim would not always be true.
     expect(alert).toHaveTextContent("has not been opened, changed or removed");
     expect(screen.queryByText("sporting workspace")).not.toBeInTheDocument();
-    // And a retry is offered rather than a dead end.
-    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    // The stage barrier is a fact about this build, not a transient fault: no
+    // "Try again" suggests a recheck could activate it (Stage M3b4c).
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    expect(alert).toHaveTextContent("Checking again will not change this.");
   });
 
   it("uses the production composer when nothing is injected, and still does not mount", async () => {

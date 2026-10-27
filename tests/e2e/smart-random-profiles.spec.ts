@@ -84,7 +84,7 @@ test("editing or deleting a profile never changes an already-started Training Bl
   await page.getByRole("button", { name: "Edit" }).click();
   await page.getByLabel("Maximum Target Time").fill("4.00");
   await page.getByRole("button", { name: "Save Profile" }).click();
-  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByRole("button", { name: "Delete Profile" }).click();
   await expect(page.getByText("0 saved").first()).toBeVisible();
   await page.getByRole("button", { name: "Close Smart Random Profiles" }).click();

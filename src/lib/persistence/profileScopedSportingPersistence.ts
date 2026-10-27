@@ -45,14 +45,14 @@ import type {
   StorageAdapter,
   StorageGetResult,
 } from "./types";
-import { CLOUD_SPORTING_SYNC_STORAGE_KEY } from "../cloudSporting/syncStateRepository";
+import { CLOUD_SPORTING_SYNC_STORAGE_KEY, serializePersonalSportingSyncExport } from "../cloudSporting/syncStateRepository";
 
 /**
  * The complete, closed set of legacy identity-unscoped sporting keys. B0.3 retires
  * exactly these keys and no others. Keeping the list next to the scoped adapter makes
  * additions reviewable: a new sporting repository cannot accidentally remain global.
  */
-export const SPORTING_STORAGE_KEYS = [
+export const SPORTING_STORAGE_KEYS = Object.freeze([
   CURRENT_SESSION_STORAGE_KEY,
   SESSION_HISTORY_STORAGE_KEY,
   HISTORY_FILTERS_STORAGE_KEY,
@@ -63,16 +63,48 @@ export const SPORTING_STORAGE_KEYS = [
   SHOW_INTRODUCTION_KEY,
   LAST_THRESHOLD_PRESET_KEY,
   LAST_CUSTOM_THRESHOLD_KEY,
-] as const;
+] as const);
 
 export type SportingStorageKey = (typeof SPORTING_STORAGE_KEYS)[number];
 
-const PROFILE_SCOPED_SPORTING_STORAGE_KEYS = [
+export const PROFILE_SCOPED_SPORTING_STORAGE_KEYS = Object.freeze([
   ...SPORTING_STORAGE_KEYS,
   ASSESSMENT_DRAFT_STORAGE_KEY,
   ASSESSMENT_HISTORY_STORAGE_KEY,
   CLOUD_SPORTING_SYNC_STORAGE_KEY,
-] as const;
+] as const);
+
+export type ProfileScopedSportingStorageKey = (typeof PROFILE_SCOPED_SPORTING_STORAGE_KEYS)[number];
+
+/** Current-device portion of a personal export. Reads only the explicit sporting
+ * inventory, including unsynced outbox/drafts; never provider or identity keys.
+ * Two equal passes detect ordinary concurrent changes without claiming an atomic
+ * snapshot across tabs. Unknown/malformed raw strings are preserved verbatim. */
+export async function readProfileSportingExport(
+  profileId: string,
+  adapter: StorageAdapter,
+): Promise<{ ok: true; records: Record<string, string | null> } | { ok: false }> {
+  try {
+    if (!isCanonicalUuid(profileId)) return { ok: false };
+    const records: Record<string, string | null> = {};
+    for (const key of PROFILE_SCOPED_SPORTING_STORAGE_KEYS) {
+      const value = await adapter.get(key);
+      if (value.status !== "value") return { ok: false };
+      records[key] = value.value;
+    }
+    for (const key of PROFILE_SCOPED_SPORTING_STORAGE_KEYS) {
+      const value = await adapter.get(key);
+      if (value.status !== "value" || value.value !== records[key]) return { ok: false };
+    }
+    const syncRaw = records[CLOUD_SPORTING_SYNC_STORAGE_KEY];
+    if (syncRaw !== null) {
+      const owned = serializePersonalSportingSyncExport(syncRaw, profileId);
+      if (owned === null) return { ok: false };
+      records[CLOUD_SPORTING_SYNC_STORAGE_KEY] = owned;
+    }
+    return { ok: true, records };
+  } catch { return { ok: false }; }
+}
 const SPORTING_STORAGE_KEY_SET: ReadonlySet<string> = new Set(PROFILE_SCOPED_SPORTING_STORAGE_KEYS);
 const PROFILE_NAMESPACE_PREFIX = "curling.sporting.profile.v1";
 
@@ -85,7 +117,7 @@ const INVALID_KEY_MESSAGE = "The sporting persistence key is not registered.";
 
 export function profileScopedSportingStorageKey(
   profileId: string,
-  key: SportingStorageKey
+  key: ProfileScopedSportingStorageKey
 ): string {
   if (!isCanonicalUuid(profileId)) throw new Error(INVALID_SCOPE_MESSAGE);
   if (!SPORTING_STORAGE_KEY_SET.has(key)) throw new Error(INVALID_KEY_MESSAGE);

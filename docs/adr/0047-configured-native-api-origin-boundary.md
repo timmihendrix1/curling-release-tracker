@@ -189,3 +189,17 @@ addressed here and remain open (migration document §6, open decisions P4 and P7
   synthetic configuration throughout.
 - **Not verified:** deployment of the server change; any real device request; Android
   anything.
+
+
+**Dormant native S5f boundary — independently accepted locally (2026-10-25).**
+The unmounted native host may reuse its actual same-command private bearer after
+original admitted Self, for exactly the five existing Team API POST routes. The
+pure existing route table is shared; the browser authorizedFetch helper and its
+sole Web importer remain unchanged. The native host resolves the existing
+build-time canonical HTTPS origin once inside trusted construction, with no
+caller/response/WebView fallback. Missing/invalid origin refuses HTTP before
+getSession/fetch while unrelated REST remains available. Native HTTP uses exactly
+Content-Type and original Authorization (no Supabase headers), omit/error and
+original URL/body/currentness fences. This is the narrow exception documented in
+ADR-0025 and `BETA_COMPLETION_SPECIFICATION.md` §S5f, not config assignment,
+deployment/CORS, actual-email, device or activation acceptance.

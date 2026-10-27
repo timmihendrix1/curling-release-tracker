@@ -142,7 +142,8 @@ export type TeamAdminRequest = {
 export type NotificationKind =
   | "admin_request"
   | "member_removed"
-  | "team_exercise_result_changed";
+  | "team_exercise_result_changed"
+  | "shared_participant_unavailable";
 
 export type AccountNotification = {
   id: NotificationId;

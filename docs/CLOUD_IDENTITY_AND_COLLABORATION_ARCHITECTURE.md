@@ -1260,8 +1260,12 @@ retention. **Profile-scoped local data on the current device is deleted or made
 inaccessible — there is no usable local-only athlete after account deletion**, and a newly
 created account is never silently linked to the deleted account's data.
 
-The exact shared Team-result anonymisation and participant-notification behaviour requires
-a separate privacy decision (an Exercise Stage C / privacy design) before public launch.
+The user confirmed the shared-result and notification policy on 2026-10-24:
+Mandatory Identity §8.2 is canonical. Other participants retain their own results
+with anonymized references; the deleted account's raw results and private notes
+are removed, and affected participants receive a neutral notification. The
+lifecycle is implemented locally under ADR-0052; independent review, hosted
+activation and device acceptance remain required before release.
 
 ### 15.3 Team deletion
 

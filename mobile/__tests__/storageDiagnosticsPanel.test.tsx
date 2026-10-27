@@ -355,7 +355,7 @@ describe("diagnostics panel — synthetic deletion needs explicit confirmation (
       const user = userEvent.setup();
       const { engine, state } = createPluginFaithfulEngine({ platform: "ios" });
       const store = createNativeSqliteStore({
-        databaseName: "curling-storage-diagnostics-synthetic",
+        databaseName: `curling-storage-diagnostics-synthetic-${testCase.method}`,
         engine,
         detectPlatform: () => "ios",
       });

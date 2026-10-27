@@ -7,7 +7,7 @@
 // OWNS:
 //
 //   - the selected application storage adapter;
-//   - the five identity repositories, constructed over that adapter;
+//   - the identity repositories and deletion guards over that adapter;
 //   - the provider credential storage integration;
 //   - a readiness / failure verdict everything else waits on.
 //
@@ -22,9 +22,9 @@
 // **It is not a cutover, and it cannot become one.** `composeNativeStorage`
 // consults a `NativeActivationAuthority` FIRST, before an adapter is
 // constructed, a database is opened or the Keychain is touched. The production
-// authority reports `unavailable` unconditionally, because the migration that
-// would make a native target authoritative does not exist yet (Stage M3b4) and
-// production cutover is a separate named stage (M3b5).
+// authority reports `unavailable` unconditionally: the migration that would make
+// a native target authoritative exists only as a dormant executor (Stage M3b4b)
+// that nothing invokes, and production cutover is a separate named stage (M3b5).
 //
 // That ordering is the whole safety property. Mounting the ordinary application
 // against a fresh, empty native store would run an existing installation's
@@ -98,6 +98,7 @@ export interface NativeActivationAuthority {
 export type StorageCompositionFailure =
   | { kind: "platform_unsupported" }
   | { kind: "storage_unavailable" }
+  | { kind: "storage_release_unconfirmed" }
   | { kind: "credential_store_unavailable" }
   | { kind: "migration_authority_unavailable" }
   | { kind: "migration_blocked" }
@@ -124,12 +125,11 @@ export interface OwnedStorageComposition {
    * otherwise absorb into a clean-looking result (see
    * `providerCredentialStorage.ts`).
    *
-   * **What a mounted application should DO about a mid-session credential
-   * failure is a product decision, and this stage does not settle it.** Blocking
-   * the whole workspace on a sticky historical latch would be heavy-handed;
-   * ignoring it would be dishonest. The decision belongs to the cutover stage
-   * (M3b5), and until then the value's readers are the tests that prove the
-   * failure does not vanish. It is never a substitute for the access barrier:
+   * The user approved bounded continuation for an already-admitted ongoing
+   * training with healthy sporting persistence (MOBILE_APP_MIGRATION.md §7,
+   * Q1/A). Its pure reducer remains inactive; runtime mapping and the other
+   * contexts are separate S5 gates. This accessor alone does not implement that
+   * policy. It is never a substitute for the access barrier:
    * a credential — present, absent or unreadable — grants nothing.
    */
   credentialFailure(): CredentialStorageFailure | null;
@@ -153,7 +153,8 @@ export type OwnershipClaimResult = { ok: true } | { ok: false; reason: string };
  */
 export interface NativeStoreHandle {
   readonly adapter: RemovableStorageAdapter;
-  close(): Promise<unknown>;
+  /** A fulfilled Promise is insufficient: the adapter reports failures as data. */
+  close(): Promise<{ ok: true } | { ok: false }>;
 }
 
 export type NativeStorageCompositionOptions = {
@@ -229,10 +230,12 @@ function blocked(failure: StorageCompositionFailure): StorageCompositionState {
  *      resources — a usable-looking corpse. So a disposed document reports
  *      `composition_disposed`, and recovery is a new document.
  *
- * A **blocked** attempt returns the document to `unstarted`, because nothing was
- * claimed and nothing was opened, so a retry is genuinely free. That is the only
- * retry path reachable in this stage, since the activation authority blocks
- * before any claim is made.
+ * A **blocked** attempt returns to `unstarted` only after acquired resources
+ * have positively acknowledged close and no identity claim may retain that
+ * adapter. A rejected/reported-failed close or a possibly retained identity
+ * claim is terminal. A definite refusal before identity claim can retry with
+ * the same credential integration. The production authority still blocks
+ * before any resource is acquired.
  *
  * **Conflicting late configuration is refused, not silently satisfied.** A call
  * carrying a different activation authority from the one the cached or in-flight
@@ -257,7 +260,7 @@ type CompositionOwnership =
       authority: NativeActivationAuthority;
       state: StorageCompositionState;
     }
-  | { phase: "disposed" };
+  | { phase: "disposed"; owner?: object; releaseUnconfirmed?: boolean };
 
 let ownership: CompositionOwnership = { phase: "unstarted" };
 let credentialIntegration: ProviderCredentialStorageIntegration | null = null;
@@ -279,12 +282,15 @@ export function composeNativeStorage(
   options: NativeStorageCompositionOptions
 ): Promise<StorageCompositionState> {
   if (ownership.phase === "disposed") {
-    return Promise.resolve(blocked({ kind: "composition_disposed" }));
+    return Promise.resolve(blocked({ kind: ownership.releaseUnconfirmed ? "storage_release_unconfirmed" : "composition_disposed" }));
   }
+  let authority: NativeActivationAuthority;
+  try { authority = options.activationAuthority; }
+  catch { return Promise.resolve(blocked({ kind: "migration_authority_unavailable" })); }
   if (ownership.phase === "ready" || ownership.phase === "in_flight") {
     // Conflicting configuration is refused rather than answered with an
     // unrelated owner.
-    if (ownership.authority !== options.activationAuthority) {
+    if (ownership.authority !== authority) {
       return Promise.resolve(blocked({ kind: "ownership_conflict" }));
     }
     // Ready: the document's one answer. In flight: JOIN it — no second store,
@@ -294,22 +300,40 @@ export function composeNativeStorage(
       : ownership.attempt;
   }
 
-  const attempt = performComposition(options).then((state) => {
+  const lifecycle = { releaseUnconfirmed: false, identityMayBeClaimed: false };
+  const finish = async (state: StorageCompositionState): Promise<StorageCompositionState> => {
+    if (ownership.phase !== "in_flight" || ownership.attempt !== attempt) {
+      if (state.status === "ready") await state.composition.dispose();
+      return blocked({ kind: "composition_disposed" });
+    }
     if (state.status === "ready") {
-      ownership = { phase: "ready", authority: options.activationAuthority, state };
-    } else if (ownership.phase === "in_flight") {
-      // Nothing was claimed and nothing was opened, so the document is free
-      // again and a retry may start genuinely fresh.
+      ownership = { phase: "ready", authority, state };
+    } else if (lifecycle.releaseUnconfirmed) {
+      ownership = { phase: "disposed", owner: lifecycle, releaseUnconfirmed: true };
+      return blocked({ kind: "storage_release_unconfirmed" });
+    } else if (lifecycle.identityMayBeClaimed) {
+      // A successful or ambiguously throwing claim may retain repositories
+      // over the now-closed adapter. Only a new document can own a fresh set.
+      ownership = { phase: "disposed", owner: lifecycle };
+      return blocked({ kind: "composition_disposed" });
+    } else {
+      // Failed attempts can retry only after every acquired handle was closed.
       ownership = { phase: "unstarted" };
     }
     return state;
-  });
-  ownership = { phase: "in_flight", authority: options.activationAuthority, attempt };
+  };
+  const attempt: Promise<StorageCompositionState> = performComposition(options, lifecycle, authority).then(
+    finish,
+    () => finish(blocked({ kind: "storage_unavailable" }))
+  );
+  ownership = { phase: "in_flight", authority, attempt };
   return attempt;
 }
 
 async function performComposition(
-  options: NativeStorageCompositionOptions
+  options: NativeStorageCompositionOptions,
+  lifecycle: { releaseUnconfirmed: boolean; identityMayBeClaimed: boolean },
+  authority: NativeActivationAuthority
 ): Promise<StorageCompositionState> {
   const detectPlatform = options.detectPlatform ?? detectRuntimePlatform;
 
@@ -327,7 +351,7 @@ async function performComposition(
 
   let verdict: NativeActivationVerdict;
   try {
-    verdict = await options.activationAuthority.verdict();
+    verdict = await authority.verdict();
   } catch {
     // An authority that throws has not established `active`, and only a
     // validated `active` may mount.
@@ -349,104 +373,127 @@ async function performComposition(
     return blocked({ kind: "storage_unavailable" });
   }
 
+  let closeAttempted = false;
   async function closeStore(): Promise<void> {
+    if (closeAttempted) return;
+    closeAttempted = true;
     try {
-      await store.close();
+      const result = await store.close();
+      if (!result || result.ok !== true) lifecycle.releaseUnconfirmed = true;
     } catch {
-      /* the reportable outcome is the failure that prompted the close */
+      // Never open a second store while the first handle's release is unknown.
+      lifecycle.releaseUnconfirmed = true;
     }
   }
 
-  // Establishment reads the SDK's own session key, so a key it cannot name is a
-  // fail-closed condition rather than an invitation to read something else.
-  if (options.sessionStorageKey === null) {
-    await closeStore();
-    return blocked({ kind: "credential_store_unavailable" });
-  }
-
-  // Reused across attempts, so a retry re-claims the SAME object rather than
-  // presenting a competing one to an already-claimed slot.
-  if (credentialIntegration === null) {
-    const credentialStore = options.createCredentialStore
-      ? options.createCredentialStore(platform)
-      : createNativeSecureCredentialStore();
-    credentialIntegration = createProviderCredentialStorage(credentialStore, {
-      sessionStorageKey: options.sessionStorageKey,
-    });
-  }
-  const credentials = credentialIntegration;
-
-  let establishment: Awaited<ReturnType<typeof credentials.establish>>;
   try {
-    establishment = await credentials.establish();
-  } catch {
-    await closeStore();
-    return blocked({ kind: "credential_store_unavailable" });
-  }
-  if (establishment.status !== "established") {
-    // A locked or otherwise unusable credential store is NOT a signed-out user
-    // and is NOT a reason to keep tokens in WebView storage instead. It blocks.
-    await closeStore();
-    return blocked({ kind: "credential_store_unavailable" });
-  }
-
-  // Ownership is claimed BEFORE the composition is published, and the
-  // credential-storage claim comes first because the Supabase client reads
-  // storage from its own constructor — a client that already exists cannot be
-  // given a different store afterwards.
-  //
-  // Both claims are CONTAINED: a claim function that throws must not leave the
-  // store open and must not escape as a rejection, because an exceptional claim
-  // path is still a claim path.
-  let identityRepositories: IdentityRepositorySet;
-  try {
-    const credentialClaim = options.establishCredentialStorage(credentials);
-    if (!credentialClaim.ok) {
+    // Establishment reads the SDK's own session key, so a key it cannot name is a
+    // fail-closed condition rather than an invitation to read something else.
+    if (options.sessionStorageKey === null) {
       await closeStore();
-      return blocked({ kind: "ownership_conflict" });
+      return blocked({ kind: "credential_store_unavailable" });
     }
 
-    identityRepositories = createIdentityRepositorySet(store.adapter);
-    const identityClaim = options.establishIdentityRepositories(identityRepositories);
-    if (!identityClaim.ok) {
-      await closeStore();
-      return blocked({ kind: "ownership_conflict" });
-    }
-  } catch {
-    await closeStore();
-    return blocked({ kind: "ownership_conflict" });
-  }
-
-  // LAST GATE before publishing readiness: a failure recorded at any point
-  // above — including one the SDK would later absorb — must not become normal
-  // readiness. `establish()` refuses to report `established` over an unresolved
-  // latch, and this re-check covers anything recorded after it returned.
-  const outstanding = credentials.observedFailure();
-  if (outstanding !== null) {
-    await closeStore();
-    return blocked({ kind: "credential_store_unavailable" });
-  }
-
-  let disposed = false;
-  const composition: OwnedStorageComposition = {
-    selection: "native_sqlite",
-    adapter: store.adapter,
-    identityRepositories,
-    credentials,
-    sporting: createSportingStorageSeams("native_sqlite", store.adapter),
-    credentialFailure: () => credentials.observedFailure(),
-    async dispose(): Promise<void> {
-      if (disposed) return;
-      disposed = true;
-      // Disposal is TERMINAL for the document (see the ownership model). The
-      // phase is only advanced if this composition is still the owner — an
-      // older composition's late disposal must not terminate a document that
-      // has since been reset for a test.
-      if (ownership.phase === "ready" && ownership.state.status === "ready" && ownership.state.composition === composition) {
-        ownership = { phase: "disposed" };
+    // Reused across attempts, so a retry re-claims the SAME object rather than
+    // presenting a competing one to an already-claimed slot.
+    try {
+      if (credentialIntegration === null) {
+        const credentialStore = options.createCredentialStore
+          ? options.createCredentialStore(platform)
+          : createNativeSecureCredentialStore();
+        credentialIntegration = createProviderCredentialStorage(credentialStore, {
+          sessionStorageKey: options.sessionStorageKey,
+        });
       }
+    } catch {
       await closeStore();
-    },
-  };
-  return { status: "ready", composition };
+      return blocked({ kind: "credential_store_unavailable" });
+    }
+    const credentials = credentialIntegration;
+
+    let establishment: Awaited<ReturnType<typeof credentials.establish>>;
+    try {
+      establishment = await credentials.establish();
+    } catch {
+      await closeStore();
+      return blocked({ kind: "credential_store_unavailable" });
+    }
+    if (establishment.status !== "established") {
+      // A locked or otherwise unusable credential store is NOT a signed-out user
+      // and is NOT a reason to keep tokens in WebView storage instead. It blocks.
+      await closeStore();
+      return blocked({ kind: "credential_store_unavailable" });
+    }
+
+    // Ownership is claimed BEFORE the composition is published, and the
+    // credential-storage claim comes first because the Supabase client reads
+    // storage from its own constructor — a client that already exists cannot be
+    // given a different store afterwards.
+    //
+    // Both claims are CONTAINED: a claim function that throws must not leave the
+    // store open and must not escape as a rejection, because an exceptional claim
+    // path is still a claim path.
+    let identityRepositories: IdentityRepositorySet;
+    try {
+      const credentialClaim = options.establishCredentialStorage(credentials);
+      if (!credentialClaim.ok) {
+        await closeStore();
+        return blocked({ kind: "ownership_conflict" });
+      }
+
+      identityRepositories = createIdentityRepositorySet(store.adapter);
+      lifecycle.identityMayBeClaimed = true;
+      const identityClaim = options.establishIdentityRepositories(identityRepositories);
+      if (!identityClaim.ok) {
+        lifecycle.identityMayBeClaimed = false;
+        await closeStore();
+        return blocked({ kind: "ownership_conflict" });
+      }
+    } catch {
+      await closeStore();
+      return blocked({ kind: "ownership_conflict" });
+    }
+
+    // LAST GATE before publishing readiness: a failure recorded at any point
+    // above — including one the SDK would later absorb — must not become normal
+    // readiness. `establish()` refuses to report `established` over an unresolved
+    // latch, and this re-check covers anything recorded after it returned.
+    const outstanding = credentials.observedFailure();
+    if (outstanding !== null) {
+      await closeStore();
+      return blocked({ kind: "credential_store_unavailable" });
+    }
+
+    let disposal: Promise<void> | null = null;
+    const composition: OwnedStorageComposition = {
+      selection: "native_sqlite",
+      adapter: store.adapter,
+      identityRepositories,
+      credentials,
+      sporting: createSportingStorageSeams("native_sqlite", store.adapter),
+      credentialFailure: () => credentials.observedFailure(),
+      dispose(): Promise<void> {
+        if (disposal) return disposal;
+        disposal = (async () => {
+          // Disposal is TERMINAL for the document (see the ownership model). The
+          // phase is only advanced if this composition is still the owner — an
+          // older composition's late disposal must not terminate a document that
+          // has since been reset for a test.
+          if (ownership.phase === "ready" && ownership.state.status === "ready" && ownership.state.composition === composition) {
+            ownership = { phase: "disposed", owner: lifecycle };
+          }
+          await closeStore();
+          if (ownership.phase === "disposed" && ownership.owner === lifecycle && lifecycle.releaseUnconfirmed) {
+            ownership = { phase: "disposed", owner: lifecycle, releaseUnconfirmed: true };
+          }
+        })();
+        return disposal;
+      },
+    };
+    return { status: "ready", composition };
+  } catch {
+    // Every unexpected exceptional path AFTER acquisition still owns cleanup.
+    await closeStore();
+    return blocked({ kind: "storage_unavailable" });
+  }
 }

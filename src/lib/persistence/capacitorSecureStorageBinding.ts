@@ -9,15 +9,17 @@
 // implementation at all.
 //
 // ============================================================================
-// DEPENDENCY SUITABILITY AUDIT — the native credential path is CLOSED
+// DEPENDENCY SUITABILITY AUDIT — the upstream empty-read API is unsuitable
 // ============================================================================
 //
 // The contract requires **item-specific missing-versus-failed evidence**: only a
 // positively established absence may become the `null` the Supabase SDK reads as
 // "no session". **No audited Capacitor-8 dependency supplies it**, and this
-// binding therefore reports `no_absence_evidence` for every empty read, which
-// makes the store unusable and closes the native credential path. That is
-// reported rather than papered over, and the requirement is NOT complete.
+// Android binding therefore still reports `no_absence_evidence` for empty reads.
+// The user approved an application-owned iOS Keychain reader on 2026-10-24:
+// iOS now uses SecItemCopyMatching's per-item evidence through that read-only
+// bridge. Its local source/contract/unsigned-build evidence is not physical-device
+// acceptance, credential migration or native activation. Those gates remain open.
 //
 // ## What the selected plugin does, and the exact gap
 //
@@ -83,8 +85,8 @@
 // **What would close the gap:** an implementation that surfaces, per read,
 // either the iOS `OSStatus` (or a boolean derived from `errSecItemNotFound`) or
 // an Android `sharedPreferences.contains(key)` check distinguished from a
-// decryption failure. Until such a dependency exists, `read` reports
-// `no_absence_evidence` and the native path stays closed.
+// decryption failure. The app-owned iOS bridge now provides the former. Android's
+// gap remains unresolved and the native credential path is CLOSED on Android.
 //
 // Nothing here classifies, logs or forwards a plugin error: every rejection
 // propagates unchanged into the store, which converts it into a fixed category
@@ -93,6 +95,8 @@ import {
   KeychainAccess,
   SecureStorage,
 } from "@aparajita/capacitor-secure-storage";
+import { detectRuntimePlatform } from "../platform/runtimePlatform";
+import { inventoryIosCredentialNamespace, readIosKeychainEvidence } from "./iosKeychainReadEvidence";
 import {
   SECURE_CREDENTIAL_IOS_ACCESS,
   type SecureStorageBinding,
@@ -131,9 +135,18 @@ export function createCapacitorSecureStorageBinding(): SecureStorageBinding {
       await SecureStorage.setDefaultKeychainAccess(IOS_ACCESS_BY_NAME[iosAccess]);
     },
 
+    async inventory(): Promise<unknown> {
+      if (detectRuntimePlatform() !== "ios") return { kind: "unsupported_scope" };
+      return inventoryIosCredentialNamespace();
+    },
+
     // `getItem`, NOT `get`. The latter JSON-decodes and performs ISO-date
     // conversion; a provider session string must round-trip byte-for-byte.
     async read(key: string): Promise<SecureStorageReadEvidence> {
+      // Approved 2026-10-24: the app-owned iOS reader preserves per-item
+      // SecItemCopyMatching evidence the upstream plugin discards. Android's
+      // absence-versus-key-loss gap remains closed; migration remains dormant.
+      if (detectRuntimePlatform() === "ios") return readIosKeychainEvidence(key);
       const data = await SecureStorage.getItem(key);
       if (typeof data === "string") return { kind: "value", value: data };
       // `null`/`undefined`. The plugin discarded the platform's own reason — see

@@ -28,6 +28,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 class TrainingBridgeViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
+        bridge?.registerPluginInstance(CredentialKeychainReaderPlugin())
         webView?.scrollView.bounces = true
         webView?.scrollView.alwaysBounceVertical = true
     }

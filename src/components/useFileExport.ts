@@ -75,7 +75,7 @@ export type UseFileExportOptions = {
 export type UseFileExport = {
   status: FileExportStatus;
   /** Never rejects. Returns the outcome for callers that want it. */
-  runExport: (request: FileExportRequest) => Promise<FileExportOutcome>;
+  runExport: (request: FileExportRequest, retirement?: Readonly<{ isRetired(): boolean }>) => Promise<FileExportOutcome>;
   dismiss: () => void;
 };
 
@@ -90,7 +90,7 @@ export function useFileExport(options: UseFileExportOptions = {}): UseFileExport
    * owner A → B → A cannot revive A's earlier attempt: that attempt holds its
    * own already-retired token forever.
    */
-  const attemptRef = useRef<{ retired: boolean } | null>(null);
+  const attemptRef = useRef<{ retired: boolean; unmounted: boolean } | null>(null);
   /**
    * Monotonic owner generation.
    *
@@ -124,7 +124,10 @@ export function useFileExport(options: UseFileExportOptions = {}): UseFileExport
   // alone must stop the native operation, not merely silence its message.
   useEffect(() => {
     return () => {
-      if (attemptRef.current !== null) attemptRef.current.retired = true;
+      if (attemptRef.current !== null) {
+        attemptRef.current.retired = true;
+        attemptRef.current.unmounted = true;
+      }
     };
   }, []);
 
@@ -135,11 +138,11 @@ export function useFileExport(options: UseFileExportOptions = {}): UseFileExport
   }, [ownerGeneration]);
 
   const runExport = useCallback(
-    async (request: FileExportRequest): Promise<FileExportOutcome> => {
+    async (request: FileExportRequest, retirement?: Readonly<{ isRetired(): boolean }>): Promise<FileExportOutcome> => {
       const live = attemptRef.current;
       if (live !== null && !live.retired) return { kind: "busy" };
 
-      const attempt = { retired: false };
+      const attempt = { retired: false, unmounted: false };
       attemptRef.current = attempt;
       const startedGeneration = ownerGeneration;
       setStatus({ state: "working" });
@@ -147,7 +150,12 @@ export function useFileExport(options: UseFileExportOptions = {}): UseFileExport
       // Retired by an explicit unmount flag OR by the owner generation having
       // moved on. Both are read at call time, so the boundary sees a retirement
       // that happened while it was awaiting.
-      const retired = () => attempt.retired || generationRef.current !== startedGeneration;
+      const retired = () => {
+        if (attempt.retired || generationRef.current !== startedGeneration) return true;
+        try { if (retirement?.isRetired()) attempt.retired = true; }
+        catch { attempt.retired = true; }
+        return attempt.retired;
+      };
 
       let outcome: FileExportOutcome;
       try {
@@ -169,8 +177,13 @@ export function useFileExport(options: UseFileExportOptions = {}): UseFileExport
 
       // Late completion must not touch a screen that is gone, nor one that now
       // belongs to a different Profile.
-      if (!retired()) {
+      if (!retired() && attemptRef.current === null) {
         setStatus({ state: "done", ...describeOutcome(outcome) });
+      } else if (!attempt.unmounted && generationRef.current === startedGeneration && attemptRef.current === null) {
+        // A synchronous retirement witness can close the attempt before a
+        // rendered Profile change. Release its visible working claim, while
+        // never overwriting a newer attempt or an unmounted owner's screen.
+        setStatus({ state: "idle" });
       }
       return outcome;
     },

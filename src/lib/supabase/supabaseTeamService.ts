@@ -1,9 +1,9 @@
 // The one production TeamService implementation (requirement 154). Deliberately
 // does NOT import "@supabase/supabase-js" itself — it only names the client's TYPE
-// via supabaseClient.ts's re-export, and receives an already-constructed client
-// (the same cached browser client the identity runtime uses) through its
-// constructor, so there is exactly one Supabase client instance per signed-in
-// session (requirement 115).
+// via supabaseClient.ts's re-export, and receives an already-constructed query
+// port. Web uses the same cached browser client as Identity. The dormant native
+// host uses a private public PostgREST port under its existing AUTH SDK/FIFO;
+// that port creates no second session authority (requirement 115).
 //
 // Reads go straight through RLS-scoped `select` queries. Every mutation goes
 // through a Postgres RPC (never a raw `.insert()`/`.update()`/`.delete()` on a
@@ -18,8 +18,9 @@
 // (authorizedTeamRequest.ts — an SDK-free, fetch-free contract), naming a route
 // from a closed set rather than building a path. This file therefore reads no
 // access token, constructs no URL, and calls no `fetch`: the token is read in
-// exactly one infrastructure helper (authorizedFetch.ts), on a request already
-// validated same-origin and confined to `/api/team/` (ADR-0025 Decision 20).
+// the Web authorizedFetch helper, or the narrowly scoped dormant native owner,
+// on a request already validated against the one configured target and confined
+// to `/api/team/` (ADR-0025 Decision 20 and ADR-0047).
 import type { SupabaseClient } from "./supabaseClient";
 import type { AuthorizedTeamRequest, TeamApiRoute } from "./authorizedTeamRequest";
 import { parsePostgresErrorMessage } from "../team/postgresErrorMapping";
@@ -141,13 +142,22 @@ export function mapInvitationCreatedRow(row: { invitation: Record<string, unknow
   return { invitation: mapInvitationRow(row.invitation), rawToken: row.raw_token };
 }
 
+/** Optional infrastructure observations, never Team/RLS authority. Web omits them.
+ * Native uses actual mapper provenance to constrain dependent wire intents. */
+export type TeamQueryHooks = Readonly<{
+  ownProfileMapped(profileId: string): void | Promise<void>;
+  createdTeamMapped(teamId: string): void | Promise<void>;
+  beforeRosterProfiles(teamId: string, profileIds: readonly string[]): void | Promise<void>;
+}>;
+
 export class SupabaseTeamService implements TeamService {
   constructor(
-    private readonly client: SupabaseClient,
+    private readonly client: Pick<SupabaseClient, "from" | "rpc">,
     /** The one authorized-request helper for this app's own `/api/team/` Route
      * Handlers. Injected rather than constructed here so this file never reaches
      * a session, a token, or a URL. */
-    private readonly authorizedRequest: AuthorizedTeamRequest
+    private readonly authorizedRequest: AuthorizedTeamRequest,
+    private readonly nativeHooks?: TeamQueryHooks
   ) {}
 
   private async postToRoute<T>(route: TeamApiRoute, body: unknown): Promise<TeamResult<T>> {
@@ -178,7 +188,9 @@ export class SupabaseTeamService implements TeamService {
     if (!data) return teamOk(null);
     const row = Array.isArray(data) ? data[0] : data;
     if (!row || row.id == null) return teamOk(null);
-    return teamOk(mapProfileRow(row));
+    const profile = mapProfileRow(row);
+    if (this.nativeHooks) await this.nativeHooks.ownProfileMapped(profile.id);
+    return teamOk(profile);
   }
 
   async hasPilotTeamCreationCapability(): Promise<TeamResult<boolean>> {
@@ -188,9 +200,15 @@ export class SupabaseTeamService implements TeamService {
   }
 
   async listMyTeams(): Promise<TeamResult<TeamSummary[]>> {
+    const profile = await this.getMyProfile();
+    if (!profile.ok) return profile;
+    if (!profile.value) return teamFailed("forbidden", "Profile not found.");
     const { data, error } = await this.client
       .from("team_memberships")
       .select("id, participation_as_player, teams(*), team_membership_functions(function, status)")
+      // RLS also exposes teammates' roster memberships. Listing every visible
+      // row duplicates the Team and labels another member's functions as mine.
+      .eq("profile_id", profile.value.id)
       .eq("status", "active");
     if (error) return fail(error);
     const summaries: TeamSummary[] = (data ?? []).map((row: Record<string, unknown>) => {
@@ -216,6 +234,7 @@ export class SupabaseTeamService implements TeamService {
     if (error) return fail(error);
     const teamRow = Array.isArray(data) ? data[0] : data;
     const team = mapTeamRow(teamRow);
+    if (this.nativeHooks) await this.nativeHooks.createdTeamMapped(team.id);
     return this.getTeamWorkspace(team.id);
   }
 
@@ -261,10 +280,12 @@ export class SupabaseTeamService implements TeamService {
       );
     }
 
+    const rosterProfileIds = (membershipRows ?? []).map((row: Record<string, unknown>) => row.profile_id as string);
+    if (this.nativeHooks) await this.nativeHooks.beforeRosterProfiles(teamId, rosterProfileIds);
     const { data: profileRows, error: profilesError } = await this.client
       .from("profiles")
       .select("id, display_name")
-      .in("id", (membershipRows ?? []).map((row: Record<string, unknown>) => row.profile_id as string));
+      .in("id", rosterProfileIds);
     if (profilesError) return fail(profilesError);
     const displayNameByProfileId = new Map(
       (profileRows ?? []).map((row: Record<string, unknown>) => [row.id as string, row.display_name as string | null])

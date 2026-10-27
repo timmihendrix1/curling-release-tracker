@@ -12,6 +12,7 @@ import { surfaceClass } from "./Surface";
 
 type TrainingPlansLibraryProps = {
   plans: TrainingPlan[];
+  editingDisabled?: boolean;
   onCreateNew: () => void;
   onEdit: (plan: TrainingPlan) => void;
   onDuplicate: (plan: TrainingPlan) => void;
@@ -49,6 +50,7 @@ function focusComposition(plan: TrainingPlan): string {
 
 export default function TrainingPlansLibrary({
   plans,
+  editingDisabled = false,
   onCreateNew,
   onEdit,
   onDuplicate,
@@ -72,6 +74,7 @@ export default function TrainingPlansLibrary({
         <button
           type="button"
           onClick={onCreateNew}
+          disabled={editingDisabled}
           className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 font-medium text-white transition hover:bg-slate-700"
         >
           Create Training Plan
@@ -120,6 +123,7 @@ export default function TrainingPlansLibrary({
               <button
                 type="button"
                 onClick={() => onEdit(plan)}
+          disabled={editingDisabled}
                 className="min-h-11 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
               >
                 Edit
@@ -128,6 +132,7 @@ export default function TrainingPlansLibrary({
               <button
                 type="button"
                 onClick={() => onDuplicate(plan)}
+          disabled={editingDisabled}
                 className="min-h-11 rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200"
               >
                 Duplicate
@@ -136,6 +141,7 @@ export default function TrainingPlansLibrary({
               <button
                 type="button"
                 onClick={() => setDeletingPlanId(plan.id)}
+          disabled={editingDisabled}
                 className="min-h-11 rounded-xl bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
               >
                 Delete
@@ -150,6 +156,7 @@ export default function TrainingPlansLibrary({
       <button
         type="button"
         onClick={onCreateNew}
+          disabled={editingDisabled}
         className="w-full rounded-xl bg-slate-100 px-4 py-3 font-medium text-slate-700 transition hover:bg-slate-200"
       >
         New Training Plan

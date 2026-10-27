@@ -3,6 +3,10 @@ import TrackerApp from "../../src/components/TrackerApp";
 import IdentityProvider from "../../src/components/identity/IdentityProvider";
 import AuthenticatedSportingPersistence from "../../src/components/ProfileScopedSportingPersistence";
 
+declare const __CURLING_MOBILE_NEW_USER_BETA__: boolean;
+const NewUserBetaRoot = __CURLING_MOBILE_NEW_USER_BETA__
+  ? lazy(() => import("./storage/NewUserBetaRoot")) : null;
+
 /**
  * The opt-in native storage diagnostics surface (Stage M3b engine evidence).
  *
@@ -103,7 +107,9 @@ export default function MobileApp() {
             beside it: until storage is ready its children do not exist, so
             nothing hydrates, restores a session, starts the sync manager or
             retires anything. */}
-        {NativeStorageComposition === null ? (
+        {NewUserBetaRoot !== null ? (
+          <Suspense fallback={<p role="status">Preparing athlete access…</p>}><NewUserBetaRoot /></Suspense>
+        ) : NativeStorageComposition === null ? (
           shell
         ) : (
           <Suspense fallback={null}>

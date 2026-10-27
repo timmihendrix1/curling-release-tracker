@@ -368,7 +368,7 @@ export type SupabaseIdentityServiceOverrides = {
 };
 
 export function createSupabaseIdentityService(
-  client: SupabaseClient,
+  client: Pick<SupabaseClient, "rpc">,
   overrides: SupabaseIdentityServiceOverrides = {}
 ): IdentityService {
   const now = overrides.now ?? (() => new Date().toISOString());

@@ -1,3 +1,4 @@
+import { isNewUserBetaRequested, MOBILE_NEW_USER_BETA_DEFINE_NAME, MOBILE_NEW_USER_BETA_ENV_NAME } from "./newUserBetaFlag";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,7 +148,11 @@ export default defineConfig(({ command, mode }) => {
     process.env[MOBILE_NATIVE_STORAGE_ENV_NAME]
   );
 
+  const newUserBeta = isNewUserBetaRequested(process.env[MOBILE_NEW_USER_BETA_ENV_NAME]);
+  if (newUserBeta && (storageDiagnostics || nativeStorage)) throw new Error("New-user beta cannot be combined with storage diagnostics or legacy storage composition.");
+
   const define: Record<string, string> = {
+    [MOBILE_NEW_USER_BETA_DEFINE_NAME]: JSON.stringify(newUserBeta),
     // Deliberately NOT derived from `mode` — see the note above.
     "process.env.NODE_ENV": JSON.stringify(applicationNodeEnv),
     [MOBILE_STORAGE_DIAGNOSTICS_DEFINE_NAME]: JSON.stringify(storageDiagnostics),

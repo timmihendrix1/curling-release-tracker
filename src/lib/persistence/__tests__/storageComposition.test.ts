@@ -122,6 +122,7 @@ function harness(options: { credentialsWithholdAbsence?: boolean } = {}) {
     adapter: store.adapter,
     async close() {
       state.closes += 1;
+      return { ok: true };
     },
   };
 
@@ -340,7 +341,7 @@ describe("storage composition — platform gating fails closed with no fallback"
 
       expect(result, slot).toEqual({
         status: "blocked",
-        failure: { kind: "ownership_conflict" },
+        failure: { kind: slot === "identity" ? "composition_disposed" : "ownership_conflict" },
       });
       expect(h.state.closes, slot).toBe(1);
     }
@@ -714,5 +715,97 @@ describe("storage composition — the Web default is unchanged", () => {
     expect(typeof repositories.session.loadCurrent).toBe("function");
     const adapter = WEB_DEFAULT_SPORTING_SEAMS.createSportingSyncStateAdapter(PROFILE_A);
     expect(typeof adapter.get).toBe("function");
+  });
+});
+
+describe("S-P3 exceptional composition resource ownership", () => {
+  it.each([undefined, null, Symbol("synthetic"), { get message() { throw null; } }])("contains a credential factory throw without poisoning retry (%#)", async reason => {
+    const h = harness();
+    h.createCredentialStore.mockImplementationOnce(() => { throw reason; });
+    const claim = vi.fn(ALLOW);
+    expect(await compose(READY_AUTHORITY, h, { establishCredentialStorage: claim })).toEqual({ status: "blocked", failure: { kind: "credential_store_unavailable" } });
+    expect(h.state.closes).toBe(1);
+    expect(claim).not.toHaveBeenCalled();
+    expect(storageCompositionPhase()).toBe("unstarted");
+    const retry = await compose(READY_AUTHORITY, h);
+    expect(retry.status).toBe("ready");
+    expect(h.createNativeStore).toHaveBeenCalledTimes(2);
+    if (retry.status === "ready") await retry.composition.dispose();
+    expect(h.state.closes).toBe(2);
+  });
+
+  it("keeps the same in-flight owner until failed-start cleanup actually answers", async () => {
+    const h = harness();
+    let release!: () => void;
+    const close = vi.fn(() => new Promise<{ok:true}>(resolve => { release = () => resolve({ok:true}); }));
+    h.createNativeStore.mockResolvedValue({ adapter: h.store.adapter, close });
+    h.createCredentialStore.mockImplementationOnce(() => { throw null; });
+    const first = compose(READY_AUTHORITY, h);
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(compose(READY_AUTHORITY, h)).toBe(first);
+    expect(storageCompositionPhase()).toBe("in_flight");
+    expect(h.createNativeStore).toHaveBeenCalledOnce();
+    release();
+    expect((await first).status).toBe("blocked");
+    expect(storageCompositionPhase()).toBe("unstarted");
+    h.createNativeStore.mockResolvedValue({ adapter: h.store.adapter, close: async () => ({ok:true}) });
+    expect((await compose(READY_AUTHORITY, h)).status).toBe("ready");
+  });
+
+  it.each([
+    { boundary: "factory", reported: false }, { boundary: "claim", reported: false },
+    { boundary: "factory", reported: true }, { boundary: "claim", reported: true },
+  ])("failed close after $boundary (reported=$reported) forbids another handle", async ({ boundary, reported }) => {
+    const h = harness();
+    const close = vi.fn(async () => { if (reported) return { ok: false as const }; throw null; });
+    h.createNativeStore.mockResolvedValue({ adapter: h.store.adapter, close });
+    if (boundary === "factory") h.createCredentialStore.mockImplementationOnce(() => { throw null; });
+    const overrides = boundary === "claim" ? { establishCredentialStorage: () => ({ ok: false as const, reason: "synthetic" }) } : {};
+    expect(await compose(READY_AUTHORITY, h, overrides)).toEqual({ status: "blocked", failure: { kind: "storage_release_unconfirmed" } });
+    expect(storageCompositionPhase()).toBe("disposed");
+    expect(await compose(READY_AUTHORITY, h)).toEqual({ status: "blocked", failure: { kind: "storage_release_unconfirmed" } });
+    expect(h.createNativeStore).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it("joins disposal and keeps a failed release terminal", async () => {
+    const h = harness();
+    let rejectClose!: () => void;
+    const close = vi.fn(() => new Promise<{ok:true}>((_resolve, reject) => { rejectClose = () => reject(null); }));
+    h.createNativeStore.mockResolvedValue({ adapter: h.store.adapter, close });
+    const state = await compose(READY_AUTHORITY, h);
+    if (state.status !== "ready") throw Error("fixture not ready");
+    const first = state.composition.dispose();
+    expect(state.composition.dispose()).toBe(first);
+    expect(await compose(READY_AUTHORITY, h)).toEqual({ status: "blocked", failure: { kind: "composition_disposed" } });
+    rejectClose();
+    await first;
+    expect(await compose(READY_AUTHORITY, h)).toEqual({ status: "blocked", failure: { kind: "storage_release_unconfirmed" } });
+    expect(close).toHaveBeenCalledOnce();
+    expect(h.createNativeStore).toHaveBeenCalledOnce();
+  });
+
+  it("contains an unexpected post-acquisition throw and still closes exactly once", async () => {
+    const h = harness(); let reads = 0;
+    const close = vi.fn(async () => ({ok:true as const}));
+    h.createNativeStore.mockResolvedValue({ get adapter() { if (++reads > 1) throw null; return h.store.adapter; }, close });
+    expect(await compose(READY_AUTHORITY, h)).toEqual({ status: "blocked", failure: { kind: "composition_disposed" } });
+    expect(close).toHaveBeenCalledOnce();
+    expect(storageCompositionPhase()).toBe("disposed");
+  });
+
+  it("an older document attempt cannot publish over the current owner", async () => {
+    const old = harness(); let release!: () => void;
+    old.createCredentialStore.mockImplementation(() => ({ read: () => new Promise(resolve => { release = () => resolve({ status: "absent" }); }), write: async () => ({ ok: true }), remove: async () => ({ ok: true, outcome: "nothing_to_delete_reported" }) }));
+    const abandoned = compose(READY_AUTHORITY, old);
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    resetStorageCompositionForTests();
+    const current = harness(); const ready = await compose(READY_AUTHORITY, current);
+    release();
+    expect(await abandoned).toEqual({ status: "blocked", failure: { kind: "composition_disposed" } });
+    expect(old.state.closes).toBe(1);
+    expect(await compose(READY_AUTHORITY, current)).toBe(ready);
+    expect(current.state.closes).toBe(0);
+    if (ready.status === "ready") await ready.composition.dispose();
   });
 });

@@ -1,4 +1,4 @@
-// The five identity repositories as one injectable set — Stage M3b3
+// The Stage M3b3 identity repositories plus ADR-0052 deletion guards as one set.
 // (docs/MOBILE_APP_MIGRATION.md Stage M3b0 §3 seam 4, ADR-0049 decision 5).
 //
 // The obstacle this module exists to remove is real and was named explicitly in
@@ -9,7 +9,7 @@
 //
 // Two properties this set is responsible for:
 //
-//   - **All five, or none.** A partial swap would leave, say, the access barrier
+//   - **The original five plus deletion guards, or none.** A partial swap would leave, say, the access barrier
 //     on WebView `localStorage` while the trusted-device record moved — and the
 //     barrier is the authority latch. The set is constructed as a unit.
 //   - **The dynamic family travels with it.** Barrier resolutions are
@@ -21,7 +21,8 @@
 //
 // The pending-intent repository owns BOTH `…pendingIntent.v1` and
 // `…intentCleanup.v1`, so intent cleanup is covered by the same member rather
-// than needing a sixth.
+// than needing another member. ADR-0052 adds deletion guards as the sixth
+// member, with its Profile/nonce dynamic control families under the same adapter.
 import { createIdentityBarrierRepository, identityBarrierRepository, type IdentityBarrierRepository } from "./identityBarrierRepository";
 import {
   createIdentityBarrierResolutionRepository,
@@ -44,9 +45,11 @@ import {
   type TrustedDeviceRepository,
 } from "./trustedDeviceRepository";
 import type { RemovableStorageAdapter } from "../persistence/types";
+import { localStorageAdapter } from "../persistence/localStorageAdapter";
+import { createAccountDeletionGuardRepository, type AccountDeletionGuardRepository } from "./accountDeletionGuard";
 
 /**
- * Exactly the five repositories `IdentityCoordinatorDeps` needs, under the same
+ * The complete production repository set `IdentityCoordinatorDeps` needs, under the same
  * member names, so the set can be spread into the coordinator's dependencies
  * without a translation step that could quietly drop one.
  */
@@ -56,6 +59,7 @@ export type IdentityRepositorySet = Readonly<{
   resolutions: IdentityBarrierResolutionRepository;
   trusted: TrustedDeviceRepository;
   intents: PendingIntentRepository;
+  deletionGuards: AccountDeletionGuardRepository;
 }>;
 
 /**
@@ -75,6 +79,7 @@ export function createIdentityRepositorySet(
     resolutions: createIdentityBarrierResolutionRepository(adapter),
     trusted: createTrustedDeviceRepository(adapter),
     intents: createPendingIntentRepository(adapter),
+    deletionGuards: createAccountDeletionGuardRepository(adapter),
   });
 }
 
@@ -92,4 +97,5 @@ export const DEFAULT_IDENTITY_REPOSITORY_SET: IdentityRepositorySet = Object.fre
   resolutions: identityBarrierResolutionRepository,
   trusted: trustedDeviceRepository,
   intents: pendingIntentRepository,
+  deletionGuards: createAccountDeletionGuardRepository(localStorageAdapter),
 });

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useIdentity } from "./IdentityProvider";
 import ExternalDocumentLink from "../platform/ExternalDocumentLink";
+import { detectRuntimePlatform } from "../../lib/platform/runtimePlatform";
 
 const fieldClassName =
   "min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:bg-slate-100";
@@ -88,6 +89,9 @@ function LegalLink({ href, label, version }: { href: string; label: string; vers
 function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; privacyVersion?: string }) {
   const identity = useIdentity();
   const emailId = useId();
+  const emailErrorId = `${emailId}-error`;
+  // First iOS club beta: email OTP only. Keep the Web sign-in choices unchanged.
+  const showGoogle = detectRuntimePlatform() !== "ios";
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -104,14 +108,18 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
 
   return (
     <div className="mt-5 space-y-4">
-      <button type="button" className={primaryButtonClassName} onClick={() => void identity.startGoogleSignIn()}>
-        Continue with Google
-      </button>
-      <div className="flex items-center gap-3" aria-hidden="true">
-        <span className="h-px flex-1 bg-slate-200" />
-        <span className="text-xs text-slate-500">or</span>
-        <span className="h-px flex-1 bg-slate-200" />
-      </div>
+      {showGoogle && (
+        <>
+          <button type="button" className={primaryButtonClassName} onClick={() => void identity.startGoogleSignIn()}>
+            Continue with Google
+          </button>
+          <div className="flex items-center gap-3" aria-hidden="true">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs text-slate-500">or</span>
+            <span className="h-px flex-1 bg-slate-200" />
+          </div>
+        </>
+      )}
       <form noValidate onSubmit={submitEmail} className="space-y-3">
         <div>
           <label htmlFor={emailId} className="text-sm font-medium text-slate-700">
@@ -122,6 +130,8 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
             type="email"
             inputMode="email"
             autoComplete="email"
+            aria-invalid={error !== null}
+            aria-describedby={error !== null ? emailErrorId : undefined}
             value={email}
             onChange={(event) => {
               setEmail(event.target.value);
@@ -129,9 +139,9 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
             }}
             className={`${fieldClassName} mt-1.5`}
           />
-          {error && <p role="alert" className="mt-1.5 text-sm text-red-700">{error}</p>}
+          {error && <p id={emailErrorId} role="alert" className="mt-1.5 text-sm text-red-700">{error}</p>}
         </div>
-        <button type="submit" className={secondaryButtonClassName}>Send sign-in code</button>
+        <button type="submit" className={showGoogle ? secondaryButtonClassName : primaryButtonClassName}>Send sign-in code</button>
       </form>
       {privacyHref && privacyVersion && (
         <p className="text-sm text-slate-600">
@@ -152,6 +162,7 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
 function OtpForm() {
   const identity = useIdentity();
   const inputId = useId();
+  const errorId = `${inputId}-error`;
   const inputRef = useRef<HTMLInputElement>(null);
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -182,6 +193,8 @@ function OtpForm() {
           inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
+          aria-invalid={error !== null}
+          aria-describedby={error !== null ? errorId : undefined}
           value={token}
           onChange={(event) => {
             setToken(event.target.value.replace(/\D/g, "").slice(0, 6));
@@ -189,7 +202,7 @@ function OtpForm() {
           }}
           className={`${fieldClassName} mt-2 text-center text-xl tracking-[0.35em]`}
         />
-        {error && <p role="alert" className="mt-1.5 text-sm text-red-700">{error}</p>}
+        {error && <p id={errorId} role="alert" className="mt-1.5 text-sm text-red-700">{error}</p>}
       </div>
       <button type="submit" className={primaryButtonClassName}>Verify code</button>
       <button
@@ -222,18 +235,21 @@ function OnboardingSubmissionForm({
   const identity = useIdentity();
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [privacyAcknowledged, setPrivacyAcknowledged] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ field: "displayName" | "documents"; message: string } | null>(null);
   const displayNameId = useId();
+  const errorId = `${displayNameId}-error`;
+  const termsInvalid = error?.field === "documents" && !termsAccepted;
+  const privacyInvalid = error?.field === "documents" && !privacyAcknowledged;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const normalized = displayName.trim();
     if (normalized.length === 0 || normalized.length > 80) {
-      setError("Enter a display name of 80 characters or fewer.");
+      setError({ field: "displayName", message: "Enter a display name of 80 characters or fewer." });
       return;
     }
     if (!termsAccepted || !privacyAcknowledged) {
-      setError("Accept the Terms and acknowledge the Privacy Notice to continue.");
+      setError({ field: "documents", message: "Accept the Terms and acknowledge the Privacy Notice to continue." });
       return;
     }
     setError(null);
@@ -254,6 +270,8 @@ function OnboardingSubmissionForm({
           type="text"
           autoComplete="name"
           maxLength={80}
+          aria-invalid={error?.field === "displayName"}
+          aria-describedby={error?.field === "displayName" ? errorId : undefined}
           value={displayName}
           onChange={(event) => {
             onDisplayNameChange(event.target.value);
@@ -263,12 +281,14 @@ function OnboardingSubmissionForm({
         />
       </div>
 
-      <fieldset className="space-y-3">
+      <fieldset className="space-y-3" aria-describedby={error?.field === "documents" ? errorId : undefined}>
         <legend className="text-sm font-semibold text-slate-900">Required documents</legend>
         <div className="flex min-h-11 items-start gap-3 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
           <input
             id={`${displayNameId}-terms`}
             type="checkbox"
+            aria-invalid={termsInvalid}
+            aria-describedby={termsInvalid ? errorId : undefined}
             checked={termsAccepted}
             onChange={(event) => {
               setTermsAccepted(event.target.checked);
@@ -289,6 +309,8 @@ function OnboardingSubmissionForm({
           <input
             id={`${displayNameId}-privacy`}
             type="checkbox"
+            aria-invalid={privacyInvalid}
+            aria-describedby={privacyInvalid ? errorId : undefined}
             checked={privacyAcknowledged}
             onChange={(event) => {
               setPrivacyAcknowledged(event.target.checked);
@@ -307,7 +329,7 @@ function OnboardingSubmissionForm({
         </div>
       </fieldset>
 
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      {error && <p id={errorId} role="alert" className="text-sm text-red-700">{error.message}</p>}
       <button type="submit" className={primaryButtonClassName}>Create athlete profile</button>
     </form>
   );

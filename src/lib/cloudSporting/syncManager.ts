@@ -80,6 +80,13 @@ export type TeamExerciseResultMutationOutcome =
 
 type Listener = () => void;
 
+/** Optional private native ownership. These synchronous infrastructure closures
+ * are never exposed by an application capability and grant no Profile access. */
+export type SportingSyncWorkOwnership = Readonly<{
+  current(): boolean;
+  register(work: Promise<void>): void;
+}>;
+
 function isExactCompletionOf(
   active: ExerciseExecution,
   completed: ExerciseExecution
@@ -138,7 +145,8 @@ export class SportingCloudSyncManager {
     private readonly service: CloudSportingService | null,
     private readonly isOnline: () => boolean = () => typeof navigator !== "undefined" && navigator.onLine,
     private readonly teamService: TeamExerciseCloudService | null = null,
-    private readonly mountedProfileId: string | null = null
+    private readonly mountedProfileId: string | null = null,
+    private readonly workOwnership?: SportingSyncWorkOwnership
   ) {}
 
   subscribe = (listener: Listener): (() => void) => {
@@ -206,10 +214,22 @@ export class SportingCloudSyncManager {
   }
 
   private schedule(work: () => Promise<void>): Promise<void> {
-    this.lane = this.lane.then(work, work).catch(() => {
+    const ownership = this.workOwnership;
+    let released = ownership === undefined;
+    const enter = ownership === undefined ? work : () => {
+      if (!released) return;
+      try { if (!ownership.current()) return; }
+      catch { return; }
+      return work();
+    };
+    this.lane = this.lane.then(enter, enter).catch(() => {
       this.globalIssue = true;
       this.publish();
     });
+    if (ownership !== undefined) {
+      try { ownership.register(this.lane); released = true; }
+      catch { /* Unregistered work stays sealed in both predecessor branches. */ }
+    }
     return this.lane;
   }
 

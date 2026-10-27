@@ -15,7 +15,7 @@
  * The closed route set. A route is named by what it does, not by a path —
  * callers never construct, concatenate, or pass a path, so no caller-supplied
  * string can widen the set of reachable endpoints. The mapping from these
- * five cases to hard-coded paths lives in authorizedFetch.ts.
+ * five cases to hard-coded paths lives in the pure teamApiRoutePath.ts.
  */
 export type TeamApiRoute =
   | { kind: "createInvitation" }

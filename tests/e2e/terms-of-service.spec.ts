@@ -4,11 +4,15 @@ test.describe("public Terms of Service", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("is readable before sign-in at both current and immutable routes", async ({ page }) => {
-    for (const path of ["/terms", "/legal/terms/2026-08-29"]) {
+    for (const [path, version] of [
+      ["/terms", "terms-2026-10-24"],
+      ["/legal/terms/2026-10-24", "terms-2026-10-24"],
+      ["/legal/terms/2026-08-29", "terms-2026-08-29"],
+    ]) {
       await page.goto(path);
 
       await expect(page.getByRole("heading", { level: 1, name: "Terms of Service" })).toBeVisible();
-      await expect(page.getByText("terms-2026-08-29", { exact: true })).toBeVisible();
+      await expect(page.getByText(version, { exact: true })).toBeVisible();
       await expect(page.getByText("Evolane Curling", { exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "info@evolane.swiss" })).toHaveAttribute(
         "href",

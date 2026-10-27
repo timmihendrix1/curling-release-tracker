@@ -122,7 +122,7 @@ export default function AssessmentAnalyze({
         <div className={surfaceClass(activeCurrentRun ? "primary" : "hero")}>
           {trendInsight && (
             <div className="mb-4 border-b border-slate-100 pb-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                 What should I learn from this?
               </p>
               <p className="mt-2 text-lg font-semibold text-slate-900">

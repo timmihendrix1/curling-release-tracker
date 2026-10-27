@@ -231,3 +231,7 @@ Every implementation or review report must include:
 6. Exact verification results.
 7. Remaining blockers, assumptions, and deferred work.
 8. Confirmation that no unauthorized Git mutation occurred.
+
+## Zweites Gehirn – progress handoff
+
+The user requested ongoing project-progress documentation on 2026-10-24. Before a relevant task, read `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/AGENTS.md` and its `03 Bereiche/Prozesse/Projektfortschritt und Wochenreview.md`. Before the final report, record substantive outcomes, review findings, decisions and blockers in the canonical `02 Projekte/Curling Trainingsapp/Curling Trainingsapp.md`, with dated source/artifact references and actual verification limits; update its steering properties and add a short vault maintenance-log entry. Repository documents remain the technical authority. A read-only repository review remains read-only in the repository; this separately authorized documentation is written only to the vault. A task-wide explicit no-write instruction takes precedence. If the vault is unavailable, deliver the ready-to-save handoff and report persistence as pending. Do not claim the handoff was saved unless it was actually written.

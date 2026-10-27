@@ -59,7 +59,7 @@ function restore(data: unknown): CloudSportingResult<CloudSportingRecord[]> {
   }
 }
 
-export function createSupabaseSportingCloudService(client: SupabaseClient): CloudSportingService {
+export function createSupabaseSportingCloudService(client: Pick<SupabaseClient, "rpc">): CloudSportingService {
   return {
     async restore() {
       try {

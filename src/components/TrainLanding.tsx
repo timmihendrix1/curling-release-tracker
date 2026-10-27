@@ -50,6 +50,8 @@ type TrainLandingProps = {
    * always-enabled behavior.
    */
   startPlanDisabled?: boolean;
+  planEditingDisabled?: boolean;
+  onPlanEditingChange?: (editing: boolean) => void;
   onSavePlan: (plan: TrainingPlan) => void;
   onDeletePlan: (planId: string) => void;
   onDuplicatePlan: (plan: TrainingPlan) => void;
@@ -113,6 +115,8 @@ export default function TrainLanding({
   plans,
   plansTabDisabled = false,
   startPlanDisabled = false,
+  planEditingDisabled = false,
+  onPlanEditingChange,
   onSavePlan,
   onDeletePlan,
   onDuplicatePlan,
@@ -198,6 +202,7 @@ export default function TrainLanding({
     if (mode === "exercises" && exercisesSubView.screen === "release-timing-setup") {
       onCancelReleaseTimingSetup?.();
     }
+    onPlanEditingChange?.(false);
     setMode(next);
     onEntryPathChange?.(next);
     if (next === "plans") setPlansSubView({ screen: "library" });
@@ -356,8 +361,9 @@ export default function TrainLanding({
         {mode === "plans" && plansSubView.screen === "library" && (
           <TrainingPlansLibrary
             plans={plans}
-            onCreateNew={() => setPlansSubView({ screen: "editor" })}
-            onEdit={(plan) => setPlansSubView({ screen: "editor", plan })}
+            editingDisabled={planEditingDisabled}
+            onCreateNew={() => { if (!planEditingDisabled) { onPlanEditingChange?.(true); setPlansSubView({ screen: "editor" }); } }}
+            onEdit={(plan) => { if (!planEditingDisabled) { onPlanEditingChange?.(true); setPlansSubView({ screen: "editor", plan }); } }}
             onDuplicate={onDuplicatePlan}
             onDelete={onDeletePlan}
             onStart={(plan) => setPlansSubView({ screen: "start-review", plan })}
@@ -365,19 +371,21 @@ export default function TrainLanding({
         )}
 
         {mode === "plans" && plansSubView.screen === "editor" && (
-          <TrainingPlanEditor
+          <fieldset disabled={planEditingDisabled}><TrainingPlanEditor
             initialPlan={plansSubView.plan}
             onSave={(plan) => {
+              if (planEditingDisabled) return;
               onSavePlan(plan);
+              onPlanEditingChange?.(false);
               setPlansSubView({ screen: "library" });
             }}
-            onCancel={() => setPlansSubView({ screen: "library" })}
+            onCancel={() => { onPlanEditingChange?.(false); setPlansSubView({ screen: "library" }); }}
             accuracyToleranceProfiles={accuracyToleranceProfiles}
             defaultAccuracyToleranceProfileId={defaultAccuracyToleranceProfileId}
             smartRandomProfiles={smartRandomProfiles}
             defaultSmartRandomProfileId={defaultSmartRandomProfileId}
             exerciseAssetResolver={exerciseAssetResolver}
-          />
+          /></fieldset>
         )}
 
         {mode === "plans" && plansSubView.screen === "start-review" && (

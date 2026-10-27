@@ -4,11 +4,15 @@ test.describe("public Privacy Notice", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("is readable before sign-in at both current and immutable routes", async ({ page }) => {
-    for (const path of ["/privacy", "/legal/privacy/2026-08-28"]) {
+    for (const [path, version] of [
+      ["/privacy", "privacy-2026-10-24"],
+      ["/legal/privacy/2026-10-24", "privacy-2026-10-24"],
+      ["/legal/privacy/2026-08-28", "privacy-2026-08-28"],
+    ]) {
       await page.goto(path);
 
       await expect(page.getByRole("heading", { level: 1, name: "Privacy Notice" })).toBeVisible();
-      await expect(page.getByText("privacy-2026-08-28", { exact: true })).toBeVisible();
+      await expect(page.getByText(version, { exact: true })).toBeVisible();
       await expect(page.getByText("Evolane Curling", { exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: "info@evolane.swiss" }).first()).toHaveAttribute(
         "href",

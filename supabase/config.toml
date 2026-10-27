@@ -14,6 +14,13 @@ major_version = 15
 enabled = true
 port = 54321
 
+# Loopback test mail only. Team Route Handler integration uses the same Mailpit
+# inbox as Auth OTP, so no invitation can reach a real recipient in local E2E.
+[inbucket]
+enabled = true
+port = 54324
+smtp_port = 54325
+
 [auth]
 enabled = true
 
@@ -47,6 +54,9 @@ additional_redirect_urls = [
 enable_signup = true
 double_confirm_changes = false
 enable_confirmations = false
+# Local fixture accounts must exercise reauthentication in the same E2E run.
+# Hosted projects configure their own delivery/rate policy separately.
+max_frequency = "1s"
 
 # Local/test-only OTP template. Hosted environments configure their approved
 # template independently; this fixture deliberately contains no legal or product

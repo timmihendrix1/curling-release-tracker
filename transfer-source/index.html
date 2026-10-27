@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'" />
+    <title>Curling data check</title>
+    <link rel="stylesheet" href="./helper.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Curling data check</h1>
+      <p>This helper checks the existing data without changing it.</p>
+      <button id="inspect" type="button" disabled>Check data</button>
+      <p id="status" role="status" aria-live="polite">No check has been performed.</p>
+    </main>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

@@ -3,17 +3,16 @@ import type { CapacitorConfig } from "@capacitor/cli";
 /**
  * Capacitor configuration for the Curling Performance Platform mobile client.
  *
- * DEVELOPMENT PLACEHOLDERS. `appId` and `appName` are development identifiers
- * for Stage M1's shell. Product app identity — bundle identifier / application
- * id, app name, the production API origin, the callback domain and distribution
- * commitments — is open decision **P4** in docs/MOBILE_APP_MIGRATION.md §4 and
- * is NOT settled here. No app is registered under these values, no scheme or
- * domain is claimed, and no provider redirect is configured. They must be
- * replaced before M6.
+ * Confirmed iOS identity: Evolane Curling / me.evolane.curling, team J98U2J78B3
+ * (user approval, 2026-10-21; docs/MOBILE_APP_MIGRATION.md P4). This replaces
+ * the local.dev.curlingperformance development placeholder in the project only.
+ * The existing iPhone installation and its data are NOT migrated by this change.
+ * Device installation remains blocked until its separate preservation gates pass.
+ * The API origin is configured separately; callback/background decisions and
+ * distribution acceptance are not settled by the identity configuration.
  *
- * `appId` is deliberately distinct from the standalone BLE probe's
- * `local.dev.browerbleprobe` (tools/brower-ios-probe) so both development builds
- * can be installed on the same device without replacing one another.
+ * `appId` remains distinct from the standalone BLE probe's
+ * `local.dev.browerbleprobe` (tools/brower-ios-probe). No probe identity is changed.
  *
  * `server.url` is deliberately absent and must never appear in a release
  * configuration (§3.4). Pointing the shell at the deployed origin would load the
@@ -27,10 +26,13 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * native OAuth and full production Brower integration retain their separate gates.
  */
 const config: CapacitorConfig = {
-  appId: "local.dev.curlingperformance",
-  appName: "Curling Performance (Dev)",
+  appId: "me.evolane.curling",
+  appName: "Evolane Curling",
   // Built by `npm run mobile:build` (mobile/vite.config.ts), relative to this file.
   webDir: "mobile/dist",
+  // Capacitor's bridge logger can print native response payloads. A secure
+  // credential read must not put its returned value in device logs, even in Debug.
+  loggingBehavior: "none",
   ios: {
     // The shell's own background behind the WebView. `src/app/globals.css`
     // paints the document, so this only shows for the instant before first

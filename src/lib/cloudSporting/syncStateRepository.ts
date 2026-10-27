@@ -19,6 +19,37 @@ import {
 export const CLOUD_SPORTING_SYNC_STORAGE_KEY = "curling-release-tracker-cloud-sporting-sync";
 export const CLOUD_SPORTING_SYNC_SCHEMA_VERSION = 6;
 
+/** Personal export is a projection, never an installation backup/import package.
+ * A recorder's local outbox also holds other athletes' raw results; those do
+ * not belong in a personal export. Shared coordination retains only context. */
+export function serializePersonalSportingSyncExport(raw: string, profileId: string): string | null {
+  try {
+    if (!isCanonicalUuid(profileId)) return null;
+    const value = parseState(JSON.parse(raw));
+    if (value === null) return null;
+    const draft = value.activeTeamExerciseDraft;
+    const sharedDraft = draft ? {
+      ...draft, athleteResults: undefined, activeAttemptCorrections: undefined,
+    } : null;
+    return JSON.stringify({
+      exportSchemaVersion: 1,
+      format: "personal-data-not-an-installation-backup",
+      personalOutbox: value.entries,
+      teamCoordinationOutbox: value.teamEntries.filter((entry) => entry.entryKind === "team_exercise_session"),
+      ownedTeamResultOutbox: value.teamEntries.filter((entry) =>
+        entry.entryKind === "team_exercise_bundle" && entry.athleteProfileId === profileId),
+      activeTeamContext: sharedDraft,
+      activeOwnedTeamResults: draft?.athleteResults.filter((result) => result.athleteProfileId === profileId) ?? [],
+      activeOwnedCorrections: draft?.activeAttemptCorrections?.flatMap((correction) => {
+        const before = correction.before.athleteProfileId === profileId ? correction.before : null;
+        const after = correction.after?.athleteProfileId === profileId ? correction.after : null;
+        return before || after ? [{ ...correction, before, after }] : [];
+      }) ?? [],
+      ownedTeamResults: value.teamExerciseResults.filter((result) => result.athleteProfileId === profileId),
+    });
+  } catch { return null; }
+}
+
 export type SportingSyncEntry = CloudSportingRecord & {
   desired: "present" | "deleted";
   status: "pending" | "synced" | "issue";

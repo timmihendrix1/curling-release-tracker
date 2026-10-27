@@ -69,6 +69,7 @@ function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   const rows = new Map<string, unknown>();
   const statements: { sql: string; values: unknown[] }[] = [];
   const state = { openCount: 0, closeCount: 0, connectionOpen: false };
+  let hasRecordsTable = false;
   let transactionDepth = 0;
 
   function fail(point: FailurePoint): never {
@@ -126,6 +127,7 @@ function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
       }
       if (sql.includes("CREATE TABLE")) {
         if (failAt.has("schema")) fail("schema");
+        hasRecordsTable = true;
         return {};
       }
       if (sql.startsWith(`DELETE FROM ${NATIVE_SQLITE_RECORDS_TABLE}`)) {
@@ -170,6 +172,21 @@ function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
     async query(sql: string, values: unknown[]): Promise<NativeSqliteQueryResult> {
       await maybeGate();
       statements.push({ sql, values });
+      // This older fake models the same finite schema explicitly. Discovery
+      // failures have their own tests; the existing `query` failure hook remains
+      // a subsequent individual-value/settings failure.
+      if (sql === "PRAGMA schema_version;") return { values: [{ schema_version: hasRecordsTable ? 1 : 0 }] };
+      if (sql === "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name;") return { values: hasRecordsTable ? [
+        { type: "index", name: "sqlite_autoindex_records_1", tbl_name: "records", sql: null },
+        { type: "table", name: "records", tbl_name: "records", sql: "CREATE TABLE records (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL)" },
+      ] : [] };
+      if (sql === "PRAGMA table_info('records');") return { values: [
+        { cid: 0, name: "key", type: "TEXT", notnull: 1, dflt_value: null, pk: 1 },
+        { cid: 1, name: "value", type: "TEXT", notnull: 1, dflt_value: null, pk: 0 },
+      ] };
+      if (sql === "PRAGMA index_list('records');") return { values: [{ seq: 0, name: "sqlite_autoindex_records_1", unique: 1, origin: "pk", partial: 0 }] };
+      if (sql === "PRAGMA index_info('sqlite_autoindex_records_1');") return { values: [{ seqno: 0, cid: 0, name: "key" }] };
+      if (sql === "SELECT key FROM records ORDER BY key;") return { values: [...rows.keys()].sort().map(key => ({ key })) };
       if (sql.startsWith("PRAGMA journal_mode")) {
         if (failAt.has("journalPragma")) fail("journalPragma");
         return { values: [{ journal_mode: "wal" }] };
@@ -216,9 +233,10 @@ function createFakeEngine(options: FakeEngineOptions = {}): FakeEngine {
   } as FakeEngine;
 }
 
+let nextDatabase = 0;
 function nativeStore(engine: NativeSqliteEngine, platform: RuntimePlatform = "ios") {
   return createNativeSqliteStore({
-    databaseName: "test-synthetic",
+    databaseName: `test-synthetic-${++nextDatabase}`,
     engine,
     detectPlatform: () => platform,
   });
@@ -499,7 +517,7 @@ describe("native SQLite adapter — platform gating", () => {
   it("treats a platform signal that throws as unsupported, never as web", async () => {
     const engine = createFakeEngine();
     const store = createNativeSqliteStore({
-      databaseName: "test-synthetic",
+      databaseName: `test-synthetic-${++nextDatabase}`,
       engine,
       detectPlatform: () => {
         throw new Error("bridge misbehaved");
@@ -685,7 +703,7 @@ describe.each(["ios", "android"] as const)(
     function pluginStore(state = createPluginFaithfulEngineState()) {
       const { engine } = createPluginFaithfulEngine({ platform, state });
       const store = createNativeSqliteStore({
-        databaseName: "test-synthetic",
+        databaseName: `test-synthetic-${++nextDatabase}`,
         engine,
         detectPlatform: () => platform,
       });
@@ -1190,7 +1208,7 @@ describe.each(["ios", "android"] as const)(
     function pluginStore(state = createPluginFaithfulEngineState()) {
       const { engine } = createPluginFaithfulEngine({ platform, state });
       const store = createNativeSqliteStore({
-        databaseName: "test-synthetic",
+        databaseName: `test-synthetic-${++nextDatabase}`,
         engine,
         detectPlatform: () => platform,
       });
@@ -1309,7 +1327,7 @@ describe.each(["ios", "android"] as const)(
       const state = createPluginFaithfulEngineState();
       const harness = createPluginFaithfulEngine({ platform, state, faults: {} });
       const store = createNativeSqliteStore({
-        databaseName: "test-synthetic",
+        databaseName: `test-synthetic-${++nextDatabase}`,
         engine: harness.engine,
         detectPlatform: () => platform,
       });
@@ -1529,7 +1547,7 @@ describe.each(["ios", "android"] as const)(
       const state = createPluginFaithfulEngineState();
       const harness = createPluginFaithfulEngine({ platform, state, faults: {} });
       const store = createNativeSqliteStore({
-        databaseName: "test-synthetic",
+        databaseName: `test-synthetic-${++nextDatabase}`,
         engine: harness.engine,
         detectPlatform: () => platform,
       });

@@ -313,3 +313,7 @@ technique directly" in the Coaching Principles.
   `docs/adr/`; a new/changed domain concept gets a glossary entry; a changed flow gets
   the relevant section of `SYSTEM_ARCHITECTURE.md` updated. Prefer updating the existing
   document over creating a new one with overlapping content.
+
+## Projektfortschritt im Zweiten Gehirn
+
+Nach relevanten Implementierungs-/Prüfergebnissen, Entscheidungen oder Blockaden gilt zusätzlich der am 24.10.2026 beauftragte Abschlussablauf aus `AGENTS.md`, Abschnitt „Fortschritt im Zweiten Gehirn nachführen“. Vor Arbeit `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/03 Bereiche/Prozesse/Projektfortschritt und Wochenreview.md` lesen. Kanonische Zusammenfassung: `/Users/timhofer/Zweites Gehirn/Zweites Gehirn/02 Projekte/Curling Trainingsapp/Curling Trainingsapp.md`. Technische Primärdokumentation bleibt im Repository; historische Vault-Quellen nicht überschreiben. Bei fehlendem Vault-Zugriff den vollständigen Nachtrag liefern und die Speicherung ausdrücklich offen melden.

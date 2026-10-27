@@ -1,4 +1,4 @@
-// The ONE infrastructure helper permitted to read the provider session's
+// The Web infrastructure helper permitted to read the provider session's
 // access token (ADR-0025 Decision 20, as narrowed by ADR-0047). The token is
 // read here, put into the `Authorization` header of an already-validated Team or
 // restricted-Exercise request addressed to the ONE resolved API target — the
@@ -6,13 +6,15 @@
 // nowhere else: it is never returned, logged, snapshotted, serialized, stored,
 // or handed to a caller. `teamServiceFactory.ts` is the only production module
 // that value-imports this file — enforced by
-// src/lib/persistence/__tests__/architectureBoundary.test.ts.
+// src/lib/persistence/__tests__/architectureBoundary.test.ts. The dormant native
+// host has its separate narrow same-command exception in ADR-0025 §§S5b–S5f;
+// it never calls this Web session-reading helper.
 //
 // This file deliberately does NOT import "@supabase/supabase-js" — it only
 // names the client's TYPE via supabaseClient.ts's re-export, the same way
 // supabaseTeamService.ts does.
 import type { SupabaseClient } from "./supabaseClient";
-import { hasWhitespaceOrControl } from "./supabaseCallbackClassifier";
+import { resolveTeamApiRoutePath } from "./teamApiRoutePath";
 import type {
   AuthorizedRequestOutcome,
   AuthorizedTeamRequest,
@@ -76,47 +78,6 @@ function transportOptionsFor(target: ApiTarget): RequestInit {
 }
 
 /**
- * A dynamic path segment is rejected outright — before any URL is built —
- * unless it is an ordinary, non-empty token. `.` and `..` are refused by name:
- * `encodeURIComponent` does not encode a dot, so a segment of exactly `..`
- * would survive into the path and `new URL` would then normalize it away,
- * silently retargeting the request one level up. Every other traversal attempt
- * (`../x`, `a/b`, `?x`, `#x`) is neutralized by percent-encoding, and the
- * exact-path comparison below catches anything this misses.
- */
-function isUsablePathSegment(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  if (value.length === 0 || value.length > 200) return false;
-  if (hasWhitespaceOrControl(value)) return false;
-  return value !== "." && value !== "..";
-}
-
-/** The hard-coded route table. Nothing outside this function decides what path
- * an authorized request may reach. */
-function resolveRoutePath(route: TeamApiRoute): string | null {
-  switch (route.kind) {
-    case "createInvitation":
-      return "/api/team/invitations";
-    case "reviseInvitation":
-      return isUsablePathSegment(route.invitationId)
-        ? `/api/team/invitations/${encodeURIComponent(route.invitationId)}/revise`
-        : null;
-    case "resendInvitation":
-      return isUsablePathSegment(route.invitationId)
-        ? `/api/team/invitations/${encodeURIComponent(route.invitationId)}/resend`
-        : null;
-    case "createAdminRequest":
-      return "/api/team/admin-requests";
-    case "removeMember":
-      return "/api/team/members/remove";
-    default:
-      // Unreachable for a well-typed caller; a value arriving from untyped
-      // JavaScript or a future unhandled case denies rather than guesses.
-      return null;
-  }
-}
-
-/**
  * Builds the final URL and proves it is same-origin, confined to
  * `/api/team/`, and **exactly** the path the route table produced. That last
  * comparison is the load-bearing check: if any traversal, normalization, or
@@ -176,7 +137,7 @@ export function createAuthorizedTeamRequest(
     route: TeamApiRoute,
     body: unknown
   ): Promise<AuthorizedRequestOutcome> {
-    const path = resolveRoutePath(route);
+    const path = resolveTeamApiRoutePath(route);
     if (path === null) return { kind: "forbidden" };
 
     const target = resolveTargetFor(overrides);

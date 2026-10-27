@@ -58,6 +58,16 @@ const run = spawnSync(playwright, ["test", ...process.argv.slice(2)], {
     ...childEnvironment,
     NEXT_PUBLIC_SUPABASE_URL: apiUrl,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+    // Explicit local-only email configuration prevents Next.js from inheriting
+    // SMTP settings from a developer's private configuration file. Mailpit never
+    // forwards the fixture messages to an external recipient.
+    APP_ORIGIN: "http://localhost:3100",
+    SMTP_HOST: "127.0.0.1",
+    SMTP_PORT: "54325",
+    SMTP_SECURE: "false",
+    SMTP_USER: "",
+    SMTP_PASS: "",
+    SMTP_FROM_ADDRESS: "local-beta@example.invalid",
   },
 });
 

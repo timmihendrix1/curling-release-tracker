@@ -58,6 +58,14 @@ function summaryPanel(): HTMLElement {
 }
 
 describe("the default All measurements view represents what is actually present", () => {
+  it("uses readable secondary text for the small takeaway label", async () => {
+    const block = legacyTimeBlock();
+    const archived = measurementSession([block], []);
+    archived.shots = [timeShot(block, 3.85, { sessionId: archived.id })];
+    await openAnalyze([archived]);
+    // CSS-token regression; real-browser computed contrast is verified separately.
+    expect(screen.getByText("What should I learn from this?")).toHaveClass("text-slate-600");
+  });
   it("shows speed results for a speed-only history, with no selector required", async () => {
     const block = speedBlock();
     const archived = measurementSession([block], []);

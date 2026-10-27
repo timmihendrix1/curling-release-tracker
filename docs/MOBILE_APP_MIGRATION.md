@@ -8,7 +8,8 @@
 - **Stage M2a — implemented and verified locally by automated tests** (configured native API
   origin, server CORS, and the email-OTP groundwork; see
   [ADR-0047](adr/0047-configured-native-api-origin-boundary.md)). The server CORS change is
-  **not deployed**, and **no on-device OTP or API acceptance has been performed**.
+  **not deployed**. Email login on the old iPhone installation was user-reported
+  (2026-09-29, M2a below); **complete OTP/API acceptance on the new target remains open**.
 - **Full Stage M2 is not complete**, and is not M2-partial: native Google sign-in and its
   §6.6 scheduling gate are untouched, and M2-partial would require real device evidence.
 - **Stages M3–M6** remain architecture, boundaries and staging only.
@@ -503,9 +504,12 @@ it does today.
 # 4. Product decisions — open and settled
 
 **P2 and P6's direction were settled by the user on 2026-09-29** and are recorded as answers
-below; their rows are a decision record, not a proposal. **P1, P3, P4, P5 and P7 remain
-genuinely unresolved**, and none of those is settled by this document. For each, the stage it
-blocks is named; work before that stage proceeds without it.
+below; their rows are a decision record, not a proposal. **P1, P3, P5 and P7 remain
+unresolved; P4 is partly settled** by the iOS identity/account decisions below. The user
+approved the local identity change, native-file generation and unsigned Release check on
+2026-10-21 after reporting the old test app running. This is not an installation, storage
+activation or distribution approval. For each unresolved part, the stage it blocks is named;
+work before that stage proceeds without it.
 
 **P6's direction being settled does not make it designed, implemented or verified** — see
 Stage M3b0. The decision it depended on, **where the provider session is stored (§10 M3b0 §4),
@@ -522,9 +526,9 @@ before** any production storage cutover. **Cutover itself is still not implement
 | **P1** | **Long-term Web plus mobile support, versus eventual mobile-only delivery.** | **Nothing before M6.** | The migration is non-regressive either way. It becomes load-bearing only when distribution commitments and long-term Web maintenance are budgeted. Recorded so that no stage silently assumes the Web app is disposable. |
 | **P2** | ~~Must the first mobile pilot transfer browser-local drafts and unsynchronised data?~~ **DECIDED (2026-09-29): NO for the first pilot.** Data existing only inside Brave or another browser is **not** transferred. Already-synchronised cloud records continue to restore through the existing cloud path. This is **not** authorisation to delete browser data, and it does **not** cover migration between storage engines inside the installed native app — a different operation that **remains required** (P6). Cloud synchronisation of authored Training Plans and other local-only domains stays a separate, unscheduled feature. | Was M3's data-transfer scope. **Now settled**; M3's remaining scope is engine migration (Stage M3b), not browser import. | The recommendation in §7.5 is now the recorded answer. A browser→app transfer path would need its own integrity, authorisation and Profile-ownership model; that scope is deliberately out of the first pilot. |
 | **P3** | **Must production measurement continue during backgrounding or screen lock?** | **M4** (Brower production capture), and the **`Info.plist` / manifest** content from M1 onward. | `UIBackgroundModes: bluetooth-central` changes Apple review exposure, and Android background BLE has an entirely different model. **M1 scaffolds foreground-only and declares no background mode** — the currently exercised scope. That is a reversible starting point, not an answer: adding a background mode later is a configuration and review change, whereas declaring one speculatively is an unjustified capability claim. Nothing in M1 implies approval. |
-| **P4** | **Production app identity, release configuration and distribution commitments** — bundle identifier / application id, app name, **the callback domain**, store accounts, and whether App Store and/or Google Play distribution is committed. **The API origin is NOT part of this any more: it is confirmed as `https://curling.evolane.me`** and configured through `NEXT_PUBLIC_NATIVE_API_ORIGIN` (Stage M2a, [ADR-0047](adr/0047-configured-native-api-origin-boundary.md)). Confirming it settles the API destination only. | **M1** uses explicit development placeholders; **M2's HTTPS callback path** cannot be completed without the callback domain; **M6** needs all of it. | A bundle identifier is baked into provisioning, Universal Link / App Link association and the Supabase redirect allow list. **No remaining value is invented here.** See §6.2 and §10 M2 for what an unresolved domain means in practice, and what the explicitly supported fallback would require. |
-| **P5** | **Does the required alternative login satisfy Apple guideline 4.8?** | **M6** (distribution readiness); influences **M2**. | Guideline 4.8 requires an app using Google Sign-In for the primary account to also offer a login service that limits collection to name and email, **allows the user to keep their email address private**, and does not collect interactions for advertising without consent. Email OTP collects only an email address, but it does not offer an email-privacy relay. Whether that satisfies the second bullet, or whether Sign in with Apple must be added, is a product and review-risk decision. **Do not resolve it by removing Google sign-in** — §1 preserves existing sign-in options. |
-| **P6** | ~~How is native local persistence made durable enough to accept?~~ **DIRECTION DECIDED (2026-09-29): Option B — adopt durable native local storage behind the existing persistence boundary.** WebView `localStorage` is **not** retained as the native production store by merely accepting its eviction risk. Both iOS and Android are designed for, with shared application logic. Data already inside the installed iOS app is preserved through a **controlled migration**. Existing Profile ownership, repository boundaries and cloud-synchronisation logic are kept. **Engine evidence is gathered IN THE EXISTING APP (user decision, 2026-09-30), not in a separate harness application.** **Two further points are now DECIDED (2026-09-30): ALL existing local application data is PRESERVED — a pilot reset is rejected — and existing local data must be migrated and verified BEFORE production cutover.** | **M3.** The direction is settled; the **implementation and its acceptance gate are NOT complete**. | **Decision made ≠ designed ≠ implemented ≠ verified.** The design is Stage M3b0 (§10) and [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration design remains unresolved** (three open items, §7). The M3b1 adapter and in-app diagnostic panel exist, **user-reported device evidence now exists within the stated limits** (M3b1 status in §10), and **Stage M3b3's composition is implemented behind an off-by-default build flag**. Still absent: **no migration, no cutover, and therefore no native production path** — a flag-enabled build blocks rather than mounting. |
+| **P4** | **PARTLY DECIDED (user, 2026-10-21): iOS app name `Evolane Curling`, bundle ID `me.evolane.curling`, team `J98U2J78B3`, Individual membership, primary language English (U.S.), German deferred.** Hermes reports registered Explicit App ID and App Store Connect record `6825376799`, SKU `evolane-curling-ios`. Local Debug/Release identity configuration follows these values; no device install or upload is approved by that change. **Still separate:** callback domain, full release/distribution acceptance and Android identity/Google Play commitments. API origin remains `https://curling.evolane.me` (ADR-0047). | iOS identity is no longer an M1 placeholder. **M2's HTTPS callback path** still needs its own domain decision; **M6** still needs all applicable acceptance gates. | The old source installation is `local.dev.curlingperformance`; a new ID has a separate container and does not transfer its data or credentials. Preserve that installation until a complete transfer/restore path is verified. No domain association, redirect allow-list, capability or signing/provisioning mutation is implied. |
+| **P5** | **Does the required alternative login satisfy Apple guideline 4.8?** | **M6** (distribution readiness); influences **M2**. | Guideline 4.8 requires an app using Google Sign-In for the primary account to also offer a login service that limits collection to name and email, **allows the user to keep their email address private**, and does not collect interactions for advertising without consent. Email OTP collects only an email address, but it does not offer an email-privacy relay. Whether that satisfies the second bullet, or whether Sign in with Apple must be added, is a product and review-risk decision. **Preserve Web's existing Google and email choices.** The user-approved first iOS club beta is email-only (§6.1, 2026-10-21); that bounded UI exception does **not** resolve future P5 or establish distribution acceptance. |
+| **P6** | ~~How is native local persistence made durable enough to accept?~~ **DIRECTION DECIDED (2026-09-29): Option B — adopt durable native local storage behind the existing persistence boundary.** WebView `localStorage` is **not** retained as the native production store by merely accepting its eviction risk. Both iOS and Android are designed for, with shared application logic. Data already inside the installed iOS app is preserved through a **controlled migration**. Existing Profile ownership, repository boundaries and cloud-synchronisation logic are kept. **Engine evidence is gathered IN THE EXISTING APP (user decision, 2026-09-30), not in a separate harness application.** **Two further points are now DECIDED (2026-09-30): ALL existing local application data is PRESERVED — a pilot reset is rejected — and existing local data must be migrated and verified BEFORE production cutover.** | **M3.** The direction is settled; the **implementation and its acceptance gate are NOT complete**. | **Decision made ≠ designed ≠ implemented ≠ verified.** The design is Stage M3b0 (§10) and [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration design was approved by the user on 2026-10-19**; its decision core (M3b4a) and its dormant executor (M3b4b) are approved (2026-10-20), with no application path invoking the executor, and U2's first-version recovery policy and UG-1–UG-4 are decided (§10 M3b0 §6) while its interface (M3b4c) is implemented as a dormant, dependency-injected layer awaiting independent review (what remains: §7's inventory). The M3b1 adapter and in-app diagnostic panel exist, **user-reported device evidence now exists within the stated limits** (M3b1 status in §10), and **Stage M3b3's composition is implemented behind an off-by-default build flag**. Still absent: **no migration has run, no cutover, and therefore no native production path** — a flag-enabled build blocks rather than mounting. |
 
 | **P7** | **What does the identity gate offer after an ambiguous authentication-browser dismissal?** — a visible "Cancel sign-in" control, an automatic timeout, or nothing beyond "try again". | **M2's gate behaviour only.** The architecture does not wait on it: §6.7's cancellation seam is specified and testable (§6.9 B4, B5, B19, B20) whichever answer is chosen, and it does not block M1. | The chosen plugin may report only that its sheet closed, without distinguishing cancellation from completion (§6.3), so dismissal cannot itself be treated as failure. Something must nevertheless let a user abandon an attempt, because retry alone does not make a cancelled attempt's late callback inadmissible. **This document specifies the seam and does not choose the UI.** An implementation must not present an incomplete flow as complete while this is open. |
 
@@ -627,6 +631,12 @@ still finalizes the cell, and `startUpOnce()` still caches one startup. Nothing 
 that path.
 
 ## 6.1 Email OTP — no callback mechanism at all
+
+**First iOS club beta — DECIDED BY THE USER (2026-10-21): email code only.**
+The iOS sign-in and reauthentication surfaces do not render Google or its alternative-method
+separator; requesting an email code is the primary action. Web retains its existing Google
+and email choices. This does not implement native Google sign-in, change identity authority,
+or waive any credential, migration, installation-preservation or device-acceptance gate.
 
 `signInWithOtp` + `verifyOtp` with a typed code (§2.4). It needs no redirect target, no
 deep link, no authentication browser and no capture cell. **It is unaffected by every
@@ -1740,10 +1750,12 @@ a physical iPhone **as far as the identity gate**.
 
 **Prerequisites.** None blocking.
 
-**Placeholders, explicitly marked as such.** **P4 is open**, so M1 uses a development bundle
-identifier and a development API origin, both named in the config as placeholders. **M1 must
-not be described as producing a distributable app**, and the placeholders must be replaced
-before M6. Nothing in M1 registers a scheme, a domain, or a provider redirect.
+**Current identity and API origin — no longer M1 placeholders.** P4 records the confirmed
+iOS identity **Evolane Curling / `me.evolane.curling`**, team **`J98U2J78B3`** and the
+membership, Store-record and language state. The API origin is **`https://curling.evolane.me`**
+(ADR-0047). **M1 must not be described as producing a distributable app**: callback-domain,
+Android and full distribution acceptance remain separate open parts of P4. Nothing in M1
+registers a scheme, a domain, or a provider redirect, or authorizes installation.
 
 **Foreground-only scaffolding.** `Info.plist` declares **no** `UIBackgroundModes`, matching
 the currently exercised scope. **This is a starting point, not an answer to P3** — M1 does
@@ -1777,7 +1789,11 @@ on a device, and the Web build is unaffected. **Sign-in is not expected to work*
 
 **Rollback.** Delete `mobile/`, `ios/` and the added scripts. Nothing in `src/` was touched.
 
-### M1 — implementation status (2026-09-28)
+### M1 — historical implementation status (2026-09-28)
+
+The identity, placeholder and account observations in this dated record describe the old
+source, not today's target. Current iOS identity/account decisions are in P4; later API
+configuration is in M2a. These old device observations do not establish new-target acceptance.
 
 **Implemented.** Candidate A, as recommended in §3.1.
 
@@ -1921,25 +1937,28 @@ completes as well, or the stage completes as M2-partial** — see the completion
 
 **Prerequisites.** M1.
 
-**P4 and the two possible shapes of this stage.** Google sign-in needs a callback
+**P4's still-open callback decision and the two possible shapes of this stage.** Google sign-in needs a callback
 destination, and §6.2 offers exactly two:
 
-- **P4 answered with a domain** → Option 1 (HTTPS). The prerequisites are the AASA /
+- **P4's callback decision answered with a domain** → Option 1 (HTTPS). The prerequisites are the AASA /
   assetlinks hosting, the Associated Domains entitlement / intent filter, and the Supabase
   allow-list entry. `isUsableUrl`, `isValidRedirectTarget` and `validateAuthorizationUrl`
   are **unmodified**.
-- **P4 unanswered, and the user explicitly chooses the fallback** → Option 2
+- **P4's callback domain unresolved, and the user explicitly chooses the fallback** → Option 2
   (custom scheme). This is **not free**: it requires the new configured-destination
   predicate, routed into both validators, keeping the `http:`/`https:` path byte-identical
   for Web, plus scheme registration and an allow-list entry. It must be an explicit product
   choice, because it weakens destination assurance relative to a domain-verified link.
 
 **Google sign-in may not be both deferred and required for completion.** If neither option
-is available, this stage completes as **M2-partial** with a recorded, explicit status:
-email OTP works on device; **Google sign-in remains implemented in shared code and visible
-in the gate, exercised on Web only**, with its native callback path unfinished and named as
-the remaining work. **It is never removed from the UI** (§1). M3 may proceed on M2-partial;
-**M6 may not.**
+is available, this stage can complete only as **M2-partial**, after the required device
+acceptance, with an explicit status: email OTP and authorized API access work on device;
+**Google remains implemented in shared code and visible on Web**, with its native callback
+path unfinished and named as remaining work. **The first iOS club beta is the approved
+email-only UI exception (§6.1, 2026-10-21)**; do not restore Google to its gate or
+reauthentication surface to satisfy this rule. This exception does not complete or reclassify
+M2, waive its device gates or resolve P5. M3 may proceed on M2-partial; **M6 may not** under
+this stage's completion rule; any distribution-scope revision requires separate approval.
 
 **Expected scope.** The API-origin adapter and its ADR (§5.2); the identity return-target
 adapter; the **attempt-scoped capture cell**, the **delivered-URL ingestion entry point**
@@ -2003,8 +2022,9 @@ evidence this stage has not produced.
 
 **Confirmed product decision.** The application's API origin is **`https://curling.evolane.me`**.
 It is recorded in `.env.example` as the deployed value for `NEXT_PUBLIC_NATIVE_API_ORIGIN`.
-**It settles nothing else** — the native Google callback domain, the production bundle
-identifier and every distribution commitment remain **open decision P4**.
+This settles the API destination only. **P4 separately confirms the iOS name, bundle ID,
+team, membership, Store-record and language state**; it does not settle the native Google
+callback domain, Android commitments or full release/distribution acceptance.
 
 **What M2a implements.**
 
@@ -2031,8 +2051,9 @@ the callback-free property is enforced, not merely described.
 
 **Deliberately NOT in M2a**, and unchanged: native Google callbacks, the capture cell,
 startup/continuation scheduling (§6.6's design gate), the authentication-browser adapter and
-cancellation UX (P7). **Google remains implemented in shared code and visible in the gate,
-on its existing Web path.** Nothing here claims it works natively.
+cancellation UX (P7). **Google remains implemented in shared code and visible on its existing
+Web path; the first iOS club beta omits it under §6.1's approved email-only exception.**
+Nothing here claims it works natively or changes M2's completion status.
 
 **Deployment status — read this before any device test.** The CORS change lives in this
 repository's Route Handlers. **It has not been deployed.** Until the deployed backend serves
@@ -2103,7 +2124,8 @@ native app is a separate, still-required operation** and belongs to Stage M3b be
 Option B — a durable native `StorageAdapter` implementation — is chosen (§7.1). Its design is
 **Stage M3b0** below, recorded in
 [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration design
-is still unresolved**. As of 2026-09-30 Stage M3b1's adapter and opt-in in-app diagnostic
+was approved on 2026-10-19; its decision core (M3b4a) is approved and a dormant executor
+(M3b4b) exists, but no application path invokes it and no migration has run anywhere**. As of 2026-09-30 Stage M3b1's adapter and opt-in in-app diagnostic
 panel exist, **user-reported device evidence exists within the limits stated under Stage M3b0
 §7**, and **Stage M3b3's composition is implemented behind its own off-by-default build
 flag**. What is still absent is the part that would change anything for a user:
@@ -2284,11 +2306,18 @@ return-to-app state preservation are all **still unperformed**. The remaining st
 ### Stage M3b0 — durable native persistence: design and staged plan (this stage)
 
 **Status: DESIGN.** This section is the design; what has been BUILT from it is listed under
-§7's stage table and M3b1/M3b3 status entries, and the two must not be read as the same
-thing. As of 2026-09-30 the adapter (M3b1/M3b2), the in-app diagnostics panel and the
-**composition, identity injection, protected credential store and readiness gate (M3b3)**
-exist; the **migration (M3b4) and the cutover (M3b5) do not**, and §5's protocol therefore
-remains an unimplemented design with three open items (§7). On 2026-10-15 the panel's
+§7's stage table and M3b1/M3b3 status entries, and the two must not be read as the same thing.
+As of 2026-09-30 the adapter (M3b1/M3b2), the in-app diagnostics panel and the **composition,
+identity injection, protected credential store and readiness gate (M3b3)** exist; the
+**cutover (M3b5) does not**, and the recovery interface (M3b4c) exists only as a dormant,
+dependency-injected layer that no shipped path constructs. §5's protocol is an
+**approved design (user approval 2026-10-19)**; its decision core (M3b4a) is approved
+(2026-10-20) and its **dormant** executor (M3b4b) is implemented, independently reviewed
+(clean) and approved (2026-10-20) — no application path invokes it (§7, "M3b4a implementation
+status" and "M3b4b implementation status"). U2's first-version recovery policy and UG-1–UG-4
+are decided (§6); its interface (M3b4c) is implemented, dormant and awaiting review (§7, "M3b4c
+implementation status"). §7's
+inventory lists what still blocks M3b4's completion and M3b5. On 2026-10-15 the panel's
 transaction scenarios were run on a **disposable iOS Simulator** (user-reported, real native
 plugin; §7, "M3b1 real-engine simulator evidence"); no physical-device transaction evidence
 exists.
@@ -2574,8 +2603,12 @@ decision, not an objection to it:
   plugin's inability to distinguish it is part of why the native credential path is closed
   (see the implementation finding below).
 
-**IMPLEMENTATION FINDING — the native credential path is CLOSED, and the requirement is NOT
-complete.** The contract requires **item-specific missing-versus-failed evidence**: only a
+**2026-10-24 implementation amendment:** the approved application-owned iOS reader
+now supplies item-specific `SecItemCopyMatching` evidence. ADR-0049's iOS amendment
+is canonical for its scope and remaining device gates. The Android path remains
+closed; credential migration, runtime fault policy and activation are incomplete.
+
+**Upstream dependency finding.** The contract requires **item-specific missing-versus-failed evidence**: only a
 positively established absence may become the `null` the SDK reads as "no session". No audited
 Capacitor-8 dependency supplies it.
 
@@ -2602,10 +2635,10 @@ read, produces the identical observation. No global probe, timing delay or specu
 replaces it, and none may: a prefix enumeration is not item-specific evidence, returns empty on
 its own failure, and on Android enumerates Keystore aliases rather than ciphertext rows.
 
-**Consequently:** the binding reports `no_absence_evidence`, the store turns that into a
-failure, establishment cannot conclude anything, and a native composition **cannot become ready
-on a real device**. That is a second, independent barrier alongside the activation authority,
-and it is reported rather than worked around. **What would close it:** an implementation that
+**Consequently:** the Android binding reports `no_absence_evidence`. The iOS read
+binding now uses the approved bridge; native composition still cannot become ready
+without the separate migration/activation authority and device acceptance.
+The dependency finding required an implementation that
 surfaces, per read, either the iOS `OSStatus` (or a boolean derived from `errSecItemNotFound`)
 or an Android `sharedPreferences.contains(key)` check distinguished from a decryption failure.
 
@@ -2691,6 +2724,25 @@ either absorption path.
 
 #### 5. Migration of an existing native installation — authority protocol
 
+**Status: APPROVED DESIGN — EXECUTED ONLY BY A DORMANT EXECUTOR (M3b4b) THAT NO APPLICATION PATH
+INVOKES.** The user approved this protocol on 2026-10-19,
+after Codex's clean independent review of the P-1/P-2 provenance resolution (§7, "P-1/P-2
+provenance resolution — approval record"). §§5.1–5.7 are the **canonical** statement of the
+approved rules; §7 keeps only the decision record, the rationale and the remaining stages, and
+the acceptance cases after it carry the approved matrix R1–R77. **Approval is of the design
+only.** Its **decision core (M3b4a)** evaluates these rules over supplied evidence and returns
+decisions and symbolic plans; it is approved (2026-10-20). A **dormant executor (M3b4b)** now
+binds it to the real source and target and executes its plans when explicitly invoked. No
+application path invokes it. It was independently reviewed (clean) and approved by the user on
+2026-10-20 (§7, "M3b4b implementation status"). What a user sees and may do in a blocked, halted
+or faulted state is U2's first-version policy, decided on 2026-10-20 and canonical in §6.
+**No installation's data has been migrated, and nothing is verified on a real engine
+or a device or production-ready:** the executor's evidence is class M (mocked engine), the
+recovery interface (M3b4c) is dormant and awaiting review, the production activation authority still reports
+`unavailable`, and production cutover (M3b5) has not happened. The approved identifiers — I-1–I-13, L0,
+A′1–A′7, PV1–PV14, E′1–E′12, AP-D3/AP-K1′/AP-COPY/AP-CC/AP-ACT, CE1–CE5 and R1–R77 — are kept
+as reviewed, so that the review, the approval and later tests refer to the same rows.
+
 Applies to an installed iOS app upgrading in place. **Browser→app transfer is out of scope
 (P2); this is the in-app engine migration P2 explicitly does not waive.**
 
@@ -2705,31 +2757,228 @@ Two earlier rules were unsafe and are **withdrawn**:
 > the domain writes its **default** over data that still exists in the source. Silent loss
 > disguised as a clean install.
 
-##### 5.1 Transaction and recovery model — CHECKPOINTED (the one canonical model)
+**Superseded on 2026-10-19 and no longer in force:** adopting a source marker found without a
+target record (now PV5, blocked); the unconditional "abandon and re-enumerate" of an
+`enumerating` record (now E′5/E′6, gated on `entryKeys`); classifying an uncertain commit only by
+comparing progress with rows and "replaying" an uncommitted batch (now I-11: decide from durable
+state, re-derive the remaining keys, and treat a warm mismatch as a detected fault, I-13); and a
+`verified` record activating without complete progress and target evidence (now A′6, AP-CC and
+AP-ACT).
 
-Earlier text asserted three incompatible things (copy+activation atomic; copy+verified atomic;
-"no multi-key atomicity needed") while also assuming per-key progress survived a crash. **One
-model is chosen:**
+##### 5.1 Transaction, recovery and fault model — the canonical invariants
 
-- **Unit of commit = one checkpoint transaction.** Each transaction writes a **batch of
+- **Unit of commit = one checkpoint transaction.** Each checkpoint writes a **non-empty batch of
   key/value rows AND the updated `copied` set of the activation record together**. Progress is
   therefore never out of step with data: there is no committed state in which progress claims
   a key that is not present, or a key is present that progress does not know about.
-- **What survives process death:** exactly the **last committed checkpoint**. Nothing else.
-- **What rolls back:** an interrupted checkpoint rolls back **entirely** — its rows *and* its
-  progress entry. There is no partial batch.
-- **Activation is a separate, final transaction** that re-validates the evidence (5.3) and sets
-  `phase = "active"`. **A validated committed activation — not the return of any single API
-  call — is the authority switch.**
+- **What survives process death:** exactly the **last committed transaction**. Nothing else.
+- **What rolls back:** an interrupted transaction rolls back **entirely** — a checkpoint's rows
+  *and* its progress entry. There is no partial batch.
+- **Copying completion (AP-CC) and activation (AP-ACT) are separate, final transactions.** Each
+  reads complete target evidence **inside** its own transaction before changing the phase;
+  `verified` is committed only by AP-CC, and `active` only by AP-ACT. **A validated committed
+  activation — not the return of any single API call — is the authority switch.**
 - **Migration needs multi-key atomicity INTERNALLY; `StorageAdapter` still promises none.**
-  The transaction lives inside the migration module over the native engine's own connection.
-  No repository sees it, and the public interface is unchanged. The old "a single marker means
-  no atomicity is needed" claim is **withdrawn**.
+  The transactions live inside the migration module over the native engine's own connection.
+  No repository sees them, and the public interface is unchanged.
 - **Only a validated `active` state (§5.4 row B4) mounts the ordinary identity, sync and
-  sporting consumers.** A blocked state renders the failure/recovery interface per §6 **and
-  nothing else**. Nothing mounts mid-migration.
-- **Source cleanup may begin only after a committed `active`**, and only under 5.5's
+  sporting consumers.** A blocked decision, a halted plan and a detected fault render the
+  failure/recovery interface per §6 **and nothing else**. Nothing mounts mid-migration.
+- **Source cleanup may begin only after a committed `active`**, and only under §5.5's
   re-verification rule.
+
+**The invariants I-1–I-13 (approved 2026-10-19).**
+
+- **I-1 — positive evidence only.** Absence is established only by a successful read or
+  enumeration returning nothing. A failed read of the source, the marker, the target record or
+  the target rows is never absence.
+- **I-2 — target row enumeration.** A migration-only capability over the migration module's own
+  connection lists every key in the target other than the activation record and the fault
+  latch (I-13), or reports `read_failed`. Like `EnumerableStorageSource` (§3) it is not added to
+  `StorageAdapter`. The activation record and the fault latch live under reserved locations
+  disjoint from every eligible key, and no repository reads either.
+- **I-3 — the marker.** One fixed key in a migration-owned namespace, outside every eligible
+  family and the retired legacy keys; never copied and never eligible. Its value is a canonical
+  UUID, and anything else is malformed. **No automatic path removes it** — retirement included —
+  so after activation it remains a source-side tombstone. It is consulted only when there is no
+  record or a pre-`active` record, never for an `active` one.
+- **I-4 — record-first (K4).** The marker is written only once a committed record carrying the
+  same `storeIdentity` is positively established. In AP-D3 that means a **confirmed** commit of
+  the new record; if that commit's outcome is unknown, the plan halts without writing the
+  marker, and the marker is written, if at all, by a later AP-K1′ that observes the committed
+  record. In K1′ and K2 the existing, already-committed record carries the id, so the marker
+  write is the plan's **first** step, before any target transaction.
+- **I-5 — D3 entry (K6).** D3 is entered only over a successfully enumerated, non-empty eligible
+  set, which becomes the record's `entryKeys`.
+- **I-6 — nothing is staged in `enumerating`.** The `enumerating → copying` transition commits
+  the complete, non-empty manifest, `copied = ∅` and the new phase in one transaction, carries
+  `entryKeys` over unchanged, and is committed only if the manifest contains every `entryKeys`
+  key. No application row is committed while the phase is `enumerating`.
+- **I-7 — copy-time verification.** A checkpoint stages a value only if the digest of the exact
+  bytes read equals its manifest fingerprint; otherwise the plan halts before that checkpoint
+  and the next evaluation blocks (E′7). The digest is a standard collision-resistant hash from a
+  platform API, not custom cryptography; its availability inside the WebView is an unverified
+  engineering check.
+- **I-8 — no pre-`active` record is deleted.** K1′'s abandonment is one in-place replacement
+  transaction that never passes through "no record".
+- **I-9 — a blocked decision is not a halted action, and an unknown outcome is not "no
+  effect".**
+  - A **blocked decision** is computed from one read-only evidence snapshot. It writes nothing
+    to either store, so a re-evaluation sees the same evidence. It reports **every** failing
+    check, not only the first match, for §6's interface, whose user-visible group follows
+    all of them (§6.2).
+  - A **permitted action** is an ordered plan (§5.4a). Each step is one source marker write, one
+    target transaction, or reads. A step that re-checks a precondition does so immediately
+    before the write it guards; a failed re-check halts **before** that write is issued.
+  - Every write step ends in exactly one of three states: **confirmed** (positively
+    acknowledged), **outcome unknown** (issued, then rejected, failed, left unanswered or
+    interrupted), or **not issued**. A rejection is recorded as *outcome unknown* even where
+    the platform documents it as "not stored": whether WebKit's `localStorage` or the SQLite
+    plugin can apply a write and then report failure is unmeasured. Only a later read decides
+    what happened (§5.4a, "Recovery").
+  - A step that fails or ends *outcome unknown* **halts** the plan at that step, and nothing
+    after it is issued. Confirmed steps stay in effect, and the unknown step may have taken
+    effect too. There is no compensating write and no cross-store rollback. The halt report
+    lists the confirmed steps, the one step whose outcome is unknown (if any) and the steps
+    not issued — never "nothing changed". A store the plan never issued a write to is untouched
+    by it: a plan that halts at its marker step has issued no target transaction.
+  - **Re-evaluation** starts from the top of the order (I-10) on a positively reopened target,
+    from durable evidence plus any contrary evidence the running process still holds (I-11,
+    I-13). Committed progress is part of that evidence: it is never discarded and never
+    replayed.
+  - **Retry and relaunch.** Re-evaluation happens on the next launch, and on any recheck the
+    recovery surface offers. When a recheck is offered, and how a block or a halt is worded, is
+    U2's first-version policy (§6.2, §6.3, §6.8): a recheck follows this rule, never resumes a
+    known contradiction and never replaces warm evidence with a new cold runner. Any automatic
+    re-evaluation within one launch is bounded — the bound is an engineering parameter, not
+    specified here — and each one follows this rule.
+  - Neither a blocked decision nor a halted plan mounts ordinary consumers. Staged rows, the
+    record, the original manifest and `entryKeys` are never deleted by either.
+- **I-10 — order and readback.** The fault latch (L0, I-13) first, then Group A with the A′
+  predicates, then Group B for an `active` record (the marker is not read), then Group C (C1
+  blocks first), then the provenance table (§5.2), then Group E (§5.4). A same-connection readback is never commit evidence: after
+  an unknown outcome, evidence comes from a positively reopened connection (§5.5; the M3b1
+  tooling follows the same rule). Reading committed rows is evidence of **content**, not of
+  power-loss durability, which remains unmeasured (§2).
+- **I-11 — recovery from validated durable state, plus any contrary evidence the running
+  process still holds.**
+  - *Model assumption, stated and not proven:* each target transaction is atomic, so after an
+    unknown outcome or a process death the durable target holds either the complete
+    before-state or the complete after-state. This is §5.1's model. Real-engine evidence covers
+    termination **before** COMMIT on a simulator only; termination during COMMIT and power loss
+    are unmeasured (§7, M3b1 entries).
+  - *Cold:* a fresh process, with none of the earlier plan's memory, evaluates the decision
+    order (I-10) from durable evidence alone. It needs no vanished identifier, timestamp,
+    expected byte string or batch description, and it never reconstructs one and presents it
+    as the earlier plan's intent: an AP-D3 that runs again after a creation that did not commit
+    is a **new** attempt with new ids.
+  - *Warm:* the process survives an unknown outcome. The plan is abandoned at that step (I-9),
+    the target is reopened and read, and what is read is **compared** with what the plan
+    issued — the exact record bytes before and after the transaction, and the rows it would
+    insert. Exactly one of three results follows:
+    - **equals the after-state** — the record is byte-identical to the issued after-state and
+      every inserted row is present with its issued bytes ⇒ the transaction committed; evaluate
+      the decision order as a cold start would;
+    - **equals the before-state** — the record is byte-identical to the issued before-state and
+      none of the inserted rows is present ⇒ it did not commit; evaluate as a cold start would;
+    - **matches neither** ⇒ a **detected fault** (I-13): migration stops, whatever the decision
+      order would select.
+  - **Warm and cold choose the same action when their evidence is the same** — a cold start, or
+    a warm comparison that found the before- or the after-state. A warm comparison that found
+    neither is **additional, positive contrary evidence**, and it overrides the table. It is
+    never mere report text. The same holds whenever the running process reads durable target
+    state that contradicts a step it saw **confirmed** — for example, a confirmed checkpoint
+    whose rows are missing or different after a reopen.
+  - *Why durable state is sufficient for genuine outcomes.* Every before-state and after-state
+    of every transaction is itself a state that §§5.2–5.4 classify (§5.4a, "Recovery"). Progress is
+    read from the durable `copied`, so a committed checkpoint is never chosen again; rows and
+    progress that disagree block (E′2); completion and activation re-read complete target
+    evidence; a committed `active` reaches L0, A/A′ and B4 without the plan or the source; and
+    only B4 mounts, so no cold start mounts partial data.
+  - *What a cold start cannot detect — undetected corruption, distinct from a detected fault.*
+    A durable state that is well-formed and internally consistent but is not what any issued
+    transaction wrote — a failure of the engine itself — is treated as the state it appears to
+    be when **no** running process detected it, or when the detection's latch did not persist
+    (I-13). In `enumerating` nothing is staged, so no last copy is exposed; from `copying` on,
+    E′2–E′4 and §5.5 still require the record, the rows and the source to agree. Detecting more
+    would need the plan's memory, which a cold start does not have.
+  - *A general journal — considered, not proposed.* A target-side journal of in-flight
+    transactions would be one more independently failable write with its own ordering and
+    interruption cases, and for genuine outcomes it would select no action the durable state
+    does not already determine. The narrower fault latch of I-13 is adopted instead, and
+    **RQ-1 is resolved by I-13** (approved 2026-10-19).
+- **I-12 — progress.** Order the states by (no record < `enumerating` < `copying` < `verified`
+  < `active`; then the size of `copied`). Every committed transaction in §5.4a strictly increases
+  this measure, except K1′'s replacement, which the same plan always follows with the
+  `enumerating → copying` transition. A checkpoint batch is never empty, and an empty remaining
+  set selects completion (E′10), not another checkpoint. So an evaluation never selects an
+  action that commits nothing: without interruption or failure, every plan ends in activation;
+  with them, the plan halts and re-evaluation resumes from committed progress.
+- **I-13 — a detected fault stops migration, and a latch carries the stop across relaunch.**
+  This resolves RQ-1.
+  - *Trigger — positive evidence held by a running process, and nothing else:* a warm "matches
+    neither" (I-11), or durable target state that contradicts a step the process saw
+    confirmed. A read failure is not a detected fault; it blocks or halts under the existing
+    rules. A cold start detects no faults in this sense: every inconsistency it *can* see is
+    already a blocking row (A, A′, E′2–E′4).
+  - *Immediately, in the process:* an in-memory fault latch is set. From then until the
+    process ends there is no further plan step, no marker write, no target transaction other
+    than the latch write below, no activation, no mounting of ordinary consumers and no
+    automatic re-evaluation; only the recovery surface renders. Nothing that surface offers
+    (§6) resumes migration while the in-memory latch stands; a read-only inspection for display
+    cannot resume it either.
+  - *The durable latch — the only write permitted after a detection.* One target transaction
+    inserts a fault-latch row at a reserved location, outside every eligible key, outside the
+    activation record and excluded from I-2's enumeration; no repository reads it. It changes no
+    application row, no activation-record field and no marker. Its content is diagnostic —
+    schema version, transaction kind, phase, and the issued before-, issued after- and observed
+    record bytes, which hold key names and fingerprints but no application values. **Its
+    presence alone is the latch.**
+  - *Outcomes of the latch write.* Confirmed ⇒ the stop persists across relaunch. Rejected,
+    failed or unknown ⇒ the in-memory latch still holds for this process, and the latch write —
+    nothing else — may be retried a bounded number of times (an engineering parameter). Death
+    before or during the write ⇒ the relaunch reads whatever is durable.
+  - *Relaunch:* row **L0** (table below) is evaluated before Group A.
+  - *If the latch did not persist,* a relaunch that positively reads no latch cannot know that
+    a fault was detected. It evaluates durable state as any cold start does, and the fault
+    degrades to the undetected residual of I-11. This is stated, not hidden: the latch narrows
+    the window and does not close it. It makes no write atomic — it is one more independently
+    failable write — and its own durability is as unmeasured as every other write's (I-10).
+  - *Target only.* A fault can be detected during activation, leaving a record that already
+    reads `active`. A source-side latch would make the old source part of post-activation
+    access, which the post-activation invariant forbids; the source's durability is weaker
+    besides.
+  - *Clearing.* No automatic path clears the latch — not retirement, not D1, not a later plan.
+    U2's first-version policy (§6.5) offers **no** general user control that clears it either.
+    Removing it needs a later, separately specified, reviewed and explicitly authorised
+    targeted recovery procedure that defines the inspection, authority, repair and
+    confirmation, and removing the latch alone repairs nothing. None exists, so a latched
+    installation stays blocked, including one whose record already reads `active`. This is U1:
+    a known contradictory state blocks.
+  - *Cost, stated.* L0 adds one target read to every launch, permanently, and a failure of that
+    read blocks, as B1 does for any failing target. It does not consult the source.
+
+**Prohibitions.** No migration path may revive W1 or W2; recreate provenance from a guess about history;
+discard, overwrite or re-copy staged rows; re-enumerate away a missing key (only `enumerating`
+re-enumerates, and under K6 only while every `entryKeys` key is still present); treat a failed
+read as absence; write to either store as the result of a blocked decision; promise that a
+halted action left the stores unchanged, or attempt a cross-store rollback; delete a
+pre-`active` record; overwrite or adopt a foreign or malformed marker; read the marker for an
+`active` record; compare live application rows with historical manifest fingerprints after
+activation; mount ordinary consumers before a validated committed activation; continue, activate
+or mount after a detected fault, or clear a fault latch automatically (I-13); or make a valid
+activated target depend on the old source.
+
+**Sporting-data recovery is not identity authorisation.** Migration copies identity-continuity
+keys as bytes and never creates, resolves or drops an access barrier, trusted-device record,
+pending intent or barrier resolution. A vanished identity key blocks like any other (rows E′5,
+E′7, E′8), so no automatic path activates a workspace lacking a barrier the source held when D3
+began. An activation verdict is a storage-readiness verdict only: the identity gate still
+decides access after mounting. Provider credentials — present, absent or unreadable, in either
+store — are never an input to a migration decision and never authority to open a Profile, and
+no recovery action (§6) may sign anyone in, clear a barrier or select a Profile. A key that
+vanished **before** D3 began is outside what migration can detect; migration neither improves
+nor worsens what the identity gate does with that state today.
 
 **SQLite does not imply an unconditional power-loss guarantee**, and this document does not
 claim one. Durability depends on configuration, and **Stage M3b1 must verify, not assume**:
@@ -2746,37 +2995,58 @@ passed native build and not verified durability.**
 
 ##### 5.2 Activation record and store provenance
 
-One versioned JSON document in the **target**:
+One versioned JSON document in the **target**, under a reserved location disjoint from every
+eligible key (I-2):
 
 | Field | Purpose |
 | --- | --- |
 | `schemaVersion` | Of the **activation record**. Never conflated with a domain record's version |
 | `phase` | `enumerating` \| `copying` \| `verified` \| `active` |
-| `migrationId` | One attempt. A restarted enumeration gets a new id |
-| `storeIdentity` | See below |
-| `manifest` | Eligible keys **with a content fingerprint captured at enumeration** |
+| `migrationId` | One attempt. AP-K1′'s in-place replacement gives a new one; no evaluation uses it as evidence on its own (I-11) |
+| `storeIdentity` | The `installationStoreId`; see below |
+| `entryKeys` | The non-empty eligible key set enumerated when D3 began — key names only (I-5). Historical after activation |
+| `manifest` | Eligible keys **with a content fingerprint** (a digest, I-7) captured before copying began |
 | `copied` | Keys committed so far (updated in the same transaction as their rows) |
 | `activatedAt` | Written only by the activation transaction |
 | `sourceRetirement` | `not_started` \| `in_progress` \| `complete`, plus keys already removed |
 
-**Provenance is created, not merely named** — but it is a **pre-activation** device, and it
-must not become a permanent dependency on evictable storage.
+**Record shape per phase.** A field present or absent contrary to this table blocks (A′2):
 
-At the first enumeration a UUID `installationStoreId` is generated and written **twice**: into
-the target activation record, and into a dedicated **source marker key**. Naming
-`sourceId`/`targetId` without this creation-and-comparison step would establish nothing.
+| Field | `enumerating` | `copying` | `verified` | `active` (migrated) | `active` (D1, nothing migrated) |
+| --- | --- | --- | --- | --- | --- |
+| `migrationId`, `storeIdentity` | canonical UUIDs | canonical UUIDs | canonical UUIDs | canonical UUIDs | canonical UUIDs |
+| `entryKeys` | non-empty | non-empty, ⊆ manifest | non-empty, ⊆ manifest | non-empty, ⊆ manifest (historical) | empty |
+| `manifest` | **absent** | non-empty | non-empty | non-empty (historical) | empty |
+| `copied` | **absent** | ⊆ manifest | **= manifest keys** | **= manifest keys** (historical) | empty |
+| `activatedAt`, `sourceRetirement` | absent | absent | absent | present | present |
 
-**The two writes are to different stores and are NOT atomic.** Each observation below gets one
-action; **two of them are conservative blocks over an ambiguity this protocol cannot resolve**,
-not reconciliations:
+**Provenance is created, not merely named — record first.** D3 (plan AP-D3) commits the
+`enumerating` record, carrying a new `installationStoreId` as `storeIdentity` and `entryKeys`,
+**before** the source is touched; only after that commit is **confirmed** is the same id written
+into a dedicated **source marker key** (I-3, I-4). The marker lives in a migration-owned
+namespace outside every eligible family, is never copied, and is never removed by any automatic
+path, so after activation it remains a source-side tombstone. The two writes are to different
+stores and are **not** atomic; the provenance table below gives each observation one action.
 
-| Observed | Interpretation | Action |
-| --- | --- | --- |
-| Neither marker, target empty, source readable and empty | Fresh installation | Proceed (M3b0 §5.4 row D1) |
-| **Source marker only, and the target is empty** | Nothing was ever committed to the target, so no record can be contradicted | **Adopt it**: reuse that id when writing the target record. (A marker with a *non-empty* target is D2 — blocked — before this row is reached) |
-| **Both present, ids match** | Established pair | Proceed |
-| **Both present, ids differ** | Not the pair this record describes | **BLOCKED** before activation (M3b0 §5.4 row E1) |
-| **Target record present and pre-`active`, source marker absent** | **AMBIGUOUS — see below** | **BLOCKED** (one conservative action) |
+**Provenance table — evaluated in order, first match wins.** Reached after L0, Group A
+(with A′) and Group C (§5.4). A valid `active` record never reaches it.
+
+| # | Record | Observation | Action | Replaces (superseded rule) |
+| --- | --- | --- | --- | --- |
+| PV1 | none | Target row enumeration failed | **BLOCKED**, retry | — (new: a failure is never "target empty") |
+| PV2 | none | Target holds application rows | **BLOCKED**, whatever the marker says | D2 |
+| PV3 | none | Target empty; marker read failed | **BLOCKED**, retry | — (new) |
+| PV4 | none | Target empty; marker malformed | **BLOCKED**; bytes preserved; never adopted or overwritten | — (new) |
+| PV5 | none | Target empty; marker valid | **BLOCKED.** Under K4 a marker without a record means a committed record was lost or a commit acknowledgement was false; the source may be stale or partially retired | §5.2 "adopt" row |
+| PV6 | none | Target empty; marker absent; eligible set empty | **D1** — fresh install | D1 |
+| PV7 | none | Target empty; marker absent; eligible set non-empty | **D3** — plan AP-D3 | D3 |
+| PV8 | pre-`active` | `storeIdentity` missing or malformed | **BLOCKED** (already enforced by A′1–A′2; listed so the table stands alone) | E1 (record half) |
+| PV9 | pre-`active` | Target row enumeration failed | **BLOCKED**, retry | — (new) |
+| PV10 | pre-`active` | Marker read failed | **BLOCKED**, retry | — (new) |
+| PV11 | pre-`active` | Marker malformed | **BLOCKED**; bytes preserved | — (new) |
+| PV12 | pre-`active` | Marker valid, id differs — **P-2** | **BLOCKED in every phase.** Marker never overwritten; record never replaced | E1 (mismatch); §5.2 P-2 |
+| PV13 | pre-`active` | Marker valid, id equal | Group E with marker = matched | §5.2 "ids match" |
+| PV14 | pre-`active` | Marker positively absent — **P-1** | Group E with marker = absent. Only E′6, E′9, E′10 and E′11 continue | §5.2 P-1 row |
 
 **After a validated committed activation the source marker is no longer consulted at all.**
 Three phases must be kept apart:
@@ -2786,42 +3056,34 @@ Three phases must be kept apart:
    consistent target is the authority **on its own**. **A missing, cleared or unreadable source
    never blocks ordinary access**, because the source is exactly the evictable storage this
    whole stage exists to stop depending on. (Otherwise clearing WebView storage after a
-   successful migration would lock the user out of their own migrated data — the failure mode
-   this correction removes.)
+   successful migration would lock the user out of their own migrated data.)
 3. **Source retirement — optional.** It *may* be prevented by a missing or unreadable source:
    nothing can be verified before deletion, so nothing is deleted. Retirement stalls; access
    does not.
 
 **Fail-closed handling is retained for genuinely ambiguous or invalid TARGET state** — an
-unreadable, malformed, wrong-version or internally inconsistent activation record still blocks,
-regardless of what the source looks like.
+unreadable, malformed, wrong-version or internally inconsistent activation record, and a fault
+latch, still block, regardless of what the source looks like.
 
-**Two named PROVENANCE blockers, not solved problems** — the two of §7's three open M3b4 items
-that arise here. **This protocol does NOT claim every interleaving is resolved, and differing
-ids are not the only case that blocks.**
+**P-1 and P-2 — resolved at the design level (2026-10-19).**
 
-**Blocker P-1 — the missing source marker is ambiguous.** "Target record written, marker write
-never landed" and "marker written, then the source was later cleared" produce the **identical
-observation**: a pre-`active` record with no marker. The protocol records nothing that
-distinguishes them — the marker's own absence is the only evidence, and it is the same in both
-histories. Writing a fresh marker from the record would therefore be a **guess**, and if the
-true cause was source clearing it would manufacture provenance for a source whose generation
-evidence is already untrustworthy. **The one conservative action is to block**, and this
-document does not pretend to distinguish the causes. Making this case recoverable requires
-evidence the protocol does not currently record, and designing that evidence is an **open
-engineering blocker for Stage M3b4**.
+- **P-1 — a pre-`active` record whose marker is positively absent (PV14).** In `enumerating` it
+  continues by **K1′** (E′6, AP-K1′) only while every `entryKeys` key is still in the source and
+  no target row exists; otherwise E′1 or E′5 blocks. In `copying`/`verified` it continues by
+  **K2** (E′9–E′11), re-writing the marker under the record's **existing** id, only when every
+  A′, E′1–E′8 and §5.5 check passes. Neither claims to know which history occurred: each acts
+  only where the durable evidence shows that nothing would be discarded or overwritten. An
+  unreadable marker (PV10) or a malformed one (PV11) blocks.
+- **P-2 — a valid, different marker before activation (PV12).** **BLOCKED in every
+  pre-activation phase**, including `enumerating` with nothing staged. The foreign marker is the
+  only surviving evidence of another attempt, so it is **never overwritten or adopted**, and the
+  record is never replaced. Approving this handling is **not** approval to resolve P-2
+  automatically. Under U2's first-version policy it stays blocked (G3, §6.8); resolving it
+  needs a separately specified targeted recovery procedure that does not exist (§6.5).
 
-**Blocker P-2 — two different ids before activation.** It may be a reinstall over a foreign
-store, or a restored backup pairing. This design **blocks** rather than guessing; automatic
-resolution is likewise an **open M3b4 blocker**.
-
-A **proposed, unapproved** design brief for both blockers is in §7 ("P-1/P-2 provenance design
-brief"). It changes nothing in this section.
-
-**Neither blocker affects an activated installation.** Both are pre-activation only, so the
-established invariant stands unchanged: **after a validated committed activation, losing the
-old source — marker included — never blocks ordinary access** (§5.4 rows B2/B4). Blocking here
-withholds only the migration itself, which has not yet happened.
+**Neither affects an activated installation.** Both are pre-activation only: **after a
+validated committed activation, losing the old source — marker included — never blocks ordinary
+access** (§5.4 rows B2/B4).
 
 ##### 5.3 What is copied, and what "verified" means
 
@@ -2834,30 +3096,43 @@ withholds only the migration itself, which has not yet happened.
   repair rule is invented here, and **no known key is ever skipped** — which is what closes
   W2.
 - An **unsupported `schemaVersion` on the ACTIVATION RECORD** is a different thing entirely
-  and **blocks** (5.4 rows A3/A4).
+  and **blocks** (§5.4 rows A3/A4).
 
-**Evidence.** Each manifest entry carries the source fingerprint; each committed row is
-written in the same transaction as its progress entry. Activation re-reads the target rows and
-requires every `manifest` key to be present and to match its fingerprint.
+**Evidence.** Each manifest entry carries the source fingerprint, a standard collision-resistant
+digest over the exact bytes (I-7; the algorithm and its availability inside the WebView are
+still to be verified). A checkpoint stages a value only if the digest of the bytes it read
+equals that fingerprint, and each committed row is written in the same transaction as its
+progress entry. **`verified` means exactly this:** AP-CC committed it after reading, inside its
+own transaction, a target whose application rows equal the manifest's keys, every row matching
+its fingerprint, and `copied` equal to the manifest's keys. **Activation does not trust the
+phase:** AP-ACT re-reads the same complete evidence inside the activation transaction and
+re-validates the source immediately before it (§5.5).
 
 **Durability caveat that gates retirement:** fingerprint matching proves *what* was written,
 not that it reached stable storage. **Source retirement additionally requires the engine's
-committed-transaction acknowledgement** (5.1). On an engine that cannot give one, retirement
+committed-transaction acknowledgement** (§5.1). On an engine that cannot give one, retirement
 is **not implemented at all** and the source is simply kept.
 
 ##### 5.4 State and transition table
 
-Evaluated **in order; the first matching row wins**, and the order is chosen so that specific
-invariant failures are tested **before** the generic phase rows that would otherwise mask them.
-Every row states one unambiguous action. **Phase is never trusted on its own**: record
-metadata and manifest well-formedness are checked explicitly, staging progress is checked
-against staged rows **before activation only** (E0), and a row that depends on the record
-being valid is only reached after Group A has passed.
+Evaluated **in order; the first matching row wins**: **L0**, then **Group A** (A1–A6, then
+A′1–A′7), then **Group B** for an `active` record, then **Group C**, then the **provenance
+table** (§5.2), then **Group E** (I-10). Specific invariant failures are tested **before** the
+generic rows that would otherwise mask them, and every row states one unambiguous action.
+**Phase is never trusted on its own.**
 
-**Group A — target activation-record integrity, evaluated first.** Nothing below interprets
-`phase` until every row here has passed. **Group A inspects the activation record only.** It
-never asserts that a particular application key still exists or still holds a particular value
-— that check is confined to pre-activation staging (Group E, row E0).
+**Row L0 — the fault latch, evaluated first (I-13).**
+
+| # | Observation | Action |
+| --- | --- | --- |
+| L0a | Fault-latch read failed | **BLOCKED**, retry; never read as "no latch" |
+| L0b | Fault latch present — any bytes, well-formed or not | **BLOCKED** as a detected fault, whatever the record's phase, **including `active`** |
+| L0c | Fault latch positively absent | Continue to Group A |
+
+**Group A — target activation-record integrity.** Nothing below interprets `phase` until every
+row here has passed. **Group A inspects the activation record only.** It never asserts that a
+particular application key still exists or still holds a particular value — that check is
+confined to pre-activation staging (Group E).
 
 | # | Condition | Action |
 | --- | --- | --- |
@@ -2868,8 +3143,25 @@ never asserts that a particular application key still exists or still holds a pa
 | A5 | `manifest` malformed, or absent while `phase ∈ {copying, verified, active}` | **BLOCKED** |
 | A6 | `copied` is not a subset of `manifest` | The record contradicts itself — **BLOCKED**. This is a check on the **record**, not on application data |
 
+**Group A′ — phase-shape and integrity predicates, evaluated after A1–A6** and still before
+anything interprets `phase`:
+
+| # | Condition on the record | Action |
+| --- | --- | --- |
+| A′1 | `migrationId` or `storeIdentity` is not a canonical UUID | **BLOCKED** |
+| A′2 | A field is present or absent contrary to the phase's column above | **BLOCKED** |
+| A′3 | `entryKeys` malformed: duplicates, a key that fails the §1 eligibility test, or empty in a pre-`active` phase | **BLOCKED** |
+| A′4 | Manifest malformed: duplicate or ineligible keys, a fingerprint that is not a well-formed digest, or empty in `copying`/`verified` | **BLOCKED** (narrows A5, which admits an empty manifest) |
+| A′5 | `entryKeys` ⊄ manifest keys, in `copying`, `verified` or a migrated `active` record | **BLOCKED** |
+| A′6 | `copied` ≠ manifest keys in `verified` or `active` | **BLOCKED** (A6 already requires ⊆) |
+| A′7 | An `active` record whose `entryKeys`, manifest and `copied` are neither all empty nor all non-empty | **BLOCKED** |
+
+For an `active` record these are **metadata checks on the record**, comparable to A1–A6. They
+never compare the manifest with live application rows: after activation, migrated keys remain
+ordinary mutable records, and B4 is unchanged.
+
 **Group B — `phase: active`, specific failures before the general case.** Reached only with a
-Group-A-valid record.
+record that passed L0, Group A and Group A′.
 
 | # | Condition | Action |
 | --- | --- | --- |
@@ -2886,42 +3178,43 @@ state. **A failed read is never an empty store.**
 | C1 | Source enumeration **failed** (`read_failed`) | **BLOCKED — source unavailable.** Retry later. Never read as "source empty", which would activate over a store that still holds data |
 | C2 | Source enumeration **succeeded and returned no eligible keys** | Genuinely empty source. Continue |
 
-**Group D — no activation record yet** (Group C passed):
+**No record yet** — the former Group D is now the provenance table's rows PV1–PV7 (§5.2): D1
+(fresh install) is PV6, D2 (populated target without a record) is PV2, and D3 (migrate) is PV7.
 
-| # | Condition | Action |
-| --- | --- | --- |
-| D1 | No record, target empty, source readable and empty (C2) | Fresh install. Commit `active`. Nothing to migrate |
-| D2 | No record, **target not empty** | Lost record, or a foreign store. **BLOCKED.** No import, no delete |
-| D3 | No record, target empty, eligible source keys exist | Enumerate → checkpointed copy → validate → activate |
+**Group E — pre-activation phases.** Reached only through PV13/PV14, with L0, Group A, Group A′
+and Group C passed. Every staging, conflict and divergence row precedes the four rows that
+continue.
 
-**Group E — pre-activation phases. Provenance and conflict are checked BEFORE any resume**, so
-neither `copying` nor `verified` can mask them:
-
-| # | Condition | Action |
-| --- | --- | --- |
-| E0 | **Staging progress and staged data disagree, in either direction**: a key in `copied` with no committed target row, **or** a committed target row for a manifest key absent from `copied` | The checkpoint invariant — rows and progress commit together — was violated. **BLOCKED.** Nothing is deleted or re-copied to "repair" it |
-| E1 | `storeIdentity` missing or mismatched (§5.2) | **BLOCKED** |
-| E2 | A **manifest key already exists in the target with a value that does not match the committed copy** | Unresolved authority — **BLOCKED.** Overwrite neither side. Checked for `enumerating`, `copying` **and** `verified` |
-| E3 | `phase: enumerating` | Nothing was staged, so nothing is deleted: **abandon the attempt record and re-enumerate** under a new `migrationId` |
-| E4 | `phase: copying`, eligible-set-and-content validation passes (§5.5) | Resume: remaining = `manifest` − `copied` |
-| E5 | `phase: copying`, validation **fails** | **BLOCKED — source generation changed.** §5.5 states what is preserved and what a human may authorise. **Nothing is deleted automatically** |
-| E6 | `phase: verified`, validation passes | Re-validate evidence, then commit the activation transaction |
-| E7 | `phase: verified`, validation **fails** | **BLOCKED**, exactly as E5. A `verified` record is **not** exempt from re-validation |
+| # | Phase | Condition | Action | Replaces (superseded rule) |
+| --- | --- | --- | --- | --- |
+| E′1 | `enumerating` | Any target application row | **BLOCKED** — I-6 violated | — (new; E0 does not reach `enumerating`) |
+| E′2 | `copying`/`verified` | Staging progress and staged rows disagree, in either direction | **BLOCKED**; no repair by deletion or re-copy | E0 |
+| E′3 | `copying`/`verified` | A target application row for a key outside the manifest | **BLOCKED**; the row is neither deleted nor activated into | — (new) |
+| E′4 | `copying`/`verified` | A staged row whose bytes do not match its manifest fingerprint | **BLOCKED**; overwrite neither side | E2, made precise |
+| E′5 | `enumerating` | An `entryKeys` key absent from the current eligible set, including an empty source | **BLOCKED** — eligible data vanished after D3 began. Record kept; nothing re-enumerated | — (new; E3 would re-enumerate) |
+| E′6 | `enumerating` | Otherwise (marker matched or absent) | **AP-K1′** | E3, gated |
+| E′7 | `copying` | §5.5 set or content validation fails | **BLOCKED** | E5 |
+| E′8 | `verified` | §5.5 set or content validation fails | **BLOCKED** | E7 |
+| E′9 | `copying` | Validation passes; `manifest − copied` non-empty | **AP-COPY** | E4 (+K2) |
+| E′10 | `copying` | Validation passes; `manifest − copied` empty | **AP-CC** — copying completion | — (new; E4 had no exit) |
+| E′11 | `verified` | Validation passes | **AP-ACT** — activation | E6 (+K2) |
+| E′12 | — | Anything else | **BLOCKED** — a specification defect, not a default | §5.4 completeness rule |
 
 **Reachability.** Each row is reachable with one unambiguous action, because the masking
-orderings were removed: B1 and B2 are tested **before** B4's general "active" case, E0–E2
-**before** E3–E7, and C1 **before** anything may conclude "nothing to migrate". **Blocked
-states never delete anything and never make source data authoritative.**
+orderings were removed: L0 precedes everything; B1 and B2 precede B4; the A′ shape predicates
+and E′1–E′5 precede every continuing row; E′7/E′8 precede E′9–E′11; and C1 precedes anything
+that may conclude "nothing to migrate". **Blocked decisions never write and never make source
+data authoritative.**
 
 **The manifest is migration evidence, not a permanent constraint on application data — this is
 the canonical statement, referenced rather than repeated elsewhere.** The checkpoint invariant
 (a batch's rows and its progress commit together) governs **staging, before activation**, and
-E0 is the only row that enforces it. **After a validated committed activation the manifest
-becomes a historical record of what was copied.** It is *not* an existence or content
-constraint: the migrated keys are ordinary mutable application records, and every repository
-keeps its existing contract to write, overwrite, remove and create keys freely. A migrated key
-that a repository later removes, changes or adds is **not** evidence of a failed migration and
-must never block, be re-imported, or be restored from the source.
+Group E enforces it. **After a validated committed activation the manifest — like `entryKeys`
+and `copied` — becomes a historical record of what was copied.** It is *not* an existence or
+content constraint: the migrated keys are ordinary mutable application records, and every
+repository keeps its existing contract to write, overwrite, remove and create keys freely. A
+migrated key that a repository later removes, changes or adds is **not** evidence of a failed
+migration and must never block, be re-imported, or be restored from the source.
 
 The concrete case this rule exists for: `curling.identity.trustedDevice.v1` is a migrated
 identity key, and `identityTransitionCoordinator`'s sign-out protocol legitimately calls
@@ -2930,46 +3223,168 @@ healthy target, and a `copied` key with no row — **ordinary, correct state, re
 repository is asked to maintain migration progress, and **no new domain-write protocol is
 introduced**: nothing above the migration module is aware the manifest exists.
 
-What still applies after activation is unchanged: **activation-record metadata validation**
-(A1–A6) and **real storage failures** (B1).
+What still applies after activation is unchanged in kind: **L0**, **activation-record metadata
+validation** (A1–A6 and A′1–A′7, which read the record only) and **real storage failures** (B1).
 
 **Completeness is claimed only for the cases specified here.** An observation matching no row
-is itself a defect in this specification and must **block**, not fall through to a default.
+is itself a defect in this specification and must **block** (E′12), not fall through to a
+default.
 
-**Mounting rule.** **Only B4 — a Group-A-valid `active` record over a healthy target — permits
-mounting the normal identity, sync and sporting consumers.** Every blocked state may render the
-failure/recovery interface **and nothing else**; no blocked or pre-activation state may mount
-ordinary consumers against a partial or unvalidated target.
+**Mounting rule.** **Only B4 — an L0-clear, Group-A-valid `active` record over a healthy
+target — permits mounting the normal identity, sync and sporting consumers.** Every blocked
+state may render the failure/recovery interface **and nothing else**; no blocked,
+pre-activation, halted or faulted state may mount ordinary consumers against a partial or
+unvalidated target.
+
+##### 5.4a Action plans, recovery from durable state, and why each automatic action is lossless
+
+**Action plans.** Each plan runs its steps in order under I-9, and an unknown
+outcome is resolved by I-11. "Halt" means: stop at that step, issue nothing further, report the
+confirmed, unknown and not-issued steps, and re-evaluate later. A plan keeps what it issued
+to compare with the reopened state after an unknown outcome (I-11).
+
+- **D1** (from PV6). One target transaction creating the `active` record with empty
+  `entryKeys`, manifest and `copied`, and `activatedAt` and `sourceRetirement` set; no marker.
+  Unknown ⇒ halt.
+- **AP-D3** (from PV7).
+  1. Target transaction: create the `enumerating` record — new `migrationId`, new
+     `storeIdentity`, `entryKeys` := the eligible set this evaluation enumerated — issued only
+     over no record and no application row. Unknown ⇒ halt; the marker is **not** written
+     (I-4).
+  2. Only after step 1 is confirmed: write the marker := `storeIdentity`. Rejected or unknown ⇒
+     halt; step 1 stays committed, and the source may or may not now hold the marker. Next
+     evaluation: PV13 or PV14 → E′6 (PV10/PV11 if the marker cannot be read or is malformed).
+  3. Read and digest every eligible value. Failure ⇒ halt; this step writes nothing.
+  4. Re-check that the eligible set still contains every `entryKeys` key (failure ⇒ halt
+     before issuing; next evaluation E′5). Target transaction `enumerating → copying` per I-6.
+     Unknown ⇒ halt.
+  5. Continue as AP-COPY.
+- **AP-K1′** (from E′6).
+  1. If the marker is absent, write it := the record's existing `storeIdentity`. Rejected or
+     unknown ⇒ halt with **no target transaction issued**; the source may now hold the marker.
+     Next evaluation: PV13 or PV14 → E′6 again.
+  2. Target transaction: replace the record in place — new `migrationId`; `schemaVersion`,
+     `storeIdentity` and phase unchanged; `entryKeys` := the current eligible set, which E′5 has
+     just shown to contain the old one; no other field. Unknown ⇒ halt. Whichever record is
+     then durable, old or new, is an `enumerating` record that A′, E′1 and E′5 validate on its
+     own merits; a cold start never uses either `migrationId` as evidence, and a surviving plan
+     compares the whole record, never the `migrationId` alone (I-11).
+  3–5. As AP-D3 steps 3–5.
+- **AP-COPY** (from E′9).
+  1. If the marker is absent (K2), write it := the record's `storeIdentity`. Rejected or
+     unknown ⇒ halt, with no target transaction issued.
+  2. Choose a **non-empty** batch from `manifest − copied`. Read each value and check its
+     digest against the manifest (I-7); a mismatch or read failure ⇒ halt, with nothing issued
+     by this step.
+  3. Checkpoint transaction: insert the batch's rows and set `copied := copied ∪ batch`.
+     Unknown ⇒ halt.
+  4. Repeat from 2 while `manifest − copied` is non-empty; then continue as AP-CC.
+- **AP-CC** (from E′10, or the end of AP-COPY) — **copying completion**.
+  1. The marker as in AP-COPY step 1.
+  2. Target transaction. **Inside it**, before any write: enumerate the target's application
+     rows (the set must equal the manifest's keys), read every row (each digest must equal its
+     fingerprint), and confirm `copied` equals the manifest's keys. A failed read or any
+     mismatch ⇒ roll back and halt; the next evaluation blocks on the matching row (PV9, E′2,
+     E′3 or E′4) or retries a failed read. Otherwise set phase `copying → verified`, with every
+     other field unchanged, and commit. Unknown commit or rollback ⇒ halt.
+  3. Continue as AP-ACT.
+- **AP-ACT** (from E′11, or the end of AP-CC) — **activation**.
+  1. The marker as in AP-COPY step 1.
+  2. Repeat §5.5 set and content validation of the source immediately before the transaction.
+     Failure ⇒ halt. A marker confirmed in step 1 — or written there with an unknown outcome —
+     may now be in the source, so the next evaluation reaches PV13 (or PV14) and blocks at E′8.
+  3. Target transaction. **Inside it**, the same complete target evidence as AP-CC step 2; a
+     failed read or mismatch ⇒ roll back and halt. Otherwise set phase `verified → active`,
+     `activatedAt` and `sourceRetirement := not_started`, with every other field unchanged, and
+     commit. Unknown ⇒ halt. A record already `active` is never re-activated: only E′11 issues
+     this transaction, and E′11 requires `verified`.
+  4. Re-evaluate from the top: a valid `active` record over a healthy target is B4, the only
+     state that mounts ordinary consumers.
+
+Reading the evidence **inside** the completion and activation transactions keeps the evidence
+and the phase change atomic with respect to the target. That is the sole purpose; it is not
+durability evidence (I-10). The source cannot be inside that transaction, so §5.5's
+validation-to-activation residual is unchanged. **Completeness is an activation prerequisite in
+two places**: AP-CC commits `verified` only over complete evidence, and AP-ACT re-reads the
+same evidence rather than trusting the phase.
+
+**Recovery — what the durable state shows after an unknown outcome or a cold start, and which
+row decides.** Death **before** a step is issued leaves the state the previous step produced,
+which is one of the states below. A marker that cannot be read, or reads malformed, reaches
+PV10 or PV11 in every case.
+
+| Marker write (source) | A surviving plan records | Next observation | Next row |
+| --- | --- | --- | --- |
+| Returned success | Confirmed — an in-process acknowledgement, not durability (acceptance case R2) | A later read may still find it absent | PV13, or PV14 if it was lost |
+| Rejected before applying | Outcome unknown (I-9) | The marker read | Absent ⇒ PV14 |
+| Applied, then rejected, or the answer lost | Outcome unknown | The marker read | Equal id ⇒ PV13; absent ⇒ PV14 |
+| Process death during the write | Nothing — no plan survives | The marker read | Equal id ⇒ PV13; absent ⇒ PV14 |
+
+In every marker case the target is untouched unless the plan had already issued a target
+transaction, and no continuing row depends on the marker being present (§7 approval record, K2).
+
+| Target transaction | Not committed — durable state ⇒ next row | Committed, acknowledged or not — durable state ⇒ next row | Durable evidence that decides |
+| --- | --- | --- | --- |
+| D1 creation | No record ⇒ PV6 again | `active` with empty lists ⇒ A′7 passes ⇒ B4 | A1–A6, A′, target health |
+| AP-D3 creation | No record, target empty, marker absent ⇒ PV7: a **new** attempt with new ids | `enumerating`, marker absent ⇒ PV14 ⇒ E′5 or E′6 | A′; target rows (E′1); the marker read; source ⊇ `entryKeys` (E′5) |
+| AP-K1′ replacement | The old `enumerating` record ⇒ E′5 or E′6 | The new `enumerating` record ⇒ E′5 or E′6 | As above; a cold start consults no `migrationId` |
+| `enumerating → copying` | `enumerating` ⇒ E′5 or E′6; nothing was staged, so re-enumeration loses nothing | `copying`, `copied = ∅`, no rows ⇒ E′7 or E′9 | A′5 (manifest ⊇ `entryKeys`); E′2; §5.5 against the manifest |
+| Checkpoint | `copied = C`, rows *C* ⇒ E′9 or E′10 | `copied = C ∪ B`, rows *C ∪ B* ⇒ E′9 or E′10 | E′2 (rows ⇔ `copied`) and E′4; the remaining set comes from the durable `copied`, so batch *B* is never chosen again |
+| Copying completion | `copying`, complete ⇒ E′10; AP-CC re-reads the evidence | `verified` ⇒ A′6, E′2–E′4, E′8 ⇒ E′11 | A′6; AP-ACT re-reads complete evidence |
+| Activation | `verified` ⇒ E′11; AP-ACT re-validates | `active` ⇒ A and A′ ⇒ B4; neither the marker nor the source is read | A1–A6, A′, target health |
+| Any, if the atomicity assumption failed | A malformed record ⇒ A2/A′; rows without progress or the reverse ⇒ E′2; a wrong row ⇒ E′4 | A well-formed, consistent but wrong state ⇒ **not detected by a cold start** (I-11) | — |
+| Any — **warm**, the comparison finds neither the issued before- nor after-state | **Detected fault** (I-13): in-memory latch; only the latch write; nothing mounts | Relaunch: latch present ⇒ L0b **BLOCKED**; latch positively absent ⇒ the table, as for any cold start (the undetected residual) | The surviving plan's comparison; afterwards, the latch alone |
+
+The table above describes **genuine** outcomes; a surviving plan that finds either column
+continues exactly as a cold start would. Its last row is the one case in which a surviving plan
+holds evidence a cold start lacks, and there the actions differ by design (I-11).
+
+**Why each automatic action serves every history that reaches it.** H1–H5 are the P-1 histories
+(§7, approval record, item 1).
+
+| Automatic action | Histories reaching it | Why one lossless action serves all | Residual, or missing evidence |
+| --- | --- | --- | --- |
+| PV6 — D1 | Fresh install; source wholly cleared before any attempt; target lost after an earlier D1 activation | No record and no marker: nothing on the device shows that eligible data existed, and nothing exists to discard | Baseline. Loss before D3 began, and target loss after a D1 activation (which writes no marker), are undetectable |
+| PV7 — AP-D3 | First migration | Nothing staged; the current source is copied | Reaching it after an earlier attempt needs a lost committed record together with an absent marker; that history is not detected |
+| E′6 — AP-K1′ | H1–H5 in `enumerating`, every `entryKeys` key present, no target row | Nothing staged. The only application data on the device is the current source, which holds every key the attempt began with; the plan copies it exactly as a first D3 would. The in-place replacement keeps the evidence, so no intermediate state reaches Group D | A value changed before fingerprinting is migrated as found; no older copy exists. A target rolled back to an `enumerating` record over a source retired only of keys outside that record's `entryKeys` is not detected (L1) |
+| E′9 — AP-COPY | H1–H5 in `copying`, passing A′ and E′1–E′8 | Staged rows and source are proven the enumerated generation; only rows for uncopied manifest keys are written, each verified at copy time | Digest not yet specified (I-7) |
+| E′10 — AP-CC | As E′9, with every manifest key copied | Writes no application data; commits `verified` only over complete target evidence read inside the same transaction | As E′9 |
+| E′11 — AP-ACT | H1–H5 in `verified`, passing A′ and E′1–E′8 | Writes no application data; re-reads complete target evidence and re-validates the source before switching authority | §5.5's validation-to-activation window; a rolled-back target's post-activation work is already off the device |
 
 ##### 5.5 Eligible-set validation, disappearance, and the detection boundary
 
-**A key list does not freeze values, and a manifest does not freeze the key SET.** The earlier
-check compared only keys already in the manifest, so a **newly eligible source key** could be
-added after enumeration and be silently omitted while every recorded fingerprint still matched.
+**A key list does not freeze values, and a manifest does not freeze the key SET.** A check that
+compared only keys already in the manifest would let a **newly eligible source key** be added
+after enumeration and silently omitted while every recorded fingerprint still matched.
 
-**Required validation — on every pre-activation resume path, including `verified`:**
+**Required validation — on every pre-activation path that continues (E′9–E′11), including
+`verified`:**
 
-1. **Re-enumerate the complete eligible key set** from the source (by the M3b0 §1 allow-list and
+1. **Re-enumerate the complete eligible key set** from the source (by the §1 allow-list and
    membership tests).
 2. **Set equality:** the enumerated set must equal the manifest's key set. A **new** eligible
    key, or a **missing** one, fails validation.
 3. **Content equality:** every manifest key's current source fingerprint must match the
    recorded one.
 
-Failing any of the three ⇒ E5/E7 (**blocked**), never a silent skip.
+Failing any of the three ⇒ E′7/E′8 (**blocked**), never a silent skip. **`entryKeys` adds the
+same protection before a manifest exists:** in `enumerating`, a key recorded at D3 entry that
+is missing from the source blocks (E′5), and from `copying` onwards `entryKeys` must stay inside
+the manifest (A′5).
 
 **What prevents change between validation and activation — stated honestly.** Writer exclusion
-(M3b0 §5.4's mounting rule plus §5.6) means no in-app writer runs during migration, so within a
-single uninterrupted run the window between validation and the activation transaction contains
-no application writes. **It does not exclude another process or a different build**; the design
-does not claim a lock it cannot take. Re-validating immediately before activation narrows the
-window; it does not eliminate it, and that residual is a stated limit, not a guarantee.
+(§5.4's mounting rule) means no in-app writer runs during migration, so within a single
+uninterrupted run the window between validation and the activation transaction contains no
+application writes. **It does not exclude another process or a different build**; the design
+does not claim a lock it cannot take. AP-ACT re-validates immediately before the activation
+transaction, which narrows the window; it does not eliminate it, and that residual is a stated
+limit, not a guarantee.
 
 **Disappearance is NOT self-resolving, and nothing is deleted automatically.**
 
 - **A copied key that disappears from the source.** The committed staged target row may be the
   **last surviving copy** of that value. It is therefore **never discarded**. The run blocks
-  (E5/E7) with the staged data intact and recoverable.
+  (E′7/E′8) with the staged data intact and recoverable.
 - **An uncopied key that disappears.** It cannot be copied and it must not vanish from the
   record: re-enumeration alone would simply produce a manifest without it, which is exactly the
   silent omission this rule exists to prevent. The run **blocks**, retaining the original
@@ -2977,31 +3392,31 @@ window; it does not eliminate it, and that residual is a stated limit, not a gua
 - **Disappearance is never read as an intentional user deletion**, and **source-access failure
   is never read as disappearance** (C1 vs C2).
 
-**The earlier "discard this attempt's target rows and re-enumerate" rule is withdrawn.** It
-contradicted the same section's "blocked never deletes anything", and it could destroy the only
-remaining copy of a value. Re-enumeration is permitted **only** from E3 (`enumerating`, nothing
-staged). **Re-enumeration alone never proves a coherent generation or the absence of omission**
-— set-plus-content validation does, and only when it passes.
+**Re-enumeration is permitted only from E′6** (`enumerating`, nothing staged, every `entryKeys`
+key still present). An earlier "discard this attempt's target rows and re-enumerate" rule is
+withdrawn: it could destroy the only remaining copy of a value. **Re-enumeration alone never
+proves a coherent generation or the absence of omission** — set-plus-content validation does,
+and only when it passes. **Zero copied rows in `copying` is not `enumerating`:** a committed
+manifest is still validated, and a vanished key blocks.
 
-**Recovery boundary.** A blocked E5/E7 state is **recoverable, not terminal**: the staged target
-rows and the original manifest are preserved, and the failure/recovery interface reports what
-diverged. Resolving a divergence — accepting the staged copy, or restarting from a fresh
-enumeration and discarding staged rows — is a **human-authorised** action and an **open design
-item**; this document does not automate it.
+**Recovery boundary.** A blocked E′7/E′8 state is **recoverable, not terminal**: the staged
+target rows and the original manifest are preserved, and the failure/recovery interface reports
+the divergence (§6.8). The evidence of what diverged stays intact internally; the copyable
+diagnostic report carries rule codes, not key names (§6.6).
+Resolving a divergence — accepting the staged copy, or restarting from a fresh enumeration and
+discarding staged rows — is not offered by U2's first-version policy. It needs a separately
+specified, reviewed and explicitly authorised targeted recovery procedure (§6.5), which does
+not exist; until then the state stays blocked. This document does not automate it.
 
-**Uncertain commit results.** **An uncertain result is not proof of rollback.** A checkpoint
-whose outcome is unknown is resolved by **reopening the store and inspecting durable state**:
-read the committed activation record's `copied` set and the corresponding target rows.
-
-- Both present and consistent ⇒ **the batch committed.** Do not replay it.
-- Neither present ⇒ the batch did not commit. Replay it.
-- Inconsistent (progress without rows, or rows without progress) ⇒ the rows-plus-progress
-  atomicity invariant was violated ⇒ **E0, blocked.** (This is a staging check, so it applies
-  before activation; A6 is a different row, covering a `copied` entry outside the manifest.)
-
-This forbids blind replay (which could overwrite newer committed state) and duplicate
-activation: activation itself is only attempted from E6, after re-validation, and a record
-already `active` is never re-activated.
+**Unknown commit outcomes.** **An uncertain result is not proof of rollback**, and it is not
+resolved by replaying anything from memory. I-11 governs: the target is reopened and the
+decision order is evaluated from durable state. The remaining keys are always re-derived from
+the durable `copied`, so a committed batch is never chosen again, and keys whose batch did not
+commit simply remain in `manifest − copied` and are chosen afresh — nothing committed, so
+nothing is replayed. Progress and rows that disagree block (E′2). A surviving plan that finds
+the durable state matching neither the issued before- nor after-state has detected a fault
+(I-13). An activation is attempted only from E′11, and a record already `active` is never
+re-activated.
 
 **Cleanup, and the honest detection boundary.** "The source is never read again" means: **the
 source is never read as an authority for application data after activation.** Retirement *does*
@@ -3014,10 +3429,11 @@ to the manifest:
 - **source missing or unreadable → delete nothing** (B2): retirement stalls, access is
   unaffected.
 
-**This is the entire detection mechanism, and it is bounded.** It detects an older-build write
-only for manifest keys, and only while retirement still runs. Once `sourceRetirement` is
-`complete`, nothing reads the source and later writes are **undetected**. Downgrade is
-**unsupported**, no merge is offered, and no detection is promised that cannot be performed.
+Retirement never removes the source marker (I-3). **This is the entire detection mechanism, and
+it is bounded.** It detects an older-build write only for manifest keys, and only while
+retirement still runs. Once `sourceRetirement` is `complete`, nothing reads the source and later
+writes are **undetected**. Downgrade is **unsupported**, no merge is offered, and no detection
+is promised that cannot be performed.
 
 ##### 5.6 Traces
 
@@ -3026,31 +3442,31 @@ corrupts → relaunch. **A2: blocked.** No import. S stays deleted. (W1 would ha
 
 **T2 — a copied current-session value changes before restart.** 14 keys enumerated, 9 copied
 including `currentSession`; an older build rewrites `currentSession`; relaunch. Content
-validation fails → **E5: blocked**, **staged rows preserved, nothing discarded**. There is no
-mixed-generation snapshot, and the earlier "discard and re-enumerate" response is withdrawn:
-the staged copy may be the only remaining copy of the pre-change value.
+validation fails → **E′7: blocked**, **staged rows preserved, nothing discarded**. There is no
+mixed-generation snapshot: the staged copy may be the only remaining copy of the pre-change
+value.
 
 **T3 — an uncopied outbox value disappears before restart.** The sync key is in the manifest,
-not yet copied, and is gone on resume → set-equality fails → **E5: blocked**, not "skip" and
-not re-enumerated. Re-enumeration would produce a manifest that simply lacks the key, which is
-precisely the silent omission this rule prevents. **Nothing is omitted and no deletion is
-inferred.**
+not yet copied, and is gone on resume → set-equality fails → **E′7: blocked**, not "skip" and
+not re-enumerated. **Nothing is omitted and no deletion is inferred.**
 
 **T3b — a newly eligible source key appears after enumeration.** Every recorded fingerprint
-still matches, so a content-only check would pass. Set equality fails → **E5: blocked**; the
+still matches, so a content-only check would pass. Set equality fails → **E′7: blocked**; the
 key cannot be left out of the migrated generation.
 
-**T4 — a known outbox key contains a future schema.** Copied **verbatim** (5.3). Migration
+**T4 — a known outbox key contains a future schema.** Copied **verbatim** (§5.3). Migration
 does not parse it; after cutover the sync repository applies its existing unsupported-version
 policy unchanged. **It is never skipped**, so hydration never sees `absent` and never writes a
 default over it. This is deliberately unlike an unsupported **activation-record** schema, which
 blocks (A3/A4).
 
 **T5 — identity records change between interrupted attempts.** A new barrier/resolution is
-written to the source between attempts. Set/content validation diverges → **E5: blocked**, and
-the divergence is reported rather than absorbed. The dynamic
-`accessBarrierResolution.<uuid>.v1` family is enumerated by membership test, so a barrier
-created since the last attempt is seen — as a set difference, not as a silent inclusion.
+written to the source between attempts. In `copying`/`verified`, set/content validation
+diverges → **E′7/E′8: blocked**, and the divergence is reported rather than absorbed. The
+dynamic `accessBarrierResolution.<uuid>.v1` family is enumerated by membership test, so a
+barrier created since the last attempt is seen — as a set difference, not as a silent
+inclusion. A barrier key recorded in `entryKeys` that vanishes while `enumerating` blocks at
+E′5.
 
 **T6 — retirement meets changed source data.** After activation, retirement finds
 `sessionHistory` whose source fingerprint no longer matches the manifest → **it is not
@@ -3066,39 +3482,356 @@ target rows are consistent; the source and its marker are gone. **B2 then B4: or
 proceeds.** Retirement is unavailable and is recorded as stalled (B2). **The source is not
 consulted for access at any point after a validated activation.**
 
-**T9 — interruption between the two provenance writes.** The writes are to different stores and
-were never atomic, so both orders are reachable and neither is inferred from the other. Source
-marker written, **no target record and an empty target** → the id is adopted into the new
-record; nothing was staged, so nothing can be contradicted. Target record written, **marker
-missing** → **blocked (P-1)**: this observation is indistinguishable from a marker written and
-the source later cleared, so the marker is not recreated. **Blocking is the conservative
-action, not a resolution**, and it applies only before activation.
+**T9 — interruption between the two provenance writes.** Under record-first (I-4) the target
+record commits before the marker is written. Interrupted between them → a pre-`active`
+`enumerating` record with the marker positively absent → PV14 → **E′6 (K1′)**, which writes the
+marker under the record's existing id; repeated interruption converges on the same action. A
+marker **without** a record cannot arise from that interruption: it means a committed record
+was lost or a commit acknowledgement was false, so it **blocks (PV5)** rather than being adopted.
 
-**T10 — uncertain checkpoint commit.** The plugin returns an ambiguous result. The store is
-reopened and durable state inspected: progress **and** rows present → the batch committed and
-is **not replayed**; neither present → replayed once; one without the other → **E0: blocked**.
-The uncertain result is never itself taken as proof of rollback.
+**T10 — unknown checkpoint outcome.** The plan halts (I-9). **Warm:** the reopened state equals
+the issued after-state ⇒ the next evaluation reads the durable `copied` and continues at E′9 or
+E′10 without choosing that batch again; equals the before-state ⇒ its keys remain in
+`manifest − copied` and are chosen afresh; matches neither ⇒ **detected fault (I-13)**.
+**Cold:** the same decision from durable state alone; progress and rows that disagree ⇒ **E′2:
+blocked**. The uncertain result is never itself taken as proof of rollback.
+
+**CE1–CE5 — the review counterexamples (2026-10-19).** **Synthetic logical traces** worked by
+hand over the tables above; they are not application, engine or device tests.
+
+| # | State | Outcome under the approved rules |
+| --- | --- | --- |
+| CE1 | `verified`; manifest {a, b}; `copied` {a}; target {a}; source holds both, matching | **A′6 BLOCKED** — `verified` requires `copied` = manifest. Had the record claimed `copied` {a, b}, **E′2** blocks (b in `copied`, no row); had a row for b existed but mismatched, **E′4**. In no variant does it reach activation; if the same rows were in `copying`, E′9 copies b, then AP-CC, then AP-ACT |
+| CE2 | `verified`; `entryKeys` {a}; manifest {b}; `copied` {b}; target and source hold b, matching | **A′5 BLOCKED** — the known entry key a is not in the manifest. The same record in `copying` blocks the same way |
+| CE3 | AP-K1′ or AP-D3 where the marker write is rejected or its outcome is unknown; AP-ACT where the marker is rewritten and the final source validation then fails | AP-K1′: halted at step 1 with **no target transaction issued**; the source may hold the marker, so the next evaluation is PV13 or PV14, both → E′6. AP-D3: step 1 is confirmed and stays committed; the marker may or may not be present; next PV13 or PV14 → E′6. AP-ACT: halted at step 2; the marker is present, or possibly present if its write ended unknown; next PV13 (or PV14) → **E′8 BLOCKED**, and the report names the marker step and its state |
+| CE5 | AP-K1′ replacement with outcome unknown: issued before-state `entryKeys` {a, b}; issued after-state `entryKeys` {a, b} with a new `migrationId`; the reopened record carries the new `migrationId` but `entryKeys` {a}; the source now holds only a | **Warm:** "matches neither" ⇒ **detected fault (I-13)** — no AP-K1′, no further step, no activation, no mounting; the latch write is issued. **Relaunch with the latch:** L0b **BLOCKED**. **Relaunch where the latch did not persist:** A′ passes and E′5 finds a in the source, so E′6 selects AP-K1′ — the stated undetected residual (I-11, I-13), not a safe outcome claimed by detection |
+| CE4 | `copying`; manifest = `copied` = target keys; every value and the source match | **E′10 → AP-CC** commits `verified`; the plan continues to **AP-ACT** and commits `active`; re-evaluation reaches **B4**. Interrupted at either transaction — warm or cold — the durable state is `copying` (E′10) or `verified` (E′11), and the next evaluation resumes there; never an empty checkpoint |
 
 ##### 5.7 Limits of the guarantee
 
 A passing mocked write proves control flow, not survival of power loss; that is what M3b1's
 pragma/reopen tests are for. Native storage does not survive uninstall and does not make an
 unsynchronised record recoverable from another device. **Downgrade is unsupported, no merge is
-offered, and post-retirement source writes are undetectable.** Nothing here is implemented.
+offered, and post-retirement source writes are undetectable.** The approved design also states
+these residuals rather than hiding them: data lost before D3 began; target loss after a D1
+activation, which writes no marker; a target rollback consistent with the current source (L1);
+a well-formed but wrong durable state that no running process detected; and a detected fault
+whose latch did not persist (I-11, I-13). **The decision core (M3b4a) and the dormant executor
+(M3b4b) implement §5; no application path invokes the executor.**
 
-#### 6. User-visible readiness and failure states
+#### 6. User-visible readiness and failure states — the first-version U2 policy
 
-Using the existing truthful status conventions — **local save success is not cloud success**:
+**Status: U2's FIRST-VERSION PRODUCT POLICY IS DECIDED AND ADOPTED. The user confirmed the
+recommendations below on 2026-10-20, after approving M3b4b. Codex's independent review of their
+documentation adoption was clean, and the user approved the adoption on 2026-10-20. The user
+then approved the presentation decisions UG-1–UG-4 (§6.9) on 2026-10-20. This section is the
+policy's canonical statement.** §7 keeps the approval record and the stage status. Other
+documents reference this section rather than restating it. The interface that implements it is
+**Stage M3b4c**. The user authorised it separately, and it is implemented as a
+**dependency-injected, dormant** presentation and controller layer. Its independent review and
+the user's approval of it are **pending** (§7, "M3b4c implementation status"). **No shipped
+path constructs or runs the migration executor.** A flag-enabled build still stops at the
+unavailable activation authority (§7, "M3b3 implementation status"), so no user sees this
+interface in any build today. §5 still decides *when* a state blocks, an action halts or a fault
+is detected. This section decides only what a user sees and may do, and it introduces no new
+migration transition.
+
+##### 6.1 What stays unchanged
+
+The existing truthful status conventions still apply — **local save success is not cloud
+success**:
 
 | Condition | Observable behaviour |
 | --- | --- |
-| Storage preparing / migrating | A blocking readiness state **before** the sporting shell mounts. Never an empty workspace that looks complete |
-| Storage unavailable or migration failed | An honest blocking message with **retry**, and **no silent reset**. Existing data is not touched |
+| Storage preparing, migrating, halted or blocked | A blocking state **before** the sporting shell mounts, in one of the four groups of §6.2. Never an empty workspace that looks complete, and never a silent reset |
 | Saved on this device only | The existing device-only wording; explicitly **not** "backed up" |
 | Synchronised | The existing synchronised state, unchanged |
 | Pending / failed synchronisation | The existing pending/failed states, unchanged and still distinct from local-save success |
 
-No navigation redesign, no new cloud record types.
+No navigation redesign, no new cloud record types. **Storage readiness never grants identity
+access.** After B4 the identity gate still decides access. No U2 action signs anyone in,
+resolves an identity barrier or selects a Profile (§5.1, "Sporting-data recovery is not identity
+authorisation").
+
+##### 6.2 Four user-visible groups
+
+Every non-ready migration state is presented under exactly one of four groups. G1–G3 keep the
+meaning and identifiers the user approved with U2; G4 was added by the UG-1/UG-2 decision
+(§6.9). The labels G1–G3 are recorded **verbatim, in the language in which the user approved
+them**, beside the English the interface shows (UG-3):
+
+| Group | Approved label | Interface label (English, UG-3) | Intent |
+| --- | --- | --- | --- |
+| **G1** | „Vorbereitung läuft" | "Preparation in progress" | Preparation or migration is running, including while a storage call has not yet answered (§6.4) |
+| **G2** | „Übertragung angehalten – erneute Prüfung möglich" | "Transfer paused — it can be checked again" | The transfer has halted, or stored state could not be read, and a new check may resolve it (§6.3) |
+| **G3** | „Widersprüchliche Daten – Wiederherstellung erforderlich" | "Conflicting data — recovery required" | Positively observed contradictory data, or a detected fault. Only a targeted recovery can resolve it, and none exists in the first version (§6.5) |
+| **G4** | — (added by UG-1/UG-2) | "The transfer cannot continue in this version" | A neutral blocking state: an unsupported activation-record format (A3, A4) or an internal check that could not be completed (E′12, `evidence_required`, `invalid_evidence`, internal refusals, an unexpected failure). It claims neither a data contradiction nor that a new check may resolve it |
+
+Technical details may be disclosed separately, behind the existing progressive-disclosure
+pattern (UX Writing Guidelines, "Every feature should explain itself"); they are never a wall
+of permanent text.
+
+**The group follows the observed cause.** It does not follow the word "halted", a generic
+exception or the first finding alone. A blocked decision reports **every** failing check
+(I-9). The precedence is deterministic: if any finding is a positively observed contradiction,
+**G3** governs; otherwise, if any finding is an unsupported format or an internal-check failure,
+**G4** governs; **G2** applies only when every finding is an unavailability that a later read
+may resolve. So a contradiction never disappears behind an earlier read failure, and a G4
+condition never acquires a recheck because another finding is transient. (The decision core's
+`retryMayResolve` marks only the first finding's rule and is explicitly not a UX policy, §7
+"M3b4a implementation status".) G3 is never shown without a positively observed contradiction
+or a detected fault: an unreadable state is G2, not G3. An unexpected failure is G4, never
+evidence of corruption.
+
+**Three distinctions the wording must preserve:**
+
+- A **blocked decision** issued no writes (I-9).
+- A **halted plan** may have confirmed effects and one step whose write outcome is unknown. Its
+  wording never says "nothing changed" and never describes an unknown outcome as a rollback
+  or as having no effect.
+- A **detected fault** imposes I-13's persistent in-process stop and possibly a durable latch.
+
+**No unsupported promise.** No text says "all data is safe", "nothing changed", "no data was
+lost" or an equivalent unless the evidence establishes that exact statement. The UX Writing
+Guidelines' general advice to state "whether existing data is safe" (§15.4) is met here only by
+a statement the evidence establishes. For example, "no write was issued" is true of a blocked
+decision; "your data is safe" is not established by one.
+
+**Approved example wording for a halt:**
+
+> „Die Datenübertragung wurde angehalten. Bevor sie weitergehen kann, muss die App den
+> gespeicherten Stand erneut prüfen."
+
+Its intent is that the transfer stopped and the stored state must be checked again before
+anything continues. It claims nothing about whether the interrupted step took effect. The
+interface shows it in English (UG-3, §6.9): "The data transfer has paused. Before it can
+continue, the app must check the stored state again." There is no localisation infrastructure
+and no language selector; the copy is centralised (UX Writing Guidelines §§31–32).
+
+##### 6.3 Rechecking and safe continuation
+
+- **On every application startup** the decision order is evaluated automatically (I-9, I-10).
+- **After a retryable halt or failure (G2), „Erneut prüfen" is offered.** A recheck starts
+  from the approved evidence and recovery rules. That includes a positively established
+  reopening wherever one is required (I-10; after any halt the runner closes, releases and
+  reopens before reading), and the same runner's I-11 plan evidence while the process holds
+  it. **If every approved guard passes, migration continues automatically under U1, with no
+  further confirmation.**
+- **No endless automatic retry loop and no parallel attempts.** Automatic re-evaluation within
+  one launch stays bounded (I-9). A plan-progression bound reached (`bound_reached`) is never
+  success. The control is unavailable while an evaluation is in flight, and concurrent
+  invocations join one execution (§7, "M3b4b implementation status").
+- **A retry is not a new cold runner.** It never discards surviving warm evidence
+  (`plan_evidence_held`), never bypasses a lease held by another owner or an in-process fault
+  stop, and never starts a second runner in the same live context. An uncertain connection
+  (`requires_reopen`) on the current owner's own lease is resolved only by that owner: the
+  same runner, under the same logical lease and keeping its plan evidence, positively closes,
+  releases the native handle and reopens before it reads anything (§6.4).
+- **A retry is not permission to resume a known contradiction.** It never clears a latch, never
+  changes the approved decision order and never overrides a G3 finding. A G3 state is still
+  re-evaluated read-only at every startup, and it reaches the same block with the same evidence
+  (R56).
+
+##### 6.4 Unanswered operations and waiting
+
+While a storage call remains unanswered, an **honest waiting state** is shown within G1. An
+unanswered operation is not a completed halt. **A presentation timeout changes only the
+presentation.** It does not establish a rollback, release ownership, start another migration,
+force-unlock the connection or authorise a later step. Already-issued work and any necessary
+cleanup keep the approved ownership and cancellation rules (§7, "M3b4b implementation status"):
+
+- disposal waits for an in-flight call to answer;
+- a target transaction that has begun but whose COMMIT has **not** been issued is stopped by
+  issuing the necessary ROLLBACK (reported `cancelled`). This is a local rollback of a
+  transaction that never committed. It is not a compensating write against a committed step and
+  not a cross-store rollback, both of which stay prohibited (I-9);
+- once COMMIT has been issued, it is awaited and its real outcome — confirmed or unknown — is
+  reported. No ROLLBACK is issued after it, and it is never presented as undone;
+- a stopped opening cleans up its half-opened connection. Close and native-handle release run
+  where the approved lifecycle requires them;
+- cleanup never drops unresolved warm evidence or a fault stop. A ROLLBACK, close or release
+  that is not positively acknowledged leaves ownership retained (`requires_reopen`, or the
+  lease kept).
+
+**Reopening is not releasing ownership.** Two cases stay distinct:
+
+1. **Another owner holds the resource** — another lease, another store instance that may hold a
+   native handle, or a pending diagnostics transaction. There is no takeover, no forced unlock
+   and no competing migration. Acquisition proceeds only after the legitimate holder resolves
+   its own work and positively frees the resource.
+2. **The current migration owner's connection is `requires_reopen`.** The **same** logical
+   lease, runner and surviving plan evidence are kept. That owner positively closes the
+   connection, releases the native handle and opens a fresh connection under the same lease,
+   and only then reads evidence and applies the approved decision order (I-10, I-11). The
+   native-handle release inside a reopen does **not** release the logical migration lease.
+   A reopen proves the connection is fresh; it never proves what an uncertain COMMIT did.
+   Only the reopened durable state, compared under I-11, decides that.
+
+**No progress percentage is invented.** The presentation threshold is
+an engineering detail: M3b4c uses 8 s (`MIGRATION_WAITING_PRESENTATION_DELAY_MS`). It is not a
+product timeout and does not change storage behaviour.
+
+##### 6.5 Contradictory data — no general manual repair in the first version
+
+The first version offers **no** general:
+
+- "continue anyway";
+- "use the old copy" or "use the staged copy";
+- "start again" by discarding staged data;
+- "accept missing data";
+- reset, clear, reinstall or empty-workspace bypass.
+
+**Both available data states are preserved**, together with their provenance evidence and
+staged progress (§5.5, "Disappearance is NOT self-resolving"). Any of the following needs a
+**separately specified, reviewed and explicitly authorised targeted recovery procedure**:
+selecting one contradictory data state, acknowledging already-missing data as a recovery
+transition, replacing data, or restarting from a fresh enumeration. None exists.
+
+**The user explicitly accepts that genuine contradictions stay blocked until such a targeted
+recovery is available.** This is an **intentional availability limitation of the first
+version**, not an unimplemented automatic fallback. It does not prohibit the approved lossless
+automatic transitions (D1, AP-D3, AP-K1′, AP-COPY, AP-CC, AP-ACT under U1).
+
+**Fault-latch clearing.** No general user control and no automatic path clears a fault latch.
+A later targeted recovery procedure must define the inspection, the authority, the repair and
+the explicit confirmation required before a latch is removed, and **removing a latch alone
+repairs nothing**. U2's approval authorises **no** current latch-clearing action. A known fault
+stays blocked, including on an installation whose record reads `active` (L0b, R76). A
+read-only inspection for display cannot resume migration (I-13).
+
+##### 6.6 Diagnostic report
+
+A diagnostic report is offered **only on explicit request**, for the user to copy. It is
+data-minimised, and it is **never transmitted automatically**. Its approved content is
+exactly:
+
+- the application version;
+- the technical error or rule code (a rule identifier such as `E′7`, or a fixed reason code);
+- the phase, only where it is positively known from a record that passed validation — never
+  from an unreadable or malformed one;
+- the known step outcomes, keeping **confirmed**, **outcome unknown** and **not issued**
+  distinct.
+
+It **excludes** training contents, credentials, Profile identifiers and raw data. Internal
+evidence is never dumped, and runner reports or decision findings are never serialised whole.
+**Key names are not part of the report:** eligible key names can embed Profile identifiers (the
+Profile-scoped sporting keys and `accessBarrierResolution.<uuid>.v1`). Raw records, markers,
+latch contents, application values and internal payloads are not an approved report interface.
+Internal evidence stays intact; the report is a deliberately restricted projection of it. **A
+diagnostic report is neither a backup nor a restoration mechanism.** M3b4c implements only
+explicitly requested local copying to the device clipboard, with a selectable read-only text as
+the fallback. There is no export or download, no automatic transmission, no support
+integration, no logging and no telemetry. A stopped plan's step dispositions recorded earlier
+in the same session may appear, labelled as history, when the current check could not evaluate
+the stored state; they are never presented as a fresh observation (§7, "M3b4c implementation
+status").
+
+##### 6.7 Help path
+
+The policy is a **defined help route that shows an understandable error code**. A "contact
+support" action may appear **only once a real contact channel and a handling procedure
+exist**. No address, URL, service, support role or response-time promise is specified, and none
+may be invented. The concrete channel and its operating procedure are an **operational
+follow-up** (§7, inventory item 3). Their absence does not leave the first-version U2 policy
+undecided. Until they exist, no contact action appears.
+
+##### 6.8 Outcome and action matrix
+
+Every row also keeps four rules: the diagnostic report of §6.6 is available on request; the help
+route of §6.7 applies; ordinary consumers never mount outside B4; and §6.5's general
+prohibitions hold. "Recheck" means §6.3's „Erneut prüfen". "Continues" means automatic
+continuation under U1 once every approved guard passes on the recheck.
+
+| Observed condition | Rule | Group | Honest explanation (intent) | Recheck | Continues | Specific prohibitions |
+| --- | --- | --- | --- | --- | --- | --- |
+| Evaluation or plan running: startup check, D1, AP-D3, AP-K1′, AP-COPY, AP-CC, AP-ACT | §5.4a | G1 | Storage is being prepared | — | Yes, under U1 | Never an empty workspace that looks complete; no progress percentage |
+| A storage call issued and not yet answered — read, transaction, COMMIT, reopen or disposal | I-9, §6.4 | G1, waiting | Still waiting for the device's storage to answer | No; the call is still in flight | When it answers, its real outcome decides | A timeout never establishes rollback, releases the lease, force-unlocks or starts competing work |
+| Plan-progression bound reached | `bound_reached` | G1 while bounded continuation runs; a settled bound is G2 (the session starts no automatic loop) | Preparation is not finished | Yes | Yes | Never presented as ready or complete |
+| Fault-latch read failed | L0a | G2 | The stored state could not be checked | Yes | Yes, once a read positively shows no latch | Never read as "no latch" |
+| Activation record unreadable | A1 | G2 | The stored state could not be read | Yes | Yes | Never re-import; never "fresh install" |
+| `active` record, target failing now | B1 | G2 | The data on this device cannot be read right now | Yes | Yes, to B4 once the target is healthy | No fallback to the old source; not described as data loss |
+| Source enumeration failed | C1 | G2 | The previous storage could not be read | Yes | Yes | Never "source empty" |
+| Target row enumeration failed | PV1, PV9 | G2 | The new storage could not be read | Yes | Yes | Never "no rows" |
+| Marker read failed | PV3, PV10 | G2 | The transfer's link marker could not be read | Yes | Yes | Never "absent" |
+| An issued row unreadable during a warm comparison | I-1 | G2 | The interrupted step could not yet be checked | Yes, by the same runner, after a positively established reopen | Yes, if the comparison finds the before- or after-state; "matches neither" is a fault (G3) | No new cold runner in this process; never equality or absence |
+| Plan halted: a write ended outcome unknown (marker or target transaction) | I-9, I-11, §5.4a | G2 | §6.2's approved halt wording | Yes, by the same runner after a positively established reopen; cold at the next launch | Yes, from durable state plus warm evidence | Never "nothing changed", "rolled back" or "no effect"; confirmed / unknown / not-issued kept distinct |
+| Plan halted at a failed read, recheck read or digest that was not obtained, or a step never issued (`preparation_failed`, `target_unavailable`, a refused marker precondition on an unreadable marker) | I-9, §5.4a | G2 | As above; no write was issued by that step | Yes | Yes | A step never issued is not reported as an unknown write |
+| A required reopen did not complete | `reopen_failed` | G2 | The storage connection could not be re-established | Yes; the same runner retries the reopen under the same logical lease, and nothing is read before it succeeds | Yes | No evidence read through an uncertain connection; the lease, plan evidence and any fault stop are kept |
+| Target refused because another owner holds the resource: another lease (`lease_held`), another store instance that may hold a native handle (`connection_held_elsewhere`), or a pending diagnostics transaction | `target_refused` | G2 (G1 waiting while the holder's call is in flight) | Storage is busy with another operation | Yes; it cannot bypass the holder | Yes, once the legitimate holder has resolved its work and positively freed the resource | No takeover, forced unlock, lease reset or competing migration |
+| Target refused with `requires_reopen` on the current owner's own lease (a native transaction state left uncertain) | `target_refused`, then the owner's reopen | G2 (G1 waiting while the reopen runs) | The storage connection must be re-established before checking | Yes, by the same runner under the same logical lease | Yes, after a positively established close, native-handle release and fresh open, then the approved decision order from reopened evidence | Never a cold replacement runner, a forced unlock or loss of fault or plan evidence; the native-handle release is not release of the logical lease; the reopen does not establish what an uncertain COMMIT did |
+| Plan halted for a positively observed contradiction: a copy-time fingerprint mismatch (I-7), an `entryKeys` recheck that found a key missing, AP-ACT's final source validation failing, AP-CC/AP-ACT finding mismatched target evidence, or a refused marker precondition on a foreign or malformed marker | I-7, §5.4a, §5.5 | G3 | The stored data does not match what the transfer recorded | Not as a fix; the next evaluation reaches the corresponding block (E′7, E′5, E′8, E′2–E′4, PV11/PV12) | No | No overwrite of either side; no marker overwrite |
+| Fault latch present, any bytes, any phase including `active` | L0b | G3 | A contradiction was detected earlier; the transfer stays stopped | No resume; read-only display only | No | No clearing (§6.5); never mounts although B4 would otherwise |
+| Detected fault in this process: warm "matches neither", or a confirmed step contradicted | I-13 | G3 | The stored state contradicts what the app just wrote; the transfer has stopped | No resume while the in-process stop stands; bounded latch-write attempts are not a recheck | No | Only the latch write is permitted; `fault_stop_held` keeps the lease |
+| Activation record malformed, invalid phase, manifest or `copied` invalid, phase-shape or integrity predicate failing, `storeIdentity` invalid | A2, A5, A6, A′1–A′7, PV8 | G3 | The transfer record is inconsistent | No | No | Raw bytes preserved; never overwritten or downgraded |
+| Activation-record `schemaVersion` **higher** than supported | A3 | G4 (UG-1) | A compatible version of the app is needed | No — this build cannot continue | Only in a compatible version, through its own approved rules | No downgrade, no automatic conversion, no repair |
+| Activation-record `schemaVersion` **lower** than supported | A4 | G4 (UG-1) | This stored format cannot be continued; no approved upgrade path exists | No | No | Not described as fixable by updating; no conversion, no repair |
+| No record, but the target holds application rows | PV2 | G3 | The new storage already holds data without a transfer record | No | No | No import, no deletion |
+| Marker malformed | PV4, PV11 | G3 | The transfer's link marker is invalid | No | No | Bytes preserved; never adopted or overwritten |
+| Marker present without a record | PV5 | G3 | The previous storage refers to a transfer record that is missing | No | No | Never adopted |
+| Marker carries a different id before activation | PV12 | G3 | The previous storage belongs to a different transfer attempt | No | No | Foreign marker never overwritten or adopted; record never replaced |
+| Rows while `enumerating`; progress and rows disagree; a row outside the manifest; a staged row not matching its fingerprint | E′1–E′4 | G3 | Prepared data is inconsistent with the transfer record | No | No | No repair by deletion or re-copy; staged rows preserved |
+| An `entryKeys` key vanished from the source | E′5 | G3 | Data present when the transfer began is missing | No | No | Nothing re-enumerated; no "accept missing data" |
+| Source set or content diverged from the manifest: key missing, new or changed | E′7, E′8 | G3 | The previous storage changed after the transfer began | No | No | Staged rows and the original manifest preserved; no "use old/staged copy", no fresh enumeration |
+| An observation no row covers; omitted evidence; an invalid snapshot; an internal refusal (`no_lease`, `wrong_lease`, `invalid_transaction`); a malformed digest output; an unrecognised or unexpected failure | E′12, `evidence_required`, `invalid_evidence`, `target_refused` | G4 (UG-2) | An internal check could not be completed | No | No | Permits nothing; never "ready"; restricted diagnostics and explanatory help only |
+| Valid `active` record, healthy target, old source or marker missing or unreadable | B2 → B4 | — (ordinary access) | — | — | Access proceeds | The source and marker are not consulted; an already-known retirement stall or declined deletion may appear only as a subordinate, nonblocking detail (UG-4) |
+| Valid `active` record, healthy target, no latch | B4 | — (ordinary access) | — | — | Mounts; the identity gate then decides access | Storage readiness grants no identity access |
+| Runner disposed (document ending, explicit disposal) | `disposed` | — | — | — | Never | No new migration read, write, digest, opening or setup work and no readiness or access publication. Already-issued work is awaited, and required cleanup runs (§6.4): a transaction begun without COMMIT may be rolled back; an issued COMMIT is awaited and its confirmed or unknown outcome reported, never rolled back; close and native-handle release where required. Cleanup never drops warm evidence or a fault stop; `plan_evidence_held`, `fault_stop_held` and any unacknowledged cleanup keep the lease |
+
+##### 6.9 Presentation decisions UG-1–UG-4 — APPROVED BY THE USER (2026-10-20)
+
+These four presentation details could not be derived from the U2 policy alone. The user
+approved the recommendations below on 2026-10-20. None weakens a rule above, and none changes
+storage behaviour.
+
+- **UG-1 — incompatible activation-record formats.** A3 and A4 belong to the neutral blocking
+  group **G4**, with distinct explanations. A higher unsupported version says that a compatible
+  application version is needed. A lower unsupported version says that no approved upgrade path
+  exists, and it is never described as fixable merely by updating. Neither offers a recheck that
+  suggests this build can continue. No downgrade, automatic conversion or repair.
+- **UG-2 — internal-check failures.** E′12, `evidence_required`, `invalid_evidence`, internal
+  refusals (`no_lease`, `wrong_lease`, `invalid_transaction`) and an unexpected failure use the
+  same group **G4**. They offer restricted diagnostics and explanatory help, and no retry or
+  continue action. They establish no readiness and permit no storage action.
+- **UG-3 — language.** The interface keeps its existing English. The approved German labels and
+  the halt example are translated faithfully (§6.2), keeping the distinctions between a blocked
+  decision, a halted action, an unknown write outcome, a waiting operation and a detected fault.
+  No localisation infrastructure and no language selector.
+- **UG-4 — retirement findings.** An already-known retirement stall or declined-deletion finding
+  may be shown as a subordinate, nonblocking detail. It never blocks a healthy active target and
+  never implies that its data has failed. M3b4c adds no source retirement, no deletion and no
+  additional source or marker probe: it renders such a finding only when an existing result
+  already supplies it. **Intentional limitation:** retirement is not implemented (§7, "M3b4b
+  implementation status"), and for an `active` record the evidence collector does not read the
+  source, so in practice no such finding is observed today. Unimplemented retirement cannot
+  supply findings that were never observed.
+
+##### 6.10 U2 acceptance requirements for M3b4c
+
+These are the acceptance requirements for Stage M3b4c. They are deliberately numbered apart from
+R1–R77, which are unchanged, and the class-L and class-M coverage of R1–R77 is **not** evidence
+for them. Their behavioural tests and the traceability matrix are listed in §7, "M3b4c
+implementation status"; that evidence is component and controller evidence over the class-M
+harness, not simulator or device evidence, and it awaits independent review.
+
+| # | Requirement |
+| --- | --- |
+| U2-1 | Every blocked family of §§5.2–5.4, every halted plan of §5.4a, I-13's faults and the runner's lifecycle outcomes map to the group, explanation and actions of §6.8, with the group derived from all findings |
+| U2-2 | An unknown outcome is never described as a rollback or as having had no effect; confirmed, unknown and not-issued steps stay distinct |
+| U2-3 | Startup continuation and the explicit recheck continue automatically only when every approved guard passes, never run in parallel, and never loop without a bound |
+| U2-4 | No recheck bypasses a standing fault, a latch, a lease held by another owner or contradictory data, and none replaces warm evidence with a new cold runner in the same process. An uncertain connection on the owner's own lease is resolved only by that owner's positively established reopen under the same logical lease and runner, keeping fault and plan evidence |
+| U2-5 | A waiting state or presentation timeout never releases an unanswered operation, releases ownership, force-unlocks or starts competing work |
+| U2-6 | After disposal, no new migration read, write, digest, opening or setup work or readiness publication occurs. Already-issued work is awaited; a transaction begun without COMMIT may be rolled back; an issued COMMIT's confirmed or unknown outcome is reported and never rolled back; close and native-handle release run where required. Cleanup never drops warm evidence or a fault stop, and unacknowledged cleanup keeps ownership |
+| U2-7 | No manual data selection, reset, staged-data discard, acceptance of missing data, fresh-enumeration restart or latch clearing is reachable |
+| U2-8 | A higher activation-record version explains that a compatible version is needed, and a lower one that no approved upgrade path exists and is not described as fixable by updating; both are G4 without a recheck, and neither is converted |
+| U2-9 | The diagnostic report contains only §6.6's fields and omits values, credentials, Profile identifiers, key names and every identifier embedded in a key name |
+| U2-10 | No diagnostic report is transmitted automatically |
+| U2-11 | No contact action appears until a real channel and handling procedure exist |
+| U2-12 | A healthy, validated active target stays usable whatever the state of the old source or marker |
+| U2-13 | Identity authority is unchanged: no U2 action signs in, resolves a barrier or selects a Profile |
+| U2-14 | The existing local-save and cloud-sync status distinctions are unchanged |
+| U2-15 | G4 (UG-1/UG-2): A3, A4, E′12, `evidence_required`, `invalid_evidence`, internal refusals and unexpected failures are presented in G4 with restricted diagnostics and help, no recheck or continue action, no readiness and no storage action; mixed findings follow §6.2's precedence G3 > G4 > G2 |
+| U2-16 | UG-3: the interface is English, the approved labels and halt example are translated faithfully, and no localisation infrastructure or language selector exists |
+| U2-17 | UG-4: an already-known retirement finding is subordinate and nonblocking, and rendering it performs no source, marker or retirement probe |
 
 #### 7. Implementation stages and acceptance gates
 
@@ -3112,9 +3845,9 @@ nowhere earlier.** Every stage before it is inert in production.
 | **M3b1 — engine evidence** | M3b0 reviewed | the native adapter module and an **opt-in, off-by-default diagnostic panel inside the existing app**; **no production composition** | **None** | Which of R1/R2/R3 (§2) is adopted, decided on measured evidence; synthetic sizing and a recorded operating envelope; the diagram-cache policy (§1) decided. Scope below. **Adapter and panel implemented 2026-09-30. Physical-device evidence exists for the PRAGMAS and RESTART RECOVERY (2026-09-30). The transaction scenarios (tooling 2026-10-15) have run on a disposable SIMULATOR only (user-reported, 2026-10-15); physical-device transaction acceptance, naturally occurring commit failures and interruption during a commit are NOT measured, and no operating envelope is recorded. Not complete.** The diagram-cache policy is decided (§1) |
 | **M3b2 — native adapter** | M3b1; engine chosen | new adapter module + its tests | **None by itself — it is selected only by M3b3's flag** | Implements `RemovableStorageAdapter` with unchanged result contracts; real-engine integration tests; unsupported platform fails closed. **The module is written and unit-tested (2026-09-30) and runs against the real engine on a physical device for reads, writes and restart recovery (2026-09-30), and on a simulator for the diagnostic transaction scenarios (2026-10-15). The row is still NOT complete: physical-device transaction evidence and native commit-failure evidence, which source retirement depends on, are unmeasured** |
 | **M3b3 — composition, behind an off switch** | M3b2; **§4 session decision APPROVED (S2, 2026-09-30)** | all five seams in §3, identity injection, protected credential store, readiness gate | **None: the native adapter is selected only under an explicit off-by-default build flag, and even then the application does not mount** — see the barrier below. Existing installs keep `localStorageAdapter` | Every seam demonstrably reaches the selected adapter; hydration/identity/sync all wait on readiness; **no default written while preparing**. **IMPLEMENTED 2026-09-30** |
-| **M3b4 — migration** | M3b3 | migration module, activation record, source enumeration | **None — still behind the flag** | The M3b0 §5.4 table and M3b0 §5.1 model implemented; every trace in M3b0 §5.6 and every acceptance case below green |
-| **M3b5 — production cutover** | M3b4 reviewed | flag default flip only | **THIS is the cutover** | Migration runs before the shell mounts; blocked states surface per §6. **Not yet performed — this row is a criterion, not a result** |
-| **M3b6 — device acceptance** | M3b5 | none | — | The iPhone procedure below passes and is **reported by the user**. Android remains M5 |
+| **M3b4 — migration** | M3b3; the §5 design **approved (2026-10-19)**; the adoption independently reviewed (clean) | migration module, activation record, fault latch, source and target enumeration — staged as M3b4a/b/c (§7 approval record, item 5) | **None — still behind the flag; the production activation authority stays `unavailable`** | The M3b0 §5.1 invariants, §5.4 tables and §5.4a plans implemented; every trace in M3b0 §5.6 and every acceptance case below, including R1–R77 in their evidence classes, green. **M3b4a (the decision core) approved (2026-10-20); M3b4b (the dormant executor) implemented, independently reviewed (clean) and approved by the user (2026-10-20), class-M evidence only; U2's first-version policy and UG-1–UG-4 decided and adopted (2026-10-20, §6); M3b4c implemented and locally verified, dormant, awaiting independent review and the user's approval** |
+| **M3b5 — production cutover** | M3b4 reviewed; **M3b6 passed**; §7's remaining inventory closed; the mid-session credential-failure decision | flag default flip only | **THIS is the cutover** | Migration runs before the shell mounts; blocked states surface per §6. **Not yet performed — this row is a criterion, not a result** |
+| **M3b6 — device acceptance, BEFORE cutover** | M3b4 | none | — (a disposable device only) | The iPhone procedure below passes on a **disposable** device and is **reported by the user**, **before** M3b5. Reordered on 2026-10-19 so that migration is verified before cutover, as the P6 decision requires; the number is kept for reference stability. Android remains M5 |
 
 **Engine-evidence scope (M3b1) — decided by the user on 2026-09-30: IN THE EXISTING APP.**
 
@@ -3151,12 +3884,17 @@ normal application storage, and does **not** settle where provider credentials a
 2026-09-30): all existing local data is preserved, a pilot reset is **rejected**, and
 existing data must be migrated and verified before cutover.
 
-**Database isolation is not installation permission.** The diagnostics build carries the
-training app's own bundle identifier (`local.dev.curlingperformance`), so installing it
-**replaces** whatever installation of that app is on the target. A separate synthetic database
-does not make replacing a data-bearing installation an authorised action. The user's only
-physical iPhone holds real training data; it did **not** receive the 2026-10-15 diagnostics
-build and must not receive it.
+**Database isolation is not installation permission.** **Historically**, the 2026-10-15
+diagnostics build used the training app's then-current identifier
+(`local.dev.curlingperformance`); installing that build would update/replace an installation
+of that same identity. **Current builds target `me.evolane.curling` (P4)**: they would update
+that identity, not the old source, and do not inherit its container, data or credentials.
+The historical evidence below remains evidence for the old identity only. A separate
+synthetic database does not authorize installation over any data-bearing app. The user's
+only physical iPhone holds real training data; it did **not** receive the 2026-10-15
+diagnostics build and must not receive a new diagnostics or target build under this scope.
+Preserve the old installation; no Run/install, reset, uninstall/reinstall or data clearing
+is authorized. A complete transfer/restore path and separate installation approval are required.
 
 **M3b1 implementation status — 2026-09-30. This is the canonical statement; other documents
 reference it rather than restating it.**
@@ -3494,8 +4232,11 @@ which is eliminated from the built artifact (asserted against the real bundle).
 - **Physical-device transaction evidence is still missing** (the transaction scenarios have
   run on a simulator only, M3b1 entry above), so **the engine choice is settled for the
   ADAPTER but source retirement remains unjustified**, and no operating envelope is recorded.
-- **No migration.** Nothing enumerates, copies, activates or retires anything; the §5 protocol
-  is unimplemented and its three open design items still block M3b4.
+- **No migration in any build.** No application path enumerates, copies, activates or retires
+  anything. The §5 protocol is an approved design (2026-10-19); its decision core (M3b4a) is
+  approved and a dormant executor (M3b4b) exists that no shipped path invokes; the M3b4c
+  recovery interface drives an injected runner and is likewise constructed by no shipped path;
+  §7's inventory lists what still blocks M3b4's completion.
 - **No cutover.** M3b5 has not happened. Existing installs keep `localStorageAdapter`, and a
   default build contains no composition code at all.
 - **No transfer of existing credentials.** Composition points the SDK at the protected store;
@@ -3528,27 +4269,54 @@ envelope is recorded and retirement stays unjustified.
 | --- | --- | --- |
 | What it asserts | The isolated synthetic diagnostic surface is specifiable and may be built | The production migration protocol is safe to implement and then to cut over |
 | Depends on the §4 provider-session decision? | **No** | M3b3 did, and it is now SETTLED (S2); M3b5 inherits it |
-| Depends on the §5 protocol passing review? | **No** — the diagnostic panel migrates nothing | **Yes** |
-| Status today | **Gathered, partially.** Pragmas and restart recovery are user-reported on the iPhone; the transaction scenarios, including reopen after a process stop with a transaction open, are user-reported on a simulator only; physical-device transaction acceptance and native commit failures are not | **NOT ready.** Three open design items remain — see the inventory below — plus the secure-credential transfer and cross-store interruption cases named in §4 |
+| Depends on the §5 protocol passing review? | **No** — the diagnostic panel migrates nothing | **Yes** — the design passed review and was approved by the user (2026-10-19); M3b4a and M3b4b have passed implementation review, while M3b4c and the credential stages are still ahead |
+| Status today | **Gathered, partially.** Pragmas and restart recovery are user-reported on the iPhone; the transaction scenarios, including reopen after a process stop with a transaction open, are user-reported on a simulator only; physical-device transaction acceptance and native commit failures are not | **NOT ready.** The design is approved; its decision core (M3b4a) and its dormant executor (M3b4b, class-M evidence only) are both approved. U2's first-version policy and UG-1–UG-4 are decided (§6), and its interface (M3b4c) is implemented as a dormant layer awaiting review. The S2 credential requirements, protected-store evidence, the fingerprint algorithm and the remaining device evidence are still open — see the inventory below |
 | Production effect | None | M3b5 is the cutover |
 
 **Credential-policy approval was a prerequisite for Stage M3b3 (composition), not for M3b1,
 and it is now SATISFIED (S2, 2026-09-30).** Isolated synthetic engine evidence never depended
 on it, and gathering that evidence asserts nothing about the migration protocol.
 
-**This document does not claim that the production migration protocol has passed review.** It
-is a design under review. **The canonical inventory of open engineering items — three, all
-blockers for M3b4 and none for M3b1 — is:**
+**The production migration protocol's DESIGN was approved by the user on 2026-10-19**, after
+Codex's clean independent review (§5, and the approval record below). It is implemented only as
+a **dormant executor** (M3b4a and M3b4b both approved) that no application path invokes, with a
+dormant, dependency-injected recovery interface (M3b4c, implemented and awaiting review) that no
+shipped path constructs; it is **not integrated, not verified on a real engine or device, and not
+production-ready**. **The canonical inventory of what still blocks M3b4's
+completion and M3b5:**
 
-1. **P-1 — missing pre-activation source marker** (§5.2): indistinguishable from later source
-   clearing; blocked conservatively.
-2. **P-2 — differing provenance ids before activation** (§5.2): blocked rather than guessed.
-3. **Source-generation divergence recovery** (§5.5): resolving a blocked divergence is
-   human-authorised and unspecified.
+1. **P-1 — missing pre-activation source marker** (§5.2): **CLOSED at the design level.** K1′
+   (E′6) and K2 (E′9–E′11) continue only under their approved guards; every other P-1 state
+   blocks.
+2. **P-2 — differing provenance ids before activation** (§5.2): **CLOSED at the design level as
+   a block in every pre-activation phase** (PV12). Automatic resolution is not approved; the
+   foreign marker is never overwritten or adopted. Recovery belongs to item 3.
+3. **Blocked-state recovery — FIRST-VERSION POLICY DECIDED AND ADOPTED (U2 and UG-1–UG-4,
+   2026-10-20; canonical in §6); interface IMPLEMENTED, DORMANT, AWAITING REVIEW.** What a user
+   sees and may do in every blocked, halted and faulted state is decided: four groups, startup
+   and explicit rechecking without bypass, honest waiting, no general manual repair, no latch
+   clearing, a restricted diagnostic report and a help route. What remains:
+   - **M3b4c** implements that policy as a dependency-injected presentation and controller layer
+     that no shipped path constructs (stage 9 below; "M3b4c implementation status"). Its
+     independent review and the user's approval of it are pending.
+   - **Targeted recovery procedures — DEFERRED.** Selecting a contradictory data state,
+     acknowledging already-missing data, replacing data, restarting from a fresh enumeration
+     and clearing a fault latch each need a separately specified, reviewed and explicitly
+     authorised procedure. Until one exists, genuine contradictions stay blocked. The user
+     accepted this as an intentional first-version availability limitation (§6.5), so it is not
+     a gap in the automatic rules.
+   - **The concrete help channel — OPERATIONAL FOLLOW-UP.** No contact channel or handling
+     procedure is established, and none is invented. Until one exists, no contact action
+     appears (§6.7).
+   - **The presentation decisions UG-1–UG-4 (§6.9) — APPROVED BY THE USER (2026-10-20)** and
+     adopted before M3b4c was implemented.
 
-Other documents reference this inventory rather than restating it. **The count is still
-three**: the two items below are not additions to it but **explicit migration-stage
-requirements** that Stage M3b3 established and did not perform.
+Engineering requirements, not design items: protected-store absence-versus-failure evidence
+(§4); the two S2 requirements below; the fingerprint algorithm and its availability inside the
+WebView (I-7); and the remaining engine, restore-pairing and physical-device evidence (M3b1
+entries above; R2, R65, R66). Other documents reference this inventory rather than
+restating it. The two items below are **explicit migration-stage requirements** that Stage
+M3b3 established and did not perform.
 
 *Named migration requirements arising from the S2 credential decision (§4), due in M3b4:*
 
@@ -3573,141 +4341,680 @@ with the cutover (M3b5):
   sticky historical latch should probably not blank a working workspace, and silently ignoring
   it would be dishonest. Nothing is implemented in either direction, and no code guesses.
 
-**P-1/P-2 provenance design brief — PROPOSED / NOT APPROVED (2026-10-16).** Everything in this
-block is a design input for review. It changes **no** row of §5.2 or §5.4, settles neither
-blocker, and authorises no implementation. Until a reviewed successor is approved, P-1 and P-2
-stay **BLOCKED** exactly as §5.2 states.
+**P-1/P-2 provenance resolution — approval record. APPROVED BY THE USER (2026-10-19) after
+Codex's clean independent review.** This record approves the design; its implementation status
+is the M3b4a and M3b4b entries below. The design was drafted from 2026-10-16
+and revised through three review rounds on 2026-10-19. The user then approved it, including the
+RQ-1 resolution through I-13. **The approved rules are now canonical in
+§§5.1–5.7** (invariants I-1–I-13, record shapes, the provenance table, L0, A′1–A′7, Group E′,
+the action plans and the recovery tables) and in the acceptance cases below (R1–R77). This
+record keeps only the decision, its rationale and the remaining stages. **The approval covers
+the reviewed design. It does not authorise runtime implementation, M3b4a, production
+activation, source deletion or device installation.** M3b4a was authorised separately
+afterwards (see "M3b4a implementation status" below); nothing later is authorised.
 
-*1. The ambiguity, and today's behaviour.* At the first enumeration one `installationStoreId`
-is written into the target activation record and into a source marker key. The two writes go
-to different stores and are not atomic, and a resolved `localStorage` write is not a
-durable-write acknowledgement (the same property that disqualified Preferences in §2). **P-1:**
-a pre-`active` record with no source marker is identical whether the marker write never landed
-or the source was later cleared. **P-2:** a pre-`active` record and a marker carrying different
-ids. Both **block before activation**, and neither affects an activated installation.
+*1. The ambiguity that was resolved.* At the first enumeration one `installationStoreId` is
+written into the target activation record and into a source marker key. The two writes go to
+different stores and are not atomic, and a resolved `localStorage` write is not a durable-write
+acknowledgement (§2). **P-1:** a pre-`active` record with no source marker is identical whether
+the marker write never landed or the source was later cleared — the histories are H1 marker
+write never landed or never persisted; H2 marker landed, source later cleared in whole or part;
+H3 marker key alone removed; H4 source replaced by other content without a marker; H5 target
+restored or rolled back to an earlier pre-`active` state after the attempt had progressed
+further. **P-2:** a pre-`active` record and a marker carrying different ids. Indistinguishable
+histories are harmful only when they call for **different** actions, so the resolution adds
+evidence (K4, K6) and acts only where the durable evidence shows that every history consistent
+with it permits the same lossless action (§5.4a).
 
-*2. Observation, possible histories, action.* "Resolved" means the existing protocol already
-gives one safe action without new evidence.
+*2. Outcome per candidate.* "Lossless" is U1's test: no existing application data on the device
+is discarded or overwritten. A lossless candidate that lets an incomplete or contradictory state
+look ordinary still fails U1.
 
-| Observation (pre-activation unless stated) | Possible histories | Action today | Resolved by existing evidence? |
+| Candidate | Outcome | Basis |
+| --- | --- | --- |
+| K0 — keep the block | **Retained as the fallback** for every state §5 does not positively resolve | Safe; what the user sees is U2's first-version policy (§6) |
+| K1 — as first briefed: abandon and re-enumerate in `enumerating` under a new `installationStoreId` | **Not adopted** | Lossless but not complete: without a record of the keys that existed when D3 began, re-enumeration silently omits keys that vanished — including the whole source, which would then present an empty workspace as complete. A new id gains nothing and, for P-2, overwrites the foreign marker |
+| **K1′** — the same-id, in-place replacement, gated on `entryKeys` and on no target row | **Approved** (E′5/E′6, AP-K1′) together with K4 and K6 | Nothing is staged; the only data on the device is the current source, which holds every key the attempt began with |
+| **K2** — P-1 in `copying`/`verified`: re-write the marker under the existing id only after every A′, E′1–E′8 and §5.5 check passes | **Approved** (E′9–E′11) | Staged rows and source are proven to be the enumerated generation; only uncopied manifest keys are written, each verified at copy time; K2's safety never depends on the marker being present |
+| K3 — a target-side journal around the marker write | **Not adopted** | A `localStorage` acknowledgement is not durability; it enables no different action |
+| **K4** — record-first order | **Approved as a design rule** (I-4); replaces the earlier "adopt the marker" row with PV5 | Not evidence about history; it makes the ordinary interruption land on P-1 `enumerating`, so a marker without a record can only follow the loss of a committed record |
+| K5 — content-derived store identity | **Not adopted** | Changes what `storeIdentity` means and cannot exist when D3 begins; K2 obtains the effect |
+| **K6** — `entryKeys` recorded when D3 begins | **Approved** (I-5, E′5, A′5) | The missing evidence that makes K1′ meet U1's "incomplete states remain blocked" |
+| **L1** — P-2 stays blocked until restore pairing is measured | **Approved, extended:** P-2 blocks in **every** pre-activation phase (PV12) | Restore-pairing evidence can show which histories are reachable; it cannot by itself authorise overwriting a foreign marker |
+| L2 — replace the foreign marker under K2's conditions | **Not adopted** | Outside U1; a variant that leaves the marker untouched still continues through a contradictory state |
+| **RQ-1** — a warm "matches neither" | **Resolved by I-13** | Known contrary evidence is decision input: migration stops, and a target-only latch carries the stop across relaunch |
+
+*3. P-1 is not P-2 — why the argument does not transfer.* P-1 is the **absence** of a marker.
+Absence is not evidence of any particular history, and every history that produces it leaves on
+the device exactly the data the checks inspect: the committed record, the staged rows and the
+current source. K1′ and K2 act only where those checks prove that nothing would be discarded or
+overwritten and that no key recorded at D3 entry or in the manifest has vanished.
+
+P-2 is a **present, valid, different** id: positive evidence that the source was paired with an
+attempt whose record is not in this target. Its histories include a target rolled back or lost
+after that other attempt progressed — possibly to `active` and partial retirement, so that the
+current source is stale or partially retired and the real authority is gone from the device —
+and containers restored from different times. **Replacing the marker destroys the only
+surviving evidence of the other attempt**, which U2's interface would need in order to explain
+the state, and turns a contradictory state into an ordinary-looking one. Adopting the foreign
+id into the target instead destroys the target's own record, with the same effect. Content
+validation cannot substitute: in `enumerating` there is no manifest, and in
+`copying`/`verified` a passing validation shows only that the current source equals **this**
+target's manifest, not what the other attempt did.
+
+*4. User-owned product decisions* — a product policy does not establish the safety of a
+technical candidate:
+
+- **U1 — DECIDED BY THE USER (2026-10-19): automatically continue proven lossless cases.**
+  After an interruption, migration may continue without user confirmation only where the
+  reviewed specification establishes that no existing application data is discarded or
+  overwritten. Contradictory or incomplete states remain blocked. This approves the product
+  policy, **not K1/K2 or any other candidate as a whole**: each proposed transition still
+  needs its own evidence, interruption analysis and independent review. In particular, it
+  does not authorise overwriting a foreign provenance marker or accepting source-generation
+  divergence, and it does not approve implementation or production cutover.
+- **U2 — FIRST-VERSION POLICY DECIDED BY THE USER (2026-10-20); canonical in §6.** The user
+  confirmed seven recommendations after approving M3b4b. They cover:
+  1. user-visible groups with approved wording (§6.2; originally three, extended to four by
+     UG-1/UG-2);
+  2. automatic startup checks and an explicit „Erneut prüfen" that continues under U1 only
+     when every approved guard passes (§6.3);
+  3. an honest waiting state that never releases an unanswered operation (§6.4);
+  4. no general manual repair, with genuine contradictions blocked until a targeted recovery
+     exists (§6.5);
+  5. no general or automatic latch clearing (§6.5);
+  6. an explicitly requested, data-minimised diagnostic report that is never transmitted
+     automatically (§6.6);
+  7. a help route with an understandable error code, and no contact action until a real
+     channel exists (§6.7).
+
+  The specific-outcome rules are in §6.8's matrix. **This decided the policy only.** Codex's
+  independent review of its documentation adoption was clean, and the user approved the
+  adoption on 2026-10-20. It authorises no latch-clearing or data-repair action and does not
+  change U1. Targeted recovery procedures and the concrete help channel stay deferred
+  (inventory item 3).
+- **UG-1–UG-4 — APPROVED BY THE USER (2026-10-20); canonical in §6.9.** A3/A4 and internal-check
+  failures form the neutral group G4 without a recheck; the interface stays English with
+  faithful translations; already-known retirement findings are subordinate and nonblocking.
+  At the same time the user **authorised the implementation of M3b4c** — a bounded stage that
+  does not authorise production migration, native-storage activation, credential work, source
+  retirement, device installation or any Git mutation.
+- **Technical approval — GIVEN BY THE USER (2026-10-19)** after Codex's clean independent
+  review: the reviewed transitions, each with the evidence, interruption analysis and review U1
+  requires — K1′, K2 under their guards, record-first establishment, `entryKeys`, durable-state
+  recovery and the I-13 fault latch, with P-2 blocked in every pre-activation phase. It does
+  not approve implementation or production cutover.
+- **Mid-session credential-failure behaviour — BOUNDED POLICY DECIDED BY THE USER
+  (2026-10-21), option A; runtime integration and remaining fault mapping NOT approved.**
+  The inactive pure S1 reducer contract is technically adopted in the appendix
+  “Adopted inactive pure contracts — S1 and S2”; this does not approve S5 integration.
+  If secure
+  credential storage fails during an already-admitted, ongoing training while sporting
+  persistence remains healthy, local recording and saving may continue in that same already
+  admitted Profile. Cloud synchronisation and new sign-in operations pause, and the user must
+  see a clear warning. This does not permit a Profile/account switch, grant new identity
+  access, bypass an explicit access revocation, or bypass the normal storage/identity checks
+  on the next application start. It does not turn a sporting-store failure into a successful
+  save, accept a credential read error as absence, or authorise credential deletion or source
+  fallback. The exact Read/Write/Remove and SDK-event mapping, in-flight cloud requests,
+  recovery/resumption conditions, non-training contexts and interruption tests still need a
+  bounded technical specification and independent review; no new offline expiry is implied.
+  **Clarification decided by the user (2026-10-25):** additional Exercises and training
+  Blocks may start inside the SAME already-started Training Session after that fault.
+  A new Training Session remains blocked. Q1 work lifetime is the original Session,
+  not each contained Block/Exercise; actual private pre-fault admission/context/save
+  evidence is still required. This does not authorize other Profile/domain access.
+  The canonical bounded runtime scope remains BETA_COMPLETION_SPECIFICATION.md §S5i.
+  This is a product decision only, not implementation, storage activation, installation or
+  release permission. No migration transition depends on it; verified runtime handling
+  remains a cutover prerequisite.
+- **Q2 — contradictory restore / missing or foreign credential pairing: FIRST-BETA POLICY
+  DECIDED BY THE USER (2026-10-21).** Preserve all existing data, keep access blocked and
+  display understandable help. Do not automatically adopt, delete, repair or establish a new
+  pairing. No additional self-service targeted recovery procedure is included in this first
+  beta scope; a future one needs separate specification, ownership checks, approval and
+  review. Normal reauthentication where the session item is positively absent and the
+  installation pairing is intact remains unchanged. An imported trusted-device record is
+  not permission to access another installation's Profile data. The installation transfer's
+  fresh authentication/Profile mapping still needs its own technical design and evidence;
+  this policy does not authorise an importer to erase source deny evidence or grant access.
+  This is a product-policy decision only, not implementation, source cleanup, storage
+  activation, device installation or release approval. Q4 restore-residual acceptance
+  remains unresolved; Q3 is recorded immediately below.
+- **Q3 — old credential copy: DECIDED BY THE USER (2026-10-24).** Automatically remove
+  the old credential copy only after fully verified transfer to protected storage;
+  failed/incomplete transfer or verification issues no source removal. Training data
+  is outside this decision. The interruption/source-change safeguards and remaining
+  gates are canonical in `BETA_COMPLETION_SPECIFICATION.md`, “Credential source
+  retention”. No retirement code, native activation or installation is approved by
+  documentation adoption alone; the current local implementation mandate permits
+  bounded development/testing, not device cutover. Q4 remains separate.
+
+**What U2 decided, and what it deferred.** §5 specifies *when* a state blocks, *when* an action
+halts, when a fault is detected, and *what evidence is preserved and reported*. §6 now specifies
+what a user sees and may do in each of those states. That covers every state the approved design
+blocks: P-2 in any phase, a marker without a record, vanished `entryKeys`, unreadable or
+malformed markers, records failing the phase-shape predicates, target rows outside the manifest,
+source-generation divergence and a detected fault. The first version offers a recheck where a
+recheck may resolve the state, and nothing else. It does not offer accepting a staged copy,
+restarting from a fresh enumeration, acknowledging data that is already gone or clearing a
+latch. Whether, by whom and after what inspection those may ever happen is left to a
+**separately specified targeted recovery procedure** (§6.5). None is specified or authorised
+today.
+
+*5. Remaining bounded stages and review gates.* Approval closes stage 1's design gate only.
+
+| # | Stage | Prerequisites | Gate |
 | --- | --- | --- | --- |
-| No record, no marker, target empty, source readable | Fresh install; migration never started | D1 (empty source) or D3 | **Yes** |
-| Same, source enumeration fails | Source temporarily or permanently unreadable | C1 — blocked, retry | **Yes** (fails closed) |
-| Source marker only, target empty | Target record never landed; target emptied after the marker (cause unmeasured) | Adopt the id | **Yes** — nothing staged, nothing to contradict. (Marker with a non-empty target and no record is D2, blocked — a separate lost-record case) |
-| Both present, ids match | Established pair | Continue through Group E | **Yes** for provenance; generation is validated separately (§5.5) |
-| Record pre-`active`, marker absent — **P-1** | H1 marker write never landed or never persisted; H2 marker landed, source later cleared in whole or part; H3 marker key alone removed; H4 source replaced by other content without a marker | **BLOCKED** | **No** |
-| Record pre-`active`, ids differ — **P-2** | Backup/restore pairing two containers from different times; a stale marker from an abandoned attempt (an older or defective build); a foreign source | **BLOCKED** | **No** |
-| Target record unreadable, malformed or wrong version | Storage fault, corruption, older/newer build | A1–A4 — blocked | **Yes** (fails closed) |
-| Source marker **unreadable** | Read fault; presence unknown | **Not an explicit row.** The absence/failure invariant requires block-and-retry, never "absent" | Direction yes; **the row must be made explicit** |
-| Source marker **malformed** (not a canonical UUID) | Corruption; foreign writer | **Not an explicit row.** Must never be adopted or compared as valid; block | Direction yes; **the row must be made explicit** |
-| Valid `active` target; source or marker missing or unreadable | Post-migration eviction or clearing | B2 → B4: access proceeds, retirement stalls; provenance is never consulted | **Yes** |
+| 1 | Design review, technical approval and documentation adoption | — | **Complete.** Design review clean and technical approval given by the user (2026-10-19); the adoption was performed and Codex's independent review of it found no blocking defect |
+| 2 | First-version blocked/halted-state recovery policy and outcome/action matrix (open item 3) — **complete: U2 decided by the user (2026-10-20); its adoption in §6 reviewed clean by Codex and approved by the user (2026-10-20); UG-1–UG-4 approved (2026-10-20)** | U2 decided by the user (satisfied) | Independent review; covers every blocked row of §§5.2–5.4, every halt of §5.4a, I-13's faults and the runner's lifecycle outcomes. Latch clearing and divergence resolution are deferred to separately specified targeted recovery procedures, which are not a numbered stage here (§6.5) |
+| 3 | Restore-pairing and marker-persistence evidence (L1; cases R2 and R66) | A disposable device and the user's authorisation to install on it | User-reported device evidence on the selected configuration |
+| 4 | Physical-device transaction evidence (M3b1's outstanding items; R65) | As 3 | User-reported device evidence |
+| 5 | Protected-store absence-versus-failure evidence (§4) | An audited dependency or upstream capability; forks and custom cryptography stay prohibited | Source audit; a user decision if no such dependency exists |
+| 6 | Credential transfer and cross-store recovery specification | 5 | Design review; keeps the identity gate as the only authority |
+| 7 | **M3b4a — the pure migration decision function** — **complete**: implemented, independently reviewed (clean) and approved by the user (2026-10-20) | Stage 1 complete (satisfied), and the user's separate authorisation (given) | L tests for every row of §§5.2–5.4, every plan's halt outcome, both columns of §5.4a's recovery tables warm and cold, and L0/I-13's latch outcomes — i.e. every R-case in class L; independent review |
+| 8 | M3b4b — source and target enumeration, transactions, durable-state recovery and marker I/O, behind the flag; production authority unchanged — **complete: implemented, independently reviewed (clean) and approved by the user (2026-10-20); dormant, class-M evidence only** | 7 | M tests; independent review |
+| 9 | M3b4c — the blocked- and halted-state recovery interface implementing §6 — **implemented and locally verified, dormant; awaiting Codex's independent review and the user's approval** ("M3b4c implementation status") | 2 (satisfied), 8 (satisfied), UG-1–UG-4 approved (satisfied), and the user's separate authorisation (given 2026-10-20) | §6.10's acceptance requirements U2-1–U2-17; UX and independent review |
+| 10 | Credential transfer implementation | 6, 8 | Independent review |
+| 11 | Simulator rehearsal of the complete migration with synthetic data | 8–10 | S evidence |
+| 12 | Physical-device migration acceptance on a disposable device, **before** cutover | 3, 4, 11 | D evidence, user-reported |
+| 13 | M3b5 production cutover | All of the above; the mid-session credential-failure decision | The user's approval |
 
-*3. The observation that matters.* Indistinguishable histories are harmful only when they
-call for **different** actions. The protocol already records two facts that P-1/P-2 do not
-use: whether any application row is staged in the target, and whether the current source still
-equals the record's manifest under §5.5's complete **set and content** validation.
+**Stage ordering against the stage table above.** Physical-device migration acceptance (stage
+12) precedes production cutover (stage 13), as the P6 decision (§4's P6 row) and item 3 of
+ADR-0049's 2026-09-30 preservation amendment require. The stage table records the same order:
+M3b6's acceptance is a prerequisite of M3b5, not a consequence of it.
 
-*4. Candidates* (each evaluated against interruption at every cross-store write, marker loss
-and source clearing, restored/foreign stores, source-generation change, preservation of
-staged rows that may be the last copy, and replay/deletion/authority risk):
+**M3b4a implementation status — IMPLEMENTED, INDEPENDENTLY REVIEWED (CLEAN) AND APPROVED BY THE
+USER ON 2026-10-20. This is the canonical statement; other documents reference it.** The user
+authorised this stage separately, after Codex's clean review of the adoption. Codex's earlier
+reviews found blocking defects, each corrected within the stage's scope and pinned by
+`nativeMigrationReviewRegressions.test.ts`, `nativeMigrationWarmPrecedence.test.ts` and
+`nativeMigrationWarmExclusion.test.ts`; **Codex's final independent review of the complete
+corrected working tree found no remaining blocking defect, and the user approved M3b4a on
+2026-10-20.** The four modules below are the approved decision core; M3b4b builds on them
+without changing them.
 
-| Candidate | What it proves | What stays indistinguishable | Risks and limits | Technical assessment |
-| --- | --- | --- | --- | --- |
-| **K0 — keep the block** (today) | Nothing new | All of H1–H4 | An ordinary interruption between two writes can strand migration with no specified recovery; recovery is the open human-authorised item | Safe and incomplete |
-| **K1 — P-1 or P-2 in phase `enumerating`, with no application row in the target established by successful reads: treat as E3** (abandon the attempt record, re-enumerate under a new `migrationId` and a new `installationStoreId`) | No staged row exists that could be the last surviving copy | All histories — but every one now takes the same action a first enumeration (D1/D3) would take on the current source | Limited to `enumerating`: a `copying` record with nothing copied still has a manifest, and re-enumerating it would drop vanished keys (T3), so K1 must not reach it. A failed read is never "no rows". Abandonment is one target transaction; interrupted, it leaves the old record (re-evaluated) or none (Group D). The new id's two writes are again non-atomic: an interruption between them reproduces P-1 or P-2 in `enumerating`, which K1 resolves the same way, so repeated interruption converges on one action. **For P-2 it overwrites the foreign marker**, the only evidence of the other attempt (see L1) | **Recommended for review for P-1** — consistent with E3. Its P-2 half is a review question (L1) |
-| **K2 — P-1 in `copying`/`verified`: re-write the marker under the record's EXISTING id only if** the source is readable, the manifest is **non-empty**, §5.5 set **and** content validation passes, and E0/E2 pass; otherwise block as today | The current source holds exactly the generation the record enumerated, at validation time | Which of H1–H4 occurred; any change after validation (§5.5's stated window) | Substitutes content evidence for continuity evidence — it is **not** a claim about which history happened, so it does not recreate provenance by guessing. A non-empty manifest prevents an emptied source from validating vacuously. The re-written marker is again not durably acknowledged; if lost, P-1 recurs and the same rule re-applies with the same id. Staged rows are never discarded; on any divergence the run blocks under item 3 | **Recommended for review** |
-| **K3 — a target-side journal around the marker write** (`sourceMarker: pending → acknowledged`, committed in the target) | "acknowledged + missing" shows the source lost a write it had acknowledged | "pending + missing": never written vs written then cleared before the journal committed. And a `localStorage` acknowledgement is not durability, so "acknowledged" does not exclude H1 | Adds another cross-store write and is **not** an atomicity mechanism. It enables no action K2 does not already take | **Not recommended** unless review finds a case where the action differs |
-| **K4 — fixed write order** (marker first, then record) | Record-without-marker then implies an acknowledged marker was lost | As K3 | Same non-durable acknowledgement | **Not recommended** on its own |
-| **K5 — content-derived store identity** (id derived from the manifest) instead of a random UUID | Collapses provenance into §5.5 validation | A different installation with byte-identical content (harmless: same data) | A schema-meaning change to `storeIdentity`; does not help an empty manifest | Larger change; evaluate only if K2 is rejected |
-| **L1 — P-2 with staged rows (`copying`/`verified`) stays blocked until backup/restore pairing of the WebView and SQLite containers is measured** on the selected configuration; whether K1 may overwrite a foreign marker in `enumerating` is decided in the same review | — | — | The likeliest P-2 history is a restore pairing, and that behaviour is unmeasured (§4) | **Recommended** |
-| **L2 — P-2 with staged rows: replace the foreign marker under K2's conditions** | As K2 | As K2, plus the history of the other attempt | Overwriting the foreign marker destroys the only evidence of the other attempt | Defer until L1's evidence exists |
+*Implemented* — four pure modules under `src/lib/persistence/`, imported only by the three M3b4b
+modules below:
 
-*5. None of these may:* revive W1 or W2; recreate provenance from a guess about history;
-discard, overwrite or re-copy staged rows; re-enumerate away a missing key (only K1's
-`enumerating` case re-enumerates, as E3 already does); treat a failed read as absence; or make
-a valid activated target depend on the old source.
+- `nativeMigrationEligibility.ts` — §1's classification by key shape. It reuses the identity
+  keys declared in pure modules and the audited `isResolutionStorageKey`, and restates the
+  sporting allow-list, the pending-intent keys and the legacy marker, whose declaring modules
+  construct storage-backed repositories; a test pins every restated literal to its declaration.
+- `nativeMigrationRecord.ts` — activation-record parsing, Groups A2–A6 and A′1–A′7, the
+  canonical record byte form, and the exact after-state of every approved transition.
+- `nativeMigrationDecision.ts` — the typed evidence contract and one synchronous, side-effect-free
+  function: L0 → A → A′ → B → C → provenance table → E′, returning a blocked decision with every
+  applicable finding, a symbolic plan (D1, AP-D3, AP-K1′, AP-COPY, AP-CC, AP-ACT), the B4 access
+  disposition with B2/B3 retirement kept separate, or the I-13 fault stop with its bounded
+  latch plan. A surviving process's I-11 comparison — exact record bytes, and every issued
+  row's exact bytes against that row's observed bytes — is decision input; a cold start needs
+  no plan memory and compares no historical row bytes.
+- `nativeMigrationPlanOutcome.ts` — I-9's halt report, with one disposition for EVERY step
+  (confirmed, succeeded, passed, failed, outcome unknown, aborted before write, not issued), and
+  the latch-attempt reducer.
 
-*6. Pending decisions that belong to the user* — technical recommendations above are not
-answers to these:
+*Implementation choices M3b4b must honour* — none changes an approved rule: the reserved names
+of the source marker, activation record and fault latch; D1's `sourceRetirement` is `complete`;
+the canonical record byte form (fixed field order, sorted lists, manifest as key/fingerprint
+pairs) that I-11's byte comparison relies on; fingerprints are computed by the caller and
+checked by an injected format predicate, an unobtainable one blocking under I-1 and a malformed
+one under I-7 (the algorithm stays open); AP-COPY plans one non-empty batch per evaluation, and
+both the batch size and the latch-write attempt bound are explicit engineering parameters, not
+product policy; every plan ends in re-evaluation of fresh evidence; an omitted observation is
+`evidence_required` and a malformed snapshot `invalid_evidence`, neither of which permits
+anything; `retryMayResolve` marks read and health failures only and is not a UX policy. **From
+the corrections:** a warm evaluation compares the exact bytes of every issued row it was given
+(`targetRowValues`), and examines every supplied, successful observation for a POSITIVE
+contradiction first. Each observation excludes the candidate outcomes it contradicts on its
+own, independently of whether the record was readable: observed record bytes (or a positively
+absent record) exclude each issued state whose record they are not; an inserted row's exact
+bytes exclude the before-state when present and the after-state when absent or different; and
+a successful complete target listing (I-2) does the same by key presence or absence alone,
+without row values. When both candidates are excluded the fault is detected — with the record
+unobserved or unreadable too — and the same evidence proves a confirmed step contradicted (a
+record other than the last confirmed one, or a confirmed row positively absent, by value or by
+the listing, or different). Exact bytes are required only where an after-state's values must
+be established: a before-state whose inserted keys the listing shows absent needs no row
+value. Unobserved and failed observations exclude nothing. Only when no fault is
+provable does incompleteness count, and then only if no durable stop already decides: an L0
+stop, or any other blocking row, governs with unreadable warm rows reported alongside it; where
+the table would otherwise permit, an unreadable issued row blocks under I-1 and an omitted one
+is requested as `evidence_required`. An omitted observation is never absence or equality, and a
+failed read is never a fault; a checkpoint inserts exactly the bytes its own read step
+obtained and checked (`rowBytesFromStep`), and the entry-key recheck takes a FRESH source
+enumeration; any supplied current target failure — a failing summary, a failed row enumeration
+or a failed row read — is B1 on an `active` record; a latch carries each record only as its
+canonical, re-validated metadata or as an explicit "omitted, invalid metadata" marker with rule
+identifiers, never raw bytes or row values (so a valid but non-canonical observed record appears
+in canonical form, not byte-for-byte — the no-values requirement prevails); finding details
+carry eligible key names only, and invalid-snapshot problems are fixed codes that never echo
+a field name or value; and `activatedAt` must be a strict UTC ISO-8601 timestamp.
 
-- **U1.** When the source still validates exactly against the record and nothing would be
-  discarded (K1/K2), may migration continue automatically after a lost or foreign provenance
-  marker, or must every P-1/P-2 occurrence wait for an explicit user action? Alternatives: K0
-  everywhere (safest, needs a recovery interface that does not yet exist), K1+K2 automatic with
-  everything else blocked, or K1+K2 offered as a user-confirmed action.
-- **U2.** The recovery interface and wording for every case that stays blocked. This is the
-  existing open item 3 and is not settled here.
+*Tests* — `src/lib/persistence/__tests__/nativeMigrationDecision.test.ts`,
+`nativeMigrationRecovery.test.ts`, `nativeMigrationEligibility.test.ts`,
+`nativeMigrationReviewRegressions.test.ts`, `nativeMigrationWarmPrecedence.test.ts`,
+`nativeMigrationWarmExclusion.test.ts` (an exhaustive record × row × row × listing matrix for a
+two-row checkpoint, checked against a possible-worlds oracle written from I-11's before- and
+after-state definitions) and `nativeMigrationCoverage.test.ts`, with the
+synthetic kit `nativeMigrationTestKit.ts`. Each
+class-L case is an `rcase("Rn", …)` test; the coverage test reads the R-table in this document
+and fails if a class-L case is uncovered or if R2, R65 or R66 is claimed — a label check only;
+the behaviour is established by each case's own assertions.
+`architectureBoundary.test.ts` asserts that no shipped module under `src/` or `mobile/src/`
+imports the layer, that it imports only the UUID predicate, four pure identity modules and
+itself, and that it references no storage, plugin, network, timer, randomness or environment.
+The fingerprints in these tests are labelled synthetic values, not cryptographic or platform
+evidence.
 
-*7. Recommended next deliverable — a P-1/P-2 provenance resolution specification (design and
-review only, no code).*
+*What it does NOT establish:* native transaction atomicity, stable-storage durability, marker
+persistence, restore pairing, or any engine or device behaviour — these tests are class L only.
+R2, R65 and R66 remain simulator/device obligations; R60 stays a stated residual. These four
+modules perform no I/O themselves; the executor is M3b4b's (below).
 
-- **Entry criteria:** this brief independently reviewed; U1 answered by the user, or
-  explicitly deferred (in which case the specification covers K0 recovery only); §5.2, §5.4
-  and §5.5 unchanged as its baseline. No device, build or data access is needed.
-- **Exit criteria:** §5.2's table rewritten with **explicit** rows for an unreadable and a
-  malformed marker and for every adopted candidate, each with one action; §5.4 Group E
-  re-ordered so no new row can mask E0, E2, E5 or E7; for every row, the set of histories that
-  reach it and the argument that one action serves all of them; the test matrix below added to
-  the acceptance cases; a clean independent review; and the user's approval recorded. M3b4
-  stays blocked on item 3 and the S2 requirements regardless.
-- **Negative and interruption matrix for a future implementation:** interruption before the
-  marker write, after it and before the record commit, after the record commit and before the
-  marker write, during K2's marker re-write, after the first checkpoint commit, between
-  validation and the activation commit, and during K1's abandonment; the marker alone removed
-  with the source intact; marker plus all, or some, eligible keys cleared; marker removed and
-  one value changed; source cleared and repopulated with identical and with different content;
-  a foreign id with identical content, different content, and nothing staged; an empty
-  manifest over a cleared source; an unreadable and a malformed marker; an unreadable target
-  record; a failed source enumeration at each step; repeated relaunch after every interruption
-  giving the same action, with K2 always re-using the record's id; staged rows retained
-  byte-for-byte in every blocked outcome, nothing deleted and no committed checkpoint
-  replayed; an activated target with a missing, unreadable or cleared source and marker
-  reaching B2/B4 without consulting provenance; and an older build writing source keys between
-  validation and activation, recorded as the stated residual.
+**M3b4b implementation status — IMPLEMENTED, INDEPENDENTLY REVIEWED (CLEAN) AND APPROVED BY THE
+USER ON 2026-10-20; DORMANT, CLASS-M EVIDENCE ONLY. This is the canonical statement; other
+documents reference it.** The user authorised M3b4b on 2026-10-20, after approving M3b4a.
+Codex's earlier reviews found blocking defects, each corrected within the stage's scope:
+- database ownership and the fault stop were local to one factory instance;
+- an opening ordinary operation could still write while engine resolution was pending;
+- disposal was not honoured inside asynchronous and composite operations;
+- a lifecycle check made inside a nested helper was relied on after the caller resumed;
+- a marker that became foreign after the decision was overwritten;
+- recovery after a halt could re-read through the old connection;
+- R57's assertions ran inside a bridge callback whose failures the adapter absorbs.
 
-*8. What this brief does not close:* source-generation divergence recovery (item 3);
-protected-credential absence-versus-failure evidence (§4); secure transfer of existing
-credentials; the cross-store credential/SQLite interruption; physical-device acceptance;
-installation, signing and container preservation; the mid-session credential-failure
-behaviour; and production cutover (M3b5).
+They are pinned by `nativeMigrationReviewCorrections.test.ts`,
+`nativeMigrationOwnershipCancellation.test.ts` and R57's negative control. **Codex's final
+independent review of the complete working tree found no remaining blocking defect, and the
+user approved M3b4b on 2026-10-20.** Approval does not change its scope. It is
+**dormant**: an explicitly invoked implementation that no application startup path,
+composition, component or repository calls, and that cannot yield a `NativeActivationVerdict`.
+`PRODUCTION_ACTIVATION_AUTHORITY` still reports `unavailable` unconditionally.
 
-**Required acceptance cases — FUTURE IMPLEMENTATION REQUIREMENTS, not results.** None of
-these has been written or run. They are stated as executable future scenarios against the
-checkpointed model (M3b0 §5.1), and they become due with the stage named beside each group.
-Unit/model, real-engine integration and device evidence stay separate and are never
-substituted for one another.
+*Implemented* — the approved M3b4a core is used unchanged:
+
+- `localStorageAdapter.ts` — §3's `EnumerableStorageSource` and a migration-only source
+  capability, outside `StorageAdapter`/`RemovableStorageAdapter`. Enumeration takes two
+  `length`/`key(i)` passes and reports any throw, `null`, duplicate or difference between the
+  passes as `read_failed`, never as a smaller key set. A value is read only if the caller's
+  policy admits its key, so excluded keys — provider credentials, the diagram cache — are
+  listed by name and never read. The marker is the only writable key, and only through
+  `writeMarkerIfAbsent`: the current marker is read and, in the same synchronous turn, written
+  only if positively absent — an equal marker is `already_matching`, a foreign or malformed one
+  and an unreadable one are refused without writing (PV10–PV12 are never pre-empted). That is
+  a same-turn check in one JavaScript context, not a compare-and-swap; another process or build
+  writing the same store remains the writer-exclusion residual (§5.5). Failures carry fixed
+  messages; ordinary `get`/`set`/`remove` are unchanged.
+- `nativeSqliteAdapter.ts` — a migration-only target capability (`createNativeMigrationSqliteStore`)
+  that shares the native store's one queue and connection. **Ownership is per database within
+  the live JavaScript context**, across every factory call and engine wrapper naming it: the
+  migration lease is registered for the database, every other store instance refuses ordinary,
+  diagnostics, lifecycle and migration work on it while the lease exists, and a lease is granted
+  only when no other instance may still hold a native handle to it (open, opening, or closed
+  without a confirmed release). An opening instance reserves the database in the same
+  synchronous turn as its ownership check, BEFORE the first asynchronous boundary — engine
+  resolution included — so a concurrent acquisition and an opening ordinary operation never
+  both proceed, in either order. A failed open's reservation is kept unless its native-handle
+  release is confirmed; a later `close()` attempts that release. Leases are compared by identity, so a stale lease — or a forged
+  one with an equal id — resolves nothing. There is no reset, force-unlock or fault-clearing
+  entry point; only the holder's completed release frees the database, and only a new execution
+  context starts without the registry. Reads are strict:
+  a malformed envelope, row, column or duplicate is `read_failed`, never absence. Named
+  transactions only — create the record, replace it in place (`UPDATE`), a checkpoint, the
+  latch — each one queued task: BEGIN, the expected record re-read inside it, the writes with
+  the per-statement flag off and each acknowledged as exactly one changed row, then COMMIT.
+  Rows are inserted without a conflict clause, so a staged row is never overwritten. The
+  caller's lifecycle travels into every composite operation — the reserved and value reads,
+  the key listing, connection opening, reopening and the transaction — and is checked at
+  issuance, immediately before each further query, opening or setup command, BEGIN,
+  statement and COMMIT, as well as after every await. A check made inside a nested helper is
+  never relied on once its caller resumes: the caller checks again before its next call. A stopped read reports `cancelled`, never absence; a stopped opening cleans up the
+  half-opened connection; a transaction stopped before COMMIT is rolled back (`cancelled`, and
+  no BEGIN at all if it stopped while opening); a COMMIT already issued is awaited and its real
+  outcome reported. `release` is accepted in `requires_reopen`: a positively established close
+  and native-handle release end any native transaction, so no fresh open is needed. From
+  BEGIN until an acknowledged COMMIT or ROLLBACK the lease `requires_reopen`; no ROLLBACK is
+  issued after an unacknowledged COMMIT, because the Android plugin acknowledges a ROLLBACK with
+  no active transaction. Only a close, an explicit native-handle release and a fresh open —
+  each positively established — clear it. The reserved key names are supplied by the caller.
+- `nativeMigrationBindings.ts` — binds the source to the approved eligibility test and marker
+  key, the target (by dynamic import) to the reserved record and latch keys, and supplies
+  platform UUIDs and timestamps that throw rather than fall back. **It binds no fingerprint.**
+- `nativeMigrationEvidence.ts` — collects one snapshot for `decideNativeMigration`. Target rows
+  are always listed (also B1's health probe) and digested only for `copying`/`verified`; the
+  source and the marker are read only with no latch and an absent or valid pre-`active` record;
+  eligible source values are digested on every pre-activation continuation, `verified`
+  included. Exact row bytes for I-11 are read independently of the record's readability. The
+  caller's lifecycle is checked before issuing and after completing every read and digest; a cancelled collection yields no
+  snapshot and no decision.
+- `nativeMigrationRunner.ts` — the runner. `decideNativeMigration` is its only decision
+  authority: it executes exactly the selected plan (D1, AP-D3, AP-K1′, AP-COPY, AP-CC, AP-ACT,
+  AP-LATCH), honours every read, recheck, `fresh_source_enumeration` and `rowBytesFromStep`, and
+  re-evaluates from fresh evidence after each completed plan. It keeps I-11's plan memory (exact
+  issued record and row bytes, confirmed rows, the last confirmed record) for its lifetime.
+  **After ANY halt** — a marker write, a refused marker precondition, a read, a recheck, a
+  preparation failure or a target transaction — the next explicit `run()` first closes the
+  target, releases its native handle and opens it fresh, each step established separately;
+  a failure at any of them reports its boundary and reads no evidence (I-9, I-10). It holds
+  I-13's in-process stop with the bounded latch write as the only later write, and reports
+  fixed codes and key names only. A refused marker precondition is a step never issued, distinct
+  from an issued write whose outcome is unknown; so are preparation failures (an id, a
+  timestamp, a checked read). Concurrent `run()` calls join one execution. Disposal is checked
+  after every asynchronous boundary: a disposed run issues nothing new and never reports
+  access, while a positively established fault is retained. `dispose()` waits for an in-flight
+  call to answer and keeps the lease — `fault_stop_held` after a detected fault, and
+  `plan_evidence_held` while plan memory holds an unresolved unknown outcome or writes no
+  completed evaluation has checked — because releasing would let another runner in the same
+  context evaluate cold in its place. Otherwise it releases by close and explicit release
+  only, issuing no fresh open or other new work. The AP-CC/AP-ACT verifier invokes no further
+  fingerprint once disposed, so a digest that never answers cannot keep disposal from settling;
+  the evidence collector likewise stops between digests, and the plan's source reads check
+  before every value read. Plan
+  progression per `run()` and latch attempts are explicit engineering bounds; reaching the
+  first is `bound_reached`, never success.
+
+*Implementation choices, reviewed with the stage* — none changes an approved rule:
+
+- An issued target transaction that did not commit is `outcome_unknown` in the I-9 halt report,
+  except an AP-CC/AP-ACT abort before any write (`aborted_before_write`). Its issued bytes stay
+  in plan memory, so a precondition failure caused by a target changed underneath the plan is
+  classified by I-11's comparison like any other unknown outcome.
+- A latch found already present inside the latch transaction counts as a confirmed attempt and
+  is reported as `already_present`.
+- At B4 the runner retires its plan memory: after activation the migration metadata is
+  historical (§5.4), so legitimate post-activation changes can never contradict it.
+- After a non-fault decision that positively shows an issued before- or after-state, the runner
+  records which one in its memory; every decision still comes from `decideNativeMigration`.
+- A disposal that interrupts the evaluation which would have proven a fault ends the run without
+  a decision; the unresolved warm evidence then keeps the lease (`plan_evidence_held`). A fault
+  established before disposal took effect keeps its stop; a latch transaction stopped before
+  COMMIT is rolled back and is not counted as an attempt.
+
+*Tests* — `nativeMigrationSourceCapability.test.ts`, `nativeMigrationTargetCapability.test.ts`,
+`nativeMigrationExecution.test.ts`, `nativeMigrationWarmIO.test.ts`,
+`nativeMigrationRunnerLifecycle.test.ts`, `nativeMigrationReviewCorrections.test.ts`,
+`nativeMigrationOwnershipCancellation.test.ts` and `nativeMigrationMCoverage.test.ts`, with the
+harness `nativeMigrationMTestKit.ts`. Observations made inside bridge callbacks are recorded
+and asserted afterwards — the adapter absorbs anything thrown there — and R57 carries a
+negative control proving a violated preservation invariant fails it. A "new
+process" in these tests is a new execution context (a fresh module registry); another binding in
+the same context is a competitor that must be refused, not a restart. They drive the real modules over
+`pluginFaithfulSqliteEngine` on both platforms and a disposable synthetic WebView store; the
+class-L mechanical executor is not used. `nativeMigrationMCoverage.test.ts` reads this document's
+R-table and fails unless every class-M case has an `mcase` test and no other case claims one.
+The warm counterexamples and a record × row × read-failure × listing matrix are also exercised
+through the I/O layer. The engine gained the new statements (plain-`INSERT` conflicts, `UPDATE`,
+the key listing, `run`'s change count), explicit fault hooks, an ordered trace of lifecycle
+events and statements, awaited gates for deterministic cancellation, and Android's acknowledged
+ROLLBACK without a transaction — an opt-in every M3b4b test uses; the default stays as before
+for the existing diagnostics tests.
+
+*What it does NOT establish:* class M models the approved atomicity assumption on a mocked
+engine. It proves no real SQLite durability, marker persistence (R2), survival of termination
+during COMMIT or power loss (R65), or restore pairing (R66); R60 stays a stated residual. Whether
+the real bridge carries a value containing a NUL character or an unpaired UTF-16 surrogate
+byte-for-byte is unmeasured (iOS reads `TEXT` as a C string). Whether such a transformation
+would be detected depends on that bridge behaviour and on a fingerprint binding that is not yet
+selected, so this stage claims no detection for it; the source is never retired, so nothing is
+removed from it. **The fingerprint algorithm and its WebView availability
+remain open (I-7):** the executor requires an injected digest and a standard collision-resistant
+platform binding is required before any activation. M3b4b itself has no recovery interface (that
+is M3b4c, below), no latch clearing, no credential work, no source retirement and no activation
+verdict, and nothing has run on a simulator or a device.
+
+**M3b4c implementation status — 2026-10-20. IMPLEMENTED AND LOCALLY VERIFIED; DORMANT;
+AWAITING CODEX'S INDEPENDENT REVIEW AND THE USER'S APPROVAL. This is the canonical statement;
+other documents reference it.** The user authorised M3b4c on 2026-10-20, together with
+approving UG-1–UG-4 (§6.9), after approving the U2 documentation adoption that Codex had
+reviewed clean. Codex's first independent review of M3b4c was not clean. It reproduced five
+defects: session disposal reached the runner one microtask late; a disposed session kept its
+last snapshot; the view's report and waiting state were not scoped to the session; a failed
+recheck erased an unresolved step outcome from diagnostics; and result processing could leave
+an unhandled rejection. They are corrected as described below and pinned by
+`nativeMigrationSessionCorrections.test.ts` and the view's "review corrections" tests. Whether
+the corrections are clean is for the next independent review. It implements §6's first-version policy as a presentation and controller layer
+over the approved M3b4b runner. **It is dormant:** no shipped startup path, composition or
+component constructs a runner, a session or the recovery view. The production activation
+authority still reports `unavailable / migration_not_implemented` unconditionally, so no user
+sees this interface in any build.
+
+*Implemented:*
+
+- `src/lib/persistence/nativeMigrationPresentation.ts` — a pure classification of every
+  `NativeMigrationRunReport` into §6.2's four groups, one fixed explanation, the permitted
+  action (a recheck for G2 only), fixed technical codes, the validated phase and step
+  dispositions. It follows §6.2's precedence G3 > G4 > G2 over every finding and never consults
+  `retryMayResolve`. The decision rules, reason codes and halt observations are classified by
+  tables the compiler checks for exhaustiveness. An unrecognised rule, code, outcome or a
+  throwing report is G4 "internal check". It also builds the §6.6 diagnostic report as a
+  dedicated allowlisted projection: application version, fixed codes, a phase only from the
+  validated record of that outcome, and step outcomes. It never includes a finding's `detail`,
+  a key name, a value, a record, marker or latch byte, a fingerprint, an identifier or
+  exception text. It imports the core and the executor through erased `import type` only.
+- `src/lib/persistence/nativeMigrationSession.ts` — the controller. It receives an
+  already-constructed runner by dependency injection and becomes its only owner:
+  - `start()` evaluates once and is idempotent across Strict Mode replays and re-renders;
+  - `recheck()` runs again only from a settled G2 presentation, on the same runner, and is
+    refused while a run is in flight;
+  - concurrent invocations join one execution, there is no automatic retry loop, and a settled
+    `bound_reached` stays G2;
+  - `subscribe()` is observation only — unsubscribing never disposes, and a throwing observer
+    alters nothing;
+  - `dispose()` is the storage owner's single, idempotent disposal. It calls the runner's
+    `dispose()` in the same synchronous turn, so no already-queued continuation can issue
+    further opening, setup, read, write or digest work in between. The shared promise exists
+    before that call, so a reentrant caller joins it. A throwing, rejecting or malformed runner
+    disposal is reported as ownership not freed. The runner's approved cleanup — awaiting issued
+    work, ROLLBACK before COMMIT, no ROLLBACK after an issued COMMIT, keeping the lease for plan
+    evidence, a fault stop or uncertain cleanup — is unchanged;
+  - an observer of the running state that disposes the session prevents the run from starting;
+  - disposal is terminal and observable: the snapshot becomes `disposed` with the `ended`
+    presentation (never idle, running, retryable or accessible), current observers are told
+    once, and a later observer sees the same. After that nothing is published — no late
+    progress, outcome, access or handover result;
+  - the whole result-processing path is protected. A throwing report property, a malformed
+    plan list, a throwing or rejecting `run()` and any projection failure become G4 "internal
+    check", with no unhandled rejection and no raw error text. Plan names are validated
+    against the fixed plan set;
+  - the most recent stopped plan's restricted facts (plan name and step dispositions, as
+    recorded then) are kept. The diagnostic report shows them, labelled as history, when a
+    later check fails before evaluating the stored state — a failed reopen, a refusal or an
+    unreadable read — so an unresolved write outcome is not erased. A newly stopped plan
+    replaces them, and B4 clears them. The session never classifies them itself and never
+    presents them as a fresh phase observation;
+  - a B4 `access` report is a migration result: the session hands the target back by disposing
+    the runner and reaches `access` only when the lease is positively freed. A failure to free
+    it is G4 `handover_failed`. It never produces a `NativeActivationVerdict` or a composition.
+- `src/components/persistence/NativeMigrationRecoveryView.tsx` — binds a session to the
+  surface with `useSyncExternalStore`. Before a B4 handover it renders the blocking surface and
+  nothing else. After a B4 handover it renders its children, which must be the existing
+  composition gate: that gate still obtains its own verdict and composition before anything
+  mounts, and in this stage it still stops at the unavailable authority. While a run has not
+  answered it shows G1. After a presentation-only delay of 8 s
+  (`MIGRATION_WAITING_PRESENTATION_DELAY_MS`, an engineering detail, not a product timeout) it
+  adds an honest waiting line that cancels, retries and releases nothing. An already-known
+  retirement finding is a subordinate note (UG-4). A disposed session renders a terminal
+  "Storage check closed" state — never children and never an actionable control — whether it
+  was disposed while the view was mounted or before the view attached. Report, clipboard and
+  waiting state are keyed by session identity as well as run and status, so switching the
+  `session` prop never shows the previous session's report, "copied" result or expired waiting
+  line. A clipboard answer for a replaced report is ignored. Switching sessions neither
+  disposes the previous one nor creates a runner.
+- `src/components/persistence/NativeMigrationRecoverySurface.tsx` and `migrationRecoveryCopy.ts`
+  — the presentational surface and its centralised English copy (UG-3). It offers:
+  - the group heading and explanation;
+  - "Check again" for G2 only;
+  - collapsible help and technical details with the error code;
+  - a diagnostic report generated only when the user asks, shown read-only and selectable, and
+    copied only on a second explicit action. "Report copied." appears only after the clipboard
+    succeeds; a rejection or a missing clipboard is reported as such.
+
+  It offers no repair, reset, reinstall, "continue anyway", "choose a copy" or contact action.
+- **Narrow gate correction.** `StorageCompositionGate` no longer offers "Try again" for
+  `migration_authority_unavailable`. Its message now says that the transfer is not switched on
+  in this build and that checking again will not change this. A retry there wrongly suggested
+  that a recheck could activate the transfer. Every other failure keeps its retry, and the
+  gate's lifecycle is unchanged.
+- **Narrow runner observability** (`nativeMigrationRunner.ts`). A halted plan's report now
+  names the cause its failing step had already observed (`PlanHalt.observed`). This tells apart
+  causes that look the same from outside:
+  - an unreadable value, a value listed and then absent, and a manifest key positively absent;
+  - an unavailable digest and a malformed one;
+  - a failed entry-key enumeration and a positively missing entry key;
+  - a batch digest mismatch;
+  - a diverged and an unavailable §5.5 validation;
+  - mismatched, undigestible and malformed in-transaction evidence for AP-CC/AP-ACT.
+
+  A blocked or access report names the validated record's phase (`recordPhase`). Both are fixed
+  codes derived from values the runner had already obtained. The M3b4a core is unchanged, as
+  are decision order, plans, guards, I/O order, cancellation and ownership. No read, write,
+  digest or reopen was added. Evidence:
+  - the unchanged M3b4a/M3b4b suites pass;
+  - `nativeMigrationObservability.test.ts` drives each observation through the real runner;
+  - a one-time differential run compared the pre-extension and extended runners over 35
+    synthetic scenarios on both platforms (fresh migration, D1, marker rejection, checkpoint
+    and activation outcome unknown, read and digest failures, divergence, a new key, a race
+    before activation, a foreign marker, a malformed record, a failed reopen and an
+    in-transaction read failure). It found every engine statement, source read and write,
+    committed row and report identical apart from the two new fields. That temporary test is
+    not kept in the repository.
+- The class-M harness gained an optional `wrapSource` seam, used only to change the synthetic
+  store at a chosen call.
+
+*How to exercise it:* only through tests, which assemble the real runner over the
+plugin-faithful engine and a synthetic WebView store (`nativeMigrationMTestKit.ts`), hand it to
+`createNativeMigrationSession`, and render `NativeMigrationRecoveryView`. There is no production
+switch, URL parameter, stored preference, developer bypass or demo route.
+
+*Tests and traceability* — `nativeMigrationPresentation.test.ts` (classification of every
+finding family, mixed-finding permutations, every halt cause, every outcome family, diagnostics
+allowlist and sentinel exclusion), `nativeMigrationObservability.test.ts`,
+`nativeMigrationSessionCorrections.test.ts` (the real runner on both platforms: session
+disposal swept across opening, setup, read, digest and transaction boundaries with calls
+recorded at issuance; reentrant and running-state disposal; contained runner disposal;
+terminal disposal from every state; diagnostic history across failed rechecks; containment of
+result processing), `nativeMigrationSession.test.ts` (the real runner: B4 handover, retryable halts, unknown marker
+and transaction outcomes, reopen failure at close/release/open with no evidence read,
+an external holder without takeover, a warm "matches neither" fault, latch present and latch
+read failure, `bound_reached`, an active target read without source or marker access;
+lifecycle: joined invocations, disposal before COMMIT rolling back, disposal after COMMIT
+awaiting without rollback, disposal during a digest, retained plan evidence, uncertain cleanup,
+unanswered calls, late results, observers) and `NativeMigrationRecoveryView.test.tsx` (jsdom,
+over the real runner: G1–G4 rendering and actions, no downstream consumer before a handover,
+the composition gate still blocking after B4, Strict Mode, unmount without disposal, waiting,
+G4 version and internal-check cases, the help route without contact, keyboard operation,
+diagnostics on request with clipboard success, rejection and absence, and sentinel credentials,
+Profile UUIDs, key names and values absent from every rendered and copied text, with no
+network or console call). `nativeMigrationRecoveryCoverage.test.ts` reads §6.10 and fails
+unless every U2 requirement and every §6.8 outcome family has a labelled behavioural test — a
+label check; the behaviour is in the labelled tests. `architectureBoundary.test.ts` asserts
+that the two M3b4c library modules reference the core and executor through `import type`
+only, that no M3b4c module reaches storage, plugins, network, environment, logging, identity
+or a verdict, and that no shipped module imports any M3b4c module. `mobile/__tests__/bundle.test.ts`
+asserts that no build mode contains the recovery interface.
+
+| Requirement | Behavioural evidence |
+| --- | --- |
+| U2-1 (group mapping) | presentation: every finding family, permutations; view: keyboard and rendering |
+| U2-2 (unknown ≠ rollback) | presentation: halt dispositions; session: unknown transaction outcome; view: copy |
+| U2-3 (startup, recheck, no parallel, no loop) | session: joined calls, `bound_reached`, same-runner recheck; view: Strict Mode, double click |
+| U2-4 (no bypass) | presentation: refusals; session: external holder, reopen failure |
+| U2-5 (waiting) | session: unanswered call; view: waiting line without action |
+| U2-6 (after disposal) | corrections: synchronous disposal swept across opening, setup, read, digest and transaction boundaries on both platforms; reentrant disposal; terminal snapshot from every state; view: terminal state mounted and attached later; session: before/after COMMIT, digest pending, plan evidence, uncertain cleanup, late result |
+| U2-7 (no repair actions) | view: action inventory per group |
+| U2-8, U2-15 (G4) | presentation: versions and internal checks; view: G4 copy and actions; corrections: throwing report property, malformed plan list, sync throw and rejection — G4 with no unhandled rejection, also after disposal; view: no downstream mount |
+| U2-9, U2-10 (diagnostics) | presentation: allowlist and sentinels; view: on request, clipboard, no transmission, report and clipboard state scoped to the session; corrections: unknown marker and transaction outcomes kept as history across a failed reopen and an unreadable listing, never as a fresh phase |
+| U2-11 (no contact) | view: help route |
+| U2-12 (active target) | session: no source or marker access |
+| U2-13 (identity) | session: no identity entry point; view: the gate still decides after B4 |
+| U2-14 (save/sync wording) | view: copy unchanged |
+| U2-16 (English) | view: approved translations |
+| U2-17 (retirement note) | presentation and session: a nonblocking note, no extra probe |
+
+*Layout.* The surface was checked once in a real browser at 320 and 390 px wide, with a 480 px
+tall viewport, and at 1280 px. It showed no horizontal overflow, 44 px action targets and a
+reachable diagnostic action. The check used a temporary harness that is not kept, so it is a
+recorded manual observation, not an automated test.
+
+*What it does NOT establish, and what is not done:*
+- Component and controller evidence over the class-M harness only. Nothing ran on a simulator
+  or a device, and it does not relabel any class-L or class-M case of R1–R77.
+- The application version is an injected value. No shipped build supplies one yet, so the
+  report says "not available" until a cutover stage wires a non-secret build-metadata source.
+- No migration in any shipped build: no source retirement, credential work, fingerprint
+  binding, latch clearing, targeted recovery, contact channel or cutover.
+- Retirement is not implemented, and for an `active` record the collector reads no source, so
+  in practice no retirement finding reaches the surface today (UG-4's stated limitation).
+
+**Next:** Codex's independent review of M3b4c and the user's approval of it (stage 9). The
+credential stages (5, 6, 10), the simulator rehearsal (11), device acceptance (12) and cutover
+(13) follow the table above.
+
+*6. What this resolution does not close:* review and approval of the blocked-state recovery
+interface (M3b4c), the deferred targeted recovery procedures and the concrete help channel
+(open item 3; U2's first-version policy and UG-1–UG-4 are decided in §6); protected-credential absence-versus-failure evidence (§4); secure
+transfer of existing credentials; the cross-store credential/SQLite interruption; the
+fingerprint algorithm and its platform availability (I-7); physical-device and restore-pairing
+evidence; installation, signing and container preservation; the mid-session
+credential-failure behaviour; production cutover (M3b5); and the honesty residuals no on-device
+evidence can remove (§5.7).
+
+**Required acceptance cases — requirements, distinguished from results.** They are stated as
+executable scenarios against the checkpointed model (M3b0 §5.1), and they become due with the
+stage named beside each group. Unit/model, real-engine integration and device evidence stay
+separate and are never substituted for one another. **What exists today:** every class-L case
+of R1–R77 (all except R2, R65 and R66) has LOGICAL coverage in the approved M3b4a decision
+core's tests, and every class-M case has MOCK coverage through the dormant, approved M3b4b
+executor (§7, "M3b4a implementation status" and "M3b4b implementation status"). **What does
+not:** the recovery interface (M3b4c) is implemented but awaits review, and its separate
+requirements are §6.10's U2-1–U2-17, which no R-case's coverage evidences; and no S
+(simulator) or D (device) case of R1–R77, and no case below that depends on executing a
+migration on an engine or device, has been run; R2, R65 and R66 remain simulator/device
+obligations. Cases outside
+R1–R77 that earlier stages already cover say so beside them.
 
 *Authority and recovery (M3b0 §5.4) — due in M3b4*
 
-1. D1 — no record, target empty, source readable and empty → activates; nothing migrated.
-2. **D2 — readable-empty source with a POPULATED target and no activation evidence → BLOCKED**,
+1. D1 (PV6) — no record, no marker, target empty, source readable and empty → activates; nothing
+   migrated.
+2. **D2 (PV2) — readable-empty source with a POPULATED target and no activation evidence → BLOCKED**,
    no import, no delete. (The case D1 must not absorb.)
 3. **C1 vs C2 — failed source enumeration is not an empty source**: with no `active` record the
    run blocks and retries; it never proceeds as "nothing to migrate".
-4. **E3 — interrupted enumeration** → attempt record abandoned, re-enumerated under a new
-   `migrationId`; nothing was staged, so nothing is deleted.
-5. A1/A2/A3/A4/A5 — unreadable record, malformed record, invalid `phase`, `schemaVersion`
-   higher **and** lower than supported, malformed manifest → blocked; never downgraded, never
-   overwritten.
+4. **Interrupted enumeration** → with every `entryKeys` key still in the source and no target
+   row: **E′6 (AP-K1′)** replaces the record in place under a new `migrationId` and the same
+   `storeIdentity`; with any `entryKeys` key missing, including an empty source: **E′5,
+   blocked**. Nothing was staged, so nothing is deleted. *(Amended 2026-10-19; the unconditional
+   E3 re-enumeration is superseded.)*
+5. A1/A2/A3/A4/A5 and A′1–A′7 — unreadable record, malformed record, invalid `phase`,
+   `schemaVersion` higher **and** lower than supported, malformed manifest, and every
+   phase-shape and integrity predicate → blocked; never downgraded, never overwritten.
 6. **A6 — a `copied` entry outside the manifest** (a self-contradictory record) → blocked.
-6b. **E0 — staging progress and staged data disagree PRE-ACTIVATION, in both directions**: a
+6b. **E′2 — staging progress and staged data disagree PRE-ACTIVATION, in both directions**: a
     `copied` key with no committed target row, **and** a committed row for a manifest key absent
-    from `copied` → blocked in each direction; no repair by deletion or re-copy.
-7. E1 — `storeIdentity` missing or mismatched → blocked.
+    from `copied` → blocked in each direction; no repair by deletion or re-copy. Any target row
+    while `enumerating` (E′1) and a row outside the manifest (E′3) also block.
+7. `storeIdentity` missing or malformed (A′1, PV8) or differing from the marker (PV12) → blocked.
 
 *Provenance markers (M3b0 §5.2) — due in M3b4*
 
 8. **Valid activated target with a missing, cleared or unreadable old source → ordinary access
    proceeds.** The absent source marker does **not** block; retirement is recorded as stalled
    (B2). This is the regression the earlier both-markers rule would have caused.
-9. **Source marker written, no target record, target empty** → the id is adopted into the new
-   record and the run continues. No atomicity between the two stores is assumed.
-10. **Target record present and pre-`active` with no source marker → BLOCKED (blocker P-1).**
-    The marker is **not** recreated, and the two possible causes — an interrupted write, or a
-    marker written and the source later cleared — are **not** distinguished, because the
-    protocol records nothing that separates them.
-11. Both markers present and equal → proceeds. Both present and **different** while pre-`active`
-    → **blocked** (blocker P-2), not silently resolved.
+9. **Source marker present, no target record, target empty → BLOCKED (PV5).** Under the
+   record-first order a marker without a record can only follow the loss of a committed record
+   or a false commit acknowledgement; it is **never adopted**. *(Amended 2026-10-19; the earlier
+   "adopt the id" rule is superseded.)*
+10. **Target record present and pre-`active` with the marker positively absent (P-1, PV14)** →
+    in `enumerating`, E′5 or E′6 (K1′, same id); in `copying`/`verified`, K2 (E′9–E′11) only
+    when every A′, E′1–E′8 and §5.5 check passes, otherwise the matching block. Neither claims to
+    know which history occurred. An unreadable marker (PV10) or a malformed one (PV11) blocks.
+    *(Amended 2026-10-19; P-1 is no longer an unconditional block.)*
+11. Both markers present and equal → proceeds (PV13). Both present and **different** while
+    pre-`active` → **blocked in every phase (PV12)**, including `enumerating` with nothing
+    staged; the foreign marker is never overwritten or adopted.
 
 *Generation coherence (M3b0 §5.5) — due in M3b4*
 
@@ -3721,7 +5028,7 @@ substituted for one another.
     no inference of user intent.
 15. **An uncopied value disappears** → blocked, with the original manifest entry retained as
     evidence; it must **not** silently vanish from a re-enumerated manifest.
-16. **Source changes after `verified` but before activation** → E7: `verified` is re-validated
+16. **Source changes after `verified` but before activation** → E′8: `verified` is re-validated
     on resume and blocks. A `verified` record is not exempt.
 17. **Identity records change between attempts**, including a new
     `accessBarrierResolution.<uuid>.v1` → the membership test sees it as a set difference, so
@@ -3741,16 +5048,114 @@ substituted for one another.
 
 21. Crash mid-checkpoint → that batch's rows **and** its progress entry are both absent on
     reopen; the last committed checkpoint is authoritative.
-22. **Uncertain commit, reopen shows the batch COMMITTED** (progress and rows both present and
-    consistent) → **not replayed**. Blind replay would overwrite committed state.
-23. **Uncertain commit, reopen shows NO commit** (neither progress nor rows) → replayed exactly
-    once.
-24. **Uncertain commit, reopen shows an inconsistent half** → E0, blocked; never repaired by
-    guessing.
-25. An uncertain **activation** commit is resolved the same way, and a record already `active`
+22. **Unknown commit outcome, durable state shows the batch COMMITTED** → the next evaluation
+    reads the durable `copied`; that batch is **never chosen again** (I-11). Blind replay would
+    overwrite committed state.
+23. **Unknown commit outcome, durable state shows NO commit** → its keys remain in
+    `manifest − copied` and are chosen afresh; nothing committed, so nothing is replayed.
+24. **Durable state shows an inconsistent half** → E′2, blocked; never repaired by guessing. A
+    surviving plan that finds the state matching neither the issued before- nor after-state
+    has detected a fault (I-13).
+25. An unknown **activation** outcome is resolved the same way, and a record already `active`
     is never re-activated.
 26. Configured `journal_mode`/`synchronous` behave as assumed — measured by the M3b1 in-app panel,
     never assumed from documentation.
+
+*Migration recovery and provenance cases R1–R77 (M3b0 §§5.1–5.6) — approved 2026-10-19; due in
+M3b4 for classes L and M, with S and D evidence due as stated*
+
+Evidence classes: **L** logical/model (a pure decision function over synthetic evidence
+snapshots); **M** mock (the plugin-faithful engine and a synthetic source store); **S** real
+engine on a simulator, user-reported; **D** a physical **disposable** device, user-reported
+(never the user's data-bearing iPhone). The listed classes are where a case *can* be evidenced,
+not results; the §5.6 CE traces are not counted as any of them. **W** marks a warm case — the
+plan survives an unknown outcome. **C** marks a cold case — a fresh process with **all** earlier
+plan memory discarded. After a **blocked decision**, the staged rows, record, manifest,
+`entryKeys` and marker are byte-identical before and after. After a **halt**, every confirmed
+step has taken effect; the one step with an unknown outcome may or may not have; no later step
+was issued; and no store the plan issued no write to has changed. In every case nothing is
+deleted, no committed checkpoint is replayed and no ordinary consumer mounts before B4. Where a
+case below and cases 1–41 overlap, the case below is the more specific statement.
+
+| # | Scenario | Expected outcome | Classes |
+| --- | --- | --- | --- |
+| R1 | **C:** death after the AP-D3 record commit, before the marker write | PV14 → E′6, same `storeIdentity` | L, M, S |
+| R2 | A marker write returned, but WebKit had not persisted it | As 1. Whether a returned write persists is unmeasured | S, D |
+| R3 | **W:** AP-D3 record commit, acknowledgement lost | Halt; no marker written. Re-evaluation from durable state: committed ⇒ PV14 → E′6; not committed ⇒ PV7, a new attempt with new ids. Neither is a fault; a state matching neither is row 6's case | L, M |
+| R4 | **C:** the durable states of 3 with the plan memory discarded | The same rows as 3, decided without the lost ids | L, M, S |
+| R5 | **W** and **C:** unknown outcome of, or death during, AP-K1′'s replacement | The old or the new `enumerating` record; either ⇒ E′5/E′6 (W: once the comparison found the before- or after-state; a mismatch is row 6); a cold start consults no `migrationId` | L, M, S |
+| R6 | **W:** replacement outcome unknown; the reopened record has the issued new `migrationId` but differs elsewhere, even if it passes A′ and E′5 | **Detected fault (I-13):** no further step, no activation, no mounting; latch write issued. The table's E′6 is **not** taken | L, M |
+| R7 | **C:** the durable state of 6, no plan memory and no latch | The table decides (E′5/E′6 if A′-valid) — the documented undetected residual, not a detection | L |
+| R8 | AP-K1′ marker write rejected before applying | Halt, no target transaction issued; the marker reads absent ⇒ PV14 → E′6 | L, M |
+| R9 | A marker write that applies and then rejects, in AP-D3, AP-K1′, AP-COPY, AP-CC or AP-ACT | Halt reported as outcome unknown; the marker reads equal ⇒ PV13; the target is unchanged by that step | L, M |
+| R10 | **W:** a marker write's answer lost; **C:** death during a marker write | The marker read decides: PV13 or PV14; malformed ⇒ PV11; unreadable ⇒ PV10 | L, M, S |
+| R11 | A marker present with no record (the order K4 forbids) | PV5, **BLOCKED** | L, M |
+| R12 | AP-D3 marker write fails after a confirmed record commit | Halt: step 1 confirmed, step 2 unknown; next PV13 or PV14 → E′6 | L, M |
+| R13 | **W** and **C:** the `enumerating → copying` commit, acknowledgement lost or death | `enumerating` ⇒ E′5/E′6, or `copying` with `copied = ∅` ⇒ E′7/E′9 | L, M, S |
+| R14 | **W:** a checkpoint committed, acknowledgement lost | Halt; re-evaluation reads the durable `copied` ⇒ E′9/E′10; that batch is never chosen again | L, M |
+| R15 | **C:** death after a checkpoint commit | As 14, without plan memory | L, M, S |
+| R16 | **C:** death during a checkpoint, before commit | The previous `copied` and rows ⇒ E′9 chooses from the remaining keys again (nothing committed, so nothing is replayed) | L, M, S (death **during** COMMIT: D, unmeasured) |
+| R17 | Rows without progress, or progress without rows | E′2 **BLOCKED** | L, M |
+| R18 | A K2 marker write in AP-COPY, AP-CC or AP-ACT ends outcome unknown | Halt with no target transaction issued; next PV13 or PV14 ⇒ the same E′ row | L, M |
+| R19 | **CE4:** `copying` with manifest = `copied` = target, all matching | E′10 → AP-CC → AP-ACT → B4 | L, M |
+| R20 | **W:** the AP-CC commit's acknowledgement lost | Re-evaluation: `verified` ⇒ E′11; `copying` ⇒ E′10 | L, M |
+| R21 | **C:** death after the AP-CC commit | `verified` ⇒ E′11; AP-ACT re-reads the evidence | L, M, S |
+| R22 | **C:** death during AP-CC, before commit | `copying` ⇒ E′10; never an empty checkpoint | L, M, S |
+| R23 | AP-CC finds a missing, extra or mismatched row, or incomplete `copied` | Rolled back; halt; next evaluation blocks at E′2, E′3 or E′4 | L, M |
+| R24 | **CE1:** `verified` with `copied` ⊊ manifest and a row missing | A′6 **BLOCKED**; never activated | L |
+| R25 | `verified` with complete `copied` but a target row missing or mismatched | E′2 or E′4 **BLOCKED**; never activated | L, M |
+| R26 | Final target evidence unreadable inside AP-CC or AP-ACT | Rolled back — or the rollback's outcome is unknown, but no write had been issued in that transaction — then halt; re-evaluation retries; persistent failure blocks at PV9; never activated | L, M |
+| R27 | **CE3:** AP-ACT writes the marker, then final source validation fails | Halt at step 2; the marker is present, or possibly present if its write was unknown; next PV13 (or PV14) → E′8 **BLOCKED**; the report names the marker step and its state | L, M |
+| R28 | **W:** the activation commit's acknowledgement lost | Halt; re-evaluation: `active` ⇒ B4, never re-activated; `verified` ⇒ E′11 | L, M |
+| R29 | **C:** death after the activation commit, with the source and the marker also gone | `active` ⇒ B4 without consulting either | L, M, S |
+| R30 | **C:** death during activation, before commit | `verified` ⇒ E′11 re-validates | L, M, S |
+| R31 | **CE2:** `entryKeys` not contained in the manifest, in `copying`, `verified` and a migrated `active` record | A′5 **BLOCKED** | L |
+| R32 | `entryKeys` missing, empty, duplicated or ineligible in `copying`, `verified` or a migrated `active` record | A′2 or A′3 **BLOCKED** | L |
+| R33 | An `active` record mixing empty and non-empty `entryKeys`, manifest and `copied` | A′7 **BLOCKED** | L |
+| R34 | **A valid D1 record:** `active`, `entryKeys = []`, manifest `= []`, `copied = []`, with `activatedAt` and `sourceRetirement` | Passes A1–A6 and A′ ⇒ B4 mounts | L, M |
+| R35 | **W** and **C:** the D1 creation's outcome unknown, or death during it | No record ⇒ PV6 again; `active` ⇒ B4 | L, M |
+| R36 | A valid migrated `active` record whose live rows no longer match the manifest | B4 — the manifest is never compared with live rows | L, M |
+| R37 | Marker alone removed, source intact, `copying` with ≥ 1 copied row | E′9 (K2), then AP-CC and AP-ACT; staged rows unchanged | L, M |
+| R38 | Marker alone removed, `enumerating` | E′6 | L, M |
+| R39 | Marker and **all** eligible keys cleared, `enumerating` | E′5 **BLOCKED** — not D1 | L, M |
+| R40 | Marker and **some** eligible keys cleared, `enumerating` | E′5 **BLOCKED** | L, M |
+| R41 | Marker and all or some keys cleared, `copying` with `copied = ∅` and with rows | E′7 **BLOCKED**; never re-enumerated | L, M |
+| R42 | Marker removed and one value changed, `copying`/`verified` | E′7/E′8 **BLOCKED** | L, M |
+| R43 | New eligible key added: in `enumerating`; in `copying` | AP-K1′ includes it; E′7 **BLOCKED** | L, M |
+| R44 | Source cleared and repopulated: identical bytes; different content | Continues; E′7 **BLOCKED** | L, M |
+| R45 | Foreign id with identical content, `copying` | PV12 **BLOCKED**, not K2 | L, M |
+| R46 | Foreign id with different content | PV12 **BLOCKED** | L, M |
+| R47 | Foreign id, `enumerating`, nothing staged | PV12 **BLOCKED**; marker not overwritten, record not replaced | L, M |
+| R48 | Empty manifest in `copying`/`verified`, including over a cleared source | A′4 **BLOCKED** | L |
+| R49 | `enumerating` with a manifest or `copied` present | A′2 **BLOCKED** | L |
+| R50 | Malformed marker (not a canonical UUID), with and without a record | PV4/PV11 **BLOCKED**; bytes preserved | L, M |
+| R51 | Marker read fails, with and without a record | PV3/PV10 **BLOCKED**, retry; never "absent" | L, M |
+| R52 | Source enumeration fails at D3 entry, during AP-K1′, at validation and before activation | C1 **BLOCKED**, or a halt reported at the failing step | L, M |
+| R53 | Target row enumeration fails, with and without a record | PV1/PV9 **BLOCKED**; never "no rows" | L, M |
+| R54 | Target record unreadable or malformed | A1/A2 **BLOCKED** | L, M |
+| R55 | Pre-activation target row outside the manifest; any row while `enumerating` | E′3 / E′1 **BLOCKED** | L |
+| R56 | Three or more relaunches after every blocked decision | Same evidence, same outcome, no write to either store, nothing mounted | L, M, S |
+| R57 | Three or more relaunches after every halt, unknown outcome and interruption, discarding plan memory each time | Committed progress kept; no checkpoint replayed; no duplicate activation; the I-12 measure never decreases; nothing mounted before a validated committed `active` | L, M, S |
+| R58 | Every durable state in §5.4a's recovery tables: cold; warm with a comparison finding the before- or after-state; warm finding neither | The first two choose the same action; the third is a detected fault (I-13) whatever the table would select | L |
+| R59 | Source value changes after validation, before its checkpoint | I-7: halt before issuing; next evaluation E′7 **BLOCKED** | L, M |
+| R60 | Another process or an older build writes after the final validation, before the activation commit | Stated residual (§5.5): recorded, not claimed detected | L (documented) |
+| R61 | Valid `active` target with the source missing, cleared or unreadable, and the marker missing, unreadable, malformed or foreign | B2 → B4; the marker is never read | L, M |
+| R62 | After activation, a migrated key removed (sign-out removing `trustedDevice`), changed, or a new key added | B4; no re-import, no restore | L, M |
+| R63 | An access-barrier key present at D3 entry vanishes before activation | E′5/E′7/E′8 **BLOCKED**; never activated without it | L, M |
+| R64 | Provider credentials present, absent or unreadable, in either store | No migration decision changes | L, M |
+| R65 | Checkpoint, completion and activation commits under termination during COMMIT and power loss | Unmeasured | D |
+| R66 | WebView store and SQLite target restored from different times, or one alone (L1) | Unmeasured | D |
+| R67 | **CE5** exactly: issued `entryKeys` {a, b}, reopened record new `migrationId` with `entryKeys` {a}, source {a} | **W:** detected fault, latch write issued; relaunch with latch ⇒ L0b **BLOCKED**; relaunch where the latch positively reads absent ⇒ E′6, the stated residual | L, M |
+| R68 | **W:** a lost acknowledgement where the reopened state equals the issued **after**-state — D1, AP-D3 creation, AP-K1′ replacement, `enumerating → copying`, checkpoint, AP-CC, activation | The same row a cold start reaches from that state (§5.4a table, committed column); no fault | L, M |
+| R69 | **W:** as 68, but the reopened state equals the issued **before**-state | The same row a cold start reaches (§5.4a table, not-committed column); no fault | L, M |
+| R70 | **W:** a structurally valid record matching neither, in each phase — including an activation that leaves a valid-looking `active` record | Detected fault; nothing mounts in this process; relaunch with the latch ⇒ L0b **BLOCKED** although B4 would otherwise mount | L, M |
+| R71 | **W:** after a reopen, a step the process saw **confirmed** is contradicted — e.g. a confirmed checkpoint's rows missing or different | Detected fault (I-13). (A cold start reaching the same state blocks at E′2 or E′4 without a latch) | L, M |
+| R72 | Latch write **confirmed**; then a retry offered by the recovery surface, and three or more relaunches | Every one ⇒ L0b **BLOCKED**; no write to either store; nothing mounted; the latch is never cleared automatically | L, M |
+| R73 | Latch write **rejected, failed or unknown** | Process stays latched in memory: no plan step, no marker or target write except bounded latch-write retries, nothing mounted. Relaunch: latch present ⇒ L0b; read fails ⇒ L0a **BLOCKED**, retry; positively absent ⇒ ordinary cold evaluation (the undetected residual) | L, M |
+| R74 | Process death before or during the latch write | Relaunch reads present, absent or unreadable, exactly as 73 | L, M, S |
+| R75 | Latch present with malformed bytes | L0b **BLOCKED** — presence alone latches | L |
+| R76 | Latch present while the record is `active`, while retirement is incomplete, and while no record exists | L0b **BLOCKED** in every case; B4, B3 retirement, D1 and AP-D3 are never reached; nothing clears the latch | L |
+| R77 | No latch and a valid `active` record; then the L0 read fails | B4 with one extra target read; on read failure L0a **BLOCKED**, as B1 — the source is never consulted | L, M |
 
 *Post-activation mutability (M3b0 §5.4) — due in M3b4*
 
@@ -3792,9 +5197,10 @@ substituted for one another.
     and never presents a signed-out state. **Covered as of Stage M3b3 at the CONTRACT level** —
     only a positively established absence becomes an SDK `null`, and `supabaseAuthService`
     refuses to report `no_session` or a completed sign-out while a credential failure stands,
-    which closes both SDK absorption paths. **NOT covered, and reported as a blocker:** no
-    audited dependency supplies the item-specific evidence the contract requires, so the
-    binding reports `no_absence_evidence` and the **native credential path is closed** (§4).
+    which closes both SDK absorption paths. The approved iOS bridge now supplies
+    item-specific evidence locally (ADR-0049 amendment, 2026-10-24); physical
+    Keychain failure acceptance remains open. Android still reports
+    `no_absence_evidence` and remains closed (§4).
     **Also still not covered:** transferring the EXISTING credentials out of WebView storage,
     and the interruption case where one of the two separate stores is written and the other is
     not — both M3b4 (§4).
@@ -3816,7 +5222,8 @@ substituted for one another.
     2026-09-30. The superseded separate-app requirement is recorded above.)*
 41. Representative **synthetic** dataset sizes, bridge payload and write costs.
 
-**iPhone acceptance procedure (M3b6, not yet performed).** Install the previous build, record
+**iPhone acceptance procedure (M3b6, not yet performed; before M3b5, on a disposable device —
+never the user's data-bearing iPhone).** Install the previous build, record
 a session and leave work unsynchronised; upgrade in place; confirm the app reports migration
 and then shows the same history, plans and preferences; confirm the outbox still syncs when
 online; force-quit mid-migration and relaunch; confirm no data loss and no duplicates; delete
@@ -3916,20 +5323,27 @@ code had to change, not whether any platform-specific code exists.
 
 ## Stage M6 — Distribution readiness
 
-**Prerequisites.** M3 at minimum. **P1, P4 and P5 all block this stage.**
+**Prerequisites.** M3 at minimum. **P1, the remaining parts of P4 and P5 block this stage.**
 
-**Scope.** Final bundle identifier / application id and app name; the **callback domain**;
-store accounts and listings; privacy declarations consistent with
+**Scope.** Remaining Android identity/store commitments; the **callback domain**;
+completion of store listings and distribution acceptance; privacy declarations consistent with
 `docs/adr/0041-first-versioned-privacy-notice.md`; guideline 4.8 resolution; release
 signing; the Web/mobile coexistence decision from P1.
 
 **The production API origin is already settled** — `https://curling.evolane.me`, configured
 through `NEXT_PUBLIC_NATIVE_API_ORIGIN` (Stage M2a,
 [ADR-0047](adr/0047-configured-native-api-origin-boundary.md)) — so this stage inherits it
-rather than choosing it. Everything else above remains an open product decision.
+rather than choosing it. **P4 also supplies the confirmed iOS name `Evolane Curling`, bundle
+ID `me.evolane.curling`, team `J98U2J78B3`, Individual membership and English (U.S.) primary
+language (German deferred).** Hermes reports the registered Explicit App ID and App Store
+Connect record `6825376799`, SKU `evolane-curling-ios`; this is not a new portal verification.
+These inputs are no longer open choices. They do **not** establish release signing,
+device/credential or transfer/restore acceptance, nor authorize installation or upload.
 
-**Nothing else here is designed in this document**, because the remaining inputs are open
-product decisions and none may be invented.
+**The remaining distribution work is not designed here.** Open decisions must not be
+invented, and unperformed acceptance gates must not be treated as product choices already
+closed by the account/identity setup. The first iOS email-only exception (§6.1) does not
+resolve future P5 or approve M6.
 
 ---
 
@@ -3983,10 +5397,10 @@ place.
 - It does not implement anything. **No storage library, adapter, database, plugin or
   authentication code is added by this document.** (The work recorded in §10's M1 and M2a
   status blocks was implemented by those stages, not here.)
-- It does not select a bundle identifier, application id, callback domain, store account, or
-  distribution commitment. **The API origin is no longer among these:** it is confirmed as
-  `https://curling.evolane.me` and configured through `NEXT_PUBLIC_NATIVE_API_ORIGIN`
-  (Stage M2a, ADR-0047). That settles the API destination only.
+- It records the user's confirmed iOS identity/account/language decisions in **P4** and the
+  API origin `https://curling.evolane.me`, configured through `NEXT_PUBLIC_NATIVE_API_ORIGIN`
+  (Stage M2a, ADR-0047). It does not choose the remaining callback domain, Android identity
+  or distribution commitments, and does not establish acceptance by recording those inputs.
 - §5.2's API-origin amendment is **no longer a proposal** — it was authored and implemented
   as [ADR-0047](adr/0047-configured-native-api-origin-boundary.md) in Stage M2a, which
   narrows ADR-0025 Decision 20's wording. **§6.8's callback-scope amendment remains a
@@ -3999,7 +5413,3172 @@ place.
 - It does not change the existing Web application, the Web backend, or any API route.
 - It does not promote Brower acceptance Gate C or Gate D.
 - It does not assert any Android behaviour.
-- It does not decide P1, P3, P4, P5 or P7. **P2 and P6's direction WERE decided by the user
-  on 2026-09-29** and are recorded in §4, §7.1 and §7.5 — those entries are the decision
+- It does not decide P1, P3, P5, P7 or the **remaining parts of P4**; §4 records P4's confirmed
+  iOS decisions, and §6.1 records the bounded first-iOS email-only exception.
+  **P2 and P6's direction WERE decided by the user on 2026-09-29** and are recorded in
+  §4, §7.1 and §7.5 — those entries are the decision
   record, not this document's own recommendation. P6's implementation and acceptance gate
   remain incomplete.
+
+## Adopted inactive pure contracts — S1 and S2
+
+These are accepted technical contracts for **inactive pure modules only**. Their
+independent final design reviews passed S1 and S2 separately; this is not approval
+of S3, physical installation transfer S4, runtime integration S5, or release. The
+user expressly assigned implementation to the existing Hermes Coder and positively
+handed over the checkout exclusively for this work. This task-specific implementer
+exception leaves the repository's general separation of implementation and
+independent review unchanged. Design adoption alone does not establish implementation
+or native success; the separately accepted pure implementations are recorded below.
+The S1/S2 labels in this appendix name implementation slices, not the credential-store
+alternatives with the same labels in Stage M3b0 §4.
+
+Q1/A and Q2 remain exactly as adopted in Stage M3b0 §7. Q3 is decided there as of
+2026-10-24; its cleanup protocol is not implemented. Q4, additional
+non-training fault policy, native bindings, SDK settlement, provider/send ownership,
+physical coexistence/discovery/publish and activation remain separate open gates.
+The original S1 trio stays outside application composition. Exact internal consumers
+now include the reviewed inert helpers/port, S3f owner and private SQL/source bridges.
+The default storage boundary imports the pure validators for its separate dormant
+capture factory; ordinary Web methods do not invoke that factory or the executor. S2 stays without production callers/imports.
+The archived full S3 proposal is not adopted here. Its discovery/Legacy-D
+observation conflict is addressed by the separately reviewed bounded S3a design in
+`BETA_COMPLETION_SPECIFICATION.md`: select complete legacy schema/key inventories,
+then retain independent D/latch/row observations. S3a's local implementation adds
+shared-factory discovery and handle exclusion, not combined Q/D transactions,
+protected namespace freshness, physical transfer or runtime activation.
+The subsequent independently reviewed S3b capability observes the exact combined
+SQL layout and can atomically initialize a completely empty target. It exposes no
+ordinary/legacy target, Q/domain progress write, B4 or readiness authority. It does
+not adopt the full archived S3 protocol; its own rights do not include the separate S3f owner. Its
+bounded contract is also in BETA_COMPLETION_SPECIFICATION.md.
+The separately reviewed S3c port shares one fixed-namespace queue/lease with all
+ordinary native credential stores, refuses ordinary calls during migration and
+observes/inserts immutable M/I bytes without overwriting. It remains isolated from
+app composition. That is cooperating same-context exclusion and per-call evidence,
+not physical exclusivity, an atomic cross-store snapshot, SDK handoff or Q/D grant.
+S3d separately adds an independently reviewed borrowed-domain runner over the
+canonical records-only target. Authentic private lease/lifecycle/evidence stamps
+and a retained borrow pin prevent a second child or premature parent release from
+forgetting warm/unknown/fault evidence. It executes the normal prefix and stops
+at the actual activation step, then produces only an opaque non-consumable hold
+after fresh domain evidence. Parent recovery remains explicit; no combined schema,
+Q/F progression, B4, finalizer or app consumer follows. Its positive warm-fault
+observer precedes later reads/digests; ordinary standalone collection is unchanged.
+See BETA_COMPLETION_SPECIFICATION.md for its precise limits.
+The separately reviewed S3e host adds held-only domain preparation over one private
+combined SQL owner, gated by exact initialized schema and absent Q/F. It returns no
+ordinary store/target and permits no active transaction. Parent/child activity and
+authentic one-shot permissions fence recovery; old favorable reads cannot certify
+a new lifecycle, schema loss stays blocked, and parent observations cannot reset
+the child's retained fault or latch budget. No Q progression, protected-port link,
+Q/D finalizer, B4, runtime or activation follows. Older factories stay unchanged.
+The separate S3f common executor now passed independent design/code review. Its one
+actual source/SQL/protected owner performs Q/M/I copying and atomic Dactive/Qbound,
+including all generated-state restarts, actual before/after uncertainty and fresh
+raw-bound final proofs. Callback-free per-lifecycle controls fence both normal and
+fault work; unavailable dependencies do not create permanent data faults. It returns
+only an opaque internal completion candidate and retains its owners. Source-free
+bound observation permits current mutable I contents while checking physical slot,
+header and SDK form. No ordinary adapter, SDK/B4/Identity admission, config mapping,
+source removal, installation transfer or activation follows from S3f. See the
+canonical bounded contract in BETA_COMPLETION_SPECIFICATION.md.
+The separate S3g Runtime entry also passed independent design/code review. It
+revalidates bound state through those same retained resources, then publishes a
+private mutable domain/credential pair together. It keeps separate sticky health,
+actual transaction evidence and authentic cleanup receipts; malformed bridge
+responses create no positive data fault. Old migration controls become terminal.
+No application/SDK/Identity admission, production configuration mapping, source
+removal or installation transfer follows from that private pair. The off-by-default
+flag and unavailable production authority remain unchanged.
+The independently reviewed S3h helper now provides standard WebCrypto SHA-256 over
+exact JSON-framed domain raw values (`domain-value/v1`). It preserves the existing
+D injection and introduces no cap, default or production caller. Actual composition,
+configuration assignment and physical WebView availability remain open; this does
+not bind the inactive installation-transfer fingerprint contract. Its canonical
+contract is in BETA_COMPLETION_SPECIFICATION.md.
+The separately reviewed S3i entry now provides explicit dormant credential-source
+retirement under the same held SQL/protected owners. Destructive cleanup requires
+a complete original-target proof and actual raw subset; an empty source permits
+current mutable target contents. Cancellation/drain ownership precedes cold capture,
+actual absence receipts survive aggregate failure, and a fresh synchronous empty
+fence precedes joint handoff. Older factories remain source-free and remove nothing.
+S3j hardens actual credential digest/encoder invocation without changing tuple
+bytes, API or defaults. Separately reviewed S5a now owns dormant native AUTH
+mechanics over the actual retirement/runtime pair, with whole-command serialization,
+causal SDK denial, credential settlement, final SEND fencing and joined cleanup.
+S5a alone has no app caller or Identity admission. Separately reviewed S5b now binds
+that same private pair to the actual Identity coordinator, six repositories and
+four fixed Identity RPCs. Original operation/account ownership, causal Self-session
+negatives, actual health and final materialized-request checks govern every new
+bootstrap readiness result. Cached startup cannot revive an obsolete admission.
+This remains dormant and supplies no app mount or already-admitted training exception.
+Separately reviewed S5c now binds the actual sporting mapper and three fixed RPCs
+to coordinator-created, construction-bound Profile admissions on the same private
+pair and SDK FIFO. New foreground ownership, denial and close revoke those services;
+healthy background confirmation does not mint or replace admission. Synchronous
+input capture, actual Self preflight and final SEND fences preserve the original
+subject. Full genuine denial outcomes reach the narrow subscription. No app caller
+or local sporting repository composition is added. S5d additionally binds the actual account-deletion/export mapper and guard repository
+to private native control scopes, own-denial continuation and factual pending proofs.
+Actual Provider callbacks are covered; mounted Flow polling/reload still needs app
+composition and full invalidation subscription. S5e additionally binds the actual nine-method Team-exercise mapper to genuine
+original admissions and per-command retry:false public clients. Exact immutable
+wire intents, original indexed inputs and all issued siblings stay owned until
+retirement. S5f additionally binds all29 existing Team methods and the five own-API
+POST routes, with purpose-specific dependent-query hooks, exact original callback
+capture and same-command bearer ownership. Current public diagrams remain bundled
+with the existing disposable localStorage cache; the restricted resolver is dormant
+future-only under ADR-0044 and MOBILE_APP_MIGRATION.md §5.2. S5g binds the seven
+actual native base repositories, scoped outbox, retirement and personal export to
+that same private owner, with synchronous DTO capture and truthful issued ACKs.
+S5h separately closes the returned SyncManager/decorator boundary with one genuine
+manager per admission, outer argument capture and actual background-lane ownership.
+Local ACKs stay independent of cloud waits; snapshots/listeners cannot reopen stale
+Profiles. S5i now independently joins actual Tracker event/effect ownership and the
+original pre-fault Q1 training role, with fresh-ACK remounts, complete capture drains,
+actual Account/Profile denial and retained history-first completion. Its dormant actual
+Provider/Tracker composition activates no production root. S5j now separately joins
+the actual Provider/Flow/export/Team over the same genuine host, with native-only
+original-owner export retirement to the final share edge, unconditional/idempotent
+denial delivery, known/unavailable intent projection and pre-preview Team context.
+Independent corrected CODE and full local baseline passed; canonical contract/evidence
+are BETA_COMPLETION_SPECIFICATION.md §S5j and TESTFLIGHT_READINESS.md. S5k additionally
+accepts dormant exact provider-configuration preparation and its genuine same-host
+entry. Full standard SHA-256 identities, primitive-only exact tuple framing and
+complete boxed observation/drains refuse stale configuration without resetting data.
+Existing helper public shapes remain; constructor ownership lasts through nested
+work. Canonical contract/evidence: §S5k and TESTFLIGHT_READINESS.md.
+
+S5l additionally accepts native pending-intent replay correlation on the genuine
+coordinator lane, exact final-view membership and conditional dismissal/recovery.
+The actual Provider and Team UI follow replacement links without stale consumption.
+Only the new notification channel uses completion-only nested draining with exact
+already-owned disposal exclusion; default/live/hash behavior remains unchanged.
+Canonical contract/evidence: §S5l and TESTFLIGHT_READINESS.md.
+
+S5m additionally accepts dormant actual App launch/event intake on that same host,
+with explicit Team-origin opt-in, sequential exact native-context proofs, reentrant
+classification ownership and complete observed-work draining. Healthy capture
+refusal keeps ordinary startup/OTP recovery reachable; genuine faults retain their
+vetoes. Exact own-disposal exclusion is never a handle/absence/removal ACK. The new
+source-clock retainer preserves checked validation and identityFailed; legacy
+channels/defaults remain. Public CoreJS receipts are not physical unsubscribe ACKs.
+Canonical contract/evidence: §S5m and TESTFLIGHT_READINESS.md.
+
+The private V3 archive has standard SHA-256 byte binding, actual domain interpretation
+and historical catalog/registered-diagram compatibility checks (S6a–c). V1/V2 and
+named domain recoveries remain unchanged. S6d now privately observes a complete
+bounded actual WebView raw map with native receiver-bound reads, positive absences
+and fresh fences; excluded credentials/cache/foreign values are never read. This is
+source observation only, without writer exclusion, frozen-source, auth, transport
+or mount/publish/rollback authority. No default/application caller is added.
+S6e adds a private standard AES-256-GCM envelope with a separate fresh random
+recovery code, actual V3 revalidation and completion-owned temporary-byte wiping.
+It conveys no source/auth/transport/publication authority and has no app caller.
+ADR-0053 records the decision; corrected independent CODE and full local baseline
+are accepted. S6f adds a separately built observation-only helper with private
+native iOS/App routing, current foreground/data checks and terminal revocation;
+corrected independent CODE and the full local baseline are accepted. It is not
+the default/native webDir and issues no source-freeze or transfer grant. Actual
+original-container access, preservation-safe operational packaging and external
+writer exclusion remain blocked pending disposable physical evidence. Actual
+file/code delivery, target staging/readback/fresh-auth integration and
+configuration/device/release gates remain open. Native Team email links may
+continue opening Web under adopted MOBILE_APP_MIGRATION §6.5 until association/delivery
+is accepted. Canonical current contract/evidence: BETA_COMPLETION_SPECIFICATION.md
+§S6a–f and TESTFLIGHT_READINESS.md. No activation or Beta approval follows.
+
+ Physical native URL delivery,
+actual configuration assignment/supported operational change and installation
+composition remain required before native activation.
+Actual configuration assignment, operational writer exclusion and physical cutover
+remain open; no actual user credentials were removed.
+
+**ADR-0052 inventory extension (2026-10-24).** Account deletion adds the dynamic
+`curling.identity.accountDeletionGuard.<profileId>.v1` and
+`curling.identity.accountDeletionGuardResolution.<nonce>.v1` control families to
+the owned identity repository set. They carry durable denial and cannot be
+omitted during transfer or pre-activation migration. The separately reviewed
+2026-10-24 D-inventory extension now copies exact valid members of both families
+with the existing D manifest/checkpoint protocol; malformed owned members block
+at every observed preactive inventory. Values remain opaque and cannot be
+resolved/repaired by migration. B4 stays source-free. S2 v1 still refuses them;
+its old format is not expanded. The separately reviewed S4a v2 entries now archive
+known closed guard/resolution forms inertly, with full dynamic inventory and raw
+preservation (BETA_COMPLETION_SPECIFICATION.md, S4a). Operational transfer and live
+Identity admission remain separate. Existing B4 remains source-independent after
+activation. The next native integration stage must reconcile the complete inventory
+and its interruption/recovery evidence before activation. See ADR-0052 for the local/server fencing
+protocol; the pure S1/S2 approval alone does not cover this extension.
+
+The following sections reproduce the exact independently passed pure contract
+text as the repository's normative feature specification, not an agent report.
+Section references inside each appendix are local to its reproduced contract;
+future-S3/S4/S5 references describe dependencies, not granted implementation scope.
+“Proposed” admission budgets in the source are adopted only for this inactive
+v1 parser/format; they do not set retention policy, native capacity or auth lifetime.
+S1/S2 themselves select no cryptographic algorithm, native slot codec or production
+provider. The separate bounded physical-slot/standard SHA-256 binding in
+`BETA_COMPLETION_SPECIFICATION.md` does not change these logical formats or select
+an application provider; native byte-capacity and runtime integration remain open.
+
+### S1 — Credential protocol, SDK-value contract and admitted-training fault reducer
+
+Scope: `credentialProtocol.ts`, `providerCredentialContract.ts`,
+`credentialFaultPolicy.ts` and their three matching new tests.
+Technical provenance: independently reviewed `credential-design-corrected.md`
+sections 2–5; source SHA-256 `d2333b08cc664c0f20194ef88d57a91fa4813874e8ebaef2374a5700cfad0b8f`.
+The source digest pins the full reviewed input; only sections reproduced below are
+adopted for implementation. The S1 modules and their matching tests are implemented,
+tested and independently reviewed clean as one complete pure inactive component.
+Only the exact separately reviewed dormant bindings/owner and internal SQL/source
+boundaries may import these pure contracts; no application startup invokes the owner.
+This component acceptance does not close native,
+runtime, physical-transfer, activation or release gates. The separate S2 pure
+component has also been implemented and independently accepted, as recorded below.
+Structural M validity never proves per-item absence; unindexed supported flows
+remain in the frozen inventory, and Dactive alone is not combined storage readiness.
+
+#### 2. S1 input boundary and finite envelope (CDR-01)
+
+All quantities below count **JavaScript UTF-16 code units**, not UTF-8 bytes. Raw string APIs are primary; they take `unknown`, first test `typeof x === 'string'`, then length, then bounded parse. No coercion, stringify of inputs, spread, iteration of arbitrary inputs, `.toJSON`, or property-name/value output on failure. Returned validated records are fresh deep-frozen data copies, not the caller's object.
+
+Proposed v1 operational limits, not claims about installed bridge capacity: at most 1,024 present keys, at most 1,020 dynamic flow slots; one SDK raw value ≤1,048,576 units; sum of present SDK raw values ≤8,388,608; SDK key ≤192 units; Q/M serialized input ≤1,048,576 each; I-envelope serialized input ≤6,300,000; F serialized input ≤512. JSON depth ≤32, aggregate nodes ≤65,536 and object members ≤4,096 per parsed value. Each metadata string key ≤128 units and arbitrary SDK metadata string ≤1,048,576 units. Apply bounded addition before incrementing budgets. Unsafe/negative/fractional counts are invalid. Out-of-envelope input is `limit_exceeded`, preserved and not migrated by v1, never truncated/deleted or converted to absent. No new cap on stored sporting history/outbox is introduced.
+
+Use an iterative lexical pre-scan of JSON before `JSON.parse`: standard JSON grammar, depth/node/member budgets, decoded member-name uniqueness (including escaped aliases), decoded string length and code-unit budgets; reject duplicate members at every depth, including `__proto__` duplicates. Then parse once; JSON numbers must be finite. SDK opaque metadata may contain prototype-like names, treated solely as own data, never assigned onto prototypes. JSON strings may contain lone surrogates/NUL and must roundtrip unchanged. String admission cannot recover the cost of a string allocated by a caller, nor prove a native bridge can deliver it. Those are explicit later limits, not promised by this API.
+
+Optional object seams in tests/builders accept only descriptor-snapshotted acyclic JSON data: in one guarded traversal use `Reflect.ownKeys`, `Object.getOwnPropertyDescriptors`, and prototype checks; allow plain Object.prototype or null-prototype records and dense ordinary Arrays with only length/index own properties. Reject symbols, accessors, inherited custom prototypes, non-enumerable record members, sparse arrays, functions, BigInt, NaN/Infinity and cycles; never invoke getters or supplied iterators. Bound traversal before recursion/allocation. Catch all reflection traps and return `hostile_input`; never inspect the thrown value. A Proxy cannot generally be detected and its reflection traps may execute; promise containment/no getter invocation/no caller references, **not** freedom from arbitrary proxy side effects or termination of a malicious never-returning trap. Production parsing only accepts primitive strings, avoiding this seam entirely.
+
+Every public validator returns exactly `{ok:true,value:<validated owned data>}` or `{ok:false,issue:{code:<closed enum>,field:<closed enum>}}`. No raw exception, user-supplied property, key, ID, token, hash or byte fragment in `issue`. One issue only, deterministic first failure: type/limit → lexical JSON → schema/version → exact field set → field types → identifiers/key grammar → order/uniqueness → membership/phase completeness → cross-record correlation. Within a level, field declaration order below governs. Codes: `invalid_input`, `hostile_input`, `limit_exceeded`, `invalid_json`, `duplicate_member`, `unsupported_version`, `unknown_field`, `invalid_shape`, `invalid_identifier`, `invalid_key`, `order_or_duplicate`, `phase_violation`, `membership_mismatch`, `identity_mismatch`, `fingerprint_invalid`, `evidence_unavailable`. Fields: `input`, `header`, `phase`, `inventory`, `cursor`, `binding`, `session`, `user`, `verifier`, `index`, `fault`, `evidence`. Detailed validated objects are protected/internal results, never diagnostic projections.
+
+#### 3. S1 complete Q/M/I/F contract (CDR-01)
+
+##### 3.1 Primitive definitions and serialization
+
+`Uuid` uses the existing application predicate exactly: `/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/`. No trimming/lowercasing/repair. IDs are application identifiers, never provider user IDs/Profile aliases. `protocolId`, `credentialEpochId`, `manifestId` have distinct roles; no equality between different roles is required, but each is valid and a protocol never changes any of them after intent. Generation/reuse prevention belongs to the later owner, not a pure random default.
+
+`providerConfigIdentity` is a preassigned nonsecret config identifier matching `/^pc1:[a-z0-9][a-z0-9._-]{0,63}$/`; it is NOT an API key, credential hash or endpoint. Mapping it injectively to the one resolved provider configuration is supplied/adopted by composition later; S1 neither reads configuration nor invents it. Header `sdkContractVersion` is exactly `auth-js/2.112.3:credential-v1`. `schemaVersion` is numeric literal 1 (not string or boolean).
+
+`sessionStorageKey` is the exact configured SDK root derived by the existing `providerSessionStorageKey` algorithm (`sb-${new URL(url).hostname.split('.')[0]}-auth-token`) and pinned in offline SDK tests. This v1 contract supports DNS-label roots matching `/^sb-[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?-auth-token$/`; custom storage-key overrides/IP-literal forms not satisfying it are unsupported, preserved/block without normalization. No production URL/key is read. Synthetic host `fixture.supabase.invalid` derives `sb-fixture-auth-token`.
+
+Supported family: root (`session`), root + `-user`, root + `-code-verifier` (`legacy_verifier`), root + `-flows-code-verifier` (`flow_index`), root + `-flow-` + flowId + `-code-verifier` (`flow_verifier`). Flow ID exactly `/^[a-zA-Z0-9_-]{8,64}$/`. Classify fixed keys before dynamic matching. Own-project family means exact root or strings starting root+`-`; unknown suffix within that family blocks. Foreign families are excluded/untouched. No SDK key maps directly to a control slot.
+
+`initialEntryKeys` is a **strict ascending code-unit ordered**, unique array of all present supported keys, including unindexed flows. Empty array is valid. Compare with `<`/`>` on primitive strings, not localeCompare. No absent key in this list. A presence inventory also carries four fixed-slot observations in role order `session,user,legacy_verifier,flow_index`, even if all absent. `itemId(n)` is `c` plus four lowercase hex digits of zero-based rank n in initialEntryKeys (c0000…c03ff); it is not a digest or physical key. No other spelling accepted. `allItemIds(K)` is exactly the mapped ordered list. Inventory identity is exact ordered equality, not just count/Set size.
+
+Fingerprint dependencies are explicit and captured once: `Fingerprint = (purpose:'credential-value/v1', key:string, exactValue:string) => string|PromiseLike<string>`; `FingerprintFormat = (candidate:string) => boolean`. No production default for either; missing/noncallable dependency is `evidence_unavailable/evidence`. Structural M parsing calls only the format predicate: a fingerprint must be a primitive nonempty string ≤128 units and the predicate must synchronously return exactly true; throw, nonboolean, promise or false is `fingerprint_invalid/evidence`. Format is NOT content binding. `validateFrozenCopy` below actually invokes Fingerprint over each exact current key/raw value and compares the returned primitive string to M. Never normalize/re-serialize SDK content. Algorithm/physical byte codec/WebView capability remain later technical adoption. Tests use explicitly noncryptographic test-only providers, never production defaults. Only protected M stores fingerprints; transient owned computation results are private, never put into Q/F/SQL/UI/reports/portable transfer.
+
+Serialization for Q/M/I/F uses JSON.stringify of fresh validated plain objects with fields in the exact declaration order below; no optional undefined/null fields and no whitespace. Ordered arrays stay ordered. S1 serializers are deterministic logical JSON, **not a selected physical secure-slot encoding**. SDK `value` inner string is copied unchanged; it is never replaced with JSON.stringify(parsedSDK). A parser may accept whitespace/alternative escapes in outer metadata but exact SQL CAS retains the original observed bytes as before, and serializers produce canonical after bytes. Duplicate member rejection precedes parsing.
+
+##### 3.2 Q closed-field phase matrix
+
+Common required fields in order: `schemaVersion:1, protocolId:Uuid, credentialEpochId:Uuid, manifestId:Uuid, providerConfigIdentity:ConfigId, sdkContractVersion:<literal>, sessionStorageKey:<root>, initialEntryKeys:Key[], phase:<phase>, verifiedItemIds:ItemId[]`. Binding field follows these. No other fields anywhere.
+
+| phase | verifiedItemIds | expectedStoreIdentity | storeIdentity |
+|---|---|---|---|
+| intent | exactly [] | required Uuid | forbidden |
+| manifest_confirmed | exactly [] | required same Uuid | forbidden |
+| copying | ordered prefix of allItemIds(initialEntryKeys), possibly [] or complete | required same Uuid | forbidden |
+| credentials_verified | exactly allItemIds(initialEntryKeys), including [] for empty C | required same Uuid | forbidden |
+| bound | exactly allItemIds(initialEntryKeys), historical only | forbidden | required Uuid equal to former expectedStoreIdentity and D.storeIdentity |
+
+Both binding fields present, absent required field, extra field, null, duplicate/non-prefix cursor, alien itemId, incomplete verified/bound all reject. expectedStoreIdentity is selected once BEFORE intent: for D1 by the owner generator, for an existing valid D from its storeIdentity. It is not a completed binding. Bound is built by removing expectedStoreIdentity and inserting storeIdentity; no independent newly generated identity at finalization. initialEntryKeys/IDs/config/root/version are immutable through every transition. No retirement fields in Q v1.
+
+Pure Q transition input is a validated before plus exactly one tagged action: `confirm_manifest`, `begin_copying`, `confirm_next_item {itemId}`, `verify_all`, `bind {storeIdentity}`. These pure builders validate only deterministic shapes/edges; they cannot certify I/O or grant access. Their caller must first obtain successful correlation of actual evidence; S3 enforces that before issuing each write. Allowed edges intent→manifest_confirmed→copying→credentials_verified→bound; confirm_next_item only appends the next rank while copying; verify_all requires complete cursor (the caller must separately supply full matching frozen evidence); bind requires credentials_verified and equal expected identity. No skipping even for empty C. Copying→copying without new rank is rejected rather than used as an implicit retry; a retry classifies existing evidence, does not duplicate progress. No bind outside S3 final transaction is authority to access data.
+
+##### 3.3 M immutable protected manifest
+
+Exact fields in order: `schemaVersion:1, protocolId, credentialEpochId, manifestId, providerConfigIdentity, sdkContractVersion, sessionStorageKey, expectedStoreIdentity, initialEntryKeys, fixedSlots, items`.
+
+First eight identity/config fields have the types above. `expectedStoreIdentity:Uuid` remains historical in M even after Q bound. `initialEntryKeys` exactly Q list. `fixedSlots` has exactly four records in the fixed role order; each exact `{kind:<fixed role>,key:<derived exact key>,presence:'present'|'absent'}`. Present iff that key occurs in initialEntryKeys. No read_failed/unknown tag can be frozen as absent. `items` has exactly one record per initialEntryKey in identical order, exact `{itemId:<rank ID>,key:<that key>,fingerprint:<injected format>}`. No item for absent slots. Every key and item ID unique. An entirely empty C still has four absent fixedSlots and items=[], not a missing manifest.
+
+Q↔M correlation requires exact equality of schema/header/config/root/initial keys; M.expectedStoreIdentity equals Q.expectedStoreIdentity pre-bound or Q.storeIdentity when bound. No partial matching or adoption of foreign M. Structural validity alone is not proof M exists/readable or that any I is absent. M is immutable from first positively present valid value: no extension/shrink, new epoch, re-freezing content, or overwrite. Before M exists, Q intent freezes keys but does NOT claim earlier value fingerprints: only current full same-key snapshot can be frozen, with no issued item and fresh-namespace proof. A vanished/added key at this point blocks (C v1 deliberately has no K1′-style list replacement).
+
+##### 3.4 I logical protected item envelope
+
+Exact fields in order: `schemaVersion:1, protocolId:Uuid, credentialEpochId:Uuid, originManifestId:Uuid, providerConfigIdentity:ConfigId, sdkContractVersion:<literal>, key:<supported exact SDK key>, value:<exact SDK raw string>`.
+
+Migration correlation requires header equality to Q/M, key membership in M, exact expected raw value and matching fingerprint. Runtime correlation requires the same header/epoch/origin/config/root family but **does not require historic M membership or content fingerprint**. New runtime flows/session updates use same installed pair. No itemId field (rank is historical inventory only). Empty string fails SDK content validation, even though it is a string. No raw legacy string is silently interpreted as an envelope or upgraded. A valid envelope for another epoch/manifest/config is pairing contradiction, not absence. Envelope valid but SDK malformed blocks exposure without deletion.
+
+##### 3.5 F privacy-safe persistent fault
+
+Exact fields in order: `schemaVersion:1, code, phase, operation`. `code` one of `pairing_mismatch, namespace_unproven, source_changed, protected_evidence_lost, sql_evidence_mismatch, invalid_metadata, boundary_failure`; `phase` one of `preflight,intent,manifest_confirmed,copying,credentials_verified,bound,finalizing,handoff`; `operation` one of `read,enumerate,write_manifest,write_item,write_q,finalize,reopen,release`. No IDs, keys, hashes, timestamps, exception text or nested data. Any present F (including malformed/newer) or unreadable F blocks; valid absent is the only empty state. insert-on-absent only, no clear/replace routine. In-process known contradiction blocks even when F insertion fails or is lost. F is not a grant and is not a generic runtime credential-health latch: transient runtime read/write/remove failures pause the current admitted context without manufacturing a permanent migration fault. Positive pairing contradictions invoke Q2 and may record F.
+
+##### 3.6 Exact S1 pure API surface
+
+`credentialProtocol.ts`: parse/serialize Q,M,I,F; `transitionQ(before, action)`; `correlatePair(q,m,dStoreIdentity)`; `validateFrozenCopy(q:unknown,m:unknown,sourceSnapshot:unknown,protectedSnapshot:unknown,fingerprint:unknown,formatPredicate:unknown): Promise<Result<ValidatedFrozenCopy>>`; `projectCredentialIssue` returning only the fixed issue. This one API is always async, including structural refusals; Result is the exact §2 ok/value or fixed issue union. `ValidatedFrozenCopy` is an owned deep-frozen `{q,m,sourceSnapshot,protectedSnapshot}` after all checks, internal only, no ready/access grant and no caller reference. `dStoreIdentity` remains `{kind:'preactive',expected:string}` or `{kind:'active',storeIdentity:string}`, never a boolean.
+
+Frozen-copy inputs: q and m are the §3 logical Q/M objects (not caller brands); sourceSnapshot is exactly the complete §3.6 listing/reads/enumerationComplete object; protectedSnapshot is exactly `{items:[{itemId,key,result}],fixedItemAbsences:[{kind,key,result}]}`. Each result is exactly `{status:'value',raw:string}` (serialized I), `{status:'absent'}`, or `{status:'read_failed',reason:'unavailable'|'inaccessible'|'unreadable'|'absence_not_established'|'invalid_response'}`. Items equal M.items once each in rank order; fixedItemAbsences equal only M's absent fixed slots once each in role order. Present items require value, absent fixed slots require positive absent; any read_failed or omitted observation is `evidence_unavailable/evidence`; extras/duplicates/wrong order are `membership_mismatch/evidence`. No computed-digest/verified Boolean input exists.
+
+Before invoking ANY callback or reaching the first await, guardedly descriptor-snapshot ALL q/m/sourceSnapshot/protectedSnapshot data under §2 limits, then validate the owned shapes, Q↔M headers/identity/phase, full source inventory/fixed absences, each parsed I header/key and exact Source↔I SDK raw equality. Callback references are captured once; reflection/accessor/proxy failures are contained. No later reread of caller objects/arrays is permitted. In particular callback mutation of original q/m/header/read arrays cannot change the owned snapshot. These are frozen migration checks, not runtime validation; bound runtime never calls this API.
+
+After structural correlation succeeds, in M.items order call and await `fingerprint('credential-value/v1', ownedKey, ownedExactSourceRaw)` once per item, with the equal I.value already established. Validate each result with the captured format predicate then compare EXACTLY with that key's M.fingerprint. A format-valid wrong digest (including Source=I=B under M-hash(A), or swapped key/digest) is `fingerprint_invalid/evidence`, never success. Empty C computes zero digests but still validates all fixed absences/header/inventory. Provider synchronous throw, rejection, revoked callable or hostile thenable/throwing then getter is caught without inspecting the thrown value and returns `evidence_unavailable/evidence`; malformed resolved value or format predicate failure returns `fingerprint_invalid/evidence`. Await assimilation stays inside try/catch. A pending/nonterminating dependency remains pending; no timeout success, invented absence or release. This pure function cannot stop arbitrary callback side effects or prove source freshness while awaiting. It retains only owned exact input data; S3 fences every callback completion before granting continuation. No raw string, digest or thrown text reaches an issue.
+
+`providerCredentialContract.ts`: `classifyCredentialKey(root,key)` → `{kind:<supported role>,flowId?:string}` or `{kind:'foreign'}` or `{kind:'unsupported_own'}`; `validateRuntimeCredentialValue(root,key,raw)` returning `{ok:true,value:{kind,raw}}` or fixed issue; `validateQuiescentCredentialSnapshot(root,snapshot)` returning the sorted complete inventory/fixed tags and exact strings or issue. Snapshot exact input fields `listedKeys:string[], reads:{key:string,result:{status:'value',value:string}|{status:'absent'}|{status:'read_failed'}}[]`, plus `enumerationComplete:true`. reads includes exactly once every listed supported OWN key and all four fixed keys (dedupe overlap), never a foreign listed key; listed keys reflect present slots, no phantom absent listed own key. Enumeration may include foreign keys, but their values must not be read; reads for foreign keys reject. All own unsupported keys block before any consumer exposure. Snapshot completeness is evidence the later source port must supply, not established by accepting true in a pure function. validateFrozenCopy receives the complete sourceSnapshot and the exact protectedSnapshot shape above, including every present manifest item and every absent fixed slot; no omitted read accepted. All structural success outputs remain internal and do NOT contain `ready:true`.
+
+The pure interfaces may use separate positional primitive inputs rather than object seams; action objects still follow §2. All callbacks/predicates and supplied data are snapshotted/contained. TypeScript brands are compile-time aids, never untrusted runtime authentication.
+
+#### 4. Installed SDK forms and snapshot/runtime separation (CDR-01/02)
+
+Primary evidence: installed auth-js and supabase-js package versions both 2.112.3; helpers.js:131–156,241–255,276–400,424–434; types.d.ts:272–303,327–414; GoTrueClient.js:2506–2577,4034–4145,4353–4406. `_isValidSession` tests only property presence; it is NOT our runtime validator. `getItemAsync` turns falsy/malformed JSON into null; our boundary refuses those values first. Structural success never authenticates a JWT, proves server validity or creates a Profile.
+
+##### 4.1 Exact persisted forms supported by credential-v1
+
+All listed fields are own JSON data. Raw length/budget/parser rules apply. **Session root:** object, required nonempty access_token and refresh_token strings ≤65,536 units each, no control/whitespace characters (`U+0000–0020,U+007f–009f`) in either; required expires_at safe integer ≥0 with `expires_at*1000` also safe; required expires_in numeric duration satisfying exactly `typeof x === 'number' && Number.isFinite(x) && x >= 0 && x <= 9007199254740` (inclusive; ordinary fractions and zero allowed, no integer test); required token_type exact `bearer`. Expired/zero expiry passes structure (no new offline deadline). Optional provider_token/provider_refresh_token absent, null or nonempty strings ≤65,536 without controls/whitespace. Optional user absent or full User below; null/array/scalar/empty user object invalid. Unknown top-level Session fields are retained opaque JSON extension data under §2 budgets, never interpreted/grant-bearing; this is intentional because installed `_sessionResponse` shallow-copies provider response fields, not a closed TS-only shape. Known fields with wrong types never become opaque extensions. Serialized `__isUserNotAvailableProxy` is forbidden anywhere at Session/User top level; actual SDK proxy is not persisted data.
+
+**User:** required `id` nonempty opaque string ≤512 without whitespace/control; `aud` nonempty string ≤512; `created_at` nonempty string ≤128; `app_metadata` and `user_metadata` JSON objects (not array/null). created_at/aud are structurally strings, not parsed as trusted date/permission. Provider ID is deliberately NOT forced to application UUID or equated with Profile. Optional string fields, if present, must be strings ≤4,096 (empty allowed): `confirmation_sent_at,recovery_sent_at,email_change_sent_at,new_email,new_phone,invited_at,action_link,email,phone,confirmed_at,email_confirmed_at,phone_confirmed_at,last_sign_in_at,role,updated_at,deleted_at,banned_until`. Optional `is_anonymous,is_sso_user` booleans. app_metadata.provider if present string, providers if present array of strings ≤512 each; arbitrary other metadata JSON retained within budgets. Optional identities array ≤1,024, each object required nonempty strings ≤512 `id,user_id,identity_id,provider`, optional identity_data JSON object, optional string dates created_at/last_sign_in_at/updated_at ≤128. Optional factors array ≤1,024, each required nonempty id≤512, factor_type in totp/phone/webauthn, status verified/unverified, nonempty created_at/updated_at strings≤128; optional friendly_name≤4,096 and last_challenged_at≤128 strings. Unknown User/Identity/Factor fields are bounded opaque JSON extensions, never permissions; known optional fields null reject. No nested content is logged, interpreted as JS or repaired.
+
+**Detached user** key exact JSON object with ONE field `user:<full User>`, no extras. Frozen combinations: (a) inline user, detached absent: valid; (b) root without user + detached valid: valid split state; (c) root without user + detached positively absent: valid user-unavailable storage state, no identity grant (SDK may later retrieve user); (d) root positively absent + detached valid: preserve inert stale auxiliary item, not a session; (e) both present full users: IDs must exactly agree in frozen inventory; other user fields may differ and are retained, not merged. Root absent + all others absent is valid empty C. Runtime per-item validation does not assert cross-key identity/equality, which would break SDK write ordering; current identity correlation is the existing coordinator's responsibility. SDK `userNotAvailableProxy` is neither accepted as an arbitrary object seam nor fabricated by S1.
+
+**Verifier:** exact JSON string. After decoding, either `[A-Za-z0-9._~-]{43,128}` or that base plus exactly one terminal `/recovery`. No other slash, blank, nested suffix, padding or whitespace. This explicitly supports installed 112-lowercase-hex generator and 56-character fallback, plus older standard-length PKCE strings; it does not adopt the SDK fallback as a new app cryptography choice. Validate READ and WRITE identically. Preserve the original raw JSON string and escape spelling.
+
+**Flow index:** exact JSON array of unique flow-ID strings in the installed grammar; preserve original order/raw bytes; ≤1,020 entries. Empty [] is valid present, distinct from absent; scalar/object/null/malformed/duplicate/invalid ID rejects before SDK's filtering-to-[] path. Do not sort/reserialize index values. Five is the installed ring target, NOT an inventory cap; race-orphans can accumulate.
+
+The expires_in ceiling 9007199254740 seconds is v1 numeric admission, aligned with the existing safe-millisecond expires_at envelope, NOT an auth lifetime, clock policy or offline extension. Keep expires_at's existing safe-integer/safe-millisecond rule unchanged; keep counts, cursors and generations safe integers. Installed `_sessionResponse` preserves supplied numeric durations; public `auth.setSession` computes `expiresAt - Date.now()/1000` without rounding (GoTrueClient.js:3022,3051) and `_saveSession` persists it (:4353–4386). Preserve the exact SDK raw JSON spelling and fractional value; do not round/clamp/rewrite. Wrong type, negative, nonfinite or above-ceiling duration refuses/preserves. Expired structurally valid sessions still pass structure, never become a new offline allowance.
+
+Required future compatibility case: call the INSTALLED public `createClient(...).auth.setSession` at synthetic `Date.now()=1700000000123`, synthetic JWT exp=1700003600, complete synthetic User, persistSession=true, autoRefreshToken=false, detectSessionInUrl=false, unique synthetic storage key and only a stubbed `/auth/v1/user` response; fail every unexpected fetch. Route the real SDK storage write/read through the ACTUAL new runtime validator, assert successful setSession and finite fractional duration within the exact predicate, then exact raw roundtrip through I serialization/parsing. Restore clock/client ownership in finally. This is a future real-validator test, not a copied-writer test and not an S5 denial/settlement proof. Include zero, fractional, exact ceiling, just-above ceiling, negative, strings/null/booleans/arrays/objects and nonfinite vectors (lexical overflow 1e309 plus trusted object-seam NaN/±Infinity without JSON.stringify converting them to null).
+
+##### 4.2 Two deliberately different validation contexts
+
+Frozen, **quiescent migration snapshot**: complete source enumeration plus every fixed-key absence and present item read; listed/read keysets consistent; all well-formed unindexed flow slots included; every index reference has a readable structurally valid matching flow slot. No requirement that legacy verifier equals most recent index member, or that index equals all flow slots. Unknown own suffix, missing referenced slot, uncertain read, unsupported item or frozen inline/detached ID contradiction blocks, preserving bytes. Historical M pins this snapshot until bound.
+
+Mutable **runtime READ/WRITE/REMOVE**: validate only exact addressed key, envelope/current pair and item's structural form; never enumerate/join index references, compare historical M contents/cursors, demand membership in M, or infer absence from M. Removal has no value to parse; it validates key/pair and uses real per-item removal evidence. Absent runtime get is null only on positively established native item absence. A valid index referring to a just-removed slot is not corruption by itself. A structurally valid newly written slot not yet indexed is not orphan-pairing evidence. Runtime cannot auto-repair index, evict unrelated slots, retry cleanup or delete unindexed flow items. An interrupted store/remove can leave partial relationships; preserve and let the ordinary SDK operation observe them with per-item evidence. A later NEW migration snapshot still applies frozen consistency rules; it may block on such remnants. That is availability refusal, not license to fix/delete.
+
+Actual helper sequence compatibility requirements (offline, synthetic in-memory storage only, installed helpers, no provider network): store writes slot→reads index→optional eviction remove→writes index→writes legacy; remove(flow) reads slot→removes slot→reads index→writes/removes index→reads/removes matching legacy; removeAll reads index→removes indexed slots→removes index→removes legacy, and leaves unindexed slots untouched. Run helpers over a test adapter using the REAL new runtime validator, not a copied algorithm. Test concurrent/lost index update and interruption after each call. No frozen-snapshot validator installed in runtime. No app/SDK construction in production S1; helper imports and an isolated real public SDK compatibility client are test-only, with all transport stubbed and unexpected fetch failing.
+
+#### 5. S1 pure admitted-training reducer (CDR-01/08)
+
+`credentialFaultPolicy.ts` exports `reduceCredentialFault(state,event)`. Closed tagged inputs, own snapshots, no clocks/I/O. Tuple exact `{profileId:Uuid, identityGeneration:safe nonnegative integer, workId:Uuid, context:'training'}`; it represents a PREEXISTING admission, never generated by this reducer. Contexts assessment/team/home are explicit unsupported contexts. State exact common `{tuple:<tuple|null>, sporting:'healthy'|'failed', credentialPause:boolean, denied:boolean, completed:boolean}`; initial training state supplied by existing owner is healthy,false,false,false. Reducer cannot create/replace tuple. Invalid state/event → fixed invalid_input issue, no authority. Outputs exact `{state,decision,localContinuation,cloudPaused,newSignInPaused,warning,newWorkAllowed:false,profileSwitchAllowed:false,savedLocallyClaim:false}`. savedLocallyClaim is always false here: only actual sporting acknowledgements may produce UI success elsewhere.
+
+Events are a closed union: `credential_failure {operation:'read'|'write'|'remove', outcome:'not_issued'|'failed'|'unknown', previousValueMayBeLost:boolean}`; `deny {reason:'explicit_signout'|'definitive_provider_denial'|'unresolved_barrier'|'pairing_mismatch'|'profile_mismatch'}`; `sporting_save_failed`; `training_completed_saved`; `sdk_event {event:'INITIAL_SESSION_NULL'|'SIGNED_IN'|'TOKEN_REFRESHED'|'USER_UPDATED'|'SIGNED_OUT_AMBIGUOUS'}`; `network_only_failure`; `attempt_new_work`; `attempt_profile_switch`; `startup_check`; `other_context {context:'assessment'|'team'|'home'}`. No pending issue is misreported as settled failed; actual pending runtime operation still held by later executor. previousValueMayBeLost must be false except write failures. Failed remove is not itself a denial. A causally proven provider denial is separate deny event even if cleanup also fails.
+
+Each event is an object with outer discriminator `kind` equal to its event name and exactly the declared payload fields (none for payload-free events). State transition first: credential_failure sets credentialPause=true for all outcomes; deny sets denied=true; sporting_save_failed sets sporting=failed; training_completed_saved sets completed=true and tuple=null; every other event leaves state unchanged. Flags are sticky: no event clears them or replaces a tuple. For startup_check specifically, output never grants a new admission, even if no pause exists; it returns no_fault_policy_change when healthy and leaves normal startup authority outside this reducer. A completion event with no active tuple may set completed but never mint a successor. Invalid mixed state completed=true with nonnull tuple rejects. Deterministic order across a batch is deny → sporting failure → completion → credential failure → observation/attempt. Sticky state removes callback arrival dependence: later denial always prevents continuation; later success/SDK event cannot clear denied/pause/failed/completed. Decisions: deny→`existing_deny_path`, sporting failed→`sporting_save_failure`, completed→`exception_ended`; startup with pause→`startup_blocked` (and localContinuation=false, regardless of RAM auth); other_context→`policy_not_authorized`, attempts→`not_authorized`; otherwise failure with current tuple, healthy and not denied/completed→`continue_same_training_local`; same state observation→`pause_unchanged`; network-only with no pause→`existing_offline_policy`; credential failure with tuple=null→`no_admitted_training` and no continuation; clean observation→`no_fault_policy_change`. localContinuation true only for current same tuple, healthy, paused, not denied/completed, and event not startup/other_context/attempt. CloudPaused/newSignInPaused equal credentialPause OR denied OR completed-with-pause; warning equals credentialPause and not denied (sporting error separately visible). Network-only does not create credentialPause. Completing sets completed and nulls tuple; archiveAndReplace's empty successor is not new work permission. No in-document recovery event; a fresh process uses normal complete checks, not this reducer as a persisted offline grant.
+
+This pure reducer supplies no new non-training runtime policy; applying it globally remains blocked if an integration needs an unapproved context. Actual User/Profile mismatch correlation and truthful saves remain outside S1.
+
+### S2 — Installation-transfer inventory, codec and refusal-only decision model
+
+Scope: `installationTransferInventory.ts`, `installationTransferCodec.ts`,
+`installationTransferDecision.ts` and their three matching new tests.
+Technical provenance: independently reviewed `transfer-design-corrected.md` C1–C7;
+source SHA-256 `320376bd2c48a1d51eb0e6374649305eb7076ad95ade5f4c914c325f6df339d1`.
+Only C1–C7 reproduced below are adopted. C8–C10 physical/auth/transport work is
+not authorised by this appendix. This pure format is not a complete working backup
+or installation-transfer feature.
+
+Implementation status (2026-10-22): all six scoped S2 modules/tests are implemented,
+locally tested and independently accepted as one complete **pure inactive component**.
+The independent code review and its separately authorised final evidence closure are
+complete; no S2 code-review gate remains open for this bounded component. C4's accepted
+provider-return/ownership precondition still bounds asynchronous failure containment;
+acceptance is not a guarantee for arbitrary hostile asynchronous returns. Inventory
+and raw codec validation do not establish semantic usability, physical transfer, fresh
+authentication, protected delivery or release readiness. No application caller,
+production fingerprint binding or native integration is introduced. S3's discovery/
+combined discovery beyond the accepted bounded slices, physical S4, runtime S5,
+operational adoption of the dormant S3i Q3 cleanup, Q4 and the remaining
+native/device/restore/activation/release gates remain open.
+
+Acceptance evidence is kept in the local, non-repository archive
+`~/.hermes/outputs/curling-beta/review-cycle/`: the independent S2 code verdict in
+`s2-supervised-whole-code-final-review.json`, its authorised formal closure in
+`s2-final-review-authorized-evidence-closure.json`, and the latest repository-wide
+verification plus separate Assessment test follow-up in
+`assessment-date-parent-final-20261022_181715-report.md` and
+`assessment-date-parent-final-20261022_181715-report.json`. The latter closes the
+Assessment fixture finding A1; it is not an unresolved S2 finding. Its raw results and
+logs share that prefix, and its exact synthetic probe definitions are preserved in
+`assessment-date-parent-final-20261022_181715-harness/`. These are dated verification
+records, not additional normative contracts or device/release acceptance. The original
+reports retain their historical intermediate states; the closure and final report
+establish the current accepted status.
+
+The separately adopted **S4a** section in BETA_COMPLETION_SPECIFICATION.md extends
+the pure archive through explicit V2 inventory/encode/decode entries, after independent
+design and code review on 25 October. It includes closed deletion guards/resolutions
+without changing the V1 entries, C1–C7 below or the refusal-only Decision model.
+V2 remains an injected fingerprint test contract, not operational protected delivery,
+semantic compatibility, reauthentication, source removal or application admission.
+
+#### C1 — Concrete PURE S2 surface and outcomes
+
+Only three new modules and their three exact matching tests under src/lib/persistence are proposed: installationTransferInventory.ts, installationTransferCodec.ts, installationTransferDecision.ts; __tests__/installationTransferInventory.test.ts, installationTransferCodec.test.ts, installationTransferDecision.test.ts. No production imports/callers, repository construction, I/O, clients, SDK, storage, clock/randomness or bridge at module load or invocation. Existing files are read-only except later expressly adopted documentation. Constants may be mirrored from storage-bound modules and pinned by tests importing real declarations in isolated test context; pure imports must not pull their singleton factories into the S2 graph.
+
+Public data inputs are primitive strings only; reject any object, boxed string, proxy/getter or other type before property access/coercion. The only object-like dependency is the explicit fingerprint function, checked by typeof and called inside try/catch. Never stringify an untrusted object. Public entrypoints:
+
+- `planInstallationTransferInventory(listingJson: unknown)`: synchronous Result<ReadPlan>; C2/C5 closed listing grammar; returns sorted names of admitted raw reads, fixed positive-absence probes and exclusion counts. It does not read them.
+- `encodeInstallationTransfer(snapshotJson: unknown, fingerprint: unknown)`: Promise<Result<{wire:string, packageDigest:string}>>; C2/C3/C4/C5 source-observation grammar, validates every observation, computes fingerprints and canonical wire. Returns a package only for a complete supported non-secret archival shape. No partial package on refusal.
+- `decodeInstallationTransfer(wire: unknown, fingerprint: unknown)`: Promise<Result<ValidatedPackage>>; C3–C5 validation, exact frozen package data on success. Successful raw data is private return data, not diagnostics. No domain-usable/publication assertion.
+- `decideInstallationTransfer(decisionJson: unknown)`: synchronous Result<Decision>; C7 closed state inputs and outputs. Never executes a plan and never returns an actual access grant.
+
+Result is exactly `{ok:true,value:T}` or `{ok:false,code:E}`. Closed E: `invalid_input`, `unsupported_format`, `invalid_envelope`, `duplicate_member`, `noncanonical_wire`, `limit_exceeded`, `incomplete_inventory`, `unknown_owned_family`, `source_unobserved`, `source_unhealthy`, `sensitive_archive_unavailable`, `identity_archive_unsupported`, `fingerprint_unavailable`, `fingerprint_failed`, `fingerprint_invalid`, `digest_mismatch`. No exception object, key, value, identifier, hash, path, JSON excerpt or caller-provided message is returned in an error. Fingerprint synchronous throws, observed rejections and reachable observation exceptions are mapped to `fingerprint_failed` without inspecting their reasons; settled non-Digest results remain `fingerprint_invalid` without coercion. The no-raw-rejection guarantee for asynchronous returns is conditional on C4's provider-return/ownership precondition and does not cover arbitrary hostile returns. Missing provider is unavailable, never an identity/no-op hash. A never-settling injected promise stays pending; no timeout-generated success or cancellation pretending settlement. No storage side effects exist in S2.
+
+Validation order: type/length admission, bounded syntax/duplicate/numeric/depth admission, closed shape/version/routing, key/category/membership/count/confidentiality checks, value fingerprints in sorted order, package fingerprint, canonical-wire comparison, success. Unknown formatVersion returns unsupported_format after safe syntax admission; never interpret it as domain absence. Exactly one failure at the earliest stage; within a stage deterministic key/array order. C7 invalid evidence is invalid_input, not a permissive default.
+
+#### C2 — Inventory, source observations and confidentiality
+
+##### C2.1 Exact key grammar
+
+Canonical UUID is exactly `/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/` (src/lib/uuid.ts:1–7). Nil, uppercase, wrong variant/version, appended suffix or whitespace are invalid. TransferId and snapshotId use the same grammar and must be distinct; injected caller values, no generation in S2.
+
+Sporting key = `curling.sporting.profile.v1.` + canonical Profile UUID + `.` + one exact suffix below. Suffix sequence below is declaration order, NOT wire sorting order. `domainContract` is an exact suffix-bound transfer reader descriptor, not a declaration that the inner payload schema is understood:
+
+| suffix | domainContract |
+|---|---|
+| curling-release-tracker-current-session | session-current-raw-v1 |
+| curling-release-tracker-session-history | session-history-raw-v1 |
+| curling-release-tracker-history-filters | history-filters-raw-v1 |
+| curling-release-tracker-assessment-data | assessment-combined-raw-v1 |
+| curling-release-tracker-training-plans | training-plans-raw-v1 |
+| curling-release-tracker-accuracy-tolerance-profiles | tolerance-profiles-raw-v1 |
+| curling-release-tracker-smart-random-profiles | random-profiles-raw-v1 |
+| curling-release-tracker-assessment-show-introduction | assessment-intro-raw-v1 |
+| curling-release-tracker-assessment-last-threshold-preset | assessment-preset-raw-v1 |
+| curling-release-tracker-assessment-last-custom-threshold | assessment-threshold-raw-v1 |
+| curling-release-tracker-assessment-draft | assessment-draft-raw-v1 |
+| curling-release-tracker-assessment-history | assessment-history-raw-v1 |
+| curling-release-tracker-cloud-sporting-sync | cloud-sync-raw-v1 |
+
+Derive Profile membership ONLY from physically listed valid sporting keys; for each discovered Profile require exactly 13 slot observations, each a string-present or positively absent. Every listed admitted key must be present. A namespace must have at least one present slot; no fabricated Profile with all slots absent. Team participant/athlete/recorder references and trusted identity Profile do NOT add namespaces. Zero sporting Profiles is valid, including identity-only and fully empty installations. A positively absent sync slot is complete coverage, not missing inventory. Unknown/malformed key under the own Profile prefix blocks, even if another valid key exists.
+
+Five fixed identity keys, each always observed present/absent: curling.identity.trustedDevice.v1, curling.identity.accessBarrier.v1, curling.identity.interactiveAttempt.v1, curling.identity.pendingIntent.v1, curling.identity.intentCleanup.v1. Dynamic family: `curling.identity.accessBarrierResolution.` + canonical barrier UUID + `.v1` exactly; enumerate ALL present members, sorted unique, and declare enumeration complete including empty list. Do not invent infinitely many absent dynamic keys. A resolution item's barrierId must equal its key selector. Legacy slot: `curling.sporting.legacy-unscoped-retired.v1`, always observed present/absent. Present value must be exactly `complete`, otherwise source_unhealthy; it is archived evidence, not a destination cleanup command.
+
+##### C2.2 Closed source input grammar
+
+`listingJson` is a JSON object with EXACT fields `{schemaVersion:1, keys:string[]}`; keys unique and sorted by C4 code units, max C5 listing count. Classify keys before requesting any value. Own names are those starting `curling.`, `curling-release-tracker-`, `curling-performance-`; unknown own family blocks. Provider stem `/^sb-[^.]+-auth-token(?:$|-)/` is an exclusion classifier only, NOT a credential inventory validator. Public cache prefix `curling-performance-public-exercise-diagram-v1.` excluded; malformed cache suffix is still disposable cache, never a sporting namespace. Ten bare first-ten sporting suffixes are retired-unscoped: NEVER request their values. Foreign names excluded untouched. Neither exclusion scans nor counts assert native credential freshness.
+
+Known controls: exact `curling.nativeMigration.sourceMarker.v1`, `curling.nativeMigration.activationRecord.v1`, `curling.nativeMigration.faultLatch.v1` are classified for a separate value-free source-owner health projection, never requested as raw transfer data. Future Q/F/M/I names are NOT invented: any new own control family is unknown_owned_family unless an independently adopted versioned projection registers it. No read request may address protected M/I or provider session/verifier slots. Unknown future controls block completeness, not a broad raw copy. A wrapper supplying raw control bytes as an item fails closed key/category validation.
+
+`snapshotJson` is a closed JSON object with EXACT fields `{schemaVersion:1, transferId:UUID, snapshotId:UUID, sourceBuild:{version:Label,build:Label}, catalogContractId:Label, listing:{schemaVersion:1,keys:string[]}, observations:Observation[], sourceControl:{domain:"absent"|"healthy"|"fault"|"unreadable"|"unsupported", credential:"excluded"}, snapshotState:"synthetic_frozen"|"owner_frozen"|"unavailable"}`. Label matches `/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/`, not a URL/path/free-form metadata field. No timestamp is used as authority. sourceControl.domain may be absent only when no known domain-control key was listed; any listed known control requires healthy. Fault/unreadable/unsupported or unavailable snapshot returns source_unhealthy. `synthetic_frozen` is test-only input and never operational evidence. `owner_frozen` is a statement supplied by a later owner, not authority minted by S2.
+
+Observation is EXACT `{key:string, state:"present", raw:string}` OR `{key:string,state:"absent"}` OR `{key:string,state:"unobserved"|"unreadable"}`. Unique sorted observations must equal the entire expected slot set (13 per namespace, 5 fixed, enumerated dynamic, 1 legacy). Every absent expected key must NOT appear in listing; every present expected key must appear. Extra/omitted/duplicate/conflicting observations fail. Unreadable/unobserved never count as absent. Source read plan exposes no writeMarker/remove/clear capability. This typed model cannot prove quiescence or authenticate the supplied observations; physical binding is C10, unavailable today.
+
+##### C2.3 Inclusion/confidentiality table
+
+All admitted sporting raw strings are included unchanged, even unsupported/malformed schemas; their opaque contents are private application data, not auto-classified free of arbitrary secrets users might put in notes. The guarantee is no credential/control FAMILY read/copy, not impossible detection of arbitrary secret text in opaque notes. Nothing is logged.
+
+| category | allowed representation and refusal | authority |
+|---|---|---|
+| sporting | all present raw strings, explicit absences, C5 admission | no grant; C6 usability separate |
+| trustedDevice | present only if duplicate-free bounded JSON, EXACT fields of TrustedDeviceRecord schema 1 (:63–79), existing pure validator succeeds, generation safe uint; unknown/extra/malformed fields => identity_archive_unsupported | inert, never install into live identity repo |
+| accessBarrier | same exact-field rule for IdentityAccessBarrier schema 1 (:82–98), validator succeeds, nullable generation safe uint | denial knowledge; unresolved/malformed => no new access |
+| interactiveAttempt | exact schema-1 fields (:60–76), existing validator succeeds, safe capturedIdentityGeneration; Google flow selector is non-secret, not PKCE verifier | archive only; NEVER replay |
+| barrierResolution | exact schema-1 fields (:57–69), validator succeeds, safe generation and key/id match | historical correlation only; NEVER resolve destination barrier |
+| intentCleanup | exact `{schemaVersion:1,recordedAt:valid timestamp}` and existing validator succeeds | outstanding denial debt, never silently discharge |
+| pendingIntent | positively absent allowed; present ONLY exact schema-1 `{schemaVersion,kind,value,capturedAt,survival}`, kind admin_request, canonical UUID value, ordinary survival, supported timestamp and existing validator succeeds | inert administrative target, never replay |
+| pending invitation / invitation_account_recovery | ALWAYS sensitive_archive_unavailable, even with cleanup debt or apparent expiry; malformed/unknown pending shape conservatively same refusal (could conceal invitation secret) | preserve source; no redaction/drop/replay or complete package |
+| legacy marker | exact `complete` or absent | archive only, no deletion consent |
+| source D/marker/latch | value-free domain absent/healthy projection only after owner validates originals; fault/unknown refuses normal export | not copied as destination active |
+| Q/F/M/I, SDK values, verifiers, credential fingerprints | raw always excluded; new unsupported own controls block until reviewed projection; never serialize raw M as provenance | never portability/ownership proof |
+| public cache/bundle/export cache; foreign keys; retired bare keys | explicit exclusion policies; no raw values requested | untouched |
+
+Strict identity parsing uses the same bounded scanner as C5 on each raw value (aggregate work budget shared), checks EXACT source field sets before calling pure validators. Non-secret identity raw strings are preserved byte-for-codeunit, not reserialized to the validator's projection. Unknown identity shape refuses package creation rather than silently dropping fields. Mirror pending-intent validation in the new pure module; tests pin against actual validation without production importing pendingIntentRepository's localStorage singleton. Barrier/trusted/attempt/resolution pure validators may be reused if architecture checks prove a pure import graph. All generation numbers must additionally be safe nonnegative integers; source validator permissiveness is not a bypass. No protected invitation representation or delivery choice is approved by this v1 proposal. A future format revision must solve that separately. Even eligible packages remain private and may not be delivered without later reviewed protection.
+
+#### C3 — Closed envelope v1 (no optional fields)
+
+Every object is closed; every field below REQUIRED. `Digest` = exactly 64 lower-case hex characters. `UInt` = safe integer 0..9007199254740991 subject to lower C5 limits. `UUID` and Label are C2. Null is literal JSON null, not omission.
+
+Root EXACT fields:
+
+| field | value/type |
+|---|---|
+| format | literal `curling-installation-transfer` |
+| formatVersion | literal 1 |
+| fingerprintContract | literal `injected-256-v1` |
+| transferId, snapshotId | distinct UUIDs |
+| sourceBundleId | literal `local.dev.curlingperformance` |
+| intendedDestination | literal `me.evolane.curling` |
+| sourceBuild | closed `{version:Label,build:Label}` |
+| provenance | closed `{inventoryContract:"profile13-identity5-resolution-legacy-v1", schemaInterpretation:"opaque-preserved", catalogContractId:Label, domainControl:"absent"|"healthy", credentialControl:"excluded-not-copied", authority:"snapshot-only"}` |
+| profiles | sorted unique UUID[] derived from present physical sporting keys |
+| dynamicIdentity | closed `{enumeration:"complete",keys:string[]}` sorted unique exactly present resolution keys |
+| items | Item[] sorted unique by key, total coverage C2 |
+| counts | closed `{slots:UInt,present:UInt,absent:UInt,profiles:UInt,dynamicIdentity:UInt,rawCodeUnits:UInt}` recomputed exactly |
+| exclusions | closed fixed policy object below |
+| completeness | literal `complete-stored-inventory-with-declared-exclusions` |
+| credentialPolicy | literal `fresh-reauth-no-provider-values-verifiers-or-credential-hashes` |
+| packageDigest | Digest |
+
+Exclusions EXACT object and literal values: `{providerCredentials:"never-read", protectedCredentialControls:"never-read", retiredUnscoped:"never-read-never-adopt", publicCaches:"reconstructible-not-copied", bundleCatalogs:"references-only-not-copied", exportCache:"not-a-backup", foreignKeys:"untouched"}`. Counts of excluded keys are deliberately NOT portable, and are not evidence of missing native items. No arbitrary category/extension bag.
+
+Present Item EXACT `{key:string, category:"sporting"|"identity_archive"|"legacy_archive", profileId:UUID|null, domainContract:string, presence:"present", raw:string, codeUnits:UInt, valueDigest:Digest}`. Absent Item EXACT `{key:string,category:...,profileId:...,domainContract:string,presence:"absent"}`; raw/codeUnits/valueDigest prohibited. Identity uses exact domainContract `identity-<fixed-name>-v1` where fixed-name = trustedDevice, accessBarrier, interactiveAttempt, pendingIntent, intentCleanup, or `identity-barrierResolution-v1` for dynamic. Legacy uses `legacy-retirement-v1`. Sporting profileId must equal namespace UUID and contract must equal C2 table. Non-sporting profileId MUST be null. Category is derived, never caller selectable. Domain schemas themselves remain in raw; this reader descriptor is NOT schema-6 reconstruction or semantic approval. Every routing/schema/provenance/category/presence field participates in packageDigest.
+
+No inner raw JSON normalization, trimming, Unicode normalization, timestamp coercion or cloud digest recalculation. Version mismatch of OUTER envelope refuses; unknown sporting INNER schema may have a valid outer envelope and raw preservation but never domain usability by itself. Identity/control unknown shapes use the conservative refusal above.
+
+#### C4 — Canonical wire and exact fingerprint preimages
+
+This is a logical fingerprint injection contract, NOT a selected crypto engine, authenticity mechanism or protected transport. No production binding/algorithm has been selected. Version 1 with `injected-256-v1` is an inactive test/spec format: two callers must supply the SAME deterministic test provider to compare identities. It MUST NOT be delivered/accepted operationally. A production fingerprint-contract identifier/algorithm binding requires separate independent review and a new supported contract/version; no silent fallback under this identifier.
+
+Code-unit order: compare JS charCodeAt(i), first unequal unsigned 16-bit unit wins, shorter prefix first. Never localeCompare, Unicode scalar sort, normalization or UTF-8 replacement. All arrays specified as sets are unique and sorted this way. Objects canonically sort field names the same way. Items sort by full physical key.
+
+Wire is a canonical ASCII-only JSON spelling of the validated closed object: no whitespace/BOM/trailing data; keys sorted; arrays in prescribed order; unsigned decimal integers shortest spelling (0 allowed, never -0, fraction, exponent, sign or leading zeros); null/true/false literal. EVERY string code unit, INCLUDING member-name characters, is emitted as exactly `\u` plus four lower-case hexadecimal digits, enclosed by quotes. Thus empty is `""`, NUL is `"\u0000"`, high lone surrogate `"\ud800"`, low `"\udc00"`, replacement `"\ufffd"`; supplementary pairs remain two escapes. No escape aliases or literal characters inside strings are canonical. Input parser recognizes general JSON for precise duplicate rejection but ultimately rejects semantically equivalent noncanonical spellings. The package identity is of the canonical decoded object, not arbitrary JSON whitespace bytes. Canonical comparison is an incremental emitted-character comparison against admitted input; do not allocate a second full wire just to compare. Encoder pre-counts exact emitted length before producing output.
+
+Byte framing `U(n)` is unsigned 64-bit BIG-ENDIAN; reject n outside safe UInt before encoding. Implement high/low word conversion only after range checks (or BigInt on checked n); no unchecked JS bitwise truncation. `S(s)=U(s.length)` followed by each charCodeAt as two big-endian bytes, no BOM. Recursive typed encoding T:
+
+- null = byte 0x00; false=0x01; true=0x02;
+- UInt = byte 0x03 + U(n);
+- string = byte 0x04 + S(s);
+- array = byte 0x05 + U(element count) + T(each in order);
+- object = byte 0x06 + U(member count) +, for each code-unit-sorted member, S(name) + T(value).
+
+No undefined/NaN/Infinity/negative/fraction/function/symbol/object accessor in T. T receives ONLY the parser-created validated owned plain tree. Value preimage = ASCII bytes of `curling-transfer-value/v1` followed by 0x00 then T(raw string). Package preimage = ASCII `curling-transfer-package/v1` + 0x00 then T(root with ONLY the root packageDigest member removed). This includes raw strings AND value digests, all metadata, explicit absences, counts and exclusions; packageDigest excludes itself once, no other field exclusion. `fingerprint(Uint8Array preimage)` must resolve primitive Digest; no coercion. Both encode and decode recompute present values first then package. Sequential calls, at most one preimage byte buffer live per awaited call; no production/test default. An injected provider may retain buffers, allocate, block or lie; S2 cannot resource-bound its internals or authenticate results. Wrong/malformed/rejected provider never causes writes or success. Golden BYTE preimages, independent of a digest provider, must distinguish Unicode vectors and metadata-only mutations.
+
+Provider-return/ownership precondition (IR02). The callable remains `(bytes: Uint8Array) => unknown`. A returned native Promise is conforming only if S2's captured intrinsic `Promise.prototype.then`, invoked with S2's nonthrowing resolve/reject handlers, can attach both settlement reactions without abrupt completion and create a safe derived Promise. Its constructor lookup, relevant prototype metadata, `Symbol.species` lookup and capability construction must remain observation-safe from provider return through attachment, including during those operations. The derived capability must also remain safe through settlement: normal handler completion must not throw or produce an unowned rejection, and the ignored derived Promise must not independently reject without provider ownership. A nonthrowing intrinsic call alone is insufficient. Ordinary unmodified native Promises satisfy this boundary; masking an own `then` alone does not disqualify them.
+
+A cooperative thenable must deliver primitive fulfillment (a primitive Digest for success) or an opaque rejection through the supplied callbacks, and the provider must own its underlying Promises and every otherwise orphan-able rejection, including ignored continuation/then-return values. Reachable then getter/call throws remain fixed failures without reason inspection. Synchronous provider throws, primitive-result validation, ordinary/masked-own-then settlement and genuine pending semantics are unchanged. A conforming return that never settles remains pending; no timeout, cancellation or fallback may pretend settlement.
+
+The provider owns pre-handoff, internal/background and otherwise unobservable or orphan-able rejections; S2 does not erase earlier host reports. If a source may become unobservable, the provider must establish a plain safe bridge and safe forwarding reactions at source creation while the source is still observable and before an unowned rejection can be reported, or drive that bridge directly from provider-owned completion callbacks; only the safe bridge crosses the callable boundary. This is provider cooperation, not rescue by wrapping an already hostile unhandled Promise after receipt. No production adapter or operational fingerprint binding is added in pure S2; its real owner/binding remains a future independently reviewed gate.
+
+This explicitly narrows the previous blanket asynchronous rejection-containment guarantee; the existing provider resource/authenticity disclaimer did not already cover it. It is a semantic precondition, not a runtime validator for arbitrary returns. Failure of the captured intrinsic is not proof of a non-native receiver; fallback assimilation is best effort and proves no ownership. A nonconforming return can still yield `fingerprint_failed` while its original or derived rejection remains unhandled and host-visible; it is out of contract, not safely contained. No global/intrinsic/listener changes, caller-object mutation, host/native rescue or new rights are permitted.
+
+Examples of T only (hex): null `00`; empty string `04 0000000000000000`; NUL string `04 0000000000000001 0000`; high lone surrogate `04 0000000000000001 d800`; low `04 0000000000000001 dc00`; replacement `04 0000000000000001 fffd`. Source inner strings remain exactly equal under JS code units; no TextEncoder on raw values.
+
+#### C5 — Proposed finite format admission, not storage retention
+
+These are engineering admission budgets for this PURE format proposal, NOT a device capacity measurement, sporting-history cap, retention policy, truncation rule or permission to change storage. Out-of-envelope sources remain intact and refused (`limit_exceeded`). No prefix/subset package, split-history rewrite, automatic chunked file scheme or engine switch.
+
+| budget | exact inclusive maximum |
+|---|---:|
+| already-supplied input primitive string (listing/snapshot/decision/wire) | 25165824 UTF-16 units |
+| canonical ASCII wire (also bytes, since ASCII) | 25165824 |
+| lexical JSON nesting (root container depth=1) | 16 |
+| decoded strings across one input tree including names/raw | 4194304 units |
+| sum of present raw strings | 3145728 units |
+| one sporting raw string | 1048576 units |
+| one identity raw / legacy raw | 65536 units / 8 units |
+| one physical/listed key | 256 units |
+| metadata Label / object field name | 64 / 64 units |
+| Profile namespaces | 32 |
+| dynamic resolutions | 512 |
+| complete items (present+absent) | 1024 |
+| source listed keys (including exclusions) | 4096 |
+| total object members + array elements (structural edges) | 65536 |
+| preimage buffer per value or package | 16777216 bytes |
+| later proposed physical batch | 32 present rows AND 1048576 raw units |
+| later proposed one row bridge payload | 1048576 raw units plus <=65536 metadata units |
+
+Derived item cardinality MUST equal 13*profileCount + 5 + dynamicCount + 1; checked arithmetic before multiplication/allocation. Incompatible simultaneous maxima refuse; no claim every individual maximum can coexist. Batch membership sorted greedily from next uncommitted present item, stop before either max; a row larger than the proposed batch/bridge bound refuses physical readiness, not chunked/truncated. These last physical budgets are proposals only; real native/delivery measurement/adoption still unavailable and cannot limit already-allocated future bridge input retroactively.
+
+Parsing/allocation strategy: typeof first, .length before slicing/JSON.parse; scan characters with a bounded iterative stack, never recurse unboundedly. Track depth, per-container membership, decoded property names and duplicate names (including escaped aliases), string decoded lengths, edge counts and checked running totals DURING scanning. Reject a string before allocating decoded content beyond budget; decode bounded chunks, not repeated quadratic concatenation. Check raw escaped token extent against total wire bound too. Scan numbers lexically; only canonical unsigned decimal at numeric fields, at most 16 digits then guarded digit accumulation using n <= floor((MAX_SAFE_INTEGER-digit)/10); enforce field-specific maxima before loop/allocation. Never allocate using declared counts, array lengths or cursor positions before validation. Duplicate member detection applies to EVERY structured JSON object including supported identity raw; sporting raw stays opaque and is not parsed by the outer scanner.
+
+After syntax admission build an owned null-prototype tree using data properties only (no __proto__ mutation), with the same limits rechecked. One parse tree, no generic JSON.parse of the hostile wire before the scan. An implementation may combine scanner and bounded tree builder; it may NOT claim that a post-JSON.parse length check is admission. Arrays capped incrementally; reject unknown closed fields before allocating large unknown payload branches where possible. Checked addition uses a <= limit-b guard before every addition; checked multiplication uses a <= floor(limit/b). Precompute T and canonical output sizes without materializing buffers; cap before allocation; then fill one exact buffer at a time. No declared count can drive an empty-body huge allocation. Bounds cover owned decoded/code-unit and byte payload sizes, not a measured exact JS heap ceiling/GC overhead or input allocation already incurred by the caller. Pure-string entry cannot undo a future bridge/stream allocation. A streaming bounded delivery reader is a separate unavailable later boundary.
+
+Identity inner scanning shares cumulative work admission with the outer operation, charging raw units AGAIN when decoded as structured identity; if combined decoded budget would be exceeded, refuse, never skip validation. Pure C7 state strings contain no sporting values and additionally cap at 65536 units. Oversize/key/depth/provider errors never include input text.
+
+#### C6 — Preservation, domain interpretation, recovery and usability are separate
+
+Codec success = envelope valid, complete stored inventory within the declared exclusions, raw code units preserved against injected fingerprints. It returns semanticStatus `not_evaluated` as separate caller interpretation, never a writable-workspace result. In S2 there is NO loader/overlay integration or supported-usable oracle: C7 receives unavailable semantics and refuses publication. This makes pure S2 executable now without pretending domain compatibility is implemented.
+
+Later semantic evaluation must use actual domain validators/loaders in a DISPOSABLE overlay seeded from immutable staged raws. The read map is frozen. Overlay set/remove operates only on a private copy, returns real overlay-local acknowledgements and audits every attempted key/value/write-order/read-after-write; it never lies that source/staging changed. Unknown key/out-of-Profile write refuses the evaluation. Denying all writes then accepting loader fallback is prohibited. Compare before/after identity/membership/content and explicit quarantine/drop facts; loader `value` alone is insufficient. Throw/reject/read_failed, present-to-absent/default, dropped/renumbered member, unknown version, audit outside named recoveries => preserved-unusable. Permitted recovery remains a PROPOSAL for later review, not S2 code or runtime migration permission. Source and authoritative staged bytes stay identical even if the isolated overlay can represent an interpretation.
+
+| domain slots | raw validity and real loader risk | supported interpretation / permissible load-only recovery | usability result |
+|---|---|---|---|
+| current Session | present malformed JSON can become absent; sessionRepository:141–170; measurement/exercise validation required | actual migrateSession, compare IDs, blocks/shots/notes/measurement/exercise snapshots and all fields; ONLY intentional running-capture -> paused-on-load recognized, no arm/resume callback | any other repair/default/membership loss => unusable; recovery_paused remains distinct |
+| Session history | :182–207 can convert malformed into absent or migrate/drop records | real history load, order and all session/shot identities preserved, terminal exercise checks, no generated IDs | malformed/partial/drop => unusable |
+| filters | historyFiltersRepository:31–43 sanitizes or returns absent | JSON-valid exact supported filter shape; require sanitizer output semantically identical to parsed input (property order immaterial for interpretation only); no default replacement | sanitization/default => unusable |
+| combined/draft/history Assessment (joint group) | repository:91–188 reads three keys; malformed combined can be absent; :60–87 clears duplicate terminal draft; may split-write missing halves | all absent = explicit empty interpretation only; full split validates both; combined-only/partial needs source combined and EXACT existing-half matches; overlay permits ONLY existing history-first split writes and exact terminal duplicate clearing; compare all run/attempt/protocol/snapshot/history identities and currentRunQuarantined false | malformed/unsupported/quarantined/dropped/conflicting => unusable; successful overlay recovery => recovery_required, NOT automatically writable until reviewed postpublication normal owner handoff |
+| Training Plans | repository:76–125,145–171 deliberately lossless membership | supported schema 1/2, exact plan/step identity/order and historical immutable snapshot resolution; actual migration only, no new ID | configuration may remain readable but unexecutable; distinguish library-readable from executable; drop/rename/unresolved => unusable |
+| tolerance profiles | repository:53–74 protects unreadable; storedStateValidation and migration own quantity rules | actual supported schema-1 time -> schema-2 interpretation only, original raws unchanged; all template/default identities and quantity preserved; never seconds->speed | unknown quantity/schema/member/default loss => unusable |
+| random profiles | repository:42–48 malformed->absent, migration can normalize | supported schema 1, ranges/mode/member/default must remain semantically equal under actual migration | fallback/default/drop => unusable |
+| show-introduction | repository:45–55 maps any non-true string false | for writable usability require exact literal true or false; other raw kept | unsupported string => unusable, not false grant |
+| threshold preset | :62–73 maps unknown to standard | exact standard/tight/custom only | other raw kept unusable |
+| custom threshold | :82–106 empty->absent or malformed->null | present must be duplicate-free JSON supported finite numeric onTarget/acceptable exact supported shape; empty distinct from absent; no fallback null | malformed/empty/unsupported => unusable |
+| entire cloud-sync raw | syncStateRepository:93–408, no projection reconstruction | actual supported schema 1..6 interpretations with exact entry identity/payload/hash/status/relation preservation; v5 owned-result interpretation may add only the existing explicit originalResult/revisions/isVoided defaults, never overwrite raw; no data loss or unknown extras | wrong recorder/owner, missing field/drop/unknown schema => unusable; historical compatibility recovery distinct |
+| identity/legacy archive | C2 confidentiality and exact forms, not normal live identity loads | NEVER invoke destructive grant cleanup/replay from archive; evaluate deny facts separately under C9 | archive-valid != admitted |
+
+Whole sync raw includes personal entries with desired present/deleted, tombstones, opaque payloads/digests/statuses; teamEntries with parent/child linkage, blocked reasons; eligibility cache; active recorder draft; owned original/current/void/results/revisions/corrections/privateNote. Preserve empty Team coordinationPayload/resultPayload ONLY when synced; pending/blocked remain nonempty as actual parser requires. Personal desired-present remains NONEMPTY even synced; deleted has empty payload but retains identity/hash. See syncStateRepository:100–107,153–195,215–236; teamExerciseRecords:46–73,618–690. Never reconstruct owned results from upload payloads, which omit recorder/privateNote (:798–880). For namespace A, active draft recorderProfileId and owned cached result athleteProfileId MUST equal A (syncManager:218–235). Other roster athletes/bundle participants/recordedBy references may legitimately differ and MUST NOT be reassigned or blanket rejected. Cached permissions never grant server authority. Server-only results/notes not locally present are not claimed exported.
+
+Historical readiness is a separate result: exercise Version IDs AND full immutable snapshots, measurement protocol id+version+snapshot, and diagram asset IDs including superseded/retired must resolve against complete historical catalogs/delivery inventory, not current visible lists. Primary: trainingPlans/migration:145–151; exercises/lookup:21–55,68–75; executionValidation:140–145,264–270; restrictedAssetCatalog:88–115. Missing historical content => preserved-unusable, not substitute current Exercise/diagram or fetch in pure tests. Source catalogContractId is provenance label, not proof of actual destination content. Overlay/historical evaluation integration lies outside the six S2 files and remains a later S4 readiness prerequisite.
+
+#### C7 — Pure atomic decision model (TR-05, IT-12)
+
+S2 decision inputs describe observations; they do not create a real lease, auth proof or storage authority. Two disjoint request variants, all fields closed:
+
+`{schemaVersion:1,kind:"atomic",boundary:"intent"|"batch"|"verify"|"publish",mode:"warm"|"cold",call:"not_issued"|"own_uncommitted"|"pending"|"settled_unknown"|"confirmed",owner:"current"|"stale",observation:"unobserved"|"unreadable"|"exact_before"|"exact_after"|"mixed"|"rows_without_cursor"|"cursor_without_rows"|"foreign",confirmedEvidenceLost:boolean,reopen:"not_required"|"unconfirmed"|"fresh_confirmed"}`.
+
+Output Decision EXACT `{kind:K,mayIssue:boolean,mayPublish:false,mayMount:false,ownerMustRemain:boolean}`. K closed: `not_issued`, `rollback_own_uncommitted_only`, `waiting`, `evidence_required`, `guarded_retry_candidate`, `completed_candidate`, `fault_held`, `target_conflict`, `blocked_stale_owner`, `readiness_unavailable`, `blocked_q2`, `no_portable_identity_grant`, `stale_snapshot`, `historical_receipt_only`, `preserve_both_no_rollback`.
+
+Precedence: pending => waiting/owner held regardless cancellation/time; positive warm confirmedEvidenceLost => fault_held (even latch persistence failed), except still-pending remains waiting with fault knowledge held and no new issue. Stale owner => blocked_stale_owner, no new issue; uncertain handle still held by real owner. mixed/rows_without_cursor/cursor_without_rows => fault_held; foreign => target_conflict. Unobserved/unreadable => evidence_required, not absent or fault inferred from ignorance. settled_unknown requires fresh_confirmed reopen before classifying; otherwise evidence_required/held. Exact after => completed_candidate (classification, not second write). Exact before and settled_unknown+fresh_confirmed => guarded_retry_candidate with mayIssue=false: caller must acquire a NEW current guards/transaction intent, never directly execute returned candidate. Confirmed+exact_before is warm confirmation loss => fault; cold has no remembered confirmed call and must reject such self-contradictory input. Cold requests MUST use call=not_issued and confirmedEvidenceLost=false, then durable exact before => guarded_retry_candidate, exact after => completed_candidate, mixed => fault. not_issued+warm exact_before => not_issued (mayIssue=false, later executor guards required). own_uncommitted => rollback_own_uncommitted_only ONLY with current owner, no COMMIT issued; no compensation of durable rows. No pure result authorizes an actual physical call; mayIssue stays false for every S2 outcome. For EVERY atomic result ownerMustRemain=true: the input lacks positive close/release/handoff evidence, so S2 never authorizes releasing any existing owner, including completed/retry candidates and stale callers (the actual current owner still holds it). For EVERY readiness result ownerMustRemain=false means this pure request owns no handle; it is NOT permission to release a handle owned elsewhere. mayIssue is false for every result. No owner is created by S2.
+
+Exact evidence predicates for a later executor (NOT a supplied Boolean substitute):
+- intent-before: J/selection/fault absent, no stage/archive rows, immutable original baseline of no sporting work plus only explicitly allowed fresh-auth metadata; after: exact J intent alone, all payload absent, same baseline.
+- batch-before: exact J bytes at cursor n, exact committed prefix, ALL next-batch and later keys positively absent, archive rows matching same prefix; after: entire batch present exactly, cursor n+k atomically, no extras; k>0, deterministic C5 batch. Cursor is a number of PRESENT manifest items, not all slots. Absent slots stay covered in manifest, never fabricated rows. No rows without their committed cursor.
+- verify-before: cursor=presentCount, exact J copying and all present rows, no unexpected rows; after: same rows, J verified carrying immutable semantic/catalog/readback evidence references; no ordinary publish.
+- publish-before: exact verified J, unselected staging, exact auth/control baseline and fresh guarded proof; after: J published AND selection/receipt and complete ordinary sporting rows in ONE transaction; all archives remain inert. Detailed physical mapping is C8 candidate, not implemented.
+
+Rows matching expected bytes with a positively absent cursor are **fault_held**, not verify/catchup. No preexisting equal row with no/different J becomes owned. This supersedes original IT-12. Credential-store item/cursor recovery is a DIFFERENT non-atomic protocol owned by the credential author; do not mechanically apply this transfer rule there. Unreadable/unobserved cursor => evidence_required with owner held, never catchup or positive absence.
+
+Second request: `{schemaVersion:1,kind:"readiness",package:"invalid"|"valid",source:"frozen"|"stale"|"unavailable",target:"clean"|"same_transfer"|"conflict"|"post_publication_mutated"|"has_new_work",request:"publish"|"access"|"rollback"|"inspect",proof:"unavailable"|"imported_trusted"|"q2_forbidden",semantic:"unavailable"|"unusable"|"candidate",receipt:"none"|"shared_only"|"external_verified"}`. No active auth-success/physical-ready value exists in PURE S2. Invalid package => invalid_input; target conflict => target_conflict; rollback with has_new_work => preserve_both_no_rollback; post_publication_mutated+inspect => historical_receipt_only; stale source => stale_snapshot; q2_forbidden => blocked_q2; imported_trusted => no_portable_identity_grant; other has_new_work requests => target_conflict; EVERY remaining admitted request INCLUDING rollback (clean, same_transfer or post_publication_mutated) => readiness_unavailable. For every successful readiness Decision mayIssue=false, mayPublish=false, mayMount=false, ownerMustRemain=false; this request owns no handle and cannot release another owner. The fallback adds NO rollback authority. For own_uncommitted, after stale/mixed/foreign/unobserved checks, only exact_before is admissible and yields rollback_own_uncommitted_only; exact_after is invalid_input because no committed after can be attributed to an unissued COMMIT. Validate cold-call restrictions before applying pending precedence. Any atomic confirmed+exact_before in warm yields fault_held. No owner-consent bit can bypass Q2. A separate live integration is required to produce real evidence and cannot be added to S2 by changing a test fixture.
+
+Readiness ordered total mapping (first applicable rule wins):
+1. package=invalid => Result `{ok:false,code:'invalid_input'}` (no Decision).
+2. target=conflict => target_conflict.
+3. request=rollback AND target=has_new_work => preserve_both_no_rollback.
+4. target=post_publication_mutated AND request=inspect => historical_receipt_only.
+5. source=stale => stale_snapshot.
+6. proof=q2_forbidden => blocked_q2.
+7. proof=imported_trusted => no_portable_identity_grant.
+8. target=has_new_work (remaining requests) => target_conflict.
+9. EVERY remaining admitted request (publish/access/rollback/inspect) => readiness_unavailable.
+Rules 2–9 return exactly `{ok:true,value:{kind:<listed kind>,mayIssue:false,mayPublish:false,mayMount:false,ownerMustRemain:false}}`. The request owns no handle; false is never permission to release another owner's work. Semantic/receipt labels do not override precedence or add authority. No new readiness cross-field restriction is added.
+
+Minimal fixture: `{"schemaVersion":1,"kind":"readiness","package":"valid","source":"frozen","target":"clean","request":"rollback","proof":"unavailable","semantic":"unavailable","receipt":"none"}` => readiness_unavailable with all four flags false. Future tests must invoke the real decideInstallationTransfer for EVERY combination of package(2) × source(3) × target(5) × request(4) × proof(3) × semantic(3) × receipt(3), and separately invalid/hostile inputs. The offline finite table audit here is SPEC coverage only, not an S2 SUT/transfer test. Include all formerly omitted non-stale/unavailable-proof rollback variants; postpublication mutation does NOT imply no new work or safe reversal.
+
+
+### S6g — protected archive quarantine
+
+Independent DESIGN PASS on 2026-10-26, including iOS-only refusal before engine work
+and the actual-bundle-driven SQL installer extraction.
+Corrected independent CODE and the full local regression are accepted. ADR-0054 records
+the durable decision; this section is the canonical bounded technical specification.
+
+## Exact bounded outcome
+
+Implement a first actual native target prerequisite: positively acquire the SAME
+database ownership registry, queue and handle as every existing adapter; accept
+one actual S6e protected V3 archive into a mutually exclusive quarantine; classify
+real commit/reopen/readback and cold restart. No ordinary records, identity/credential
+metadata, selection, publication, source freeze, authentication or runtime admission.
+All public results mayIssue/mayPublish/mayMount:false. This accepts only this new
+quarantine slice, not C8–C10 or the existing five-table candidate as a whole.
+
+The local training-only JSON backup is NOT a V3 archive (it intentionally excludes
+identity/deny archives). Never fill its missing identity evidence with fabricated
+absences, feed it to the old WebView runner or claim a supported import of that file.
+Actual source/archive delivery and fresh-auth/source-deny mapping remain separate.
+Free pilot/Team != Personal, source preservation, Q1/Q3 and deferred Q4 unchanged.
+
+## Scope
+
+- nativeSqliteAdapter.ts: one private installation-mode hook inside the existing
+  buildNativeSqliteStore; one new exact internal factory and private context type.
+- installationTransferQuarantine.ts: actual protection orchestration and lifetime.
+- installationTransferQuarantineSql.ts: concrete exact discovery/SQL installer on the
+  SAME existing core; dynamically loaded only by the new owner.
+- installationTransferQuarantineWork.ts only if needed for boxed observed-work
+  ownership shared exclusively by the new owner and its SQL installer; no general app API.
+- New focused actual SQLite/crypto/lifetime tests; precise existing architecture
+  and mobile ANY-mode bundle guard changes; canonical §S6g, Readiness and short
+  architecture ADR/index/references after independent DESIGN PASS.
+No legacy algorithms/observers/SQL transaction semantics, platform binding fork,
+common owner/source/runner/borrow/identity/SDK/composition/UI/default changes.
+
+## Public private-owner surface
+
+createInstallationTransferQuarantine(options) takes the existing trusted native
+construction choices (databaseName, optional existing engine/platform test seam).
+It constructs inertly, with no engine/global crypto/native I/O. Returns a frozen
+null-prototype owner with inspect(), stage(protectedWire:unknown,recoveryCode:unknown)
+and close(). Never expose the SQL context, rows, source values, digest/IDs, plaintext
+wire, recovery code, ordinary adapter, connection or generic transaction operation.
+Only tests call it in this stage; no app/mobile caller. SQL context constructor is
+called dynamically only by this new owner. Stage accepts primitive bounded strings
+only; no input getters/coercion/serialization. Actual openInstallationTransferV3
+authenticates/decrypts and validates V3; packageDigest comes only from that exact
+result, never a caller claim. No re-encryption/new key. Code/plaintext are never
+persisted, logged, diagnosed or returned; JS strings have no secure-erasure claim.
+Invalid/corrupt/wrong-key input refuses without creating a target schema/rows.
+
+Codes are fixed only: empty, quarantined_unverified (structural observation only),
+quarantined, already_quarantined, invalid_input, archive_refused, unavailable, busy,
+target_conflict, outcome_unresolved, fault_held, closed, cleanup_held. Keep domain
+usability/auth/activation out of these labels. Successful stage/readback is a local
+quarantine acknowledgement only, not external transfer receipt or publication.
+
+## One exact physical layout, ASCII protected bytes only
+
+Use the SAME requested database, NOT a side database/new engine/parallel registry.
+Exact solitary application object (internal SQLite objects excluded only as in the
+existing discovery query):
+
+CREATE TABLE installation_transfer_quarantine_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), protected_wire TEXT NOT NULL, package_digest TEXT NOT NULL)
+
+No IF NOT EXISTS, extra index/trigger/view/table, metadata in ordinary records,
+column defaults, migration/repair or automatic coexistence. Verify exact DDL,
+table_info (three columns, singleton pk1, TEXT nonnull), empty index_list and
+schema_version before/after full discovery. Genuine empty database is allowed.
+An exact quarantine table must contain exactly ONE row, singleton1, bounded strict
+S6e ASCII protected-wire grammar and lowercase64 digest. No row/extra/malformed
+row is conflict/fault, never empty. Existing records/credential D/Q/F layouts—even
+empty tables—are refused by installation mode. Existing ordinary, diagnostics,
+legacy D-only, credential, combined-held and common factories remain unchanged and
+must refuse the quarantine layout before any bootstrap/default write.
+
+The stored wire is exact encrypted ASCII from S6e (header,16-char nonce, strict
+base64url body within the existing S6e bound); package digest also ASCII. No direct
+plugin TEXT storage of arbitrary UTF-16 source raws. Later sporting row encoding/
+publication requires a separate adopted design. Real SQL tests must prove ASCII
+roundtrip and the actual constraints/transaction behavior; physical plugin/storage
+durability remains a separate gate.
+
+## Shared core extension, preserving default bundle exclusion
+
+Do not create an alternate store implementation. Add a PRIVATE optional installer
+to buildNativeSqliteStore, available only to the new internal quarantine factory.
+It gets core-only functions for enqueue, real lease acquire/check/phase, open,
+reopen and positive release. No installer/SQL/ports in public options. The returned
+quarantine context is never on the ordinary/credential/common public surface.
+
+The core's existing ensureConnection uses the installation-mode exact discovery
+hook BEFORE pragmas/bootstrap and on every reuse; no ordinary records bootstrap
+in this mode. Open/close/native-handle-release use the existing actual engine and
+registry. Only the new factory supplies these hooks. A private platform predicate restricts
+this new mode to iOS: Web, Android, unsupported or failed platform detection refuse
+before engine resolution, connection creation or opening. All existing factories
+retain their current platform behavior. Keep the concrete SQL/state
+logic in installationTransferQuarantineSql.ts, which passes the private installer
+to the existing core's internal factory. That adapter export contains only the
+generic internal construction hook, no concrete quarantine SQL/work implementation.
+The new owner dynamically imports only the SQL installer. This is necessary because
+the actual native-storage dynamic namespace keeps otherwise-unused adapter exports
+(the Default/Diagnostics builds did exclude the original concrete factory, but the
+native-storage bundle guard found the quarantine marker). No existing composition
+change, sideEffects:false or global tree-shaking exemption. Pin exact factories/callers and a nonvacuous quarantine
+marker absence in all three actual normal modes.
+
+## Atomic insertion, observed outcomes and monotone evidence
+
+One complete protected artifact, no batching/cursor or ordinary publication in this
+slice. One queue task: reserve real lease, observe complete empty baseline, BEGIN,
+re-observe exact empty layout INSIDE transaction, CREATE exact table, bound INSERT
+singleton1/wire/digest (transaction:false for every statement), positively validate
+the complete exact post-state inside the transaction, then COMMIT. No upsert/update/
+delete/drop. Schema creation and row are one transaction; no legitimate empty-table
+state exists. A concurrent external writer causes a real SQLite/precondition failure,
+not overwrite. No caller-supplied SQL or consent bit.
+
+All issued calls are awaited through actual settlement. Before BEGIN: no issue
+means no transaction. Once BEGIN issued without positive acknowledgement, retain
+requires_reopen; never assume no transaction. Before COMMIT issuance, only own
+positively begun uncommitted work may roll back. After COMMIT issuance NEVER issue
+rollback or compensating delete, even on cancellation/rejection/malformed receipt.
+Positive ACK alone is not final storage evidence: close -> positive native handle
+release -> fresh open -> complete exact schema/row readback on every staged commit.
+This is an engine/readback result, not power-loss or physical iPhone evidence.
+
+Readback exact after => quarantined; exact before (truly empty database) after an
+unconfirmed commit => outcome_unresolved/not-staged, with no automatic retry in that
+operation. Mixed/foreign or confirmed commit followed by before/missing/different
+data => sticky fault_held. Every later full observation must match the first
+positively observed supported record in that lifetime; disappearance/change is
+never a new empty target. No automatic clearing or evidence deletion. A second
+stage of the identical wire+digest after actual authentication and fresh observation
+returns already_quarantined, without write. Any different wire, including a fresh
+encryption of the same package, is target_conflict; preserve it. No raw resolver.
+
+Cold inspect classifies supported durable bytes structurally only and returns
+quarantined_unverified; it does not recreate a warm confirmed ACK or verify AES.
+Actual stage with matching supplied code/input can re-establish private actual
+authenticated equality. Cold corrupt/unknown/unreadable structure refuses. No
+memory-based intent is invented and no partially prepared schema is repaired.
+
+## Lifetime, work and cleanup
+
+Install one owned operation before dynamic imports/crypto/native work. One inspection
+or stage at a time; concurrent calls return busy, never queue new import work. Close
+synchronously revokes new work; calls while an operation/close is pending join only
+the appropriate existing work (no self-deadlock). Retain real registry/lease during
+pending SQL/crypto/open/close/release; no timeout, cancellation-as-settlement or
+unsettled-failure unlock. After each await and before every issued native call,
+recheck the owner's current lifetime. Exact helper-own work is excluded only from
+observation completion, never admitted as a positive value/ACK.
+
+Use actual boxed observePlatformWork and completion-only drain for newly observed
+potential work, with per-operation memoization. Safe own descriptor metadata:
+retain descriptor value/get/set before validation; do not invoke getters or inspect
+opaque reasons. Bounded result arrays/rows; validate fields immediately and refuse
+before later fields after a known failure. No invalid native result becomes empty
+or a positive transaction/close receipt. Underlying trusted native engine/options/
+module-bootstrap cooperation retains the existing C4 hidden-work/cycle limitations;
+do not claim arbitrary provider attestation or rewrite old observers.
+
+Close waits for already issued operation/crypto work. If COMMIT was issued, required
+cleanup may perform only its positive reopen/classification before release; this is
+explicit cleanup, not resumed staging. A pending call holds close indefinitely.
+Close/release/reopen failures return cleanup_held/outcome_unresolved and retain the
+owner; a later explicit close retries cleanup only. Repeated close while pending
+joins the same promise. Sticky fault may positively close/release the native handle
+but MUST keep the logical registry reservation in this context (fault_held); no new
+ordinary/second importer can bypass it until process reset. A clean positive release
+can drop the lease but never claims an unresolved commit was absent. No cleanup
+operation deletes schema/data or touches the source/credentials.
+
+
+Verification: actual disposable SQLite plus actual synthetic S6e/V3 crypto; exact schema, transaction uncertainty, cold restart, lifetime and old-mode exclusion. Physical device evidence is separate.
+
+
+### S6h — actual native sporting preparation
+
+Independent DESIGN, corrected scoped CODE and complete local regression PASS
+2026-10-26 under the continuing full import/fresh-auth mandate. This stage supplies
+no publication or auth grant. Verification evidence: TESTFLIGHT_READINESS.md.
+
+
+
+Authenticate S6e, validate actual V3, actual domain loaders and historical catalog,
+then atomically materialize every PRESENT sporting raw into the SAME actual native
+SQLite database beside its exact encrypted quarantine. Preserve every absent slot
+in the encrypted archive; no implicit defaults. Identity/legacy remain only in the
+encrypted archive and never enter sporting rows. All public mayIssue/mayPublish/
+mayMount:false. No profile/auth/source authority, ordinary records, selection,
+credential pairing, source retirement or app mount. Full end-to-end goal remains
+in progress after this stage; it must not be reported complete.
+
+## Actual ownership and scope
+
+Extend the existing concrete installationTransferQuarantineSql implementation with
+one private preparation-mode constructor. It uses the SAME adapter core, registry,
+queue/lease/connection and accepted S6g work helper. No second owner/store/engine,
+parallel registry, SQL in app modules or public construction option flag. Existing
+S6g factory remains exact single-quarantine-only and refuses preparation layouts.
+Other existing factories continue refusing all transfer layouts before writes.
+
+New dormant owner installationTransferPreparation.ts has inert factory with the
+existing trusted native options; prepare(protectedWire:unknown,code:unknown),
+inspect(),close() only. Same null-prototype/frozen bounded code-only/all-false
+result, one operation/busy, synchronous revocation, whole-work join, cleanup retry,
+fault logical reservation semantics as S6g. New owner dynamically constructs actual
+SQL context for prepare only after actual cryptographic/semantic/historical admission.
+Cold inspect may construct this context for structural-only observation without
+wire/code; that never creates authentication/semantic evidence or a write grant. It does
+not accept supplied parsed data/manifest/digest/readiness/callbacks.
+
+Old source crypto/codec/domain/catalog algorithms unchanged. Derive sporting rows
+ONLY from actual decoded V3 after actual same-wire domain/historical checks and
+same packageDigest. Each prepared value_digest is copied exactly from that actual
+validated V3 item.valueDigest; no new digest/preimage contract is introduced.
+preserved_unusable or not_evaluated => refuse preparation;
+recovery_required may be staged unchanged with an explicit fixed recovery-required
+status (never publication permission). No semantic overlay writes are copied back.
+All profiles must have supported actual historical findings. Zero-Profile archive
+can prepare an empty sporting set only, never invent namespace/admission.
+
+## Versioned exact ASCII/codeunit storage
+
+New private installationTransferCodeUnits.ts encodes primitive bounded strings as
+`u16:` + four lowercase hex digits per original UTF-16 codeunit. Exact inverse,
+including NUL, combining sequences, lone surrogates, supplementary pairs and CR/LF.
+Reject nonprimitive/malformed/noncanonical/oversize before allocations. No TextEncoder
+replacement/normalization/JSON reconstruction. This is storage encoding, no crypto.
+Normal imported runtime read/write will later use this exact representation; old
+legacy records are unchanged and this stage exposes NO ordinary adapter.
+
+Same existing quarantine DDL/one-row exact cipher+digest plus two exact tables:
+
+CREATE TABLE installation_transfer_prepared_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), package_digest TEXT NOT NULL, row_count INTEGER NOT NULL CHECK(row_count>=0))
+CREATE TABLE installation_transfer_sporting_v1 (slot INTEGER PRIMARY KEY CHECK(slot>=0), key TEXT NOT NULL, value_ascii TEXT NOT NULL, value_digest TEXT NOT NULL)
+
+Only valid layouts: truly empty; S6g's exact single full quarantine; OR all three
+exact tables with quarantine row, one prepared row digest equal quarantine digest,
+row_count 0..416 and exactly that many sporting rows ordered slot=0..n-1, strictly
+increasing unique supported sporting keys, primitive exact ASCII codeunit encoding,
+lower64 actual value digests. Actual decoded manifest equality is checked only on
+authenticated prepare; cold inspect structural only, prepared_unverified. No normal
+records, credential tables, unknown object/index/trigger/view/default/partial or
+empty quarantine/meta. Exact DDL/table_info/index absence/schema_version stability
+and strict early per-field work validation. No virtual hidden metadata.
+
+## Atomic actual SQL operation
+
+First authenticate/validate entirely in memory, acquire existing mode lease and stage
+actual envelope by reusing the accepted S6g algorithm INSIDE the SAME preparation
+SQL context/lease (no re-encryption), full positive reopen. Never call a public S6g
+owner and then hand over to a second owner between transactions.
+Then one transaction checks exact quarantine-only before; creates both new tables;
+bound insert each derived sporting row (transaction:false); insert one prepared
+singleton/count/digest; full exact in-TX after-state read; COMMIT. All statement and
+query metadata use actual strict observed-work/early-validation helper. Extend only
+its insert ACK with an exact expected-lastId parameter (existing default1 unchanged):
+sporting row slot0..n-1 expects that exact rowid, prepared/quarantine singleton1
+expects1. Preserve count/values/metadata validation and early failure order. Every call
+checks lifetime before issuance and after await. No upsert/update/delete/drop/CAS
+repair or compensation. All rows + complete manifest count are atomic; no cursor,
+partial batch or published ordinary row exists in this stage.
+
+After any issued TX complete actual settlement. Precommit rollback only own
+positively begun work; drain rollback metadata before any physical cleanup. Never
+rollback after COMMIT issuance. Always positive close/release/fresh open/full readback.
+Expected exact after => prepared (or prepared_recovery_required); unconfirmed COMMIT
+plus exact before quarantine-only => outcome_unresolved/no automatic retry. Confirmed
+COMMIT then before, any changed tuple/row/extra/missing, lost prior positive supported
+state => sticky fault retained even after physical cleanup. Unreadable unknown result
+retains pending outcome; explicit close retries classification/cleanup only. No new
+inspect/prepare opening on stale/uncertain handle until explicit cleanup.
+
+Every complete durable discovery pins both quarantine and any prepared complete row
+set; never pin own uncommitted preparation. Previously observed prepared rows may
+never silently disappear or change. Authenticated equal plan => already_prepared,
+no second write; different ciphertext/package/rows => preserve and conflict.
+S6g inspect sees prepared tables as conflict; dedicated S6h cold inspect sees only
+structurally prepared_unverified; matching actual reauthentication re-establishes
+exact row equality, not a warm intent/auth admission. Public results have no raw,
+key/ID/digest/code/connection/port or username. Recovery code and the full decrypted V3 wire are neither persisted nor logged.
+Prepared sporting raws ARE persisted reversibly as u16 ASCII; this is not encryption
+at rest. Identity/legacy stay encrypted; no secure-erasure claim for JS strings. No native physical fidelity claim
+beyond actual SQLite ASCII roundtrip/engine receipts.
+
+
+### S6i — actual fresh destination pairing
+
+Independent amended DESIGN, corrected scoped CODE and full local regression PASS
+2026-10-26.
+All grants remain false; full import/fresh-auth mandate continues.
+
+## Outcome and stage boundary
+Actual archive authentication/domain/history admission -> same actual core S6h
+preparation -> fresh empty Keychain namespace proof -> new immutable SQL intent ->
+actual empty manifest M write/readback -> atomic SQL binding. No source credentials,
+Dactive, existing legacy migration runner, identity authority, ordinary rows, auth SDK,
+runtime pair, UI, source retirement or publication. Public bounded code-only reports
+keep mayIssue/mayPublish/mayMount:false. Host alone will resolve real configuration in
+next linked stage; this internal owner accepts same trusted config/root and synthetic
+protected binding test seam as existing combined owner, never supplied pair/ready fact.
+
+Next stages remain authentic identity-only draft/host, actual deliberate OTP proof,
+source-deny/deletion handling, atomic publication and source-free handoff, UI/device gates.
+
+## Immutable new transfer anchor (explicitly replaces D for newmode only)
+Retain all3 S6h tables unchanged. Add exact SQL:
+CREATE TABLE installation_transfer_pair_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), package_digest TEXT NOT NULL, intent_q TEXT NOT NULL, manifest TEXT NOT NULL)
+CREATE TABLE installation_transfer_binding_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), package_digest TEXT NOT NULL, bound_q TEXT NOT NULL)
+Valid layouts are S6h layouts plus exact4tables (prepared+intent) or5tables
+(prepared+intent+binding); both paired rows singleton1/digest equal quarantine.
+No empty/partial/extra objects/index/trigger/view/default. Exact DDL, table_info,
+index absence, stable schema version; strict field validation before later metadata.
+Use immutable insert-only tables to avoid UPDATE receipt ambiguity. No general
+credential_meta or records schema yet. Future actual domain anchor reads these
+new versioned rows explicitly, never synthesizes {kind:active} to correlatePair.
+
+Private installationTransferPairProtocol.ts parses bounded primitive Q/M wires using
+actual parseQ/parseM and actual fingerprint format, requires EMPTY initialEntryKeys,
+verifiedItemIds/items and every actual fixed credential slot absent. Qintent.phase
+intent and expectedStoreIdentity; Qbound.phase bound and storeIdentity. All actual
+header IDs/config/root/SID correlate exactly with M and with each other. Compare
+all HEADER fields explicitly, no fake D tuple or changes to legacy correlatePair.
+Canonical actual serializeQ/serializeM output only accepted for owned new rows;
+input fully validated without invoking any arbitrary getters/coercion. M has no
+source data/credentials. New protocolId/epochId/manifestId/SID are distinct actual
+crypto.randomUUID values (no Math.random fallback/injected ready evidence).
+Cold structurally paired is unverified until real same-archive prepare+auth again.
+
+## Same core and transaction/lifecycle
+Extend existing shared quarantine SQL builder with private pairing constructor,
+not public options mode flag. New internal context can return bounded validated
+pair snapshot to owner (never public result); it derives/accepts only authenticated
+prep rows via same private S6h steps. No public S6h owner handed off to another owner.
+All state equality/drift pins include pair and binding; only own exact transaction
+may transition. Accepted S6g/h factories reject new layouts; old factories refuse.
+Initial intent transaction: exact before prepared + no pair; create pair table,
+insert singleton intent bound to package; full in-TX exact read; COMMIT; positive
+close/release/fresh open/readback. Binding analogous exact intent -> bindingtable
+with boundQ. Actual strict ack(lastId1), work draining, cancellation, rollback before
+COMMIT only, unknown COMMIT classification and sticky drift same S6h. First complete
+durable read (including exact before) pins outcome; no later upgrade/auto retry.
+
+## Actual Keychain flow
+Inert private pairing owner pair(wire,code),inspect(),close(); same busy/revoke/join
+semantics. Archive/domain/history rejection before any native work. Actual existing
+NativeCommonCredentialMigrationPort and actual namespace owner; no custom secure
+store/crypto. Configure fixednamespace no-sync/device-only via existing port.
+Acquire SQL preparation lease, then actual protected namespace lease. Fresh state:
+complete namespace inventory must be [] AND manifest slot positively absent before
+ANY pairing intent write. Any orphan M/I/unknown/foreign key => Q2fault, preserve;
+unavailable read/inventory => unavailable/retained hold, no fabricated absence.
+Generate expectedM/Qintent only after complete empty proof; persist intent. Then
+reinspect complete namespace and actual manifest slot before insert. Intent coldresume:
+namespace []+positive manifest absent -> actual insert exact expectedM, acknowledge
+and exact readback; namespace [exact configured Mslot]+exact expectedM -> no rewrite.
+Every other inventory/value => stickyfault. Issue binding only after complete exact
+manifest inventory/read proof. On paired coldresume M must already exist EXACT, no
+manifest re-create if absent. No I exists this stage (runtime not published).
+Re-read M + complete inventory after SQLbinding durable reopen; no success on drift.
+All warm observations pinned including empty namespace/absence; own insertion is
+only approved transition. A failed/ambiguous protected write never silently retries;
+existing port faults/holds apply. Cancellation after intent leaves resumable durable
+intent but never reports ready. Outcomes remain code-only/allfalseflags.
+
+## Paired cleanup ownership
+Do not release either logical owner while other physical cleanup incomplete.
+Add narrowly internal authenticated cleanup draft for genuine migration port using
+WeakMap membership, prepareRelease/releaseReady/retire of actualnamespaceowner. No
+caller-asserted receipt. It revokes portrole synchronously; joins/drains namespace,
+retainslogicalowner onfault. Retry only unfinished cleanup; never resurrect migration.
+SQL context cleanup first closes+releases physical handle with keepReservation=true,
+then yields genuine receipt; internal synchronous retireLease only if exact lease,
+physical flags false/connection null/current sameowner. Old behavior unchanged.
+Pair owner close revokes at call time, joins ownpending, obtains both receipts;
+only if both authentic/current and neither faulted, synchronously retire BOTH.
+On uncertainty/fault retain both logicalholds, retry cleanup only. No public force
+unlock/reset, and no new ordinaryadapter/connection/port escapes.
+If no protected lease was acquired, ordinary S6h SQL cleanup semantics suffice.
+
+## Files / evidence
+Allowed shared SQL builder/work if needed, narrow nativecore cleanup seam,
+nativeCredentialMigrationPort private release WeakMap, new pairprotocol/owner,
+shared actual preparation admission helper if duplication avoided, precise graph
+tests, real SQLite+actual crypto/fakeBridge protocol tests, mobile boolean guards,
+canonical migration/readiness and ADR if durabledecision warrants it.
+No apphost/composition/SDK/source/helper changes in S6i.
+Tests: all phase/schema/mismatched Q/M/SID/config/package cases; all fixedslot
+absences; new vs orphan; intent resumes manifest absent/present exact; bound missing
+M fault/no repair; unknown/foreign I; wrongarchive zero I/O; samearchive idempotent;
+busy/close/reentry/cancellation; actual SQL lostACK/rollback/uncertain/drift/cold;
+both cleanup orderings fail/retry/no partiallogicalrelease; old modes refuse;
+standard globalplatformcrypto and realSQLite synthetic only. Full baseline per repo.
+
+Evidence boundary: namespace/SQL leases order participating callers in this JS
+context only. Repeated complete inventories and exact reads detect observed drift;
+no cross-process lock/snapshot/physical atomicity across SQLite and Keychain claimed.
+Operational writer exclusion remains required before touching actual source/target.
+Paired inspect itself remains SQL structural-only and must not acquire/issue
+protected I/O or change role. Owner pair validates configured config/root against
+any observed anchor before protected work; a mismatched supplied config preserves
+and returns conflict, never writes a replacement M/intent.
+
+## Required independent DESIGN corrections (adopted 2026-10-26)
+1. Extend the actual internal credential-port observer with optional insertIssued
+   event. Capture once alongside existing observer methods. Invoke after the
+   pre-read's established absence and immediately before native write; recheck
+   permission after callback before write. Parent owner arms only exact expected
+   M at this actual issuance event. A value in the fresh-insert pre-read faults;
+   no `already_present` success in that branch. Only actual `verified` return can
+   accept the own transition. Cold resume observing exactM remains separate.
+2. Include nativeCredentialNamespace.ts in scope. Add internal healthyReleaseReady
+   predicate requiring exact holder identity, lease, receipt, releasing AND !faulted.
+   New genuine migration cleanup draft must use it after all joined work and at
+   synchronous retire. Existing state/release/releaseReady/retire behavior unchanged.
+   Both SQL and protected receipts must still be authenticated/current/healthy in
+   the same synchronous section before retiring either logical owner. Faulted
+   holders remain logically retained even when state() reports releasing.
+
+
+Implementation notes for S6i: `installationTransferAdmission.ts` shares the actual
+S6h admission pipeline with preparation and pairing without creating a second SQL
+owner. `installationTransferPairProtocol.ts` validates canonical bounded empty Q/M
+and explicit transfer binding; it captures the actual standard UUID method once
+and drains directly observed malformed async returns without accepting them as IDs.
+`installationTransferPairing.ts` constructs the actual protected port and private
+pairing-mode SQL context. Normal code paths/defaults remain unchanged.
+The new credential cleanup draft is authenticated by actual port WeakMap membership;
+its healthy receipt uses exact namespace holder/lease/receipt and the retained fault
+bit. SQL cleanup keeps its actual logical reservation until both receipts permit a
+synchronous paired retire. These are model/desktop SQLite facts until physical
+acceptance; CODE review and complete regression are still required.
+
+S6i independent CODE corrections: validate each generated UUID immediately and
+stop all further generation after a known invalid/duplicate result or private
+lifetime revocation. Completion-cycle exclusion remains separate from currentness.
+The existing native core's private quarantine hook now observes ORIGINAL open/
+close/release work, requires exact undefined void acknowledgements and drains
+observed malformed work before follow-up cleanup. It covers initial opening,
+opening-failure cleanup, transaction reopen and release; ordinary/legacy void
+acknowledgement behavior is unchanged. SQL cleanup authenticates both its exact
+queued completion and returned wrapper as already-owned work, preventing a native
+close returning cleanup itself from deadlocking. A later explicit positive durable
+classification may clear transient readback uncertainty, but unknown COMMIT with
+exact BEFORE and all actual faults continue retaining logical ownership.
+Corrected scoped CODE review and full local regression are accepted; actual
+verification evidence and limits are recorded in TESTFLIGHT_READINESS.md.
+
+
+### S6j — genuine identity-only transfer runtime
+
+Status: amended independent DESIGN, corrected independent CODE and full local
+regression accepted. This continues the authorized import/fresh-auth
+chain; it does not finish that chain or authorize activation.
+
+The separate private `createInstallationTransferIdentityOwner` extends the actual
+S6i owner, using its SAME SQL core/queue/lease/handle and actual already-owned
+protected port/namespace. Existing pair-only construction remains exact-five-table
+and refuses the new layout. Public pairing reports remain code-only/all-false.
+Internal `handoff()` accepts no supplied draft, parsed archive, pair or readiness
+facts. It requires this instance's actual authenticated archive/domain/history and
+complete Q/M pairing. Cold rediscovery alone cannot grant access.
+
+After complete positive Q/M proof, one empty destination identity table is added:
+
+`CREATE TABLE installation_transfer_identity_v1 (key TEXT PRIMARY KEY NOT NULL, value_ascii TEXT NOT NULL)`
+
+The only additional index is SQLite's exact
+`sqlite_autoindex_installation_transfer_identity_v1_1`, with null sqlite_master SQL.
+Full discovery verifies exact objects, table_info/index_list/index_info, complete
+paired controls, stable schema_version and complete sorted identity rows. Initial
+schema bootstrap uses the existing actual migration transaction plus positive
+close/release/fresh-open readback. No source identity or credential bytes are
+copied into destination runtime rows. Identity raws use the existing reversible
+`u16:` codeunit representation; this is not encryption at rest.
+
+Only actual `classifyMigrationSourceKey` membership in identity_fixed,
+identity_barrier_resolution, identity_deletion_guard and identity_deletion_resolution
+is admitted. Sporting/legacy/control/credential/unknown/nonprimitive keys are refused
+before native I/O. At most 4096 unique ASCII identity keys, each at most 1,048,576
+raw UTF-16 codeunits and 4,194,304 aggregate raw codeunits are supported. Full stored
+snapshot reads use ORDER BY key LIMIT 4097; the 4097th row is positive overflow
+evidence. Observed overlimit, malformed or drifting data blocks and is preserved;
+there is no truncation, default, repair or billing quota. Projected input/capacity
+refusals precede BEGIN and do not poison healthy source state.
+
+The genuine session is created by `createNativeRuntimeSession`; the genuine domain
+draft is made inside that same SQL installer. The existing actual WeakMap port
+preparation produces the credential draft from its own verified bound Q/M. No fake
+Dactive or correlatePair is used. The existing publisher authenticates SESSION
+membership, not independent draft membership: all new construction stays in the
+closed exact graph with NO caller-supplied drafts. A new internal transfer publisher
+shares the private publisher build while leaving the old publisher's disposal
+behavior unchanged. Both genuine ready checks precede synchronous activation and
+single publication without awaits or foreign callbacks between role commits.
+
+Only the positively observed complete identity-extended layout may contain actual
+runtime I entries. Cold pairing requires complete namespace inventory and strict
+actual parseI validation against the actual bound Q, physical epoch/key and exact
+config/root/manifest correlation. Five-table pre-runtime layouts still refuse I
+entries as orphan evidence. The manifest remains the historical empty manifest;
+source credentials are never adopted.
+
+After handoff the migration pair/inspect/bootstrap role is disabled; runtime lifetime
+does not depend on a !transferred flag. Owner.close revokes synchronously and calls
+the single already-published pair.dispose before awaiting pending work. If close wins
+an unfinished handoff, join it, dispose any genuine late pair or abandon unactivated
+genuine drafts back to migration role before migration cleanup. Never migration-clean
+an already prepared/runtime protected port.
+
+All domain get/set/remove/anchor operations use the SAME actual SQL FIFO. Credential
+operations may hold the namespace queue while awaiting domain.anchor on the SQL
+queue. No SQL queued task may await namespace work, its queue or a parent completion
+waiting for that SQL task. Prepare/publication/final cleanup joins happen outside
+both queues; domain methods enqueue their own direct SQL work without re-enqueuing
+public context methods from inside SQL work.
+
+Normal runtime identity writes use actual own BEGIN/statement/COMMIT with strict
+acknowledgements, complete exact same-connection readback and immutable-control
+recheck. New keys use insert only; existing values use exact old-value UPDATE or
+DELETE predicates. Absent remove is a positively observed no-op. The separate
+mutation ACK validator requires exact changed count, safe integer lastId and exact
+empty values; the old S6g insert row-id requirements stay unchanged. Successful
+normal writes never mark requires_reopen or physically reopen. Unknown issued work
+immediately fails source health; even factual AFTER following a lost ACK cannot
+become coordinator write authority. No post-COMMIT rollback. Positive cancellation
+settlement gives no permission but does not invent a source failure.
+
+Control generation (actual session/ready lease/SID/Q/M/schema role) differs from the
+private identity revision incremented by own successful mutations. Own healthy
+identity writes preserve unrelated credential anchors; later fresh-OTP publication
+proof must additionally bind identity revision. Anchors are actual WeakSet cells
+minted by full positive control reads. Currentness requires exact active owner,
+actual ready lease, healthy session/domain/protocol and pinned schema generation.
+True uncertainty, contradiction and close revoke rights synchronously.
+
+Every native call observes original returned work with the real receiver and
+currentness checks. The platform work observer has an optional private no-argument
+source invalidation hook, propagated at first known malformed dependency/rejection/
+then-field evidence BEFORE draining its async residue. Default observer behavior
+and standard platform cryptography remain unchanged. Active validators fail source
+health before draining; cleanup-only work supplies no source-failure hook. Runtime
+evidence records actual reads/writes/removes, issue/ack/verification/control reads
+and actual transaction flags without inventing success.
+
+Domain close joins queued work and retries unfinished physical cleanup, retaining
+its authentic receipt and logical SQL reservation. The actual credential draft
+joins its namespace work. BOTH authentic healthy current receipts are required
+before synchronous logical retirement. Cleanup-only physical failure is
+cleanup_unconfirmed and retains BOTH owners without poisoning healthy data; only
+that result is retryable. Source/domain/credential/protocol evidence held is never
+reset or force-unlocked. The original publisher keeps its old behavior.
+
+Allowed scope is the same private SQL installer/core, actual pairing/port/session
+seams, narrow early observation hook, exact architecture/bundle guards and synthetic
+real-SQLite/Keychain-bridge-model tests. No AuthHost/coordinator/composition/source
+helper, SDK, ordinary sporting adapter, selected dataset, auth grant, source erase,
+physical-device/configuration/hosted work or default activation is part of S6j.
+The transfer-only credential preparation seam authenticates the genuine port via
+its own WeakMap, retains and joins actual malformed preparation work, and excludes
+only actual owner/publisher completions. The original synchronous legacy preparation
+and publisher behavior remain unchanged. Both transfer runtime lanes recognize the
+genuine publisher's disposal completion, registered before either cleanup lane starts;
+excluded completion work is never accepted as successful storage evidence. Strict
+values remain boxed across async boundaries and are unwrapped only synchronously
+at validation. Already observed fulfillment values are retained as observed work,
+so cleanup cannot assimilate them or read their then field a second time. This is
+completion bookkeeping only: EVERY newly issued native return is observed afresh,
+and all fresh observation completions are retained even for reused roots; a prior
+fulfillment can never supply another invocation's value or acknowledgement. Method
+capture validates each lookup before later getters; acquired malformed statement
+work drains before rollback, using the previously captured rollback method. Complete
+cold namespace addresses/configuration/epoch are validated before item reads.
+
+Actual host integration, deliberate fresh OTP (not NativeProfileAdmission), immutable
+source-deny evaluation, atomic sporting publication, normal handoff and UI remain
+linked subsequent gates. Full local baseline follows corrected independent CODE;
+no physical Keychain/iOS authentication, operative import or Beta approval is claimed.
+
+
+### S6k — configured transfer identity host (locally accepted)
+
+Independent amended DESIGN and corrected S6k1 CODE accepted (all nine new and
+twelve previous adversarial witnesses plus eight focused files/768 tests,
+TypeScript/scoped lint/diff). Corrected combined S6k2 CODE is independently
+accepted: eight files/602 tests and all three actual-host, nine S6k1 and twelve
+S6j adversarial probes, plus TypeScript/scoped lint/diff. The genuine host suite
+has47 cases. Complete combined local regression and all three actual build modes
+are accepted; current evidence and limits are canonical in TESTFLIGHT_READINESS.md. Required sequencing: S6k1 first: strict asynchronous
+transfer-port capture/observation over the SAME actual port builder, namespace
+owner and queue, plus the private host-only completion seam. Obtain focused
+independent CODE acceptance before S6k2 actual configured host/SDK wiring. S6k1
+completion-model witnesses are not genuine host acceptance. After combined CODE
+acceptance run the full root/Web/mobile/three-mode/E2E/types/lints baseline.
+
+The new dormant createConfiguredInstallationTransferIdentityHost must authenticate
+the genuine configured-binding WeakMap before option reads or SDK reservation.
+Its existing native migration/clock/UUID/limits/fetch/callback contract adds only
+installationTransfer:{protectedWire,recoveryCode}; no config/provider/root override,
+team-link delivery, supplied strategy/pair/draft/readiness or positive proof. Strict
+per-field capture precedes later getters. Cryptographic admission is exclusively
+the actual owner.pair; wrong code refuses before native/SDK/network work. Keep
+recoveryCode ephemeral, clear its local reference after genuine handoff, never
+persist/log/encode it. New callbacks receive a separately captured dependency
+receiver without installationTransfer or a backreference, private configuration,
+credentials or proof; do not copy arbitrary input fields. Legacy receivers stay.
+
+The actual shared createNativeHost must use its same real configuration capture,
+SDK reservation/AuthClient/ownedFetch/coordinator/destination identity repositories.
+A private builder closure created only inside the new unused export dynamically
+imports the real transfer owner. Shared host code uses erased strategy types; no
+static runtime transfer import in the legacy-reachable body. Exact graph guards
+and all three real bundles must prove dormancy. No ordinary caller/flag changes.
+Lazy import/owner construction belongs to the actual host lifetime; close revokes
+synchronously, joins pending construction/pair/handoff, closes genuine late pairs
+and retains resources until positive completion. Never execute legacy retirement/
+source access, D/records or manufacture a Dactive/retirement candidate. Actual pair
+failures map only to existing bounded migration_fault/migration_blocked/
+migration_incomplete/handoff_refused outcomes. Return only the actual non-sporting
+NativeIdentityBootstrapHostResult; no Tracker registration or application factories.
+
+Strict pre-runtime transfer work freshly observes every original configure,
+inventory, read and insert return, preserving original receivers. Keep values boxed
+through async boundaries. Validate each acquired binding/field type and currentness
+before later lookup; retain malformed acquired work even when the lookup closes
+the owner. Join all acquired malformed work and every fresh observation before
+cleanup; invalidate source at first known failure before draining. An async strict
+constructor uses the SAME builder/owner/queue; legacy synchronous CommonPort and
+its settled() behavior stay unchanged. Reuse strict work for private transfer-owner
+construction without changing existing factory method contracts. A separate private
+host-only constructor extends the same pairing build with only a predicate minted
+inside the actual host over genuine dispose/start/bootstrap/runtime/queue work.
+Excluded completion is refusal, NEVER a value/absence/ACK. Completion bookkeeping
+cannot grant readiness or reuse a previous native value. Preserve unknown writes.
+No SQL queue task waits for the namespace or its parent completion.
+
+Keep actual autoRefreshToken:false, skipAutoInitialize:true, constructor disposal/
+initialize/stopAutoRefresh, send/root/token/generation fencing and SDK subscription
+denial. SDK reservation remains until genuine SDK and BOTH stores are drained.
+Only actual STORE cleanup_unconfirmed with healthy source and no sticky SDK
+uncertainty permits a new disposal attempt; terminal remains closed. Constructor
+sdk.dispose before initialize is NOT final disposal evidence. Cache only successful
+TERMINAL SDK cleanup across store retries; never repeat final SDK disposal,
+coordinator close or listener retirement. Sticky constructor/SDK/stopAutoRefresh
+uncertainty never resets; legacy disposal caching and root-once lifetime stay.
+Sticky SDK failure holds its authentic SDK reservation/evidence. A healthy pair
+may positively clean and retire its store owners independently; this does not
+release the SDK reservation. Store-only failure still retains BOTH store owners.
+
+Tests must cover genuine/forged/copy/mismatched binding before options/resources,
+inert construction, wrong-code zero I/O, actual SQLite/Q/M/namespace and installed
+SDK OTP/legal/onboarding using only destination identity rows; no old source/
+positive identity adoption or sporting registry. Exercise direct actual host start/
+dispose returns at configure/inventory/read/manifest insert, SQL and runtime work,
+malformed capture and lookup-triggered close, first failure before drain, late pair
+cleanup, store-only retry holding SDK+BOTH stores, and successful constructor
+cleanup followed by failed terminal SDK disposal. Retain legacy control tests.
+
+Allowed scope: supabaseAuthService private variant/export and erased types; private
+pairing host completion seam; narrow nativeCredentialMigrationPort strict path
+and actual session/core fixes only if a concrete invariant requires them; synthetic
+real SQLite/installed SDK/configured-binding/server tests, exact architecture and
+bundle guards, canonical documentation. No coordinator/AuthClient internals, source
+helper/UI/composition/flags/hosted/Swift/device/backup/config/install/Git changes.
+
+Actual OTP/legal/onboarding may establish destination identity only. Startup/trusted/
+retry/refresh/background/onboarding NativeProfileAdmission is NOT fresh-OTP proof.
+Deliberate verifyEmailOtp-only proof after real writes, immutable source-deny from
+actual repositories/preflight/account+Profile correlation and negative facts for
+ALL archived Profiles surviving cold restart remain subsequent linked stages, then
+atomic original sporting publication/selection, normal source-free handoff and UI.
+Never invent absent identity facts for a training-only backup; never execute archive
+startup/cleanup/trusted writes/invitation replay. Preserve legitimate 30-day guard
+cancel/conditional abort with original nonce and strictly newer server revision;
+fresh login/server-not-pending alone is insufficient. Q4 and physical acceptance
+remain unresolved release gates. No current product decision is needed for S6k.
+
+
+### S6l1 — immutable source-denial projection (locally accepted)
+
+Amended independent DESIGN accepted. Negative-only prerequisite before the actual
+host clears the recovery code: derive source constraints using the authenticated
+V3, actual readonly repositories and actual evaluateDurablePreflight. Preserve ALL
+sporting Profiles plus every deletion-guard Profile, including no-sporting-data
+Profiles. No positive trusted/attempt/onboarding/entitlement/provider credential
+copy into live destination identity, archive startup/cleanup/replay or mutation.
+Reports stay code-only mayIssue/mayPublish/mayMount:false. No source-denial clearance,
+fresh-OTP proof, cancel/abort authority, sporting publication, normal handoff/UI,
+source transport/writer exclusion, device/config/hosted/default/Git work or Beta
+claim. Q4 remains unapproved. Future actual fresh-OTP/account+Profile mapping and
+legitimate originalnonce/serverrevision cancellation remain required.
+
+Mandatory independent gates:
+S6l1a readonly evaluator, exact protocol/hash and genuine private handle, separate
+source-aware admission; focused CODE before native persistence/host integration.
+S6l1b same-owner SQL layout, strict bootstrap, runtime/anchor pinning and actual
+host integration; combined CODE then complete root/Web/mobile3modes(defaultlast)/
+139E2E+positive serverstop/types/lints/diff baseline and Vault checkpoint.
+
+New private installationTransferSourceDenial.ts accepts actual primitive V3 wire,
+never supplied maps/facts/adapter/readiness. Its sole admission caller has already
+performed actual protected-envelope/domain/history validation; decode V3 with actual
+standard integrity and require equal packageDigest. Complete source inventory
+provides present raw identity items and proven absences; dynamic absence comes
+only from actual complete validated ownership listing. Training-only JSON or
+omitted observations cannot become absent. Own an immutable map and internal
+readonly adapter; use actual barrier/attempt/resolution/deletionGuard repository
+loads and actual evaluateDurablePreflight. Never execute startup/replay/save/remove/
+resolve/cleanup. Adapter writes refuse and invalidate projection if attempted. No
+caller adapter, default/localStorage/native access or thrown-reason inspection.
+Check actual owner currentness around awaits. Malformed/unavailable loads refuse,
+never default absent/resolved. All guard Profiles are checked; control-only Profile
+IDs do not manufacture sporting namespace membership. No positive source trust is
+loaded as permission. A genuine frozen opaque WeakMap handle carries bounded
+negative facts/ASCII/hash/packageDigest only; copies/proxies/equal facts have none.
+Only actual admission creates it; actual source SQL and the closed source-guard
+owner resolve it. S6l5a below supersedes the historical v1 metadata protocol.
+
+Old admitTransferPreparation and existing5/7object factories retain exact shape,
+order and acceptance/refusal behavior. A separate private source-aware admission
+entry shares the existing actual validation build and adds this evaluator only
+after successful crypto/V3/domain/history/package comparison. Only the actual
+closed host owner consumes it; no public mode flag or supplied handle is added
+to existing methods.
+
+### Historical v1 projection protocol (superseded by strict v2 in S6l5a)
+Owned JSON object, root fields in EXACT order:
+`schemaVersion` literal1, `packageDigest` actual lowercase64SHA256,
+`sportingProfiles` sorted unique canonical application UUIDs(max32),
+`preflight` as below, `guards` sorted ascending by profileId, unique profileId(max512).
+No other fields. Profile UUID membership uses existing actual isCanonicalUuid,
+not an invented stricter version rule. Repeated guard nonces across DIFFERENT
+Profiles are preserved (never invent nonce uniqueness; actual receipt Profile
+correlation still applies). Control-only Profiles do not add sporting namespaces.
+
+preflight EXACT disjoint shapes / field order:
+- `{kind:"no_barrier"}` only after actual barrierRepo.load absent.
+- `{kind:"quarantined",barrier:B}` for actual non-correlated preflight with a real
+  valid barrier; malformed/unavailable actual repository results refuse projection.
+- `{kind:"correlated",barrier:B,authenticatedAccountScopeId:S}` ONLY actual
+  evaluateDurablePreflight correlated; S is its actual validated resolution scope,
+  retained only as a future mismatch constraint, not a grant.
+B fields/order EXACT actual negative barrier record: schemaVersion1,barrierId,
+origin,barredAccountScopeId,barredGeneration,establishedAt. Use actual validator for
+all values/origins/timestamps; barred scope/generation may be null exactly as actual
+record permits. Generation is a nonnegative safe integer. S uses actual opaque-ID
+predicate (max256), no source trusted/profile/display/entitlement bytes.
+
+Each guards element fields/order EXACT:
+`{profileId:P,nonce:N,revision:R,fencedRevision:F}`.
+P/N canonical actual UUIDs. R integer0..2147483646. F literalnull for actual active
+unresolved guard, or integer R<F<=2147483646 ONLY actual resolved guard load.
+No separate contradictory resolved boolean. Build actual guard tuple ONLY from
+successful guardRepo.load(P). A resolved load does NOT expose its revision: read
+F only from that guard's exact nonce-derived resolution slot in the SAME immutable
+map, AFTER actual load positively validates that exact Profile/nonce/receipt.
+Record sourceGuard original R unchanged. Orphan receipts provide ZERO resolution
+or namespace authority; retain their bytes in the original protected archive only.
+Receipts for another nonce/Profile never resolve this guard. All guard Profiles,
+including no-sporting-data Profiles, are retained.
+
+Serialization: fixed owned field order above, no whitespace. Use a private fixed
+serializer for these exact shapes: quote primitive strings with existing
+serializePlatformStringTuple(value).slice(1,-1), emit validated finite numbers with
+String(value), literalnull and fixed object/array punctuation. Never stringify a
+foreign object or invoke toJSON. Arrays serialize in their required sorted order.
+Cold structural parsing begins ONLY after primitive/ASCII/codeunit/size checks;
+bounded JSON.parse plus strict closed shape/actual predicates is sufficient for
+this separate fixed metadata protocol, followed by exact canonical reserialization
+comparison (reject duplicate aliases, whitespace, unknown fields/order, noncanonical
+numbers). It does NOT parse hostile V3 without the existing bounded V3 scanner.
+
+Private limits: MAX_SOURCE_DENIAL_JSON=1048576 UTF16units;
+MAX_SOURCE_DENIAL_ASCII=4+4*MAX_SOURCE_DENIAL_JSON=4194308 ASCII chars.
+Use existing exact encodeTransferCodeUnits / isTransferCodeUnits / decode. This
+supports ALL valid32sportingProfiles and512dynamic controls: one barrier raw is at
+most65536units, worst re-quoting at most6x that;512guard tuples each<200canonical
+chars,32UUIDs<1300chars, correlated scope<=256units at most6x and fixed metadata
+<2048chars. Sum<500000units, below1MiB. Never use64KiB decision quota or truncate.
+Reject overlimit foreign projected metadata before JSON.parse/bridge allocation;
+original complete encrypted archive remains unchanged. No physical bridge-size or
+at-rest encryption guarantee follows from the bound/encoding.
+
+Historical S6l1 v1 format below is superseded by the strict v2 cleanup projection
+in S6l5a. Existing v1 targets are refused unchanged, never inferred cleanup-absent.
+
+Projection ASCII = encodeTransferCodeUnits(canonicalJSON).
+projection_digest = actual standard platform SHA256 (lowercase64hex) of EXACT
+serializePlatformStringTuple("installation-source-denial/v1",packageDigest,ASCII),
+UTF8 encoded by actual platform helper. No override/injected fingerprint. ASCII
+framed preimage stays below16MiB. packageDigest is inside canonical JSON AND hash
+frame and must match actual authenticated V3, SQL quarantine and row metadata.
+A cold structural parser may validate shape/canonical content but mints NO genuine
+handle or authenticity; source-aware handoff additionally REQUIRES current genuine
+samearchive/code recomputation and exact byte/digest comparison. Copies/equalfacts
+cannot substitute. Normal anchors pin exact verified projection+digest thereafter.
+
+
+#### Same-owner persistence and strict source-aware bootstrap (S6l1b)
+
+Extend the actual private SQL build on the SAME core/lease/queue/handle, with a
+source-aware identity constructor used only by the existing private host-only
+transfer owner. Pair-only and S6j identity constructors keep exact5/7objects and
+refuse the new8object layout. No second database/owner/namespace/queue.
+
+`CREATE TABLE installation_transfer_source_denial_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), package_digest TEXT NOT NULL, projection_ascii TEXT NOT NULL, projection_digest TEXT NOT NULL)`
+
+Exact schema/table_info/index_list/noextras/stable schema_version; one singleton
+and no autoindex. Cold structural data is no authenticity. Actual source-aware
+owner retains the handle from its OWN .pair. Handoff needs actual Q/M proof and
+initializeIdentity, then insert-only projection bootstrap with genuine handle,
+full before snapshot, actual package correlation and exact existing bytes/hash.
+An existing7object host layout may add the missing table only after actual same
+archive/code recomputation and complete SQL/Q/M/identity proof. Existing8objects
+require exact matching current genuine handle. Foreign/missing/drifting/overlimit
+evidence blocks and stays preserved; no row adoption/update/delete/repair. Runtime
+preparation requires positive projection verification in this instance.
+
+Projection table+row commit atomically using the same actual transaction, strict
+ACK, positive close/release/fresh-open readback and all existing unknown-issued
+ownership rules. Pin projection bytes/hash into actual runtime controls/generation
+and every anchor recheck. Normal identity writes preserve immutable source facts;
+private table is inaccessible through pair.domain/ordinary adapters. Source-aware
+bootstrap hardening covers ALL quarantine/preparation/intent/binding/identity/
+projection transactions: capture/type/currentness-check each acquired method before
+later lookup or I/O; retain malformed descriptor/method work even lookup-triggered
+close; original receiver and captured rollback; join malformed statement/ACK work
+BEFORE rollback/reopen/cleanup. Fresh boxed observation per actual issuance;
+completion dedup supplies no value/ACK. No rollback after COMMIT issued. Preserve
+legacy/default bootstrap behavior. Actual host completion exclusion is bookkeeping
+only; no readiness callback or SQLqueue-to-namespace wait. Retry only genuine
+cleanup-only failure, retain source faults.
+
+Allowed scope is the new private evaluator/protocol; separate actual admission;
+private host-only pairing/SQL build with strict schema/control/anchor extension;
+exact architecture/bundle guards; synthetic actual V3/protection/repositories and
+real SQLite/installedSDK tests; canonical documentation. No coordinator/SDK/AuthHost
+policy change, UI/source helper/Swift/flags/device/actual backup/account/hosted/Git.
+Tests cover actual preflight correlation/mismatch, all guard Profiles and original
+nonces/revisions, wrong/orphan receipts, no positive identity adoption/mutation,
+complete input coverage, malformed/refused crypto, handle copies/proxies, exact
+limits/framing/canonical bytes, and S6l1b real8object commit/reopen/cold matching/
+old7upgrade/unknown outcome/fault/actualhostcompletion and cleanup. Old5/7 factories
+and all normal build modes remain unchanged. Source-denial clearance and actual
+fresh-OTP publication proof are subsequent gates; fresh login never resolves a
+deletion guard, nor does server-not-pending alone.
+
+The evaluator/handle and corrected combined persistence/host CODE gates and the
+complete local baseline are accepted. Exact evidence is in TESTFLIGHT_READINESS.md
+S6l1; the a-before-b review sequence above was completed. The actual host alone
+retains the genuine handle from its successful .pair. The same SQL core verifies/
+initializes destination identity and inserts or exactly verifies source metadata
+before preparing runtime. Cold structural metadata grants nothing until this
+instance recomputes the same archive/code. Source facts participate in complete
+state equality, schema generation, runtime controls and every actual anchor read.
+
+Source-only private opening hooks cover creation, initial open and configuration
+on the same core/lease/queue/physical handle. Captured injected engine bypasses
+implicit async resolveEngine assimilation, receives an actual boxed observation
+and must retain its exact original identity; Promise/thenable fulfillment cannot
+become configuration. Creation captures/types/currentness-validates its method,
+retains acquired malformed work and observes the original return freshly with
+actual host-completion exclusion. It carries the positive connection in an owned
+box; core retains even a genuine late connection BEFORE cancellation cleanup.
+Initial open refuses accessors or cancellation before issuance, uses the original
+receiver and requires actual undefined acknowledgement. Configuration captures
+query/execute before later lookup/I/O, requires exactly one journal_mode=wal row
+and execute ACK0 and joins malformed metadata before core cleanup.
+
+Private ensureConnection's boxed overload covers BOTH warm and fresh returns;
+private core.openBoxed directly forwards that owned box, and the three source SQL
+callers unpack synchronously. Actual source-aware reopen also uses the boxed
+return, ignoring its payload. No raw connection crosses a source async return.
+Legacy/default constructors omit these optional hooks and retain raw/default
+behavior; no public readiness option or callback is added. The independently
+confirmed initial-open cancellation and raw async-unboxing defects (three actual
+host witnesses) are corrected. Fresh observations remain per actual issuance;
+completion deduplication supplies no value or ACK. Tests execute real disposable
+SQLite and installed SDK with synthetic bridge/API only. Physical durability,
+source transport/writer exclusion and actual backup/device acceptance remain
+separate; no source-denial clearance or fresh-OTP/publication grant is implemented.
+
+
+### S6l2 — fresh OTP provenance and same-runtime pin (locally accepted)
+
+Independent amended DESIGN accepted. First pin means first attempt, including a
+refused/null result; no event may be retried against newer local state.
+
+## Exact bounded outcome
+The actual configured transfer host records a genuine fresh-OTP event ONLY after
+its own genuine coordinator.verifyEmailOtp has completed provider verification,
+C6/C7 barrier/attempt/resolution correlation, actual online Profile/onboarding/gate
+checks, actual destination trusted write and intent settlement, and final current
+ownership/health proof, yielding ready_online. Startup/trusted restore/retry/
+Google/refresh/background/onboarding/SDK SIGNED_IN/NativeProfileAdmission never
+mint this event. Event plus actual source SQL runtime stamp are private, ephemeral,
+instance-bound, negative gates for later publication. No public runtime/host input
+accepts supplied events/stamps, and public report grants remain false.
+
+This stage deliberately does NOT select an import UI or extra-OTP policy: an OTP
+that yields onboarding_required creates no completed proof, and onboarding alone
+cannot mint one. A later linked design must settle any genuine OTP→onboarding
+continuation before claiming the complete user flow; this stage changes none of
+the existing identity outcomes or prompts. Mapping authenticated destination IDs
+to archived Profiles, source barrier/guard clearance and originalnonce/server
+revision recovery remain subsequent gates, not implicit allow rules here.
+
+#### Actual coordinator source and event (no generic admission relabel)
+Inside identityTransitionCoordinator.ts add private module-owned WeakSet/WeakMap
+for opaque native fresh-email-OTP source/event identities. Source/event objects
+are frozen null-prototype empty objects, with no enumerable facts/credentials.
+Only that actual module mints them; inspectors authenticate identity without
+reflecting on unknown input or inspecting thrown reasons. No new runtime import
+of any installation-transfer module from coordinator/identityRuntime/default host.
+Minimal inspectors, consumed ONLY by private source-aware SQL installer, expose
+owned event facts: exact source identity, actual accountScopeId, actual profileId,
+identityGeneration and actual private current() closure. No email/displayName/
+entitlement/tokens/OTP input/recoveryCode/plain archive/persistent grant.
+
+Extend NativeIdentityOwnership with two OPTIONAL private observer hooks:
+ownFreshEmailOtpSource(source:object):void and ownFreshEmailOtp(event:object):void,
+plus an optional private retainFreshEmailOtpWork(value:unknown):void drain seam.
+All three must exist for this opt-in channel. The actual host owns that drain
+through its existing retainAuxiliary/ownsHostCompletion (including own start,
+command, disposal cycles); no new queue or caller-provided observer option.
+They are not public construction options or application runtime methods. When all three
+actual closed-graph hooks exist, the coordinator creates one unique source and
+synchronously hands it to the observer at construction, before auth/startup work.
+Existing legacy/default ownership objects omit them and retain existing behavior.
+A private freshGeneration revokes events synchronously at EVERY beginTransition
+(including background), epoch change and terminal close; generic profile admission
+behavior is unchanged. Event current() additionally requires original generation,
+actual nativeCurrent(context), native health/admissionAllowed, and source identity.
+Event mint occurs ONLY at the final success site of verifyEmailOtp AFTER actual
+resolveAccessVerdict and explicit ready_online/current/same account+Profile proof.
+PhaseBResult carries an internal optional onlineWrite witness set ONLY at the
+final complete resolveAsFreshIdentity success site, naming actual account/Profile.
+verifyEmailOtp requires this same-invocation witness. Same-scope trusted optimism
+returns its unchanged ordinary outcome but no witness and no fresh event. No
+additional online work or ordinary auth-policy change is introduced.
+Do not mint from publishNativeAdmission or infer origin from its contents.
+Capture each actual observer once. Registration and event delivery require
+synchronous exact-undefined completion; contain exceptions without inspecting
+reasons. Non-void returns disable this channel synchronously before handing the
+observed value to the genuine host drain seam. Its exact-owned completions are
+recognized to prevent own-command/start/dispose cycles. A throwing or malformed
+observer permanently disables the proof channel, never normal auth outcomes.
+Reentrant transition/close invalidates the delivery generation and any partial
+proof before returning. Source may remain bound but cannot mint again if disabled. Hooks remain
+actual internally minted synchronous observers, no foreign readiness callbacks.
+No source-side effects and no local SQL/native I/O inside these observer calls.
+
+#### Actual host-only binding and synchronous SQL pin
+Extend only the erased private NativeHostPreparation strategy with the two optional
+source/event observer hooks. Generic actual buildRuntime conditionally forwards
+them through its genuine NativeIdentityOwnership and supplies the existing genuine
+host retainAuxiliary as the third drain seam when preparation provides both; old/default/ordinary sporting paths omit them. Transfer-specific bodies stay
+inside existing unused createConfiguredInstallationTransferIdentityHost builder
+and its actual host owner. No input flag, supplied pair/source/event/stamp, fake
+NativeProfileAdmission, SDK subclass/fork or alternate coordinator/runtime.
+
+Only source-aware createInstallationTransferHostOwner gains internal observer
+methods; existing pair-only/identity factories and existing four methods preserve
+exact shapes. The actual host-only builder wires its private preparation observers
+to those actual owner methods. The owner binds exactly one genuine coordinator
+source to its actual source-aware SQL context after handoff/runtime activation;
+no rebind to another source. Copies/proxies/foreign objects are refused. A genuine
+source may be observed again idempotently, never replaced. No SQL I/O on bind.
+
+Extend the actual source-only NativeTransferSourceIdentityContext with private
+synchronous bindFreshEmailOtpSource / pinFreshEmailOtp / freshEmailOtpCurrent
+operations (not public ordinary adapters/options). A genuine event must match the
+bound genuine source, have actual current provenance, and arrive while THIS source
+runtime is active, sourceVerified, healthy, not uncertain/faulted/closed, and has
+known exact source-denial metadata and actual runtimeSession/schema generation.
+No caller facts/current callback or positive archive identity accepted.
+
+pinFreshEmailOtp captures an opaque frozen stamp into an INSTANCE-local WeakMap
+containing actual accountScopeId/profileId + event identity and the actual
+identityRevision (already private S6j count), runtimeSession/schema generation,
+packageDigest and exact immutable source-denial bytes/hash. Capture uses existing
+owned in-memory known state AFTER real acknowledged coordinator identity writes;
+no bridge work/queue hops. The actual owner privately retains only the successful
+event/stamp from its own bound observer. A new transition/event/terminal cleanup
+revokes it; no serialization/log/return in public host or identity runtime.
+
+freshEmailOtpCurrent authenticates exact stamp identity and THIS instance/source,
+checks current original event/coordinator, actual owner/runtime role/health and
+unchanged identityRevision/runtimeSession/schema/package/source-denial facts.
+Copies/wrappers/other instances/cold loads have no stamp. Normal identity writes
+advance revision only after existing actual ACK/readback. Add source-only
+mutationSequence and pendingMutation count immediately after accepted input/capacity/
+live prechecks, before runtimeTask enqueue. Sequence changes immediately revoke all
+old stamps; pending>0 prevents pinning until the actual queued operation and drain
+settle (finally decrements). Invalid input/capacity refusals do not change these.
+Capture event-at-first-pin-attempt (including refused/null results) in an instance-local WeakMap: repeated delivery returns
+only its original still-current stamp; an invalid old stamp is never reminted
+against a newer mutationSequence/revision, even after pending returns to zero.
+Each stamp captures both sequence and revision, and current requires pending=0. Unknown/faulted work invalidates health. Later
+publication MUST re-read complete actual SQL/source/credential controls and test
+this exact original stamp immediately before actual COMMIT; this synchronous pin
+alone grants no publication or physical/cold authenticity. No SQL schema change.
+
+#### Scope and verification
+Allowed: identityTransitionCoordinator.ts minimal opt-in event/provenance + actual
+verify site + synchronous revocation; supabaseAuthService.ts erased observer
+forwarding and body confined to actual unused transfer builder; actual source-only
+installationTransferPairing/QuarantineSql pin and private types; exact architecture
+and mobile bundle guards; real coordinator and actual installed-SDK/real SQLite
+synthetic tests; canonical docs. No identityRuntime/default UI changes unless a
+specific unavoidable factual need returns for DESIGN. No normal auth-policy change,
+account recovery/domain import/guard clearing/pub/UI/sourcehelper/Swift/flags/device/
+actual backup/account/hosted/config/Git mutation. Q1/Q2/Q3/Q4 and Free/Team unchanged.
+
+Tests must cover actual successful eligible verify; failed provider, C6/C7 drift,
+wrong account/Profile, failed trusted write/intent/currentness/health; startup,
+trusted/offline/online restore, retry/Google/background/refresh/onboarding/SIGNED_IN
+never mint. All beginTransition and close revoke before awaits. Explicitly test trusted
+optimistic verify returning ready_online without event, malformed/throwing/
+reentrant observers (including own host completions), queued/in-flight mutation
+refusal and permanent old-event repin refusal after successful/no-op mutation. Newer operations
+supersede old OTP even same durable attempt. Actual source binding before first
+proof, copies/proxies/mismatched/cross-source/cold stamps refused; no reflection on
+foreign handles. Actual destination identity write changes revision/current pin;
+source metadata unchanged. No native I/O/queue hopping during synchronous capture,
+no host start/dispose completion cycles, no normal Tracker/sporting registration
+or public API shape change. Actual installed-SDK host and SQLite tests use real
+operations, not fake readiness or rewritten normal auth outcomes. Preserve S6l1
+opening/unknown-outcome/cleanup controls and existing ordinary paths. All3actual
+mobile builds retain transfer-protocol exclusion. Focused independent CODE before
+full root/Web/mobile3modes(defaultlast)/E2E+stop/types/lints/diff baseline+Vault.
+
+Implementation uses same-invocation PhaseB onlineWrite evidence, opt-in private
+coordinator source/event WeakMaps, actual closed-host forwarding and source-only
+SQL stamps. The source-only accepted-enqueue sequence revokes immediately, while
+existing identityRevision still advances only after actual COMMIT/readback. First
+pin attempt is consumed even when refused; duplicate events cannot acquire a new
+stamp after later mutations. Pending-mutation finalization runs inside the original
+owned runtimeTask completion after all observed work drains; no additional public
+Promise wrapper is returned. Exact public set/remove completions are excluded as
+own work, never treated as native values or acknowledgements. Unrelated native
+work remains joined. Normal auth outcomes, legacy API shapes, immutable source
+rows and all public false grants remain. Corrected independent CODE and complete
+local regression are accepted; exact evidence is TESTFLIGHT_READINESS.md S6l2.
+A complete OTP→onboarding continuation and complete transfer authentication flow
+remain a subsequent linked design, followed by source-denial clearance/recovery,
+Profile mapping, publication, normal handoff/UI and physical/release gates.
+
+
+### S6l3 — linked transfer OTP/onboarding provenance (locally accepted)
+
+Independent amended DESIGN accepted; this extends S6l2 only in the dormant
+source-aware transfer host. Ordinary paths retain their existing policy.
+
+## Existing gap and intended bounded behavior
+S6l2 deliberately completed the proof primitive, without choosing a linked
+onboarding flow. A source-aware host can currently pin an eligible first OTP, but
+OTP yielding onboarding_required cannot complete proof; subsequent OTP can follow
+same-scope trusted optimism. This stage closes that technical flow while preserving
+all ordinary Web/default/sporting host behavior and normal input/outcome shapes.
+No extra email code, forced sign-out, invented auth state or imported trusted grant.
+Onboarding alone still cannot prove fresh email authentication.
+
+The genuine dormant configured transfer host opts into complete online OTP checks
+through an erased private native ownership property `freshEmailOtpOnline?:true`.
+The private NativeHostPreparation has the same opt-in literal only in the actual
+unused transfer builder; actual buildRuntime forwards it with genuine source/event
+hooks and its existing work drain. It is independent of advisory-hook success: a
+failed observer disables proof, never fabricates an optimistic proof or changes
+ordinary non-opted-in auth behavior. This is never a supplied
+public option. Actual closed preparation marks the requirement; ordinary native
+ownerships omit it. Do not infer policy from an SDK event or NativeProfileAdmission.
+At actual verifyEmailOtp after provider verification and C6/C7, same-scope trusted
+optimism remains available to ordinary flows, but this opted-in transfer verification
+runs actual resolveAsFreshIdentity with the actual previous account. Re-read actual
+Profile/gate facts, establish destination trusted state and settle actual intents;
+S6l2 same-invocation onlineWrite proof then pins. No fabricated input/identity facts,
+additional background grant, changing the account-switch or denied-account rules.
+
+#### Original prior-account cleanup obligation
+The actual Phase B trusted snapshot supplies previousAccountScopeId into the
+unfinished-Profile witness, alongside its agreed actual account/Profile. Never
+load/archive/adopt old trusted facts as permission. The existing incomplete-Profile
+early return precedes account-switch cleanup, so retain that actual original
+obligation with the unfinished OTP origin (not a caller Boolean). On linked
+completion, if original previousAccountScopeId is nonnull and differs from the
+verified/current account, execute the SAME existing inOwnedSection +
+intents.deleteOrdinaryIntents account-switch cleanup before trusted establishment,
+readiness or proof. Actual failure/supersession prevents success. Preserve existing
+bounded invitation-survival semantics; same-account and first-account flows keep
+ordinary intents. Re-prove original OTP correlation around actual effects. Do not
+widen ordinary/default path scope in this bounded stage.
+
+#### Private genuine OTP origin, never admission
+Actual successful C7 records a private immutable origin containing verified account,
+original barrier/attempt/resolution correlation and epoch plus actual current context.
+The final retained unfinished origin also binds the actual agreed bare Profile.
+No OTP input, email/token or secret. Only genuine provider success plus subsequent actual agreed incomplete-Profile
+witness can retain it. Preserve its actual previous-account cleanup obligation.
+It remains private to that genuine coordinator/source; not passed by runtime/UI.
+A failed provider/C6/C7 creates none; a changed account/epoch/current operation,
+ordinary new auth/startup/retry/background/close invalidates it synchronously.
+
+The PhaseB result may carry a private unfinished-Profile witness only after actual
+ensureProfile and resolveGateFacts agree on the same Profile and eligibility is
+incomplete. Capture this exact Profile into the unfinished origin; the final actual
+completeOnboarding Profile must match it, independently of any trusted record.
+
+If actual agreed incomplete Profile checking yields onboarding_required,
+onboarding_blocked_legal or legal_unavailable, retain that exact
+origin as an unfinished negative prerequisite, never an event/stamp/grant. Only
+submitOnboarding may carry it through its own claimed transition. Capture continuity
+synchronously BEFORE beginTransition and transfer it only if the original context/
+epoch/health/source remain current. Re-prove the original actual durable barrier,
+attempt and resolution correlation before completeOnboarding and again immediately
+before final event minting. Use the actual repositories/checkpoints/evaluateDurablePreflight,
+compare original IDs/method/account/epoch/resolution facts, and use an actually
+bound context (original barrierId/attemptId) for all existing write/current guards; do not recreate or
+rewrite source/archive facts. The actual submit flow still captures current account
+before completeOnboarding, re-proves after, requires matching actual Profile/gate,
+actual destination trusted write/intent settlement/final owned currentness. Only
+when all those actual steps succeed AND original OTP correlation remains valid may
+it mint the completed S6l2 event for the new current context.
+
+An onboarding call without that live origin retains the ordinary identity outcome
+and creates no fresh event. Copies/reloads/SDK restore/retry/legal refresh/background
+cannot mint or reconstruct an origin. Initial onboarding_blocked_legal/legal_unavailable (missing Privacy/Terms or
+network-only legal fetch failure) with confirmed incomplete Profile agreement may
+also retain this SAME negative origin, without making any legal readiness claim.
+No agreement means no retained origin. Later legal recovery/refresh/retry cannot
+create an origin, replace Profile/account/prior-account obligation or mint proof.
+Legal refresh may preserve the same live
+unfinished origin because it does not claim access. Submission failures may retain
+origin only when the same proven account/correlation/context still holds, so an
+ordinary legal/input/network retry does not itself demand a second OTP. A newer
+submission supersedes the older one; neither can mint on the newer one's behalf.
+Any actual account mismatch/denial must revoke origin before cleanup, preserving
+all existing denial behavior. Actual runInvalidation must clear this unfinished
+origin synchronously once it owns the context, before its first async denial work.
+Onboarding retries retain only a private rebased current origin with the SAME
+original OTP correlation, never a new origin. No event is minted merely because startup/retry or
+an earlier onboarding result became ready later.
+
+S6l2 event/stamp remain opaque, ephemeral, source-instance-bound; every completed
+proof is revoked at every subsequent transition and accepted mutation enqueue.
+Publication still requires complete SQL/credential/source checks at COMMIT. This
+stage is explicit technical extension of the earlier verify-final-site-only rule:
+linked onboarding may finalize its genuine unfinished OTP origin, while generic
+onboarding never produces proof. No entitlement or Beta/product decision changed.
+
+#### Tests and scope
+Allowed coordinator minimal private origin/carry and opted-in online path; actual
+supabaseAuthService erased opt-in confined to existing transfer builder/private
+strategy; tests real coordinator+actual SDK/SQLite; architecture/bundle guards and
+canonical documentation. No identityRuntime/default UI/SDKfork/sourcehelper/Swift/
+new SQL schema/guard cancel/publication/normal handoff/flags/device/real backup/
+account/hosted/config/Git work. Q4 remains unapproved.
+
+Actual host tests must prove eligible first OTP, returning trusted destination OTP
+now actually rechecks Profile/gate and writes, first OTP→actual legal/onboarding
+finalization→current exact SQL stamp without another code, ordinary onboarding
+alone/no prior OTP/no origin/reload none, same-account mismatches and original
+correlation drift refuse, changed/newer submissions and auth/background/close
+revoke, observer malformed work and genuine completion ownership still contain
+without cycles. Actual failure tests for provider/C6/C7/Profile/gate/trusted/intent/
+currentness and legal rotation/input/network retries. Cover initial missing
+Privacy/Terms, initial legal network failure and later legal recovery without
+new OTP; cross-account incomplete-Profile continuation with original ordinary
+intent cleanup success/failure/supersession, and same/first-account intent survival. Existing ordinary optimistic
+paths and old-source-denial immutability must remain. Focused independent CODE,
+then full root/Web/mobile3actualmodes(defaultlast)/E2E+positive server stop/types/
+lints/diff before accepted local checkpoint and Vault. Source guard recovery and
+archive-to-confirmed-Profile mapping remain subsequent independently designed gates.
+
+Implementation uses an erased source-host-only freshEmailOtpOnline literal,
+same-scope actual online revalidation after genuine OTP C6/C7, and a private
+unfinished origin with exact original barrier/attempt/resolution, agreed Profile
+and actual prior-account cleanup obligation. Only submitOnboarding may synchronously
+carry that same live origin through its claimed transition; actual durable
+correlation is re-read before effects and final mint. Legal/input/network retry
+never creates a new origin. Original prior-account ordinary-intent cleanup runs
+on the same owned lane before trusted success. Other transitions/denial/health/
+close revoke; generic onboarding and ordinary hosts cannot mint linked proof.
+Origin-specific retirement authenticates the exact same private origin reference;
+older awaited restores/responses cannot clear a newer rebased origin. Recheck
+currentness after both actual restores before classifying any origin-specific
+failure. Deliberate transitions and owned invalidation still revoke synchronously.
+Corrected independent CODE and complete local regression are accepted; exact
+evidence is TESTFLIGHT_READINESS.md S6l3. The five original independent probes,
+stale invalid-session/account-change responses and current-owner denial controls
+are retained in the coordinator suite. Source metadata/schema, normal public runtime/host shapes,
+ordinary optimistic policy, SDK configuration and all publication gates unchanged.
+
+
+### S6l4 — original source deletion-guard recovery (locally accepted)
+
+Independent amended DESIGN, S6l4a and combined S6l4b CODE accepted; complete local regression accepted.
+
+## Bounded outcome
+
+Reuse actual account-first state/cancel and conditional-abort rules for original
+source deletion guards on the same actual source-aware SQL/protected pair. The
+coordinator must also honor these guards at every ready path. No positive source
+identity/receipt adoption, sporting/Tracker runtime, source-barrier clearance,
+Profile mapping, publication, ordinary handoff/UI or whole-import claim. Normal
+Web/default/native/sporting behavior remains exact. No account request/export
+capability in the private transfer recovery facet. No normal caller/flag/SDK change.
+
+All source guard Profiles, including control-only, remain immutable. Each guard
+has original P,N,R and optional archived F. F is NEGATIVE lower-bound evidence;
+never feed its archived receipt to ordinary guard repository as resolved:true.
+Recovery requires actual parsed server control C>=max(R,F when present), pending
+null plus actual conditional abort Fnew>C; or exact pending-request cancellation,
+actual true ACK and actual afterward pending-null/sameP/newer revision. Final
+destination receipt is original P/N with Fnew>max(R,F), actual acknowledged SQL
+write/readback. Fresh login, server-not-pending, current revision alone or archived
+receipt alone never resolve an original guard. No silent cancellation of committed
+pending deletion; cancellation requires exact request UUID and actual server recent
+reauth requirement. Old nonce/R remain unchanged. Other Profiles remain blocked.
+
+## Source-bound guard repository
+
+Add one private persistence module factory taking ONLY genuine S6l1 handle,
+actual destination adapter and actual currentness closure from closed owner.
+Reject nongenuine handle; no supplied facts/map/readiness/public mode. Actual
+createInstallationTransferHostOwner may build it only after same real handoff,
+over the same runtime pair/domain and immutable authenticated source handle.
+Source-aware-only erased preparation closure can wrap its actual host adapter;
+it never accepts another user-facing adapter/handle/Boolean. Architecture guards
+restrict executable consumers. Old pairing/runtime/host public shapes stay exact.
+
+Use actual createAccountDeletionGuardRepository for guard and receipt validation,
+including exact Profile/nonce, closed fields, valid revision and guard reread.
+All actual adapter reads/writes are checked for currentness before/after; real
+host account effects/currentness wrapper must surround source fallback too.
+No native Promise/proxy inspection outside existing owned adapter boundaries.
+No direct SQL/native/keychain work in new module, no async acquisition/pending
+timeouts/cancellation-as-settlement, no underlying completion wrappers or engines.
+
+Maintain two constraints without overwriting either: original source guard and
+any destination guard. Source original load synthesizes ONLY original negative
+guard bytes, after a successful actual adapter read at that key, and reads ONLY
+actual destination nonce receipt; archived F is never supplied as receipt. This
+private readonly adapter rejects writes. Capture the actual receipt primitive
+during the actual repository load (per invocation, no shared mutable capture),
+so returned resolved:true additionally requires actual receipt Fnew>source floor.
+Malformed/unreadable destination guard/receipt => unavailable, never absence.
+Do not ignore a malformed destination guard when projecting original guard.
+
+load(P): validate actual destination guard first; if source original unresolved,
+return it (original tuple); if original resolved, expose any destination guard or
+original resolved guard if destination absent. canAdmit(P) requires BOTH original
+and destination absent/resolved. No sourceguard => exact existing repo behavior.
+resolve(g,Fnew): only exact original P/N/R with sufficient floor, or exact current
+actual destination P/N/R; actual destination receipt write via existing repo.
+Never rewrite/remove guard or source metadata. A newer destination guard survives
+original resolution; if still unresolved, readiness remains blocked and later
+actual getState may conditionally fence it. One getState null/recovered result is
+not an admission. begin uses existing actual destination repo and currentness;
+may not overwrite unreadable/current unresolved original holds.
+
+The wrapper exposes private acceptControl(P,C):boolean with actual predicates,
+currentness and source floor only; this does not create any grant or fact. The
+sole existing control parser invokes this only AFTER its full actual validation
+and original native Profile correlation. Add optional seventh private native
+callback for validated Profile/revision, preserving all existing callers and
+ordinary behavior. No second parser, DTO/RPC shortcut or public supplied fact.
+The hook is synchronous EXACT boolean. False/throw/nonboolean sets internal
+effectsAllowed:false, never parser success/admission. Observed malformed objects/
+Promises are retained by the genuine host work drain and disable the private
+facet; do not inspect thrown reasons. Existing Profile correlation precedes it.
+getState publishes actual pending through the existing observer/denial ownership
+BEFORE guard I/O, and with refused effects skips all guard reads/writes but may
+return the pending fact. No-pending refusal fails before load/abort. cancel awaits
+existing onCancelPending before testing refusal, then stops before guard load/RPC;
+refused after-control stops before resolve. request similarly preserves definitive
+pending delivery without effects. Omitted hook retains ordinary behavior.
+
+Same Profile+nonce but different source/destination original revisions is
+unavailable. Same nonce across Profiles never cross-resolves: malformed/unreadable
+or another Profile's receipt blocks and is never overwritten. Preserve monotonic
+actual destination F: lower resolution refuses; equal exact receipt may confirm
+idempotently, higher writes only after actual current tuple recheck. begin checks
+composite load and refuses any unresolved original/destination hold.
+
+The genuine factory creates ONE private source-guard owner per actual pair/handle,
+with repository(adapter,current) for the actual coordinator and per-call host
+adapters, and a completion-only ownsCompletion inspector. All repositories from
+that owner share a synchronous mutation claim: begin/resolve refuse overlap rather
+than queue; claim releases only after their actual operation settles. This guards
+read/check/write receipt monotonicity against the owner's other mutation calls;
+no cross-tab/native CAS or atomicity against arbitrary direct adapter writers is
+claimed. Current production source-host code has no other guard writer. Reads
+during such an owned mutation refuse rather than observe an intermediate grant.
+No new native queue or resource. The owner registers every exact outward operation
+Promise in its private WeakSet BEFORE first adapter/native work (deferred start),
+including begin/resolve/load/canAdmit. Actual pairing owner's existing owns
+predicate incorporates this inspector. Exclusion means refusal, never native
+value/ACK. No extra publicly returned finally wrapper. Recovery facet returns
+the exact already registered actual service Promise.
+
+## Actual host integration
+
+Private NativeHostPreparation gains source-only guard wrapping and actual recovery
+capture hooks, provided ONLY by actual unused configured transfer builder. Actual
+buildRuntime uses wrapper for coordinator.deletionGuards; every ready/retry/offline/
+background path remains actual coordinator policy. Actual buildAccountDeletionService
+also wraps its per-call current/effects adapter and passes parsed revision callback.
+Capture ownAccountControl for source-aware preparation as well as existing sporting;
+do NOT capture a Profile admission just to enable recovery. Reuse actual sole
+mapper, Self/account/Profile binding, SDK queue, RPC allowlist/order/body validation,
+pendingDenial continuation, original-denial provenance and runtimeWork drain.
+
+Construct actual service privately, capture frozen getState/cancel ONLY in actual
+closed transfer builder/owner; normal runtime/host/public options gain no field.
+No automatic call or public/UI trigger in this stage. Actual transfer-owner closed
+facet may expose internal state/cancel entrypoints solely for later linked UI
+composition; no request/export, positive grant, supplied service or account DTO.
+Test via actual captured preparation/owner (spy real factories, no fake identity
+outcomes/replacement service). Clarify capture receiver and ensure no source input
+or recovery code retained. New callbacks exact-void; return malformed work handed
+to genuine existing host drain and disables facet; existing ownership exclusions
+avoid own-completion cycles. Source-only closure must be dead-code eliminated in
+default, diagnostics and native-storage builds.
+
+Pending deletion may cause actual OTP to return identity_unconfirmed/Profile null;
+existing account-first NativeAccountControl and sole actual control Profile are
+enough for state/cancel, never an admission/OTP proof. Do not extend unfinishedOTP
+origin or reinterpret this denial. Every accepted recovery write revokes prior
+SQL stamp synchronously per S6l2; existing new genuine OTP may later prove again
+after all guards/online checks. Do not repin old event or claim a chosen extra-code
+UX; UI and user-guided source mapping are subsequent gates.
+
+## Scope and required evidence
+
+Allowed: new private sourceguard module/tests; actual pairing owner private hooks;
+supabaseAuthService erased preparation wiring and existing account service private
+seam; sole account-deletion mapper optional callback/tests; actual SDK+SQLite host
+tests, architecture/bundle guards and canonical docs. No coordinator policy change,
+schema, sourcehelper/Swift, real backup/config/phone/account/hosted/Git, installation,
+activation or release. Read current governed docs/ADR0052/0054 before implement.
+
+Tests: genuine/forged handle; absent/unreadable/malformed evidence; source F null/
+present, C below/equal/above floor, no silent pending cancel; originalnonce/R exact
+and Fnew strict; delayed old resolve vs newer destinationguard; control-only and
+multipleProfiles/repeatednonces; receipt malformed/wrongprofile/nonce/futureversion;
+write/readbackfail; currentness supersession around everyawait; source immutable;
+actual coordinator guard denies OTP/startup/retry/background; actual pending OTP
+identity_unconfirmed→actualaccountstate→exactcancel→newactualOTP proof; no pending
+actualconditionalabort and lostACKretry; freshproof revoked onacceptedwrite and
+oldEvent cannotrepin; sourceF alone neveradmits; serverrollbackblocks and cannot
+suppressdefinitivependingdenial; actualwrongSelf/Profile/accountchange/close/overlap;
+actualnativeandSDKmalformedwork/owncompletions drainwithoutdeadlock; unchangeddefault
+controls/publicruntime shapes/noTracker and allnormalbundles no transfermarkers.
+
+Adopt two gates: S6l4a private owner/repository/tests plus exact architecture
+allowlist only; independent focused CODE before production construction consumers.
+S6l4b actual source owner/host/sole mapper/coordinator integration and real SDK/SQL
+controls; combined independent corrected CODE then complete root/Web/
+mobile10/277+actual3modes15each(defaultlast)/E2E139+positive serverstop/types/lints/diff.
+Document exactresults once in Readiness, accepted contract Mobile, concise indexes/
+ADR and Vault checkpoint. Do not call wholeimport/Beta complete.
+
+Independent DESIGN clarification: only for original Source-Guard Profiles, retain
+an owner-wide monotonic negative floor of original R, archived F and actually
+validated destination receipts. acceptControl checks it; each per-call repository
+also remembers its actual control C and rechecks it after reads and before effects
+against newly discovered/increased floors, including control-before-first-load.
+Malformed/unreadable receipts create no floor. A coordinator repository without
+its own Control fact obtains no server confirmation. This is negative fencing,
+not source clearance or a Q4 waiver. Outer reads also compare the owner's mutation
+sequence before/after, so a mutation that starts and finishes while a read is
+suspended cannot leave a stale positive read.
+
+Implementation: a genuine source-guard owner is constructed only inside actual
+source-aware pairing after real handoff. Its completion-only inspector joins the
+existing SQL/credential owns predicate. Erased preparation wraps actual coordinator
+and per-call native account adapters; only source hosts capture actual account-first
+control and a frozen state/cancel facet, never request/export or a runtime field.
+The sole control parser keeps effectsAllowed internal and preserves definitive
+pending publication before guard I/O even on revision refusal. Malformed private
+Boolean/capture returns disable identity effects before genuine host work drain;
+actual service promises return unchanged. Source guards and original receipts
+remain immutable; legitimate recovery writes destination nonce receipts only.
+Exact current Control floors are checked around actual adapter I/O as well as
+original/destination tuple validation. No source clearance, mapping, sporting
+publication, Tracker, normal handoff/UI or release grant. Focused S6l4a acceptance:
+3 files/203 tests plus4 independent controls, types/lint/diff. Combined S6l4b CODE and complete local regression accepted; exact evidence is
+TESTFLIGHT_READINESS.md S6l4.
+
+
+### S6l5a — immutable source cleanup evidence (locally CODE accepted, 2026-10-26)
+
+The complete authenticated V3 inventory already includes the fixed
+`curling.identity.intentCleanup.v1` raw. Source-denial metadata now has exact
+root order `{schemaVersion:2,packageDigest,sportingProfiles,preflight,guards,intentCleanup}`.
+The last member is exactly `{kind:"absent"}` or
+`{kind:"outstanding",recordedAt:<actual validated timestamp>}`. The same private
+immutable map/read-only adapter is read by actual `readIdentityRecord` with actual
+`INTENT_CLEANUP_STORAGE_KEY`/`validateOutstandingIntentCleanup`; only actual absence
+means absent. Malformed/read-failed/currentness loss refuses the entire projection.
+No settlement, removal, replay, expiry or source-identity adoption occurs.
+
+All original canonical field/nonce/Profile/preflight rules remain. Exact fixed
+serialization appends the new field; SHA256 domain is now
+`serializePlatformStringTuple("installation-source-denial/v2",packageDigest,ASCII)`.
+Both timestamp strings are bounded by their actual 65536-unit identity raws, not a
+new timestamp rule. Conservative worst-case quoted budget, allowing both scopes,
+is `2*6*65536+512*256+2048+2*6*256+2048=924672<1048576`; existing JSON/ASCII limits
+remain. Actual V3 dynamic512 limit still applies (a resolution consumes one slot).
+
+The physical eight-object SQL layout and `installation_transfer_source_denial_v1`
+table are unchanged. Cold structural parser accepts only exact canonical v2. Old
+v1/missing cleanup facts refuse before handoff and preserve all old rows and
+protected values; no in-place repair/update/delete. A genuine old seven-object
+layout can still add previously absent complete v2 evidence after actual same
+archive/code proof. Subsequent warm metadata drift revokes health without repair.
+
+Independent DESIGN/CODE accepted: actual V3 projection, SQLite cold/warm boundaries
+and actual configured SDK host, 6 files/395 tests, 3 new adversarial and 30 earlier
+controls, types/scoped lint/diff. Parent 4 files/336 tests and exact size-bound
+recheck. Full combined S6l5a/b regression is accepted; exact evidence is
+TESTFLIGHT_READINESS.md S6l5.
+Outstanding cleanup is an immutable negative prerequisite; this stage grants no
+source clearance, selected Profile, sporting publication, normal handoff, UI,
+activation, device acceptance or Beta release.
+
+
+### S6l5b — final server control provenance (locally accepted)
+
+Only the closed source-aware transfer host observes the existing actual account
+service's final `method=state`, `result.ok===true`, `result.value===null`. The sole
+actual mapper must already have validated complete Profile/revision/pending fields
+and accepted the source guard floor, using actual Self/account correlation and
+the existing SDK queue. Parser hooks alone, archived receipts, pending/error,
+cancel/request/export or background/retry/startup are not final server proof.
+No extra request, control parser, public runtime/constructor seam or source write.
+
+At each accepted source SDK enqueue replace an opaque command token synchronously
+and capture that invocation's token in its actual Command. Before actual Control
+RPC issuance capture its original Command/token/generation/account. The per-run
+sole revision hook associates the actual validated P/C with this original
+occurrence. Capture the actual delivered genuine fresh event at run entry; never
+rebind any original to the latest event/token/generation after await.
+
+After final state-null and all existing denial/final-currentness checks, the
+closed synchronous preparation hook may mint a WeakMap-backed empty frozen
+Control observation. Its currentness requires original coordinator Control,
+original event/source/account/P, original c.intent and unchanged SDK generation/
+command token, no invalidInput/supersededCredential, actual identity/storage/SDK/
+reservation health and no active/queued command. Use passive Command facts after
+normal deactivation; `commandCurrent(c)` is not a lasting predicate. A later
+accepted SDK command revokes even without a credential-generation change and
+completion cannot revive an old observation.
+
+The small helper is dynamically preloaded only in the unused configured transfer
+prepare graph, then synchronously used by its private hook. Shared native code
+has no static helper dependency. Only actual auth host produces observations;
+source SQL alone inspects them. Structural copies/proxies/wrappers are inert.
+The actual pairing owner forwards an observation to its same SQL context with
+its original fresh stamp. The source-only SQL pin requires own genuine stamp,
+exact original event/source/account/P, all original SQL sequence/revision/session/
+schema/package/immutable-metadata conditions and actual helper currentness. First
+genuine attempt consumes the observation, including refusal; old evidence cannot
+recapture a later revision. No new SQL schema, write, queue or transaction.
+
+Accepted SQL mutation revokes synchronously. Expected refusal after successful
+conditional-abort recovery yields no new stamp and does not turn recovery into a
+host failure; another genuine OTP and final actual state are required. Exact-void
+preparation delivery failures synchronously fault identity before genuine work
+drain; unrelated work is retained, exact owned service/disposal completions cannot
+form their own drain prerequisites. The actual service promise is unchanged.
+
+This is only current server-control provenance. It grants no source-barrier
+clearance, cleanup settlement, selected Profile mapping, sporting publication,
+Tracker, normal source-free handoff, UI, activation/device/Beta acceptance.
+Source v2 outstanding cleanup and all other original constraints remain for the
+subsequent source gate. Independent combined CODE and full local regression
+accepted; exact evidence is TESTFLIGHT_READINESS.md S6l5.
+
+
+### S6m1 — durable publication intent (locally accepted)
+
+## Mandatory M1a/M1b gates
+
+M1a ONLY: protocol/slots/budgets + genuine protected observations + new private
+port capability/lifecycle tests + owned/current standard SHA entry. New constructor
+has NO production consumer until M1b. Existing source pairing still selects its
+old port. Tests may make the actual existing factory delegate to the actual new
+constructor, preserving the exact genuine returned port and all actual preparation
+arguments; no fake SQL/lease/runtime/identity outcomes or wrapper-port authority.
+Independent focused M1a CODE must PASS before M1b production consumers.
+
+M1b ONLY after that PASS: actual source SQL eligibility/fingerprints/draft, actual
+owner no-argument method/new constructor selection, complete cold integration.
+Combined independent CODE then complete baseline, no full acceptance from M1a
+focus alone. S6m2 actual SQL publication still requires its own subsequent DESIGN.
+
+## Concrete next outcome; no additional isolated identity proof
+
+Use the actual current private ControlStamp to prepare and positively persist a
+versioned protected publication intent. It binds the complete original package,
+prepared namespaces and immutable source constraints to the actual existing Q/M
+pair. This is the first concrete half of finalization, not source-free startup or
+a source clearance grant. S6m2 must independently design and implement the matching
+atomic SQL publication. Until then no ordinary rows, selection, receipt, Tracker,
+public runtime field, UI or published state. The intent alone grants nothing.
+Later handoff must positively close current SDK/stores and acquire a distinct
+source-free Published-Import host. Do not fabricate Dactive or set sourceVerified
+from SQL structure. Ordinary late account switches must remain possible.
+
+Existing actual M/Q are immutable and lack package/source digests. Do not extend
+them or reinterpret their bytes. Use a separate narrow protected slot and actual
+same namespace owner, binding, lease, queue and runtime session. No second owner,
+database, SDK or encryption implementation. Apple's existing configured protection
+and existing standard platform SHA256 only; no new injected digest/ready facts.
+
+## Source decision at actual SQL preparation
+
+Caller supplies no Profile/account/ready/anchor DTO. Actual pairing owner method
+preparePublication() takes no arguments and uses its private current ControlStamp.
+The source SQL context directly checks its own immutable genuine authenticated
+source metadata, existing current stamp and unchanged full identity snapshot:
+- no quarantined preflight and no outstanding intentCleanup;
+- correlated original S must exactly match actual fresh account; no_barrier needs
+  no invented original account;
+- actual fresh P from its original stamp must exactly belong to nonempty original
+  sportingProfiles. Zero Profiles and mismatch explicitly refuse with preserved
+  data; no archive-only continuation/product decision/rekey/substitute Profile;
+- current final actual Control proof already evaluated selected-P guards and
+  revision floors. Do NOT call guard repositories through pair.domain while
+  holding SQL queue (self-cycle). No other Profile is declared cleared by P/C.
+- retain every original namespace/raw and control-only guard tuple unchanged. No
+  original intent/trusted/receipt/legacy identity replay, cleanup or source write.
+A new target OTP cannot automatically discharge quarantined/cleanup debt. Re-export/
+repair UX is not adopted here. The original S is only an initial-finalization
+constraint, never a permanent account allowlist after a future valid publication.
+
+## Exact protected intent protocol
+
+New private installationTransferPublicationProtocol module. Primitive bounded cold
+structural parser + fixed serializer, no foreign JSON/toJSON. Exact ordered fields:
+{schemaVersion:1,protocol:"curling-installation-publication-v1",publicationId,
+ providerConfigIdentity,sessionStorageKey,sdkContractVersion,
+ protocolId,credentialEpochId,manifestId,storeIdentity,
+ packageDigest,sourceDenialDigest,protectedWireDigest,preparedDigest,
+ profiles,selectedProfileId,accountScopeId,controlRevision,
+ workingLayout:"installation-live-ascii-v1"}.
+
+All four pair IDs are actual canonical IDs from the actual bound Q/M; publicationId
+is a new actual crypto.randomUUID, distinct from those IDs. Currentness/capture/
+malformed-work handling follows actual createTransferPair conventions. Configuration,
+root and SDK contract must exactly match actual fixed configured pair. Digests are
+actual lowercase64 SHA256. profiles is exact original sorted unique UUID list,
+nonempty/max32; selectedProfileId actual P is its member. accountScopeId actual
+bounded opaque scope (same genuine event predicate/max256, code units unchanged).
+controlRevision actual validDeletionRevision and minimum floor, never server grant.
+JSON max8192 units; ASCII=actual encodeTransferCodeUnits, max32772 chars. Check all
+limits/types/canonical reserialization, reject missing/extra/duplicate/order/version/
+unknown enum/noncanonical numeric fields, no parser default/repair. Actual canonical
+serializer quote uses serializePlatformStringTuple primitives. Same budgets cold.
+Derive exact size calculation before claiming all admitted scopes/namespaces fit.
+
+sourceDenialDigest is genuine actual current v2 projection digest. packageDigest
+is actual authenticated archive package digest. protectedWireDigest = standard
+SHA256 of serializePlatformStringTuple("installation-published-wire/v1",wire),
+where wire is the exact actual stored protected ASCII envelope. Bound preimage by
+actual max protected wire formula+256 BEFORE framing/allocation; this uses existing
+string SHA256 entry (not byte helper's16MiB quota). Existing protected wire already
+admitted at header.length+17+ceil((25165824+16)*4/3). No physical RAM guarantee.
+preparedDigest = standard SHA256 of serializePlatformStringTuple(
+"installation-published-sporting/v1",packageDigest,canonicalRowsJSON).
+canonicalRowsJSON is fixed array of exact ascending actual slot tuples
+[slot,key,value_ascii,value_digest], all actual source sporting rows, no filtering
+by P. Validate original contiguous slots/key order/codeunits/row digest first.
+Use fixed primitive serialization. Prove worst actual full source raw<=3145728,
+rows<=416/key<=256 yields framed preimage<16777216 before allocation. Refuse rather
+than truncate. No future normal-training retention cap follows from source budgets.
+anchorDigest = standard SHA256 tuple("installation-publication-anchor/v1",ASCII),
+for the later exact SQL receipt. Standard crypto capture errors/pending work settle through the owned/current
+entry below; no own crypto or claimed rescue of opaque dependency graphs.
+
+### Necessary narrow hash-work ownership (M1a)
+
+Existing capturePlatformSha256 and capturePlatformByteSha256/default callers and
+overrides retain EXACT contracts. Add a separate private
+captureOwnedPlatformSha256(owns,current) standard string entry with NO digest
+injection/override. Reuse actual standard WebCrypto/TextEncoder, tuple framing and
+existing internal observed-work primitives; no cryptographic algorithm changes.
+Every original acquired Crypto/encoder/constructor/method/returned value is checked
+against actual genuine completion ownership BEFORE native probing, property
+reflection or adoption. A directly or intrinsically encountered own prepare,
+hash, runtime, close or host-disposal completion ONLY refuses, never a digest/ACK.
+Register exact outward hash completions before first crypto work (deferred start)
+and include them in genuine owns checks. An outer wrapper around already-started
+hash work is insufficient.
+
+Check actual current()===true before each acquisition/call and immediately after
+each directly acquired value, and again around asynchronous result observation.
+Stop before later acquisitions/issuances after reentrant close/currentness loss.
+Refuse acquired async Crypto/encoder/method material; its later valid fulfillment
+is never construction input. Drain every OTHER directly observed malformed pending
+value, including malformed then fields/native fulfillment values, before failed
+preparation/hash/cleanup completes. Exclusion may not skip unrelated work. Use
+existing intrinsic observation/C4 contract; no timeout/guessed settlement or claim
+about arbitrary indirect opaque Promise dependency graphs. Never inspect thrown
+reasons. Capture failure work remains joined by actual settle preparation helper;
+no global/default observer, prototype or host-event behavior changes.
+
+## Narrow physical slot and genuine protected observations
+
+New private t1 slot is "t1."+credentialManifestSlot(config).value.slice(3), using the
+actual existing config codec. NOT a new kind in generic parseCredentialPhysicalSlot.
+Generic/ordinary, old pair-only and old identity factories continue rejecting it.
+Only a new closed createPublicationTransferCredentialMigrationPort constructor
+can recognize this one exact slot in addition to existing canonical M/I entries.
+Only source-aware actual pairing selects it in M1b; M1a has no production
+consumer. Existing public port shape unchanged.
+No new string flag in public constructor options, no accepted arbitrary slot.
+
+Register private publication operations by genuine port identity, with a getter
+usable only by actual pairing. No fake/copy/wrapper/proxy port can obtain capability.
+Capabilities keep actual same owner/lease/captured binding/work and existing private
+runtime session/domain draft. No second queue, raw SecureStore or default adapter.
+- read(lease,actualQ,actualManifest,proceed): actual positive M and t1 read, actual
+  complete owned namespace inspection, q/M/config binding. Returns a genuine opaque
+  private observation of established_absent OR exact canonical value. Never infer
+  absence from failed/unreadable/invalid/missing observations.
+- insert(...,raw,proceed): only actual prepared runtime/session active; validate raw
+  against actual Q/M/config and finite protocol before I/O. Positively establish
+  absence, never overwrite. Actual write must return EXACT undefined ACK and exact
+  fresh readback. Re-read actual M/full allowed namespace and t1; all currentness
+  checks around effects. Return verified actual observation only after all checks.
+  Existing equal value is an observed pre-existing intent, never a new write ACK.
+  Different value, unsupported/foreign slot, missing warm-confirmed t1, changed M,
+  malformed evidence or unknown post-write result fails/holds; no compensation or
+  automatic repair. Source and previous values preserved. No normal-credential write
+  through t1, no generic SDK key added. The existing failedWrite policy remains.
+
+Read may operate during migration for cold source-aware discovery (no positive
+runtime authority) and during actual prepared runtime for preparation. Runtime path
+uses existing actual runtime ownership/drain and domain.anchor before protected
+work; no SQL transaction may await this capability. Actual canonical current-epoch
+I values can legitimately change through SDK; do NOT reuse migration observer's
+old raw/key cache as a runtime credential immutability claim. Validate actual M,
+allowed inventory/current epoch and each actual I envelope without declaring old
+SDK values immutable. All unrelated/foreign/orphan slots still refuse.
+
+Observations are empty frozen WeakMap handles produced ONLY by actual protected
+port reads, with actual same Q/M/lease/config and observed raw/absence facts. SQL
+is the only production inspector. A successful observation is a fact at that actual
+read, not a claim storage can never later change. It carries actual owner/session/
+currentness. Copies/proxies/equal DTOs reflect no properties and confer nothing.
+Inspection does not mint sourceVerified or authentication.
+
+Exact outward read/insert completions registered BEFORE first native acquisition,
+including getters/descriptors. Reuse existing strict protectedWork/transferWork
+ownership and actual runtime/host/source-owner completion exclusions. Malformed
+acquired/returned Promise work faults synchronously before genuine unrelated drain;
+no exact outward/close/host disposal promise becomes its own prerequisite. No
+settlement timeout, callback-ACK truthiness, Proxy reflection or thrown-value dump.
+Close revokes synchronously, joins preparation/native work, positively closes and
+releases actual owners; sticky uncertainty remains held across cleanup retry.
+
+## Actual same-owner publication draft; source-only owner entry
+
+Actual source SQL preparePublication(ControlStamp,anchorObservation) runs through
+its own current queue, first validates actual source decision above, then the
+actual complete current before snapshot and actual genuine protected observation's
+Q/M bindings. Compute all actual fingerprints and canonical intent. No writes.
+Return a private context-owned draft token, not supplied facts/booleans. Private
+payload/current access only for actual pairing orchestration and later transaction.
+This is part of the concrete publication protocol, not a new public readiness layer.
+
+If actual t1 absent, choose genuine fresh publicationId. If actual t1 already
+present, it is only a historical candidate: require exact actual pair/source/
+wire/prepared/profile/account/layout equality and new actual Control C>=original
+anchor controlRevision. Retain exact existing publicationId/controlRevision/bytes;
+never relabel existing presence as a write ACK or replace another intent. Actual
+same archive/code recomputation and new genuine current OTP/Control remain required.
+No mixed, empty, equal-foreign or wrong-selected-account adoption. A higher stored
+C is a negative floor; lower current server C refuses.
+
+Draft currentness keeps the ORIGINAL same SQL identityRevision/sequence/session/
+schema/package/source and ControlStamp/actual host facts around every await. No
+rebinding after hashing or protected I/O. Before publication own mutation handling
+S6m2 must be separately designed; do not relax accountControlCurrent globally.
+Draft does not require the initial absence fact to remain absent after its own
+legitimate t1 insert: accept a NEW actual positive readback observation only if its
+raw is exactly that same draft. No inferred self-ACK or fabricated protected proof.
+
+Actual source-aware pairing.preparePublication() is no-argument, private only.
+Single flight, registers exact completion synchronously, includes it in genuine
+owns predicate and close drain. Read actual protected observation, create SQL draft
+from its stored ControlStamp, get actual payload, insert/positively observe t1,
+then SQL acceptPublicationAnchor(draft,actualObservation) compares genuine bindings/
+raw/current facts and retains private draft. Return code-only publication_intent
+with mayIssue/mayPublish/mayMount:false. Expected auth/source/stale refusal is not
+new success and does not poison healthy state; actual contradictory/unknown native
+facts do retain faults. Original source/profile rows never change. Every next call
+rechecks actual t1; warm-confirmed loss cannot be repaired. No actual public host/
+runtime facet is added. Existing state/cancel/OTP routes preserve exact promises.
+
+Cold integration in M1b MUST follow this order:
+1. Authenticate actual archive/code and establish actual same source-v2 binding.
+2. Outside any held SQL queue physically observe actual M/t1 on the same port.
+3. On the actual same SQL core queue verify against actual Q/M, wire/rows/source.
+4. ONLY THEN prepare/activate identity domain and credential drafts.
+No protected read while holding the SQL queue and no initial handoff before step3.
+
+Cold source-aware same archive/code can discover t1 as inert intent. Actual source
+SQL verifyPublicationIntent(genuineProtectedObservation) recomputes all fingerprints
+against its own actual authenticated current archive/rows/source v2 and validates
+original Profile/account/source preflight constraints before identity-only handoff.
+No Control freshness inferred from old C. Original sourceVerified still comes ONLY
+from actual current archive/code. Cold wrong t1 refuses without overwrite/repair.
+Other factories refuse t1. This stage neither recognizes a published SQL layout
+nor starts without archive/code. Later source-free recognition needs matching
+atomic publication and actual protected observation, never today's eight tables.
+
+## Subsequent stage boundary (blueprint, NOT S6m1 implementation)
+
+S6m2 independently designs atomic SQL publish on SAME core/lease/queue/handle:
+- unchanged original8 objects, plus singleton publication table and mutable ASCII
+  live table+itsPKautoindex (11 total objects). Copy ALL prepared sporting rows under
+  their exact keys/codeunits into live rows, complete exact selection/receipt for
+  initial P and matching anchor, in ONE transaction. Preserve immutable originals.
+- check actual source/control/identity baseline immediately before issuance and
+  COMMIT, classify uncertain outcomes from actual positive close/reopen/readback;
+  no compensating deletes or oldevent repin. Own publication mutation gets a narrow
+  exclusive continuation, never a global relaxation; other accepted writes revoke.
+- partial SQL rows/receipt/schema never mount. Protected intent alone never mounts.
+  Cold published state will require a separate explicit published constructor and
+  genuinely protected binding. Historical receipt is not a current auth admission.
+Normal source-free runtime/actual Tracker and UI follow their own gates after that.
+All later Profile switches use ordinary current admission while every original
+per-Profile guard stays effective. Original global S is not a permanent allowlist.
+
+## Allowed scope and required evidence
+
+New publication protocol/private observation module and tests; narrow actual
+nativeCredentialMigrationPort capability/constructor and actual lifecycle tests;
+actual source SQL draft/negative decision/fingerprints/cold intent validation;
+actual source-aware pairing method and actual SDK/SQLite tests; exact architecture/
+all3bundle guards; canonical docs/Vault after acceptance. Generic credential codecs,
+Q/M/I formats, normal Web/native policy, source helper/Swift/UI/flags/config/real
+backup/device/account/hosted/Git are outside scope. No S6m2 live tables/rows.
+
+Meaningful tests: exact golden canonical JSON/u16/hash/physicalslot/framing/budgets;
+all32 namespaces/maxscopes/loneSurrogate/codeunit fidelity, no toJSON; closed/old/
+noncanonical/duplicate/oversize/raw false grants; generic slot/oldfactories refuse.
+Actual shared-owner Keychain-like binding+realSQLite+installed SDK: genuine OTP and
+final state then exact t1 insert/readback, allbeforeSQL snapshots unchanged; selected
+P source membership, no_barrier/correlated exact/mismatch/quarantined/cleanup debt,
+zero Profiles, all other Profiles/control guards preserved; originalguard recovery
+requires new OTP/control; pending/error/malformed/floor rollback have no insert.
+Existing same-intent cold revalidation only same source/code and new actual current
+proof with C>=C0; different package/source/wire/rows/profile/account/IDs/layout fails
+without rewrite. Absent/read_failed/unreadable/noncanonical/foreign inventory cannot
+become success. Lost ACK, write-noeffect/writeeffect unknown, changed readback, warm
+loss, delayed work/stale SDK enqueue/SQL mutation/close preserve and refuse.
+Actual runtime and cold migration stages never deadlock on the same SQL queue.
+Actual owned/current SHA: each Crypto/Encoder acquisition can synchronously close
+the actual owner or return an exact own prepare/hash/runtime/disposal completion;
+no later getter/call/issuance or self-cycle. Real pending independent malformed
+capture/encode/digest/native fulfillment work holds until settlement, output never
+becomes a valid hash. Actual valid SHA256/golden text/codeunits and all old default/
+byte/override controls unchanged. No new arbitrary-cycle claim.
+Per-method acquisition/returned malformed pending work, reentrant actual dispose,
+exact own prepare/read/insert/runtime/disposal completions exclude without cycles;
+unrelated work delays positive release until settled. Default auth/native policies,
+source guard cases and full namespace safety controls remain. Actual3normalbuilds
+contain no new executable markers. No claim physical Keychain/durability/capacity.
+
+Parent focus/types/scopedlint/diff, independent DESIGN then M1a focused CODE and
+M1b combined CODE/adversarial review, then complete root/Web/E2E+positive
+serverstop/mobile+actual3modes(defaultlast)/
+fulltypes/lints/diff before S6m2 DESIGN. Record exact evidence once in Readiness,
+canonical contract/ADR and fresh Vault checkpoint. No Wholeimport/Beta completion.
+
+#### S6m1a — independently accepted protocol/port prerequisite
+
+At its M1a review the new publication constructor had no production consumer;
+M1b below connects only the closed source-aware owner. The private `t1` capability uses the existing exact namespace owner, lease and native runtime;
+ordinary physical-slot parsing still excludes it. Only actual positive protected
+reads mint an empty observation handle. Insert requires absence, exact undefined
+ACK and exact fresh readback plus complete current namespace/M/I validation.
+Existing equal intents are observations, never newly acknowledged writes. Warm
+loss/drift and unknown writes hold without repair. Runtime SDK I entries remain
+mutable and are checked independently of migration-only cached credential values.
+
+The separate owned/current standard SHA entry registers outward hash completions
+before crypto work and excludes actual caller/hash/close work before adoption;
+independent malformed work is still drained. Exact generic migration completions
+are registered before acquisition on the new constructor only; release still
+revokes synchronously. An acquired owned then-value is retained without another
+getter read. Unknown, positively absent and positively present intent states are
+distinct: external warm appearance is drift, while first historical presence and
+this owner's verified insertion remain valid observations. Default string/byte APIs
+and the original constructors retain their previous settlement behavior.
+The exact JSON protocol has a conservative full admitted bound of 5438 code units
+inside its 8192 quota; encoded quota is 32772 ASCII characters. This is a format
+bound, not a physical memory guarantee. The sporting fingerprint's actual source
+row construction and preimage proof are implemented by M1b below.
+
+Parent focused verification after independent correction findings: 10 files / 419 tests, TypeScript, scoped ESLint and
+`git diff --check` passed. Synthetic protected bridge faults and disposable real
+SQLite only; no physical Keychain/installation or Beta acceptance. Independent
+M1a CODE passed the same 10/419 focus and four additional adversarial probes.
+M1b actual source SQL/owner/cold consumers may now be implemented. Complete
+regression follows the combined M1a/M1b independent review.
+
+
+#### S6m1b — actual source SQL/owner/cold integration; locally accepted
+
+The source-aware owner now selects the closed publication port and has a private,
+no-argument, single-flight `preparePublication()`. Actual current OTP/Control stamps
+supply account, Profile and revision. On its original SQL core/queue, preparation
+requires an authenticated unchanged archive/prepared snapshot and genuine source
+v2 binding: quarantined preflight, cleanup debt, empty sporting Profile inventory,
+a selected Profile outside the original set, and correlated source-account mismatch
+refuse without changing source or sporting rows. Other original Profile guards
+remain intact. No guard repository/SQL-domain call occurs while holding this queue.
+
+The complete original row set supplies the prepared fingerprint, including other
+sporting Profiles. Original row digests were verified in actual V3 admission and
+must remain in the same exact SQL snapshot. Fixed canonical row framing checks its
+size before allocation: the conservative full framed bound is 13,967,616, below
+16,777,216. Exact publication digest/UUID field lengths also reject trailing line
+breaks; generic UUID/default SHA contracts are unchanged.
+
+A context-owned opaque draft binds the original Control, identity revision,
+mutation sequence, session, schema and complete snapshot. Actual protected insert
+or historical presence is accepted only through a new genuine exact readback
+observation. A prior absence fact does not become a self-ACK. Accepted private
+drafts remain held by their context and become unusable when their original facts
+are superseded. The only success report is `publication_intent`, with all public
+mayIssue/mayPublish/mayMount fields false. No SQL publication or sporting grant.
+
+Actual source-pair SQL/runtime/credential producers register exact outward and
+queued completions on the same genuine transfer session before work executes.
+The shared view is cycle-exclusion only, never a value, ACK or admission. Original
+constructors/publishers do not gain this producer behavior. Malformed actual
+native SQL work revokes source health and original stamps before unrelated work
+is drained. Pure UUID acquisition retains its own refusal/drain scope; stale
+pre-write refusal and genuinely pending valid SQL do not poison healthy cleanup.
+
+Cold order is actual archive/code authentication and source-v2 initialization,
+protected M/t1 observation outside the SQL queue, actual same-core fingerprint and
+source verification, then identity/credential draft activation. Existing intent is
+historical only; reuse requires a new actual OTP/Control with C at least its old
+revision and exact original bindings/bytes. The original ID/C/bytes are retained.
+Absent intent still permits the existing identity-only recovery path; it does not
+waive later publication eligibility. Old constructors remain outside this layout.
+
+Parent corrected combined focus, including ordinary host/configuration controls:
+17 files / 881 tests passed with two workers. The actual configured-host file
+contains all twelve independent regression witnesses: nine cross-lane completion
+exclusions, two early native-SQL revocations, and a healthy pending-SQL/close
+control. TypeScript, scoped ESLint and diff checks passed. Tests use the actual
+installed SDK, disposable real SQLite and synthetic protected/network edges.
+Corrected independent combined CODE and complete local baseline passed. Exact
+execution evidence is recorded once in TESTFLIGHT_READINESS.md. S6m2 actual SQL
+publication still requires its separate DESIGN; no normal host/UI/physical grant.
+
+
+### S6m2 — atomic SQL publication (locally accepted)
+
+## Confirmed scope and product boundaries
+
+Implement the already outlined atomic SQL half of the accepted M1 protocol on the
+SAME actual source core/lease/queue/connection owner. Keep immutable wire/prepared/
+source/Q/M objects. All original sporting Profiles and values survive exact u16
+under their original keys, including nonselected Profiles. Initial selected P is
+exact actual original Profile membership from M1; no remap/filter/new Profile.
+Original source preflight correlation is an import constraint, never a permanent
+allowlist of future accounts. Existing source guards remain effective.
+
+No new product decision is intended. Free Beta/Personal/Team, Q1/Q3 unchanged;
+Q4 unapproved. This stage has NO normal sporting adapter, Tracker registration,
+source-free constructor, current auth grant, SDK handoff, UI, actual source capture
+or operational release. Durable SQL confirmation is factual completion of storage,
+not mayMount/mayPublish/mayIssue. Normal published host is separate subsequent
+DESIGN and must positively close original SDK/stores before acquiring new owners.
+Stop for a genuinely unresolved product question; do not invent one for routine
+implementation. Reviewer may reject technical design before implementation.
+
+## Exact layout and selection
+
+Original eight objects remain byte-for-byte unchanged by publication. Add only:
+
+CREATE TABLE installation_transfer_publication_v1 (singleton INTEGER PRIMARY KEY CHECK(singleton=1), anchor_ascii TEXT NOT NULL, anchor_digest TEXT NOT NULL)
+CREATE TABLE installation_transfer_live_v1 (key TEXT PRIMARY KEY NOT NULL, value_ascii TEXT NOT NULL)
+
+Plus SQLite's exact automatic PK index
+sqlite_autoindex_installation_transfer_live_v1_1: eleven total objects.
+No trigger/view/foreign extra column/index, generic records/credential table,
+new database, second port/engine/namespace or public mode option.
+
+Publication singleton1 contains EXACT accepted protected intent ASCII and its
+already standard-computed anchorDigest. The closed canonical intent includes the
+complete immutable package/pair/source/fingerprints, original initial selected P,
+account/C and workingLayout. selectedProfileId inside this receipt is the durable
+initial selection; no extra legacy selection write or positive source identity
+replay. Future normal host must interpret it as historical initial selection,
+never current authorization. Every prepared [key,value_ascii] is copied to live
+exactly, with no normal serializer or selected-P filter. Absences remain absences.
+All source arrays are bounded by already accepted original source quotas. These
+are initial-copy quotas, NOT future mutable training retention limits.
+
+## Genuine draft, protected observation and no-argument owner path
+
+Extend only source-aware SQL context with a closed operation receiving a genuine
+new protected observation. It uses its own strongly retained accepted M1 draft,
+not caller bytes/stamps/ready flags. Refuse unless original draft is still current,
+accepted physical t1 was verified, fresh physical M/t1/inventory observation is
+actual same port/runtime/pair and exact raw, original SQL before snapshot remains
+identical, source eligibility and original fresh final Control remain current.
+No protected call/guard repo/domain adapter call while SQL queue is held.
+No hash/UUID work or caller-supplied digest in this stage: accepted M1 private
+anchorDigest already binds exact canonical raw.
+
+Add source-owner-only no-argument publishPrepared(). It requires actual runtime,
+private control and accepted preparation, single-flights and registers the actual
+outer completion BEFORE work. It performs fresh capability.read on same port
+outside SQL queue, then passes only genuine observation to actual SQL context.
+Do not expose via current actual AuthHost/runtime/UI. No public field or structural
+ready bit. Keep existing preparePublication and old constructors/exports intact.
+Concurrent prepare/publish/close obey the existing pending ownership; actual pair
+registry recognizes precise SQL/port/owner completions as exclusion-only facts.
+No arbitrary graph rescue or production timeout.
+
+## Exclusive own-mutation continuation
+
+At the actual queued publication start, authenticate the genuine accepted private
+draft/protected observation and original Control FIRST. Mint a private context-local
+continuation capturing original fresh/control facts, exact before snapshot,
+identity revision/schema/session/source binding, and original owner currentness.
+Rotate the accepted-mutation sequence synchronously and consume original stamps.
+General accountControlCurrent/freshEmailOtpCurrent MUST remain unchanged/false for
+the consumed old stamps: no global relaxation or resurrection, even on abort.
+The continuation is private to this one operation, never an exported handle.
+
+It checks its exact new sequence/claim token, unchanged original identity revision,
+actual original genuine OTP event and final Control still current, same account/P,
+actual runtime health/session/lease and owner currentness, pending other mutations
+zero, and original immutable before snapshot. Own DDL changes are narrowly expected
+by this continuation's explicit staged read, not by relaxing general schema checks.
+Every other accepted identity mutation rotates sequence immediately even while
+queued; accepted SDK commands change the actual captured SDK intent token; close
+revokes immediately. Any of these cancels further issuance/commit. Reads do not
+manufacture freshness. No re-pin/rebind to a newer event/Control, no guard calls
+under SQL lock. Invalid native work revokes before drain and keeps resources.
+
+The core's phase() marks its lease requires_reopen. Keep TWO separate private
+facts: (1) this genuine publication task still owns its serial queue through all
+rollback/reopen/classification/drain, and (2) original publication authority is
+still current. The queue-ownership marker stays until final drain even when an
+accepted SDK/identity mutation has already revoked COMMIT authority. It must NOT
+depend on original Control/current sequence/pendingMutations. Queue admission is
+not publication authority.
+
+Keep existing sourceLive/sourceReady/Fresh/Control and legacy live predicates
+unchanged. Only source-aware get/mutate/anchor ENTRY admission gains a separate
+narrow predicate: ordinary live OR this actual task still owns the queue, the same
+real lease remains current (requireReady=false), runtime role is still runtime,
+owner is not closed/revoked and actual storage/session remains healthy. Thus an
+accepted identity write can immediately rotate sequence and wait, and a genuine
+SDK credential operation can wait for its domain anchor. No exception after close
+or storage fault. Actual queued ordinary task execution continues requiring real
+ready through existing live/controls, after publication has finished its queue.
+No second queue, parallel SQL or generalized ready predicate. The own publication
+continuation independently uses same-lease false only for its own expected phase;
+COMMIT permission alone checks original fresh/control/sequence/identity facts.
+Prove actual SDK/credential/identity work across held reopen/rollback/success, also
+AFTER its enqueue has already invalidated the original COMMIT permission.
+
+The claim is a one-time mutation, not a new proof/readiness subsystem. Consumed original source stamps
+never regain authority after its completion. This does not prohibit genuinely new
+ordinary observations; M1 prepare/accept and M2 publication refuse a second
+publication in this already-confirmed source context. Expected capacity/policy/stale/cancelled
+pre-write refusal stays healthy. Later fresh proofs may be needed for retries only
+while confirmed unpublished; a confirmed publication cannot be published again by
+this source context. Existing identity-only SDK remains operational on its actual
+pair until a separately designed normal-host handoff; this stage MUST NOT close its
+SQL lane under a still-running SDK or pretend SDK quiescence was proved.
+
+## One actual transaction; strict observations
+
+Capture actual begin/execute/run/commit/rollback methods once, with existing receiver
+and ownership/currentness rules before later getters/issuance. Retain acquired and
+issued work, exact-void/installed SQLite ACKs, same completion registry, actual
+positive close/reopen evidence. No caller callbacks across final commit permission.
+
+1. Read exact original8 schema/data and genuine actual before snapshot.
+2. BEGIN actual transaction; re-read before and verify private continuation.
+3. Create exactly both new tables; insert every original key/u16; insert exact
+   singleton intent/digest. All insert/run ACK row counts follow installed contract.
+4. Read/validate exact complete11 schema, all unchanged original8 rows, complete
+   live-copy equality, exact singleton raw/digest/selection; no partial recognition.
+5. Recheck private continuation immediately before COMMIT issuance.
+6. Observe COMMIT and positive same-core close/reopen/readback classification.
+
+Use strict schema_version fencing: only own publication's exact complete DDL is
+allowed to change it. Do not globally skip runtime schema checks. Set a new known
+schema baseline only after full positive classification. Read the same complete
+objects without side effects; snapshot code can be a narrow internal helper/module
+but uses existing core/work, never a second owner. Initial8 and final11 are exact;
+intermediate9/10, extra objects, partial/copied-missing rows or mismatched receipt
+never become a confirmed publication. Do not compare current mutable identity rows
+to an ancient pre-publication baseline after a later legitimate identity mutation.
+
+Every complete DURABLE read during post-transaction recovery belongs to ONE
+classification attempt, including the multiple ensureConnection/selectProtocol/
+discover reads and final observe. Extend the existing outcome pin to record the
+FIRST complete before8 or desired11 plus exact full content AND schema_version.
+Every later complete durable observation must match that pin. before8->desired11,
+desired11->before8, identity/live/receipt drift or schema-version drift within the
+attempt faults; never reinterpret the last read as a later success. A complete
+third/partial state cannot become the pin of an acceptable outcome. Own uncommitted
+staged reads never set the durable pin. Before8 must have the original known
+schema-version; desired11 must have the exact version positively captured by the
+own complete staged schema read. Any alternate read exception is private to this
+publication plan, never an option on ordinary reads. Only positive COMPLETE
+classification installs the new operative eleven-object baseline. No retry can
+silently clear an existing pin/evidence while reopening remains unresolved.
+
+After positive publication on THIS original context, keep its existing identity-only
+adapter operational with the validated11 schema baseline and known publication
+state so ordinary SDK reads/writes do not spuriously poison cleanup. It still
+exposes only identity keys, never live sporting rows. No sporting mutable adapter
+in M2: live rows remain equal to the initial copy for this source context's lifetime.
+Original source/prepared data remain immutable; existing destination identity rows
+retain their already supported legitimate mutable behavior. No new original stamp
+or second publication authority follows from this layout.
+
+## Unknown outcomes, retry and cleanup
+
+Durable publication, current authorization and positive cleanup evidence are
+three separately retained internal facts. Source-only results have a finite code
+(publication_confirmed/publication_unpublished/outcome_unresolved/fault_held/
+publication_refused) and an observed-layout fact (before8/desired11/unknown).
+Every SourceOwner result also retains mayIssue/mayPublish/mayMount=false. Keep this
+new result vocabulary source-only rather than enlarge old generic quarantine
+contracts. No credentials/rows/raw intent leave through the result.
+
+Final matrix after the pinned complete durable observation:
+- COMMIT NOT issued: positive transaction end/close/reopen and exact before8 prove
+  publication_unpublished; healthy cleanup only without sticky native failure.
+- COMMIT issued, ACK NOT confirmed, exact before8: outcome_unresolved (or fault_held
+  if sticky native error), never automatic write retry or re-COMMIT.
+- COMMIT positively ACK-confirmed, exact before8: contradiction => fault_held.
+- COMMIT NOT issued + durable desired11: unexpected transaction state => fault_held
+  WITH observedLayout=desired11 retained as physical fact. Never healthy confirmed,
+  never retry or new authority. Mere matching bytes do not prove own publication.
+- COMMIT issued + exact desired11 after positive durable reopen/readback: physical
+  publication fact, even if original auth was revoked after issuance. The regular
+  publication_confirmed branch REQUIRES commitIssued AND no sticky native/protocol
+  fault; otherwise fault_held WITH desired11 retained as physical fact. No fresh
+  auth/stamp/healthy cleanup evidence follows from bytes.
+- Any third/partial/drifted state: fault_held. Unconfirmed reopen/end/readback:
+  outcome_unresolved or fault_held when actual native failure is sticky. No repair.
+Before any COMMIT, cancellation attempts rollback only after all acquired/issued
+work settles. Consumed proof never revives; healthy confirmed-unpublished retry
+needs new actual OTP/Control and M1 preparation. After any COMMIT issuance never
+issue compensating deletes or another COMMIT/write while outcome remains unknown.
+The SourceOwner MUST preserve the actual SQL result/physical fact after awaiting
+publication; do not replace it with an obligatory false check against the consumed
+original accountControlCurrent. Owner close/current status may revoke new actions,
+but cannot turn physical desired11 into unpublished or imply authorization.
+
+Unknown cleanup/reopen retains original owners and retry evidence. Positive release
+still requires actual existing SQL/protected/SDK cleanup evidence; physical desired
+state is not release evidence. Exact actual own close/dispose/queued work is excluded
+without cycles; unrelated pending work delays finish/release. Old constructors
+continue rejecting11 unchanged. A newly created source-aware8 constructor also
+refuses11; source-free/cold published recognition is a later separate constructor,
+not a global schema relaxation. Historical t1 alone or SQL singleton alone never
+becomes admission. No construction of Dactive/sourceVerified from matching shape.
+
+## Stages and evidence
+
+M2a: strict source-only publication result/layout/readback/actual transaction and
+private continuation on same SourceSQL; no production source-owner consumer yet.
+Actual SDK/SQLite context tests using genuine M1 accepted draft and fresh protected
+observation. Independent CODE gate before M2b.
+M2b: no-argument actual SourceOwner publishPrepared integration; same actual SDK,
+OTP/final Control, protected namespace and SQLite tests; combined CODE gate.
+Then complete root/web/E2E+positive stop/mobile+actual3modes(defaultlast)/types/lints/
+diff before subsequent published-host DESIGN. Record canonical contract, exact
+verification once in readiness, concise architecture references and fresh Vault.
+
+Required actual tests: exact all-profile/u16 copy/receipt/initial selection with
+original8 unchanged; copy no toJSON/serializer; no direct live sporting grant.
+Forged/proxied/copied observations/drafts/flags no reflection/issuance; no t1/wrong
+pair/warm drift/read failure/stale/missing Control/source debt/wrong P no writes.
+Repeated/concurrent publish/prepare/close, other accepted mutation/SDK command at
+acquisition/BEGIN/each insert/validation/before COMMIT/held COMMIT/after commit,
+no old proof revival. Valid pending SQL remains healthy and cleanup waits.
+Native malformed getter/ACK/return/row metadata revokes before unrelated drain;
+precise actual owned get/set/remove/anchor/credential/capability/dispose completions
+settle without self/cross-lane cycles and never supply ACK/value. Native method
+receiver/currentness and no later getters/issuance after revocation.
+BEGIN/DDL/every insert/COMMIT beforeeffect/aftereffect/lostACK/reopen/readback errors,
+partial/extra/altered schema/data/receipt, close and retry; actual SQLite rollback/
+atomicity and reopen across physical files. Published same-context identity SDK
+read/write remains safe/healthy; close/store-only retry preserves exact receipts.
+All old constructors/default/source8 contracts and actual normal bundle guards.
+No physical durability claim from desktop SQL. No full Beta/import completion.
+
+Allowed files: installationTransferQuarantineSql.ts and one internal pure SQL-layout
+helper if justified; installationTransferPairing.ts (M2b only); exact direct tests,
+architecture/bundle guards and canonical docs. Native core/port/runtime edits only
+if narrowly necessary and separately surfaced in DESIGN review, not silently.
+No changes to actual AuthHost/private preparation capture, normal Tracker or UI in M2.
+
+
+## Narrow implementation-discovered amendment — storage health after close
+
+The existing nativeRuntimeCurrent requires !session.closed. It therefore cannot
+serve as the final health test after healthy reentrant host/pair close: physical
+publication classification must still run with owners held, without converting
+normal lifecycle closure into a storage fault. SQL-local fault does not observe
+independent credential/protocol failures, so merely ignoring session health would
+incorrectly report a healthy publication after actual protected-store failure.
+
+Permit one narrow nativeCombinedRuntime internal inspector,
+nativeRuntimeStorageHealthy(session): boolean. It reads ONLY genuine sessions
+WeakMap membership and domain/credential/protocol health; returns false for forged
+sessions. It deliberately excludes active/closed lifecycle and grants no operation,
+activation, cleanup or ownership. Sole production consumer is SourceSQL's final
+factual publication classification; exact architecture consumer guard. Existing
+nativeRuntimeCurrent and all legacy paths remain unchanged. No new registry,
+state transition, caller callback, pair argument or public runtime property.
+
+Use this health fact with SQL-local !fault at final classification. Actual close
+still revokes COMMIT permission immediately through ordinary source/owner checks;
+physical after-issued-COMMIT result remains factual. Actual pending unrelated work
+must settle before classification and cleanup. Positive pair disposal continues
+requiring its own original SQL/protected/SDK receipts and health, independently
+of publication result. Add actual host/pair-close before COMMIT and during held
+COMMIT/reopen controls plus genuine credential failure during publication to prove
+healthy closure is distinct from sticky native faults. No normal admission can
+use this inspector. This narrow DESIGN amendment was independently accepted before implementation.
+
+
+#### S6m2a — source SQL implementation; independently accepted
+
+The original core has a source-context-only publication task, retaining the genuine accepted M1 draft and consuming its original stamps through an exclusive mutation sequence. It copies all original u16 rows plus exact intent/digest in one actual transaction. Separate queue ownership survives revocation through rollback/reopen/classification/drain. Existing ready predicates remain unchanged; source get/mutate/anchor entry may queue behind that held task but cannot execute without ready.
+
+Own staged schema reads are separate from durable reads. Complete durable discovery pins first before8/desired11 with content and schema version. Any later contradicting initial version immediately revokes before further queries; content drift is never reinterpreted. Only healthy positive final classification installs this context's eleven-object baseline; the existing identity-only SDK stays operational. Old/cold constructors refuse eleven objects; source-free published recognition remains a separate stage. Normal close is distinguished from storage failure by the accepted private health-only inspector; no operation or cleanup authority follows. Physical facts and sticky failures remain distinct. Unknown/held outcomes preserve resources without repair.
+
+Every genuine source SQL task, pairing, runtime preparation and cleanup outward completion, including necessary queue aliases, is registered before deferred work. Exact own completions supply no value, ACK or grant and are excluded from self-dependent drainage. Unrelated acquired work remains joined.
+
+M1 accept retains its candidate privately until after the same task's last acquired-work drain. It then renews original currentness, genuine observation and exact bytes synchronously, installs the accepted draft and captures the latest issued occurrence with no later await. An observation completed during that drain is old; SDK revocation during it returns false.
+
+Parent finalized focus19 files/1294 tests PASS, actual host238/M2a63. Corrected independent final7 files/734 tests PASS, including the full actual host and affected M1/schema/completion/runtime controls; TypeScript/scoped lint/diff PASS. Prior broad independent20/1360 and eight original failure witnesses identified the corrected boundaries. Logs:/tmp/curling-s6m2a-finalized-{accept,focus,types,lint}.log and /tmp/curling-s6m2a-finalized-independent-*.log. M2a CODE passed before M2b implementation.
+
+#### S6m2a accepted observation-occurrence amendment
+
+The confirmed old genuine-observation replay needs occurrence information that the current genuine observation record does not contain. Extend only installationTransferPublicationProtocol.ts's private genuine AnchorObservation with a module-owned monotonically increasing safe-integer occurrence and a trusted function returning the latest issued occurrence. Increment only when the existing sole actual protected-port producer successfully records a genuine observation; refuse recording on exhausted MAX_SAFE_INTEGER, never wrap. No caller occurrence, clock, readiness flag, protocol wire field, constructor option or extra read/queue. The existing actual protected port producer call remains unchanged.
+
+At successful M1 acceptPublicationAnchor, synchronously retain the current latest issued occurrence alongside the already strongly retained accepted draft. M2 requires its actual genuine observation occurrence to be strictly greater than that accepted boundary, in addition to all existing genuine/current/exact raw/Q/M/pair checks. Capturing the latest issued occurrence (not only the accepted handle's occurrence) rejects a distinct handle already read before accept even if SQL has never seen it. The counter is module-global; unrelated ports may advance the boundary but cannot pass the existing same-pair provenance/currentness checks or supply an occurrence. Later actual same-port reads remain eligible. Occurrence orders successful producer observations, not physical storage mutations.
+
+This is a private freshness fact on the existing provenance record, not a new proof/grant, public API or admission layer. Existing observation consumers ignore these additive trusted fields. It does not guarantee against a physical mutation after a genuinely new successful read. All generic credential formats, native SDK policies, flags, source helper, old constructors and normal host/UI remain unchanged. Architecture consumer lists remain exact and unchanged.
+
+Required actual SDK/SQLite cases: exact M1-accept replay; older M1-prepare replay; distinct pre-accept observation never shown to SQL (including issued after the accepted handle but before accept completes); a later actual new observation succeeds; actual warm t1 loss is refused. Preserve healthy cancellation/retry and genuine completion registration.
+
+This narrow amendment received independent DESIGN PASS before production edits; the final synchronous after-drain acceptance boundary described above governs its timing.
+
+#### S6m2b — actual source-owner integration; independently accepted
+
+The actual source owner now has a no-argument, single-flight publication operation. It captures its actual pair/namespace/manifest and original Control, registers the precise outward completion before work and performs a new actual protected capability read outside the SQL queue. Only the resulting genuine observation enters the accepted SQL operation. No caller observation, bytes, readiness, pair or timestamp are accepted.
+
+The finite frozen source report preserves actual SQL code and observedLayout, including factual issued-COMMIT outcomes after the original stamps are consumed or auth/owner-close revokes further work. It always reports mayIssue/mayPublish/mayMount false. A protected or genuine pair/owner storage failure before SQL returns fault_held/unknown; healthy cancellation/refusal supplies no grant. Existing pending ownership joins preparation/publication/close without a second queue. Exact SourceOwner completions acquired by native SQL/protected methods are exclusion-only facts. Pure owned protected refusal remains healthy according to the existing port policy; SQL native contract failures retain their existing sticky failure behavior.
+
+The operation remains confined to the source owner and SourceSQL. No AuthHost/runtime/UI consumer, source-free host, ordinary sporting adapter, Tracker binding, source-helper change, activation or physical acceptance is introduced. Combined independent CODE and the complete local baseline have passed.
+
+Parent corrected combined M2a/M2b focus19 files/1324 tests PASS (95.97s), actual SDK/SQLite host268 cases, including63 M2a and30 M2b cases. M2b covers actual fresh protected contradictions, pre-claim stale SDK/identity facts, healthy rollback, factual post-COMMIT revocation, copy/COMMIT/reopen close, eight actual native uncertainty edges, actual outward SQL/protected completion exclusion and pending preparation/close. Protected completion tests use a direct captured native method (no fixture async assimilation). TypeScript, scoped lint and diff PASS. Logs:/tmp/curling-s6m2-corrected-{focus,types,lint}.log. Corrected combined independent CODE and full local baseline passed; exact baseline evidence is in TESTFLIGHT_READINESS.md S6m2.
+
+Before any actual SQL publication result is obtained, the source owner distinguishes sticky domain/credential/protocol or owner failure from healthy cancellation using its genuine existing pair health. The fresh protected read can itself fail while acquiring the SQL anchor even when the protected namespace remains healthy. Such failures report fault_held/unknown and retain evidence. Pure healthy protected-owned exclusion, SDK supersession and healthy close remain refused. No actual SQL publication result is rewritten. Permanent real SDK/SQLite controls cover malformed and own-completion anchor failures, healthy SDK supersession and pending M1 followed by a successful M2.
+
+Corrected combined independent CODE PASS:8 files/851 tests, including all268 actual host cases and prior close/outcome/freshness/completion controls; TypeScript/scoped lint/diff PASS. Log:/tmp/curling-s6m2-corrected-independent-focus.log. No remaining confirmed defect. The full parent baseline passed; exact evidence is in TESTFLIGHT_READINESS.md S6m2. No operative import, device or Beta acceptance.
+
+S6m2 is locally accepted after independent DESIGN, corrected M2a CODE, corrected combined M2a/M2b CODE and the complete parent baseline. Full counts/logs are canonical in TESTFLIGHT_READINESS.md S6m2. Source-free published recognition, positive original SDK/store quiescence and handoff, ordinary sporting/Tracker/UI composition, source writer exclusion/transport and physical/hosted/Apple acceptance remain separate gates. Q4 is not approved; Free/Personal/Team and Q1/Q3 are unchanged. No real backup, configuration, phone, account, hosted, index/ref/Git, activation, signing, installation or release mutation occurred.
+
+
+### S6m3a — source-free published binding (independent DESIGN/CODE accepted; runtime integration pending)
+
+## Goal and stage boundary
+
+M2a/M2b DESIGN, corrected independent CODE and the complete local baseline are accepted. The source owner can physically publish exact desired11 but still exposes only an identity-only runtime and false may-fields. Old and cold constructors correctly refuse eleven objects. Next establish a separate authentic cold recovery of the published binding from the actual SQL and protected stores, without original file or recovery code. M3a establishes only a private artifact-origin binding and positive cleanup, no runtime drafts, SDK, ordinary sporting access, Tracker or UI.
+
+M3b will separately design/implement the actual published SQL/credential runtime and preserved negative guards. M3c will separately design/implement the configured normal host, real original SDK quiescence/positive store close/reacquisition and normal Tracker composition. Each has its own independent DESIGN/CODE gate. Full combined baseline follows actual host integration. No implementation of M3b/c in M3a.
+
+Repository /Users/timhofer/curling-release-mvp, branch main; HEAD/main/origin/main 382ee40d37605b302c11b6390305857c7e2c3fde. Preserve 0 staged/85 modified/206 untracked. No Git mutation, env/config values, source helpers, actual archives, phone, hosted, activation, install/sign/release. Parent implements; reuse the existing explicitly authorized read-only reviewer only. Work stops for a genuine product question, none currently identified for this private binding prerequisite.
+
+## Existing facts and non-grants
+
+The exact 11-object publication consists of the original8 plus publication receipt/live/index. All original prepared rows, protected wire, Q/M and source-denial v2 are immutable original evidence. Identity rows, current SDK I values and ordinary live sporting rows are mutable after publication. t1's selectedProfileId/accountScopeId/Control are historical initial publication facts, not current auth, future account/Profile allowlists, tiers or entitlement. Free/Personal/Team and Q1/Q3 remain unchanged. No supplied true/sourceVerified/Dactive/ready flag substitutes for actual evidence. Do not mint an original decrypted SourceDenialHandle from shape or relabel cold metadata as the original SourceVerified archive proof.
+
+The existing training-only real backup is not a V3 source. M3a does not read it or invent absent identity facts. Existing source capture permissions do not extend to new identity recapture. Coherent SQL+Keychain backup rollback Q4 remains unapproved and undetectable locally under the existing documented boundary. No release waiver follows.
+
+## One actual owner/core and separate closed constructor
+
+Add only a distinct closed published SQL constructor/facade and a distinct private published owner, never broaden any existing public/default/cold constructor. The SQL constructor composes the existing createNativeTransferQuarantineContext installer and its actual core/lease/queue/engine lifecycle. It does not create a sidecar reader or another queue/owner underneath an active source runtime. Existing global SQL/protected ownership must refuse coexistence; a fresh store owner is allowed only after the preceding store owner actually closes/retires or on a true cold start. This guarantees store exclusivity only, not SDK quiescence or SDK reservation release. An old host may have positively retired both stores while terminal SDK cleanup failed and its SDK reservation remains held. M3a can then establish at most private read-only artifact provenance with every may-field false; it cannot confirm host/runtime/handoff success or release the SDK reservation.
+
+Prefer extending the same strict layout/read machinery in installationTransferQuarantineSql.ts with a private published-only mode; its returned frozen facade exposes only the new cold-binding operations and existing actual cleanup receipts. No caller-selectable mode/strategy, supplied pair, prepared record, stamps, digest or reader. Existing sourceVerified/sourceReady/M1/M2 paths stay unchanged and the published facade exposes none of them. A source-aware constructor must still refuse11; the published constructor must refuse0/1/3/4/5/7/8/9/10/foreign/mixed layouts, with no DDL/DML, initialization, repair or fallback.
+
+The new owner has no-argument inspect/verify and close operations returning frozen finite codes with all may-fields false. It captures internal options exactly once through the existing owned-work discipline. It creates exactly one real published SQL context and one actual publication credential port/namespace lease, and is the sole production consumer of those constructors. No original installationTransfer input/file/code is accepted. It uses actual captured provider configuration identity/root/platform; a configured app-facing factory remains M3c.
+
+## Cold candidate is read-only data, not authority
+
+On the original queue, reserve/open the actual SQL context and strictly inspect exact11 schema, column/index definitions and original bounded static rows. Return only an internal candidate sufficient for the owner to route an actual protected read: actual parsed boundQ and original manifest, tied to this exact context/snapshot/schema. This is not a runtime/proof, and must not escape the owner as a structural public grant.
+
+Validate the unchanged original prepared table with its accepted finite source bounds (416 rows/key256/3MiB raw), exact ordered slots/keys/u16/digests, source-denial v2 shape/package digest, canonical original Q/M/bound Q and exact original receipt raw/digest/canonical t1. Validate live table/index shape but do not enumerate/hash its mutable rows as immutable source evidence and do not require equality with original prepared rows on cold restarts: future legitimate training changes must survive. Identity rows retain the already accepted source identity bounds/shape during cold binding. Original source budgets apply only to original evidence, not later training retention. M3b must use addressed live reads and normal persistence semantics rather than a source-size retention cap; M3a introduces no live reader/writer.
+
+No initial untrusted SQL value constitutes source authenticity. Candidate parsing supplies only bounded data for subsequent actual protected-store observation. No account, Profile, DTO, current Control, raw payload or mutable live map is returned publicly.
+
+## Actual protected observation, outside SQL queue
+
+The owner acquires the original actual protected namespace via createPublicationTransferCredentialMigrationPort and its existing publication capability, in migration/read-only mode. Using only the actual internal SQL candidate's boundQ/manifest, perform a new real capability.read outside the SQL queue. The existing port validates actual complete inventory, exact actual M, all current-epoch canonical I values and exact canonical t1 twice with existing role/currentness/namespace ownership. No protected writes, old credential adoption, caller projection or simulated absence. Existing generic physical formats/SDK policies/default ports remain unchanged.
+
+Actual namespace refusal/fault, missing t1/M, wrong config/root/epoch/pair, foreign keys, unsupported values, uncertain native work, cancellation or close do not produce a proof. Mutable legitimate SDK I additions/replacements/removals from prior healthy published sessions remain allowed; do not compare current I to original migration values.
+
+## Same-core binding validation and genuine proof
+
+Pass only that genuine actual observation back into the same published SQL context after the protected task has settled. Re-read the complete static candidate/snapshot/schema and check original currentness. A candidate cannot be repinned after drift. Validate exact observed raw t1 against actual receipt raw and canonical pair Q/M fields; recompute standard SHA bindings with the accepted owned platform SHA adapter:
+- anchorDigest = SHA256(tuple(installation-publication-anchor/v1, exact t1 ASCII)); equals actual receipt digest.
+- protectedWireDigest = SHA256(tuple(installation-published-wire/v1, exact original stored protected wire)).
+- preparedDigest = SHA256(tuple(installation-published-sporting/v1, original packageDigest, canonical complete prepared rows JSON)), with identical M1 framing/budgets and no Profile filter/remap.
+- sourceDenialDigest = SHA256(tuple(installation-source-denial/v2, original packageDigest, exact original source projection ASCII)); equals actual stored source digest and t1 source digest.
+- exact package digest, original sorted Profile membership and historical selectedProfileId/source initial eligibility remain internally consistent. The historical source-account constraint checks only the historical anchor, never a future current account.
+
+A genuinely observed protected intent authenticates this immutable artifact binding; structural parsing/hash equality alone never does. Preserve the accepted observation-at-read contract; this does not claim continuous physical storage monitoring or detect a coherent old SQL+Keychain restoration. No protected call while SQL queue is held.
+
+Use the existing actual owned SHA path, budget before avoidable allocation, no caller fingerprint. source-denial hashing needs its own fixed v2 tag/bound through the same closed publication hash helper, not a default adapter override. Preserve all old hash bounds/constructors; add the exact architecture consumer edge only where needed. Drain acquired platform/native work fully, with no arbitrary Promise-graph or timeout rescue.
+
+After the hash work has settled, re-read the original complete static candidate/snapshot/schema on the same core and compare it with the originally pinned candidate before accepting any binding; drift during a held hash must be observed, not repinned. Finish that read’s acquired-work drain and renew original currentness. With no later await, synchronously mint one private frozen opaque PublishedInstallationBinding in a dedicated WeakMap module. Its only production producer is the actual published SQL context. Fields remain private and immutable: actual context identity, verified exact t1/anchor, original source negative projection, static binding identity/schema and context/owner currentness closure. It is artifact-origin provenance only, not a Profile/auth/cleanup grant. Fake/copied/proxied/wrapped objects must fail identity-only inspection without reflection. The originating context retains the binding strongly; close/fault/schema/static drift invalidate its operational currentness. No SourceDenialHandle is forged; later M3b may add a separate genuine-binding consumer to the existing negative guard composition after its own accepted design.
+
+The owner may retain that genuine handle privately but never return it as an app runtime, may flag or caller-supplied input for another owner. M3b's draft preparation will occur on this same genuine owner/context, not by handing a structurally supplied proof to a new factory. M3a tests may inspect the real proof through its closed internal inspector to prove provenance; production consumers remain exactly guarded.
+
+## Ownership, cancellation, repeated calls and cleanup
+
+Register every actual outward SQL/port/owner completion and needed queue alias before first work; exact genuine completion exclusion supplies no value/ACK/grant. Includes candidate, binding validation, SHA/capability, close and cleanup work. Retain unrelated getter/metadata/fulfillment work through settlement. No cyclic ownership predicates, new queue, after-the-fact receipt, fake lease or caller policy.
+
+Single-flight actual owner verification, no-argument calls. Owner close revokes further work synchronously before joining the pending operation and actual native cleanup. Pure healthy supersession/cancellation refuses without sticky failure. Malformed/contradictory/uncertain native SQL/protected facts revoke their genuine lane before drain and retain evidence. Distinguish native storage health from healthy lifecycle closure using existing genuine facts only; do not extend the health-only inspector into operation/readiness authority. SQL/context and protected cleanup use their actual original receipts and positive release/retirement checks. Unknown cleanup holds owners; do not claim absence/retire/repair. Retry only uses the same retained owner resources and actual cleanup semantics, no fresh owner over an uncertain old one.
+
+Suggested finite public owner code set: binding_confirmed (private provenance retained, may-fields false), binding_refused, fault_held, cleanup_held, closed. No auth/sporting success meaning follows. No raw binding/profile/account or database content in reports/logs.
+
+## Required actual verification
+
+Use genuine corrected M2 source flow to create desired11 in real disposable SQLite with installed SDK + synthetic bridge/API, positively dispose that actual old host, then construct the new source-free owner with only ordinary captured migration options. Do not fabricate a published proof or t1. Never use the real user backup or phone.
+
+Positive controls: exact all-Profile/u16 artifacts authenticate without original file/code; source input getters are never consulted; actual current SDK I changes survive cold recognition; initial live rows may be legitimately changed/added/removed between sessions and later values larger than original source limits do not prevent static binding (no live enumeration/retention cap); successful cleanup/reacquire; ordinary identity mutations from prior sessions remain data, not copied current auth grants. No Tracker registration or runtime ready publication.
+
+Negative matrix: every wrong/partial/foreign layout, original source/prepared/wire/receipt/Q/M mutation, static content/schema drift while the actual protected read/hash is held, canonical but nonmatching actual t1, wrong namespace/config/root/epoch/inventory/I, missing/unreadable/uncertain protected values; fake/copied/proxy observations/proofs; arbitrary candidate input cannot create a binding. Preserve all eight original objects/data and no write/repair on refusal.
+
+Adversarial ownership: exact actual SQL/credential/owner/close/SHA completions returned as acquired native methods/results cannot block their queue or become values/ACKs; direct synchronous throws and unrelated malformed pending work revoke immediately and drain before cleanup; healthy pending work and close remain distinguishable. Repeated verify/close, close before/during native/hash work, currentness lost during final drain, retained uncertain release, and a second actual store owner while SQL/protected resources remain active/held must refuse without takeover. Separately exercise an SDK-only-held original host whose two stores were positively retired: any M3a confirmation remains private artifact provenance/all may-fields false, and cannot clear or bypass the original SDK reservation. Preserve the actual normal-host ownership refusal for that root. This case does not count as SDK/host/handoff success. A newly settled positive observation/proof cannot be published before its original actual work and final currentness checks settle.
+
+Focused parent/independent existing M1/M2/source/default/legacy regressions, types/scoped lint/diff. Full parent baseline follows combined M3c actual host gate; M3a itself is never whole-import or Beta acceptance. Reconcile canonical contracts/architecture edges without duplicating volatile evidence. Save substantive accepted progress to the canonical Vault page and log, preserving parallel updates. No commit/stage/ref changes.
+
+## Allowed production surfaces
+
+installationTransferQuarantineSql.ts (new closed published constructor/read-only binding facade), installationTransferPublicationProtocol.ts (fixed owned source-v2 SHA helper case only), a small dedicated installationPublishedBinding.ts and installationPublishedOwner.ts (names may be adjusted consistently), existing native credential publication port/namespace only for genuinely necessary narrow read-only reuse with exact constructor behavior preserved. No Swift/source helper/flags/normal host/runtime/Tracker/UI changes. Existing negative source guard code is not changed until M3b DESIGN. Exact architecture tests, real synthetic SQL/SDK tests and canonical docs only. Surface a concrete broader seam before production edits if this graph cannot implement the accepted contract.
+
+## Later M3c constraint from the actual SDK constructor
+
+The actual supabaseClient constructOnce fence retains nativeConstructedRoots after positive reservation release. Even a healthy original Host.dispose cannot construct a second SDK for the same root in the same JavaScript realm. M3a must not change/reset that fence or use another root/config to bypass it. M3c must explicitly honor a real cold restart or obtain a separate accepted narrow lifecycle design before implementing any same-realm handoff. A read-only binding success has no bearing on that constraint. All UI/source flow consequences remain in their later design, not an inferred M3a release decision.
+
+## Narrow completion-inspector implementation seam
+
+Cold M3a has no activated runtime/session and must not fabricate one merely to share completions. The existing SQL sourceCompletion and publication credential port already privately register actual outward/queue completions before work. Add an exclusion-only local inspector on the genuine published SQL facade and an additive ownsCompletion(value) method on the existing genuine publication capability. Each reads ONLY its own private completion WeakSet, not any external ownership predicate, so neither can recurse. The new actual owner owns(value) combines its exact pending/closing promises with these two genuine local inspections (and precise factory/acquisition completions it actually captures). SQL and protected work can therefore recognize each other's direct actual producers without a runtime/session, second registry, structural readiness or caller facts.
+
+The capability is still obtained solely through the actual port WeakMap; copied/fake ports cannot supply an inspector. The SQL facade is constructed only by the actual closed published constructor. Both inspectors are exclusion-only: no value/ACK/grant/evidence, currentness, lease claim or operation permission. Old source/default owners do not consume the additive inspector and their behavior stays unchanged. Exact architecture boundaries admit only the new published owner as the added capability/constructor consumer. Include direct genuine cross-lane candidate/verification/cleanup/capability/acquire/release completions in the cycle matrix; no Promise wrappers, recursive callback graph or after-start registration. This concrete narrow port capability addition must receive DESIGN acceptance before editing that production surface.
+
+
+Independent DESIGN PASS covers the original candidate, store-vs-SDK exclusivity clarification, post-hash full static reread/final drain and local exclusion-only completion inspectors. No M3 runtime/host/Tracker/UI or SDK lifecycle modification is authorized by this prerequisite.
+
+
+S6m3a implementation is independently locally accepted. The closed published owner verifies genuine exact11 provenance through the same real SQL core and actual protected namespace, then retains only a private migration-role binding. The original static artifact and receipt are checked with standard fixed framing and a full post-hash reread; mutable live data is neither enumerated nor capped as source evidence. Old constructors remain exact. Same-owner completion inspectors are local exclusion-only facts, not runtime/session authority. SQL/protected exclusivity is distinct from an SDK-only-held reservation, which remains blocked for normal host construction.
+
+The corrected owner retains even inadmissible acquired options-root work without adopting it as configuration, validates each field before further acquisition, checks currentness before/after descriptors and ownKeys, and joins all acquired work before reporting or cleanup. Published native read/open/configuration throws revoke before drainage; healthy cancellation remains distinct. Positive cleanup uses original receipts; unknown cleanup retains ownership for the same owner's retry. Independent corrected CODE has no remaining confirmed defect; exact focused evidence and limits are in TESTFLIGHT_READINESS.md S6m3a. No SDK, paired published runtime, current identity/Profile/Tracker/UI or operative/Beta grant follows. M3b runtime/negative guards and M3c actual configured host remain separately gated; full combined application baseline follows that integration.
+
+
+### S6m3b — published runtime and negative guards (corrected DESIGN and both CODE gates accepted)
+
+
+## Authority, preflight and stage boundary
+
+Implement only after independent S6m3a CODE PASS and this complete M3b DESIGN gate. Parent implements in /Users/timhofer/curling-release-mvp, main; HEAD/main/origin/main382ee40d37605b302c11b6390305857c7e2c3fde;0 staged/85 modified/208 untracked before M3b. Preserve the full existing tree. Re-read docs/AI_DEVELOPMENT_WORKFLOW.md, canonical MOBILE_APP_MIGRATION S6l4/5/M1/M2/M3a, actual runtime/port/negative-guard code and relevant ADR0054. No stage/commit/patch/ref/PR/push, env/config values, .env.local, actual archives/backups, device, source helpers, Swift, hosted, activation or release. Stop for a genuine product decision; none is needed for this dormant storage prerequisite. Existing user-authorized read-only reviewer only, no implementation delegation.
+
+M3a establishes only source-free provenance of exact11 on the actual SQL/protected pair. M3b adds actual paired runtime adapters on THAT SAME genuine owner/context/lease, plus the existing original negative deletion guards through a distinct genuine published-binding consumer. It does not integrate a configured normal AuthHost, SDK, Profile/Tracker/UI or original-host handoff. That is separately gated M3c. Full combined baseline follows the M3c CODE gate; focused actual SQL/SDK/source/default/legacy regressions and types/scoped lint/diff are required here.
+
+Free/Personal/Team and closed Free Beta are unchanged. Historical t1 account/selectedProfile/Control is not current login, a future account/Profile allowlist, subscription, or cleanup grant. A real original source handle/SourceVerified/Dactive is never forged or set. Original source account and selection constraints remain historical publication checks. Q1 permits further exercises/blocks in the SAME begun Session, never a new Session; Q3 verified old credential removal is approved; coherent SQL+Keychain rollback Q4 is NOT approved or fixed. No source-free runtime grant waives release gates.
+
+## Concrete existing seams and invariants
+
+The closed createPublishedInstallationSql facade is created only by createPublishedInstallationOwner and uses the existing createNativeTransferQuarantineContext installer/core/lease/queue. Original constructors still refuse11. New binding is a private genuine WeakMap fact, not current identity. Its currentness currently requires migration role and exact original observed record, including identity. A legitimate runtime identity write must not be implemented by broadening this cold proof's meaning. Instead explicitly consume its CURRENT genuine provenance at a one-way private preparation transition, retain immutable source facts for negative constraints, and derive actual runtime rights from a genuine new session and actual same-core prepared drafts.
+
+Existing prepareIdentityRuntime is sourceVerified-gated and identity-only. Leave it and every old mode unchanged. Existing prepareTransferIdentityCredentialRuntime looks up the genuine port but does not itself authenticate the supplied lease/Q/M/domain arguments. Their causal provenance currently comes from its actual closed owner. Leave that existing path unchanged. M3b2 instead adds the narrowly specified new publication-capability preparation below, deriving its pair from that actual port’s genuine last observation and retaining all descriptor work. It must not receive a supplied stand-in adapter/lease/session. The existing publisher's paired prepare/activate/cleanup algorithm is already genuine and synchronous; add a distinctly named closed published publisher that reuses buildRuntimePair(...,true) with its exact actual owner as sole added caller. Do not weaken old publisher checks or fake a session for completion sharing.
+
+The source-negative guard module currently accepts only actual SourceDenialHandle. Add a separate constructor resolving only genuine PublishedInstallationBinding at its still-current cold boundary. A private common builder may share already validated immutable original guard facts; old constructor continues resolving only SourceDenialHandle. No shape-based fallback, caller facts, false source handle or source digest recast. Guard facts are negative-only and never login/grant evidence.
+
+## One-way same-owner runtime preparation
+
+Extend only the published SQL facade with a closed preparePublishedRuntime(binding,session,ownerCurrent) seam. It accepts only the exact retained genuine binding minted by that context, while still current, and a genuine prepared runtime session. No caller-supplied static record, modes or readiness. On the original queue, re-read the complete original static evidence/current identity/schema against the cold candidate, drain actual work, renew actual original currentness and prepare a genuine domain draft. Preparation must not return a usable draft before that last drain/currentness check. Role transition is synchronous with no later foreign await/callback between final authority check and draft publication. Close during preparation keeps actual acquired resources until drained; it yields no pair.
+
+Cold binding currentness remains migration-only and need not survive the prepared/runtime role. Capture the original immutable origin/source facts while genuine binding is current, before changing role; an explicit private prepared-origin cell/session on the same context thereafter authenticates runtime operations. It must retain exact original wire/prepared/pair/source/receipt and schema, not mutable identity/live rows. Do not bypass the old sourceVerified gate by assigning it true. No old preparation function or public flag chooses this route.
+
+Extend the actual owner with no-argument handoff() that single-flights before its first work and returns only a genuine NativeCombinedRuntimePair or null to its future private configured-host caller. The first handoff always performs a fresh complete actual M3a verification on this owner, even if a prior verify retained a binding; do not reuse an arbitrarily old cold observation as this transition’s fresh read. Retain the resulting actual opaque binding internally. The established observation-at-read contract remains explicit, without claiming continuous physical monitoring after that read. Prepare the published negative guard owner while the binding is genuinely current; then create the actual session, prepare the same actual SQL draft and actual credential draft through the new genuine publication capability preparation, and synchronously publish one actual paired runtime. Before the one-way proof consumption a healthy refused preparation may freshly verify again. After consumption, any failed/late preparation leaves this context/owner cleanup-only forever, abandons only its own actual drafts/session and retains cleanup obligations. Abandon never returns this published context to migration or reactivates a consumed proof. It never fabricates absence or creates a second store owner. Repeated handoff returns the same current genuine pair, never another session/lease. verify remains all-may-fields false and may refuse once this owner has moved into runtime. close synchronously revokes pending work and joins it.
+
+The owner privately retains the guard owner and exposes only a closed source-guard repository seam for the future actual host, using ITS OWN actual runtime pair.domain, not a supplied adapter. A trusted host-current predicate restricts it further but is no positive identity authority. It must not expose original facts or a source handle. Actual host/API/SDK binding of control observations remains M3c; M3b does not invent a control result or resolve a product question.
+
+## Addressed mutable live data and bounded original evidence
+
+The new genuine domain adapter routes exact supported identity keys to installation_transfer_identity_v1 with the existing accepted shape/4096-row/1MiB-value/4MiB-aggregate rules. Unknown identity/control keys refuse. Ordinary nonidentity data uses installation_transfer_live_v1 with addressed key reads/writes/removes. Preserve the existing ordinary native reserved namespace rejection (nativeMigration, credential, installationTransfer and sb-); neither route exposes immutable import tables, source metadata or protected credentials. Later legitimate canonical Profile keys are not restricted to original t1 Profile membership. The actual normal Profile/Tracker scope still grants sporting access later; returning a private pair here is not login or mount.
+
+Original evidence remains finite and fully validated by the accepted cold path: original prepared table <=416 rows, key256,3MiB raw; wire/source budgets unchanged. Do not enumerate, hash, compare with the initial copy, or cap mutable live rows by source budgets. On each actual runtime control observation, preserve strict schema and exact unchanged original wire/prepared/Q/M/source/receipt against the retained original pin using the same existing strict read machinery; current identity is separately checked/updated by actual own mutations. Generalize no old same()/read rules. A private published-runtime static comparison, if necessary, excludes ONLY mutable identity/live, not any original evidence. publishedVersion/runtime schema remain exact. No repinning after drift, DDL, repair or fallback.
+
+Live storage uses the existing u16 ASCII representation so exact whitespace, numeric spelling, lone surrogates and embedded zero survive SQL/native bridges. The source encoder/decoder currently has a1MiB bound: do NOT use it as a future training retention cap or change its old defaults. Add private published-live-only encode/decode/validation functions (or a narrowly named separate module) with chunked exact code-unit handling and no source import row/value/aggregate budget. JS/native SQLite resource failures follow ordinary input/native failure semantics, not an invented source-size quota. A future live value >3MiB and >416 live entries must actually work in disposable SQLite. No unnecessary full live-map allocation. Validate actual addressed replies as exact bounded result SHAPE (0/1 row), own plain data descriptors, value is canonical u16; do not coerce, truncate or normalize. Initial live rows remain unchanged until an actual normal mutation requests it.
+
+## Actual SQL transactions, freshness and failure evidence
+
+Use the SAME actual core queue, connection, engine, lease and captured native methods/receivers. All mutation protocol and ACK/readback evidence is actual. Capture native begin/run/commit/rollback methods with owned descriptor discipline before BEGIN; renew currentness before each actual native issue and after settlement. For addressed live mutation, read actual current addressed value; under BEGIN recheck original controls and addressed before state, conditionally INSERT/UPDATE/DELETE with expected old value, validate exact actual run ACK/count, addressed desired readback and unchanged controls, then COMMIT ACK and durable desired readback. Identity mutation retains original accepted full identity projection and capacity checks. A missing removal may be verified idempotent success without DML. No successful mutation from an old ACK, stale snapshot, other queue or expected value alone.
+
+Malformed/rejected native methods/results, ambiguous transaction outcome, static/schema contradiction or bad readback revoke the genuine lane before draining acquired work/rollback. Retain uncertainty; no automatic replay/repair/reacquisition. Healthy cancellation before issue/while unrelated pending work remains distinct from sticky storage failure; late factual COMMIT does not turn a closed context into a successful public operation. Record real NativeRuntimeEvidence/transaction/cleanup fields as existing consumers require. Credential failure alone preserves the existing Q1 same-Session lifetime policy, domain/protocol failure revokes corresponding actual rights through normal runtime notifications. Do not silently alter failure policy or host lifetime semantics here.
+
+Draft anchor() is a real same-core static/current control observation returning an actual private token. anchorCurrent checks its genuine membership, actual session/lease/role/current generation; successful ordinary Identity/Live writes do NOT invalidate this storage anchor. It authenticates the same stable store/static pair, not a current identity-revision snapshot. Close, actual domain/protocol failure, lease/lifecycle loss or original static/schema contradiction invalidate it. Identity/auth freshness remains the actual higher-layer coordinator’s responsibility. Credential runtime's actual M/I operation must never await protected work while holding SQL queue; SQL never calls protected runtime from within its queue. Original actual protected t1/M/I inventory remains checked by M3a and actual credential preparation. Existing publication/default port behavior and physical slots/codec policies stay unchanged.
+
+## Completion ownership and cleanup
+
+Register exact outward owner/handoff/SQL/runtime/credential/dispose completions and necessary queue aliases BEFORE first acquisition. Reuse the M3a actual local SQL/port inspectors, actual runtime session registry after genuine pair publication, and the genuine guard owner's local completion inspector. No recursive ownership predicates, arbitrary Promise graph, new second registry/queue or timeout rescue. A true direct producer completion is exclusion only, never value/ACK/Ready/evidence. Retain unrelated malformed/getter/metadata work through settlement. Native throws, result assimilation and cleanup must be reviewed as new abstraction failure modes.
+
+Once an actual pair exists, owner close uses that pair's actual dispose path and same retained resources, not concurrent independent SQL/credential cleanup over its runtime drafts. Genuine successful paired disposal positively closes/retire both and lets the owner clear its own lease references. Unknown cleanup retains ownership, can retry only that same actual healthy pair/owner; evidence-held is sticky. Before a pair exists, retain M3a actual SQL/credential cleanup and late-acquisition handling. The new domain draft's close/releaseReady/retire must use original real core receipts; protected draft uses original namespace receipts. SDK is not created/released here. SDK-only-held prior reservation still blocks future host construction; no session pair success is SDK/host/handoff success.
+
+## Verification and acceptance matrix
+
+Start with corrected actual M2 source publication, real disposable SQLite, installed SDK and synthetic bridge/API. Positively dispose actual old stores/host, construct genuine M3a owner, then actual handoff. No fabricated source/proof/session/drafts/pair/receipt. Test actual initial all-Profile/u16 rows; addressed read/write/remove, absence, exact raw whitespace/numeric/lone-surrogate/zero; later Profile, >3MiB live value and >416 live rows, removal/mutation retained through actual positive close/reacquire; original8/receipt/t1 immutable; no source file/code input or legacy storage access; SDK I additions/removals/replacements through actual new credential runtime and real SQL anchor. Initial identity reads/data remain data, no app admission/Tracker registration.
+
+Negative/adversarial: fake/copied/proxy binding/session/observation cannot prepare; exact old constructor refusal11 preserved; schema/static/pair/receipt/source drift before/during held runtime prep, native/hash/final drain cancellation; unsupported/reserved keys and wrong value refusal without I/O; malformed addressed read/rows/ACK/readback, wrong counts/keys, row changed during BEGIN, statement/COMMIT/rollback/reopen ambiguity, direct sync throw at each native method, missing method/getter side effects, retained unrelated pending malformed work revoked before drain; direct actual cross-lane handoff/owner/runtime/anchor/get/set/remove/capability/close/dispose/SHA producer completions at acquired native methods/results cannot deadlock/grant; healthy pending SQL work/close and unknown cleanup retry remain distinct; close during an issued runtime credential operation retains the existing conservative failed-credential/evidence-held result rather than promising positive cleanup; concurrent owners refused while actual resources active/held; successful paired dispose/reacquire and original SDK-only-held negative control.
+
+Negative guards use the SAME actual genuine new runtime adapter and original authenticated source guards. No source guard means normal destination behavior, not global allowlist. Original unresolved guard remains negative; original archived resolution does not clear it. Source fencedRevision raises floor. Actual destination matching receipt must exceed max(originalR,originalF), correct nonce/guard; subsequently observed higher destination floor is monotonic perProfile and old matching receipts do not revive rights. All accepted S6l4 cases must be repeated through actual published binding/runtime, including multiple Profiles, current server revision below floor, pending mutation, concurrency, reentrancy and cross-lane own completion. Current host/control binding is unimplemented until M3c and must not be faked by tests claiming app admission.
+
+Parent focus of new + actual M1/M2/source/default/legacy and architecture, types/scoped lint/diff must pass, followed by independent complete M3b CODE review/probes. Keep exact evidence canonical in TESTFLIGHT_READINESS, concise runtime contract in MOBILE_APP_MIGRATION/ADR and rollups only when accepted. Follow Vault standing progress duty and preserve parallel PostHog/Mahoo entries; no Beta/release claim. Full combined application baseline after M3c, not every substage. Final actual report: starting/final Git, changed files, implemented scope, consolidated resolved findings, tests/counts/logs, remaining gates, no unauthorized mutation.
+
+## Allowed production surfaces
+
+installationPublishedOwner/Binding, installationTransferQuarantineSql closed published facade/private runtime only; installationTransferSourceGuards distinct genuine published consumer and shared internal negative logic; nativeCombinedRuntime distinctly named closed published publisher reusing existing paired lifecycle; nativeCredentialMigrationPort ONLY exact new actual owner reuse/actual completion preparation if genuinely needed, with every old constructor/runtime unchanged. A private live-codeunit module is allowed if necessary to preserve old bounded source codec and prevent source retention caps. Exact architecture tests, actual synthetic SQL/SDK/guard tests and canonical docs. No actual AuthHost, SDK constructor/root fence, normal composition, Tracker/Profile/UI, source helpers, native plugin/Swift, activation or operative data changes until their separate gate. If these concrete seams cannot preserve invariants, surface the actual seam for DESIGN amendment before broader production edits.
+
+
+## Consolidated DESIGN correction — three transitions, two CODE gates
+
+This section overrides any less precise earlier wording. Implement no M3b code until the entire corrected design is accepted.
+
+**M3b1 SQL runtime/live codec CODE gate first:** only the closed published SQL facade/private runtime, necessary consumed-proof currentness in its existing private binding producer, private live codec, exact architecture/tests and canonical contract. No production Owner/Credential/Guard/publisher integration. Real tests can compose the actual M2-published SQLite + new actual SQL facade + actual publication port, acquire the genuine lease/read actual Q/M/t1/verify real binding, create a genuine session and new actual SQL draft, and use the EXISTING actual transfer credential preparer/actual paired publisher solely as a positive test harness to activate and exercise the SQL runtime. This is no fake session/draft/lease/proof or readiness stub. Malformed credential preparation is deliberately deferred to M3b2; the accepted old path is unchanged. Independently review the complete M3b1 code and genuine read/write/transaction/codec/failure/cleanup evidence before any production M3b2 code.
+
+**M3b2 Owner/Credential/Guard CODE gate second:** only after M3b1 CODE PASS, wire the actual published owner, new narrow genuine publication credential preparation, separate actual paired publisher and distinct published-negative-guard consumer. Review their complete resulting state with the actual SQL runtime and all earlier controls. Full combined application baseline remains after M3c actual configured host.
+
+### Exact proof consumption/failure matrix
+
+The SQL context holds a private monotonic consumed cell. It is initially false. Only after the last actual preparation read/drain and renewed genuine binding/session/owner/schema checks, in the same synchronous step that publishes the real prepared SQL draft, set consumed=true and role=prepared. Cold candidate/proof currentness requires consumed=false; it never becomes false again within that context, including abandon/failed credential preparation/dispose. The new published SQL draft’s abandon is close/cleanup-only, never role=migration. Old identity/source draft abandon behavior is unchanged.
+
+1. Healthy verify/admission refusal before consumption: no new role/draft has been published, actual original binding remains current; abandon only that unused genuine session and allow a new complete fresh verification/attempt. Native uncertainty/fault still blocks, independent of role.
+2. Last preparation check fails before its synchronous consume: no draft/current grant, drain everything, retain original resources. Retry only if the ACTUAL original binding is still current, storage is healthy and owner is not closing; otherwise cleanup-only/held.
+3. Any failure after actual consume, including a later credential descriptor failure, lost currentness or abandoned prepared draft: no new verification/session/runtime in THIS context/owner, even if stores remain healthy. Keep cleanup obligations; no old proof resurrection by setting a role back. The actual owner distinguishes this using the genuine original binding’s still-current inspection and retained actual SQL draft, not a caller boolean.
+4. A late actual draft already minted by the synchronous consume must still be retained by its actual owner before cancellation/readiness checks. An actual cleanup resource must not disappear behind a null result. Only genuine positive close/retirement allows a separately constructed fresh store owner to perform wholly new cold observations/proof/session; that is not revival in the consumed old context.
+
+### New exact publication credential preparation seam
+
+Add a distinct prepareRuntime method ONLY to the existing genuine PublicationCredentialCapability, with exact new production consumer PublishedOwner. Do not change prepareTransferIdentityCredentialRuntime, runtimePreparations/transferPreparations or any old default/source preparation behavior. The existing WeakMap authenticates the port/capability only; it does not authenticate arbitrary supplied arguments. The new capability instead retains the exact most recent genuine publication observation object produced by THIS port’s actual read/insert operation (one private pointer, no new registry), and checks identity against that pointer, global genuine observation currentness, non-null exact confirmed t1, actual owned lease and current namespace/migration role. Derive immutable bound Q/canonical M from that actual observation and validate their existing config/root/pair match. The actual owner passes the same genuine observation it just used for the same SQL binding. No caller-supplied Q/M/projection/Ready flag or imported source handle. This seam does not claim SQL binding authority independently; the real owner composes the actual same-context proof.
+
+The method takes actual lease, genuine last observation, genuine session, actual SQL draft and current callback from its closed owner. Register its exact outward Promise in the EXISTING local publicationCompletions set BEFORE the first descriptor/native work, e.g. defer the body until after registering that result. No unregistered async outer wrapper. Actual namespace serialization and every necessary exposed queue alias must share the same precise exclusion; no fake session registry before genuine pair publication. The local ownsCompletion inspector already shares this exclusion with SQL/owner.
+
+Its new preparation path captures remove/failedWriteMayLosePreviousValue exactly once from the real retained binding receiver. Capture and retain every acquired descriptor value/get/set reference BEFORE validity/currentness checks, including a descriptor acquired while close runs reentrantly. Validate each before acquiring a later descriptor. Getter/setter functions are retained/drained, not invoked as the application method; their acquired then metadata is still owned work. Use the actual protected work observer, original receiver and actual current namespace/session/domain/owner checks. Fully drain and renew currentness after the last descriptor work before reporting preparation success. A supported direct own completion is exclusion only; unrelated pending work must settle. No structural ready surrogate.
+
+If an actual credential draft was created before that last drain and then loses currentness, abandon it so it cannot be ready, but return/retain it explicitly as an actual cleanup obligation, NOT as a prepared grant and NOT hidden behind null. A closed internal result such as {kind:prepared,draft} versus {kind:cleanup_required,draft} versus null is allowed; it comes only from the actual capability, and the owner still calls actual ready/current before synchronous pair publication. This is not a caller Ready flag. Original positive draft can reuse the actual existing runtime/namespace machinery; its new published-path abandon closes instead of reverting to migration. Old paths remain exact. Before any draft exists, failed preparation leaves the genuine original migration cleanup available. The actual owner retains late SQL/credential drafts BEFORE checking its own cancellation and joins the pending attempt before choosing their real cleanup path; no fabricated absence or concurrent independent cleanup over a draft.
+
+### Ordinary storage anchors and selected transaction/close behavior
+
+The new anchor authenticates stable original store/static controls. Successful Identity/Live transactions do not rotate the storage anchor or call core.phase/reopen. They can legitimately occur while a credential operation holds that anchor; invalidating it would make the current credential implementation record a failure. Use actual BEGIN/conditional statement/ACK, actual COMMIT ACK and same-original-connection addressed/full-identity readback with unchanged static controls for normal success. No Reopen on every successful write. Any actual failure/ambiguity is conservative, revokes before drain and never returns success from a new post-failure repin. Reopen/outcome recovery is only the existing uncertainty/cleanup machinery when genuinely needed, no write replay.
+
+Close during healthy pending SQL-only work can drain and positively retire when actual receipts prove it. Close while a runtime credential operation has been issued follows the EXISTING conservative credential behavior: lost allowed/currentness can record credential failure; paired cleanup may therefore be evidence-held even after physical closes. Preserve that result and ownership, do not label it healthy/positive by a broad new cancellation rule. A successful ordinary domain write during a held credential read must remain a positive control: same storage anchor, credential operation succeeds after settlement. Negative controls close/domain/protocol/static/schema failure still revoke it. Q1 same-begun-Session continuation remains unchanged.
+
+
+### S6m3b1 — published SQL runtime (focused CODE accepted)
+
+The closed published SQL facade now consumes its genuine cold binding once and prepares a same-core runtime draft. Abandonment never revives migration rights. Identity remains bounded separately; addressed mutable live values use a private exact UTF-16 codec without source retention caps. Ordinary successful writes preserve stable credential anchors; static/schema drift, ambiguous transactions and last-drain lifecycle loss refuse success. Real close receipts support healthy same-owner retry, with conservative credential failure retention. No production owner/credential/guard/publisher integration is included: that remains S6m3b2; configured SDK/normal host remains S6m3c. Exact verification is in TESTFLIGHT_READINESS.md.
+
+
+### S6m3b2 — same-owner paired runtime and preserved negative guards (CODE accepted)
+
+The source-free owner now freshly verifies before its first no-argument handoff, consumes the genuine same-context SQL binding once and publishes the actual same-lease SQL/credential pair through a distinct named publisher. The additive genuine publication capability derives Q/M from its exact latest actual observation, registers preparation and namespace completions before work, and retains every acquired descriptor value/get/set through final drain. An actual late credential draft returns explicitly as cleanup_required and is retained before owner cancellation checks. After consume, failed preparation is cleanup-only; old preparation APIs keep their behavior. Actual paired disposal governs cleanup and healthy unknown-close retry; credential-only failure preserves existing domain lifetime for Q1.
+
+A distinct genuine published-binding consumer shares the original negative guards on the owner's own domain adapter. Remembered per-Profile destination fences cannot be downgraded by an older matching receipt. A still-valid actual destination guard remains unresolved when that happens, so higher genuine server recovery remains possible; malformed/contradictory evidence stays refused. Original guards and newer destination guards both retain their constraints. Historical publication identity is no permanent account/Profile allowlist. No actual configured normal host/SDK, Tracker/UI or application admission is included; S6m3c remains separately gated. Exact focused evidence is TESTFLIGHT_READINESS.md.
+
+
+### S6m3c — configured published normal host (independent DESIGN/CODE accepted)
+
+
+## Mandate, preflight and scope
+
+Parent implements only after independently accepted corrected S6m3a/M3b1/M3b2 and this complete independent DESIGN gate. Explicit user local completion mandate remains; no new product choice. Repository /Users/timhofer/curling-release-mvp, main; HEAD/main/origin/main382ee40d37605b302c11b6390305857c7e2c3fde;0 staged/85 modified/209 untracked. Preserve entire tree; no index/ref/commit/patch/branch/PR/push changes. Read docs/AI_DEVELOPMENT_WORKFLOW.md before work, canonical MOBILE_APP_MIGRATION S6l4/5/M1/M2/M3a/b and ADR0054, actual configured host/private preparation/SDK reservation and published-owner/guard contracts. No actual env/config values or .env.local, actual archives/backups/accounts, device, hosted/Apple, signing/install, source helpers/Swift/activation flags. Synthetic bridges/API plus installed actual SDK and disposable SQLite only. Authorized existing reviewer only; parent implements, no new agents/delegation.
+
+This stage adds an explicitly named dormant configured NORMAL sporting identity host over the actual published pair. It reuses the existing complete genuine S5 native AuthHost/IdentityTransitionCoordinator/account/Profile/sporting/Tracker mechanics. It does not connect a normal application/UI entry point, import picker, original source writer exclusion or transport. Actual host admission is now in scope; a public factory still has no production application caller. No caller admission, supplied pair, Ready Boolean, forged source handle/session/lease/stamp, or persisted snapshot treated as current identity. Current legal/Profile/Free/Team facts continue through actual sole mappers/coordinator. Closed Free Beta, Team≠Personal, Q1 same begun Session may add exercises/blocks but no new Session, Q3 verified legacy credential removal remain unchanged. Q4 coherent old SQL+Keychain restore remains unapproved/unfixed.
+
+## Concrete private host seam, unchanged legacy/default modes
+
+Add a distinct createConfiguredPublishedInstallationIdentityHost(binding,input) export/type in supabaseAuthService.ts. Its input uses the existing configured sporting dependencies and actual captured migration.sqlite/protectedBinding/detectPlatform/clock/UUID/limits, with no archive/recoveryCode/source handle/pair/owner option. Resolve only the genuine configured binding BEFORE reading input, then call the existing createNativeHost(...,bootstrap=true,sporting=true,configured,capturePreparation). The exact existing SDK reservation occurs synchronously before any foreign option lookup. All dependencies are captured by the established private host; the strategy factory must not eagerly spread/read original input before reservation. The existing capturePreparation path uses the sanitized fetch/origin/navigation receiver; retain no original input/receiver in later callbacks. No normal/default/source factory changes behavior or layout fallback. No new mode caller flag.
+
+The new private preparation is created only in this named export. It lazy-imports installationPublishedOwner only after reservation/options capture, with genuine host-current checks before/after imports. Its prepare single-flights/registers before first work, creates one actual owner with actual captured SQLite/config/root/protected binding/platform, invokes that owner's noarg handoff, retains actual pair even when cancellation wins and returns only that actual pair. Failure returns closed or existing handoff_refused/migration wait; it never manufactures absence or a substitute migration path. It creates no second SDK/store owner. After a consumed failure the same owner remains cleanup-only; retries do not reconstruct it. Dispose revokes at call-time, publishes its exact completion before reentrant cleanup, calls owner.close immediately, joins actual pending preparation and maps only actual closed to positive cleanup; fault_held maps evidence_held, unknown maps cleanup_unconfirmed. Unknown healthy cleanup may retry the same retained owner, not reacquire. The existing actual host continues owning AuthClient disposal and global SDK reservation release.
+
+## Exact host completion exclusion into the closed owner
+
+The existing published owner currently sees only its local SQL/port/session/guard completions. The actual host's start/bootstrap/dispose/commands/runtimeWork/auxiliary/tail inspector is already a NONrecursive local membership check, used by the old source owner. Add one optional second constructor parameter to createPublishedInstallationOwner for that trusted exact inspector (default absent, preserving all standalone paths). The new named host's private preparation is the sole added production consumer; no public option chooses this callback. Its owns joins exact external membership with the owner's existing local inspectors. It does not call back through SQL/port/owner inspection, create a fake session registry, traverse Promise graphs or treat own completion as ACK/value/currentness/grant. Capture/SQL/protected work thus excludes actual direct host producer completions before any acquisition. All newly exposed preparation/policy wrapper completions register in existing local ownership cells before first work; every actual late draft/pair remains retained before caller cancellation checks. Existing C4 arbitrary hidden Promise dependency graphs remain outside contract, not solved by timeout/resets.
+
+## Source-negative guards and actual per-call identity effects
+
+The published owner must continue constructing its guard repository over ITS OWN actual pair.domain; no supplied stand-in adapter. New named host therefore cannot simply ignore the per-call identity/effects wrappers used by existing account operations. Add a distinct optional private NativeHostPreparation hook publishedSourceDeletionGuards(current,beforeIO?) instead of replacing old wrapSourceDeletionGuards behavior. The new private preparation delegates only to its actual owner's sourceGuardRepository. Existing source/default paths keep the old wrapper/fallback exact.
+
+At buildRuntime, resolve published hook over identityAvailable before the old source/ordinary guard branch. At account-operation construction, resolve it with actual guardCurrent plus the EXISTING actual effects closure (waits actual denialFlight, then checks identityAvailable/current), before old source/ordinary branch. No new current/server-control surrogate. The actual sole mapper continues validating Profile/revision, binding the actual call Profile/account, processing factual pending denial, calling actual acceptControl and conditional Abort/Cancel/Request; all existing RPC/header/SDK/Self/epoch checks remain.
+
+Add an optional trusted beforeIO restriction to owner.sourceGuardRepository. It supplies no adapter, identity, receipt or positive grant. If absent, behavior stays M3b2 exact. If present, internally wrap only the owner's own domain get/set: call the actual trusted effects policy BEFORE issuing IO and AFTER it settles, require exact true and renewed real owner/session/host currentness, refuse on false/throw. Call policy outside the SQL queue. Its actual effects implementation performs no foreign acquisition, only waits already-owned real denial and checks private booleans; no pending denial is bypassed or awaited from inside SQL. Register each exact outward guarded operation in the existing owner completion set before policy/domain work; genuine guard completions already participate in owner/SQL/port exclusion. Do not change old shared guard semantics, floors or any actual normal host policy. Malformed different-nonce receipts keep actual unresolved guard as accepted M3b2; higher real recovery remains possible.
+
+Repository construction is no admission. Actual native mapper/coordinator obtains current SDK Self/Profile/legal/onboarding/deletion state and mints genuine admission before Profile access/Tracker registration is usable. Original t1 account/selection/Profile list remain historical publication provenance, never future account/Profile allowlist. Later actual canonical Profile data may work only through its own actual current admission. Credential-only failure preserves Q1; normal new admission/new Session refuses, while same begun Session domain/Tracker continuation remains until its actual lifetime ends. Domain/protocol/terminal/account/Profile contradiction revokes through the existing actual events.
+
+## SDK/store quiescence and real cold process evidence
+
+Do not edit supabaseClient.ts/reserveNativeAuthSdk/nativeConstructedRoots/constructOnce or introduce reset/root bypass. The original actual host's positive disposal must include SDK stop/dispose, active/queued/auxiliary/runtime work drain AND positive actual stores. SDK-only-held reservation still refuses new host before option lookup even when M3a store provenance can verify. Cleanup uncertainty does not release global ownership. Even after full positive old-host disposal, the existing one-construction-per-root-per-JS-realm fence remains; a same-realm new published host must yield restart_required with no second actual AuthClient constructor/initialize. Its actual prepared stores remain owned until positive disposal, and data stays unchanged. A new same-root actual SDK is demonstrated only in a REAL fresh child process, not vi.resetModules, a fake reservation or a different synthetic root.
+
+Use actual accepted M2 publication by the installed SDK + real disposable SQLite in parent tests. Positively dispose original actual host, then pass only its synthetic persisted SQLite file identity/config and protected-map values to a private temporary synthetic-only child fixture. The child is a genuinely new Node process loading current production modules/installed SDK, with its own actual SQLite connection/engine to the same file and synthetic protected/API bridge. No in-process registry reset, fake identity proof or copy replacing actual storage. Use a narrow test-only TypeScript loader like the established supervised codec child, or genuine separate Vitest child; do not add production loaders/bundles/dependencies. Assert actual child PID differs. Retain original parent fixture until child finishes; positively close child before parent reopens it. Remove temporary synthetic descriptors/children fixtures, keep only safe summary logs. No actual user backup/credential recapture.
+
+Child transport uses documented synthetic fixture shapes through real requests/SDK/mappers, not fabricated runtime/admission objects. Verify startup current Self/legal/Profile/Free, actual genuine sporting/Tracker authentication only after current coordinator admission, exact original live rows across Profiles, actual current Profile training read/write and cold persistence, own raw UTF16/absence semantics and immutable original source/receipt/t1. New actual SDK I writes/removes/replacement continue supported. Actual real cold restart/pair proof does not waive normal host failure/cleanup or physical evidence.
+
+## Required adversarial verification
+
+Before code acceptance, parent actual focused source/default/legacy/architecture/host/Tracker regressions, types/scoped lint/diff pass; independent complete CODE gate and genuine new child/SDK probes follow. Full combined root/web/E2E/mobile/three actual mobile modes (default last)/lint/types and positive3100 ECONNREFUSED after E2E follow this stage's CODE acceptance, with exact counts recorded only when run.
+
+Positive: same genuine binding/config/root/store; full old host positive disposal; same-realm restart_required no new SDK; actual fresh process successful real SDK/normal coordinator/Free Profile startup, original multi-Profile raw training and later legitimate writes/cold reload, SDK changes, normal account cancellation/export/guard recovery through actual pipeline, no legacyStorage/archive/code reads. Existing default/source controls unchanged. No-source guard normal destination behavior, original/other-Profile guards remain negative and monotonic after current server floors; same/different nonce actual recovery remains legitimate.
+
+Negative: fake/copied/proxied configured binding before input access; reservation ownership conflict before input lookup for active/SDK-only-held old host; original close/native drain/SDK stop/dispose ambiguity retains ownership; wrong config/root/schema/static/t1/M/I no fallback/repair/rebinding; early/late host disposal during lazy import, M3a hash/read, SQL draft, protected descriptor final drain, handoff/SDK initialize/actual commands; exact direct host start/bootstrap/dispose/command/account/export/guard producer completions returned by actual native methods/results cannot wait on themselves or become ACKs/grants; unrelated acquired work remains drained. Tests return genuine completions directly at the actual native method edge, not hidden behind uncontrolled async aliases.
+
+Actual current server pending deletion/denial and request/export callbacks must revoke ordinary access before further guard/storage work, retain factual pending completion even with refused floor, and keep actual effects waits. Test held denial plus concurrent guard read/write, overtaken currentness after native settlement, malformed actual control, stale floor/newer receipt recovery, multiple repositories/Profiles, and guard-operation cycles. No supplied adapter or Ready flag. Q1 actual begun Session continues extra exercises/blocks after credential-only failure, but new Session/admission refuses; domain/protocol/account/Profile failure revokes. Old source FreshOTP/publication and normal existing factory behavior stay exact. UI/phone/operative source transport and Q4 remain separate open gates.
+
+## Allowed production edits and completion report
+
+Only the new named export/type/private strategy and additive optional guard hook in supabaseAuthService.ts; optional exact host completion inspector and negative actual effects guard wrapper in installationPublishedOwner.ts. No native SDK reservation/root-fence/default/source producer/SQL/credential protocol modifications unless an explicit additional independent DESIGN amendment is needed. Exact architecture tests, real synthetic SQL/SDK/host/Tracker/child tests and canonical docs allowed. Existing test fixture may expose synthetic persisted file options without changing existing production behavior; prefer test-only helpers. If concrete seams cannot preserve beforeIO/ownership/cleanup invariants, surface technical design correction before wider edits; do not ask user a technical implementation choice or weaken policy.
+
+Record actual changed files, starting/final Git, consolidated corrections, exact focused and subsequent full baseline, remaining real source/UI/physical/release gates. Save dated substantive progress to canonical Vault project/log under standing mandate after acceptance; preserve parallel PostHog/Mahoo entries. No operative/Beta completion claim.
+
+
+## Binding independent DESIGN clarifications
+
+Runtime registry provenance may already authenticate before actual Profile admission; only bindTracker/actual Profile/Application scopes must refuse until genuine current admission. Do not change registry policy. GateFacts has no deletion revision: only the actual per-call Account service carries C/Floor evidence, and Coordinator guard checks establish no server confirmation; no new global C query/offline/admission policy. A present published-guard hook must throw/refuse closed, never fall back to ordinary guards on null/failure. Preparing/closing pointer identities and the nonrecursive host inspector are the exact completion seam, with no second registry. Actual fresh-PID child proof uses the same SQLite file and coherently continued synthetic protected data, including SDK mutations cold in later child processes; no reset proxy.
+
+
+#### S6m3c accepted cleanup DESIGN amendment
+
+
+Published pair disposal synchronously publishes its exact completion/revokes the genuine session, then awaits a private actual Owner drain before closing SQL/protected resources and retiring. Only publishPublishedInstallationRuntime receives this optional private callback; old Native/Transfer publishers are unchanged. Owner pendingEffects contains only actual started policy/domain outward wrappers, added before work and removed at settlement. The drain's own exact outward completion registers before Join in the existing Owner WeakSet, never in pendingEffects. No authority/Ready registry. Running actual denial/native work still drains; cancellation only refuses further work. Drain failure retains actual resources and yields existing cleanup_unconfirmed; only same healthy pair retry, sticky evidence-held unchanged. This covers owner.close, actual host cleanupTarget=pair and direct pair.dispose equally.
+
+
+#### S6m3c current implementation contract
+
+The distinct dormant configured published host now uses the existing actual SDK, IdentityTransitionCoordinator, account/Profile/sporting and Tracker mechanics over its own genuine published pair. Its lazy preparation and exact host-completion inspector preserve the existing reservation and one-construction-per-root fence. Positive original disposal therefore requires a real cold process before another SDK for that root; no in-process reset or provenance proof bypasses it. Historical publication account/Profile membership is not a future admission allowlist.
+
+Published guard repositories use only the owner's own domain, with actual per-call identity/effects restrictions before and after I/O. A present but refused published hook never falls back to ordinary guards. Exact operation completions register before work. Published pair disposal revokes synchronously, then joins actual started policy/domain work through the owner's private drain before either physical store closes. Unknown cleanup retains resources for the same healthy pair's retry; evidence-held remains sticky. Old publishers and default/source paths are unchanged.
+
+Independent complete CODE has no remaining confirmed defect. Genuine fresh-PID installed-SDK/SQLite tests cover current admission, later legitimate Profiles/accounts, original guard recovery, factual pending denial, cold mutations, Q1 continuation and uncertain cleanup. Exact evidence is in TESTFLIGHT_READINESS.md S6m3c. This named factory still has no shipped application root/caller. The existing explicit App composition is separately verified in S6m3d below. Source transport/writer exclusion, physical/configuration/hosted/Apple and Q4 gates remain open; no operative import or Beta grant follows.
+
+
+### S6m3d — actual published App composition (independent DESIGN/CODE accepted)
+
+The existing explicit DormantNativeTrackerComposition already joins NativeApplicationProvider, actual IdentityProvider, genuinely admitted native Profile repositories and TrackerApp. Its Host is constructed once outside React; React does not own Host cleanup. This stage verifies that exact tree against the actual M3c published Host in a genuinely fresh process, same disposable SQLite and coherently continued synthetic protected storage. No new Ready/controller/activation authority, production root, build flag or original source/Swift change is included. Provider owns actual startup/OTP; test UI branches before any manual admission. No forged runtime/session/scope/provenance or app-module replacement.
+
+Only test helpers/actual Host tests initially change. Real session/block/plan constructors produce both Profiles' original sporting values before genuine original publication. Real jsdom/React controls must display original data, train/save/complete and cold reload with a different actual PID, preserve Profile isolation and immutable source/t1, exercise StrictMode without duplicate SDK/save, actual fresh OTP/pending-deletion recovery, Q1 same-session continuation and held-work cleanup. Any confirmed production defect requires its own concrete bounded design correction.
+
+Both globalThis/window localStorage share one monitored object. Every forbidden identity/credential/sporting key, enumeration or clear counts as test failure even if caught by app code. The exact existing public Exercise diagram-cache prefix remains allowed and positively exercised; it is no auth/training source. Synthetic globals/transport cannot fall through to real networking. Normal unmount drains; adversarial close deliberately holds real work and proves Host cleanup waits. No module-reset cold-SDK surrogate. Independent CODE/focused actual joined regressions/types/lint/diff follow; exact evidence belongs in TESTFLIGHT_READINESS. M3c full baseline remains separately versioned. Operative production entry/import transport/writer exclusion/device/configuration/hosted/Apple and unapproved Q4 remain open. Free Beta/Free-Personal-Team and Q1/Q3 unchanged.
+
+
+M3d accepted testharness amendment: the installed SDK's locks-module evaluation performs one random localStorage capability setItem before Host construction. During only the actual synchronous SDK import, a separately counted primitive exact lswt-random key===value call is expected and always throws without storage/ACK. The phase closes permanently in finally; exactly one refused probe, no remove/debug-get/enum/clear or later probe exemption. This is no browser auth grant or production fix. Both actual browser surfaces remain monitored and all forbidden data accesses fail independently of caught app errors.
+
+
+Actual completed Account/Guard recovery already permits the existing real UI Try again to reach Home and a genuine Profile scope with one OTP verification. Merely observing an HTTP request was not completion evidence. The earlier proposed additional sign-in form is unnecessary and is withdrawn; no production UI/auth change is included. Permanent positive settled-Control/Retry and negative low-Control/Retry cases preserve the real sequence. The test also requires an actual public cache miss, compatible DOM Blob/FileReader conversion, successful stored write and a new resolver cache hit without another fetch; read-attempt counts alone are insufficient.
+
+
+S6m3d corrected complete independent CODE is accepted with no remaining confirmed defect. The ten permanent actual App cases exercise the same genuine published Host in fresh installed-SDK/SQLite processes, original multi-Profile data, normal training/cold persistence, StrictMode, pending deletion, fresh OTP, Q1, held hydration and native domain failure. Completed recovery is explicitly awaited through actual Account Control; this is not evidence that an HTTP request or automatic UI polling alone completes recovery. The real existing Retry reaches Home/Scope with one verification; low Control retains refusal and evidence-held cleanup. A genuine public-cache roundtrip is required. No additional production sign-in form or other M3d production change remains. Exact parent/independent counts and baseline provenance are in TESTFLIGHT_READINESS.md. The explicit tree is verified, but no operative root, file/code delivery, source-writer exclusion or device activation is added.
+
+
+### S6n1 — destination application import controls (independent DESIGN/CODE accepted)
+
+The user requests the complete import workflow and subsequent App start. A second-device comparison may be omitted when it requires unavailable hardware; that is an omitted test, not passed preservation evidence, an original-device installation grant, Q4 acceptance or permission to reset/discard data. Local target workflow implementation proceeds while original-container writer exclusion, operative source packaging and physical delivery remain open. Default builds and the production activation barrier are unchanged.
+
+A new named configured application Host exposes only prepareImport, completeImport, checkAccountDeletion and cancelAccountDeletion alongside the same genuine identity-only Host. A private factory helper preserves the old exported factory's exact public shape, binding-before-option and reservation-before-option ordering and closed lazy source/Account imports. Four private closures delegate only to that same actual source-aware Owner; absent/unprepared/revoked ownership refuses before work. No supplied owner, runtime, proof, Profile mapping or Ready value exists. Recovery remains reachable when ordinary admission is denied, using the existing actual getState/cancel pipeline rather than another RPC implementation or a fabricated complete AccountDeletionService.
+
+Exact public publication Promises register in the existing Host ownedCommands/auxiliary completion and disposal path before their asynchronous bodies acquire native/lazy work. The existing source Owner receives only a private optional completion-retainer; old callers omit it. Registration failure refuses before work. Controls return those exact actual completions; no availability/result wrapper rewrites factual SQL publication after Close/auth loss. Cancellation synchronously revokes, then actual work and positive cleanup drain. prepareImport still requires genuine fresh OTP, current per-call Account Control, source/Profile constraints and original SQL/protected observation. completeImport preserves actual publication outcome and grants no admission/mount. Default/source/SDK root fences are unchanged.
+
+Independent corrected DESIGN is accepted after adding the otherwise inaccessible real Account recovery and exact Host-owned completion paths. CODE requires actual public OTP→Control→prepare→publish tests without private Owner spies, pre-start/closed refusal, actual pending/cancel and Profile denial, wrong code, duplicate commands, exact completion returned at native edges, held work/close and factual post-COMMIT outcome. N2 file/Provider/recovery presentation remains a blueprint until its concrete DESIGN; no source/helper/native/flag/device/hosted mutation follows from N1. Exact executed evidence belongs in TESTFLIGHT_READINESS.md.
+
+
+N1 complete independent CODE is accepted with no remaining confirmed defect. Actual public-control tests now use the new application Host directly, including Account recovery before admission and factual COMMIT outcomes. The closed private helper is the sole transfer dynamic-import graph; the ordinary factory still returns its original shape. Exact verification and the separately deferred whole-application baseline are recorded in TESTFLIGHT_READINESS.md. File/Provider/limited-recovery presentation is implemented and independently accepted in S6n2 below; it is not an activation consequence of N1.
+
+
+### S6n2 — destination File and Provider workflow (corrected independent DESIGN/CODE accepted)
+
+One explicit application owner, constructed outside React with a genuine configured binding and captured known options, connects actual user File intake to N1 and cold M3c entry. It accepts no Host factory, owner, runtime or Ready injection. It snapshots exact own data fields, validates each before later acquisition and drains retained malformed metadata/work through the existing quarantine-work observer. File validation uses native File-name and Blob-size getters, byte-count/ASCII/protected-format bounds and real FileReader settlement before actual Host construction. Plain Blob/fake/Proxy refusals follow the actual platform brand checks. Recovery code and selected File are ephemeral, never stored in browser persistence, URL, logs or callbacks; owned byte buffers clear after observed work, without claiming secure JS-string erasure.
+
+Presentation commands return void; the sole private flight owns actual reading/construction/start/publication. Before a Host exists public close synchronously revokes and returns void, while the private flight drains work and disposes any late genuine Host. It exposes no new construction-joining Promise that capture could wait on cyclically. With a Host, close returns its exact actual dispose completion and separately observes presentation. Unknown cleanup retains the same Owner; state is never cleanup authority. Stable snapshots keep the same real Provider/runtime across notices and busy states. No Tracker is mounted during import.
+
+IdentityProvider gains an optional accessRecovery node inside its genuine context next to its gated branch; undefined preserves all prior behavior. The explicit import panel uses only N1 getState/cancel and existing useIdentity actions, remaining reachable before admission. After actual source-guard/cancel recovery, only an expressly chosen sign-out and new normal email sign-in obtains a fresh publication proof. No automatic signout, cloned runtime, complete fake AccountDeletionService or direct OTP mint is introduced. Final import always obtains a fresh actual Account state-null result, then delegates genuine protected preparation and atomic publication. Factual outcome is retained independently of Close/auth loss. Only confirmed desired11 plus positive actual Host cleanup yields restart instructions; uncertain outcomes do not offer reset/repair/reimport.
+
+Open-imported-training uses the actual source-free configured Host and existing explicit native Tracker composition. A refused start is no evidence of target absence; any subsequent source pairing independently rejects conflicts, and uncertain disposal prevents fallback. A new SDK after publication requires an actual new realm/process; no same-realm reset bypass. This stage changes no shipped root, existing native flag, activation barrier, source helper, Swift/native configuration or original installation. User-omitted second-device comparison remains missing evidence; operative source writer exclusion/file delivery, physical/configuration/hosted/Apple and Q4 gates remain open.
+
+CODE requires real File/DOM + installed SDK/SQLite public-control flow, fresh Provider OTP/onboarding, limited recovery before admission and explicit re-signin, wrong file/code/Profile and native failure, metadata retention and immediate cutoff, duplicate/StrictMode, actual read/constructor close with late Host disposal and exact native-boundary close, factual issued publication outcomes, no browser auth/training persistence and genuine later-PID ordinary UI continuation. Exact browser native-brand checks and DOM-harness limits must be distinguished. Focus/types/lint/diff and independent complete CODE precede the combined full root/web/browser/mobile/three-mode baseline. Exact evidence belongs in TESTFLIGHT_READINESS.md.
+
+
+N2 complete corrected independent CODE is accepted without a remaining confirmed defect. The actual File/Provider/limited-recovery UI uses the same genuine import Host, then a genuinely new process opens the published store through the existing Tracker. No supplied runtime or fake cold SDK is used. Actual native File brand checks were also exercised in Chromium; the joined Provider/SQLite flow uses the actual React/JSDOM harness and distinct installed-SDK processes, not physical WKWebView evidence.
+
+Two independently reproduced correction groups are closed. Options capture intrinsically rejects native Promise metadata before copying fields, including masked native Promise containers, while retaining and draining already acquired work. Reader refusal is distinct from actual read completion: only a genuine EMPTY observation establishes no issuance; throwing/invalid state metadata or a read that throws after issuance cannot replace actual load/error/abort delivery. Close skips later result/state observations once revoked, while joining issued work and retaining malformed metadata. Repeated Close preserves the same exact Host completion and reapplies its settled cleanup. Factual committed publication survives Close and yields restart only after positive cleanup. Permanent regression cases and independent additional controls verify these boundaries; exact counts and full baseline belong in TESTFLIGHT_READINESS.md.
+
+The visible local workflow is complete within this explicit destination-tree scope. A shipped application entry, actual protected source-file/code creation and delivery, original-container/writer-exclusion procedure and physical/configuration/hosted/Apple acceptance remain separate unfinished work. The original training-only backup is not silently promoted to a V3 source with identity observations. The unavailable second-device comparison is omitted, not passed; Q4 and original-device installation/data-loss permissions are unchanged.
+
+
+### Dormant new-user startup entry (27 October 2026; independent CODE and local baseline accepted)
+
+A distinct configured new-user sporting host now initializes schema and tagged
+Q atomically on the existing common owner; the exact empty-source-v1 header contract
+provides durable origin distinct from legacy migration. Strict complete source
+absence, normal Q/M/I/D pairing and existing identity/Profile admission govern
+startup. Existing migration, published-installation and transfer constructors keep
+their legacy contract; the shipped mobile root and activation authority are unchanged.
+Canonical authorized design and acceptance status: BETA_COMPLETION_SPECIFICATION.md,
+“Atomic empty-source bootstrap” and “Tagged new-user entry”; verification remains
+in TESTFLIGHT_READINESS.md. No physical/configuration/hosted/Apple acceptance or Q4
+restore-policy decision follows from this dormant entry.
+
+
+### Actual mobile new-user beta selection (27 October 2026)
+
+The separately authorized follow-on integration selects the accepted strict host
+through MobileApp only in CURLING_MOBILE_NEW_USER_BETA=1 artifacts. Default and
+legacy-storage/diagnostics builds keep their prior selection; conflicting switches
+fail build. Earlier global dormant/no-build statements refer to the historical
+lanes and are superseded only for this exact new-user selection. Its genuine
+configured owner, platform/configuration gates, shared identity/Tracker composition,
+retry/terminal cleanup and installed-SDK diagnostic limit are canonical in
+BETA_COMPLETION_SPECIFICATION.md “Mobile new-user entry integration”. Native data
+origin/protocol rules remain unchanged. Independent corrected CODE and complete final local baseline are accepted.
+See TESTFLIGHT_READINESS.md for actual evidence; this does not provide device/hosted/Apple acceptance,
+installation or original-data migration. Source helpers and transfer remain unselected.

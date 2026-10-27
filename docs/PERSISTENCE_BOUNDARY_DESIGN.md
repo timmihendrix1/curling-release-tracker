@@ -1852,7 +1852,7 @@ repository contract level, not just at the adapter's raw string layer.
 >
 > As of 2026-09-30, `src/lib/persistence/nativeSqliteAdapter.ts` implements
 > `RemovableStorageAdapter` over SQLite, and `src/lib/persistence/storageComposition.ts` is the
-> one owned boundary that can select it, construct the five identity repositories over it and
+> one owned boundary that can select it, construct the original five identity repositories plus ADR-0052 deletion guards over it and
 > bind the protected credential store — behind its own off-by-default build flag
 > (`CURLING_MOBILE_NATIVE_STORAGE=1`), and **only** after a migration/activation authority
 > reports a valid ready verdict. **In this stage that authority is unavailable, so a
@@ -1895,7 +1895,7 @@ repository contract level, not just at the adapter's raw string layer.
 >    source retirement — removing the ten bare legacy keys from the OLD store is the migration
 >    stage's own `sourceRetirement` phase — and readiness gating is what guarantees it never
 >    runs before activation;
-> 4. the five identity repositories (import-time singletons), via
+> 4. the original five identity repositories plus ADR-0052 deletion guards, via
 >    `createIdentityRepositorySet(adapter)` and a one-time ownership claim. The **dynamic**
 >    `accessBarrierResolution.<uuid>.v1` family and the pending-intent cleanup key travel with
 >    it. `identityBarrierRepository` still takes the BASE contract and still cannot remove a
@@ -1906,8 +1906,11 @@ repository contract level, not just at the adapter's raw string layer.
 >    `src/lib/persistence/secureCredentialStore.ts`. Separate stores do **not** make the two
 >    writes atomic, and SQLite does **not** encrypt credentials. That store has a **stricter
 >    absence rule than `StorageAdapter`**: only a platform-reported "no such item" is absence,
->    and it is **not met by any audited dependency**, so the native credential path is closed
->    (ADR-0049). Its normalised failure verdict is consumed by `supabaseAuthService`, which
+>    and it is not met by the audited plugin dependencies. The approved app-owned iOS
+>    reader now preserves exact missing-versus-error evidence and has a separately
+>    reviewed read-only namespace inventory. Physical acceptance, exclusive-owner
+>    inventory freshness and runtime integration remain open, so the native
+>    credential path stays closed (ADR-0049). Its normalised failure verdict is consumed by `supabaseAuthService`, which
 >    refuses to report `no_session` or a completed sign-out while a failure stands.
 >
 > **The disposable exercise-diagram cache deliberately stays on `localStorageAdapter`**, on
@@ -1915,13 +1918,154 @@ repository contract level, not just at the adapter's raw string layer.
 > the cache is untouched rather than excluded by a special case.
 >
 > Migration additionally needs a **migration-only source-key enumeration** capability — this
-> interface exposes none, and it is deliberately **not** added to `StorageAdapter`. See
+> interface exposes none, and it is deliberately **not** added to `StorageAdapter`. Stage M3b4b
+> implements it as `EnumerableStorageSource` inside `localStorageAdapter.ts`, beside — never on —
+> the repository-facing contracts, together with a migration-only target capability on the
+> native store; neither is reachable from any repository. See
 > [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md) — decisions 1–6 accepted
-> and implemented, **decision 7's migration protocol still unresolved** with three open design
-> items — and Stage M3b0 in `docs/MOBILE_APP_MIGRATION.md`. Once that migration has committed a
+> and implemented, **decision 7's migration protocol an approved design (2026-10-19) whose
+> decision core (M3b4a) and dormant executor (M3b4b) are both independently reviewed (clean)
+> and approved; no application path invokes it** — and Stage M3b0 in
+> `docs/MOBILE_APP_MIGRATION.md` (§7, "M3b4b implementation status"). Once that migration has committed a
 > validated activation, the native store is authoritative for these keys and the old WebView
 > store is never read as an authority again; losing it does not affect reads. The retired
 > IndexedDB activation track (ADR-0015–0018) is **not** revived.
+
+The 2026-10-24 bounded S3a/S3b work does not publish that activation. S3a keeps
+legacy schema selection separate from independent D/latch/warm observations.
+Only S3b's private capability recognizes the exact credential metadata table,
+observes its controls and atomically initializes a completely empty target; it
+returns no ordinary/legacy target or readiness authority. Ordinary, diagnostic
+and legacy migration paths still refuse this table. A combined native startup
+requires the later Q/M/D owner and runtime integration; Dactive alone is not its
+grant. See BETA_COMPLETION_SPECIFICATION.md for the bounded contracts.
+The independently reviewed S3c port adds one protected-namespace queue/lease shared
+with ordinary native credential operations, plus private complete-name observations,
+uncached M/I reads and insert/readback without replacement. Its exclusion covers
+cooperating callers in one JS context only. It returns no cross-store snapshot,
+physical freshness, Q/D readiness or SDK handoff; app startup does not call the port.
+The independently reviewed S3d borrowed-domain runner uses authentic private
+adapter evidence and retains its parent lease pin across warm/unknown/fault stops.
+It prepares only non-consumable domain holds before the actual activation step;
+parent recovery must be genuinely completed. It still runs only over the canonical
+legacy records target. It neither extends S3b to expose domain rights nor creates
+combined Q/D transactions, B4, a finalizer or any startup consumer.
+The separately reviewed S3e host now permits that held-only domain preparation
+over ONE private combined SQL owner. Exact initialized schema and absent Q/F gate
+progress; authentic one-shot immutable permissions exclude active transactions.
+Parent/child activity, sticky control/fault evidence and lifecycle-bound favorable
+proofs survive recovery. Known schema loss cannot be repaired by reinitialization.
+This is still no Q progression, Q/D finalizer, B4, protected-store correlation or
+application readiness; the older factories retain their original boundaries.
+The independently reviewed S3f executor separately joins actual source capture,
+protected Q/M/I copying and one atomic Dactive/Qbound completion. One shared SQL
+context and protected lease retain actual issuance/reopen knowledge. Authentic held
+raw values, monotonic positive contradictions and per-lifecycle callback-free controls
+fence finalization; source-free bound observation checks current item forms/addresses.
+Its result is an internal opaque candidate, with no ordinary adapter or SDK/Identity
+admission. The separately reviewed S3g entry can transfer those same actual
+resources into a private mutable runtime pair, with separate sticky storage health,
+truthful transaction evidence and jointly confirmed terminal cleanup. It creates no
+application/SDK/Identity admission. Separately reviewed S4a adds explicit pure V2
+installation archives for closed deletion controls without changing V1 or live
+Identity. Separately reviewed S3h supplies only the dormant standard JSON-framed
+SHA-256 D-value helper, preserving existing injections and resource roles. Actual
+production binding and application integration remain open. Separately reviewed
+S3i implements explicit dormant credential-source retirement, including cold
+cancellation/drain ownership, truthful receipt counts and a final fresh empty fence;
+older entry points remain unchanged. S3j uses intrinsic invocation of the actual
+credential fingerprint operations without changing hash bytes or defaults.
+Separately reviewed S5a owns dormant AUTH mechanics over the actual private pair,
+including settlement, whole commands, actual sends and cleanup. It exposes no raw
+pair/client/token and alone grants no Identity or app access. Separately reviewed S5b now binds
+that same private pair to the actual Identity coordinator, six repositories and
+four fixed Identity RPCs. Original operation/account ownership, causal Self-session
+negatives, actual health and final materialized-request checks govern every new
+bootstrap readiness result. Cached startup cannot revive an obsolete admission.
+This remains dormant and supplies no app mount or already-admitted training exception.
+Separately reviewed S5c now binds the actual sporting mapper and three fixed RPCs
+to coordinator-created, construction-bound Profile admissions on the same private
+pair and SDK FIFO. New foreground ownership, denial and close revoke those services;
+healthy background confirmation does not mint or replace admission. Synchronous
+input capture, actual Self preflight and final SEND fences preserve the original
+subject. Full genuine denial outcomes reach the narrow subscription. No app caller
+or local sporting repository composition is added. S5d additionally binds the actual account-deletion/export mapper and guard repository
+to private native control scopes, own-denial continuation and factual pending proofs.
+Actual Provider callbacks are covered; mounted Flow polling/reload still needs app
+composition and full invalidation subscription. S5e additionally binds the actual nine-method Team-exercise mapper to genuine
+original admissions and per-command retry:false public clients. Exact immutable
+wire intents, original indexed inputs and all issued siblings stay owned until
+retirement. S5f additionally binds all29 existing Team methods and the five own-API
+POST routes, with purpose-specific dependent-query hooks, exact original callback
+capture and same-command bearer ownership. Current public diagrams remain bundled
+with the existing disposable localStorage cache; the restricted resolver is dormant
+future-only under ADR-0044 and MOBILE_APP_MIGRATION.md §5.2. S5g binds the seven
+actual native base repositories, scoped outbox, retirement and personal export to
+that same private owner, with synchronous DTO capture and truthful issued ACKs.
+S5h separately closes the returned SyncManager/decorator boundary with one genuine
+manager per admission, outer argument capture and actual background-lane ownership.
+Local ACKs stay independent of cloud waits; snapshots/listeners cannot reopen stale
+Profiles. S5i now independently joins actual Tracker event/effect ownership and the
+original pre-fault Q1 training role, with fresh-ACK remounts, complete capture drains,
+actual Account/Profile denial and retained history-first completion. Its dormant actual
+Provider/Tracker composition activates no production root. S5j now separately joins
+the actual Provider/Flow/export/Team over the same genuine host, with native-only
+original-owner export retirement to the final share edge, unconditional/idempotent
+denial delivery, known/unavailable intent projection and pre-preview Team context.
+Independent corrected CODE and full local baseline passed; canonical contract/evidence
+are BETA_COMPLETION_SPECIFICATION.md §S5j and TESTFLIGHT_READINESS.md. S5k additionally
+accepts dormant exact provider-configuration preparation and its genuine same-host
+entry. Full standard SHA-256 identities, primitive-only exact tuple framing and
+complete boxed observation/drains refuse stale configuration without resetting data.
+Existing helper public shapes remain; constructor ownership lasts through nested
+work. Canonical contract/evidence: §S5k and TESTFLIGHT_READINESS.md.
+
+S5l additionally accepts native pending-intent replay correlation on the genuine
+coordinator lane, exact final-view membership and conditional dismissal/recovery.
+The actual Provider and Team UI follow replacement links without stale consumption.
+Only the new notification channel uses completion-only nested draining with exact
+already-owned disposal exclusion; default/live/hash behavior remains unchanged.
+Canonical contract/evidence: §S5l and TESTFLIGHT_READINESS.md.
+
+S5m additionally accepts dormant actual App launch/event intake on that same host,
+with explicit Team-origin opt-in, sequential exact native-context proofs, reentrant
+classification ownership and complete observed-work draining. Healthy capture
+refusal keeps ordinary startup/OTP recovery reachable; genuine faults retain their
+vetoes. Exact own-disposal exclusion is never a handle/absence/removal ACK. The new
+source-clock retainer preserves checked validation and identityFailed; legacy
+channels/defaults remain. Public CoreJS receipts are not physical unsubscribe ACKs.
+Canonical contract/evidence: §S5m and TESTFLIGHT_READINESS.md.
+
+The private V3 archive has standard SHA-256 byte binding, actual domain interpretation
+and historical catalog/registered-diagram compatibility checks (S6a–c). V1/V2 and
+named domain recoveries remain unchanged. S6d now privately observes a complete
+bounded actual WebView raw map with native receiver-bound reads, positive absences
+and fresh fences; excluded credentials/cache/foreign values are never read. This is
+source observation only, without writer exclusion, frozen-source, auth, transport
+or mount/publish/rollback authority. No default/application caller is added.
+S6e adds a private standard AES-256-GCM envelope with a separate fresh random
+recovery code, actual V3 revalidation and completion-owned temporary-byte wiping.
+It conveys no source/auth/transport/publication authority and has no app caller.
+ADR-0053 records the decision; corrected independent CODE and full local baseline
+are accepted. S6f adds a separately built observation-only helper with private
+native iOS/App routing, current foreground/data checks and terminal revocation;
+corrected independent CODE and the full local baseline are accepted. It is not
+the default/native webDir and issues no source-freeze or transfer grant. Actual
+original-container access, preservation-safe operational packaging and external
+writer exclusion remain blocked pending disposable physical evidence. Actual
+file/code delivery, target staging/readback/fresh-auth integration and
+configuration/device/release gates remain open. Native Team email links may
+continue opening Web under adopted MOBILE_APP_MIGRATION §6.5 until association/delivery
+is accepted. Canonical current contract/evidence: BETA_COMPLETION_SPECIFICATION.md
+§S6a–f and TESTFLIGHT_READINESS.md. No activation or Beta approval follows.
+
+ Physical native URL delivery,
+actual configuration assignment/supported operational change and installation
+composition remain required before native activation.
+Operational protected transfer/semantic compatibility, source-writer exclusion,
+Q3 adoption and physical acceptance remain open; the production composition
+authority remains unavailable.
+
 
 ```typescript
 /**
@@ -2006,6 +2150,7 @@ security-relevant and required; the other is housekeeping whose failure changes 
 | Repository | Adapter | Kind of removal |
 |---|---|---|
 | `identityBarrierRepository` | **base `StorageAdapter` only** | **None.** No code path may remove a current barrier as a security transition — a barrier is superseded by writing a newer one and completed by a separate, per-barrier resolution record |
+| `AccountDeletionGuardRepository` (ADR-0052) | **base `StorageAdapter` only**, included in the same owned repository set | **None.** Profile-bound `curling.identity.accountDeletionGuard.<profileId>.v1` and nonce-bound `curling.identity.accountDeletionGuardResolution.<nonce>.v1`; ordinary authentication/sign-out never removes or resolves them. Only server cancellation/conditional-abort revision evidence permits a nonce-specific resolution. The independently reviewed dormant preactive D migration now preserves these control families byte-exactly and blocks malformed owned members at every fresh inventory; B4 stays source-free. S2 transfer v1 still refuses these families until its separately versioned reconciliation. |
 | `trustedDeviceRepository` | `RemovableStorageAdapter` | **Required** establishment, replacement and removal — but the consequence of a failure differs by case; see the three cases below. Never best-effort |
 | `pendingIntentRepository` | `RemovableStorageAdapter` | **Required** deletion on sign-out and account switch. A failure blocks the transition rather than being ignored |
 | `identityBarrierResolutionRepository` | `RemovableStorageAdapter` | **Best-effort cleanup of already non-current records only.** Never affects authorization; a failure changes nothing |
@@ -2580,3 +2725,62 @@ identity (Section 12).
 - **`PERSISTENCE_BOUNDARY_FINAL_REVIEW.md`** (repository root, untracked) identified the
   read-failure/absence conflation this Revision 2 corrects, and records what changed
   between Revision 1 and Revision 2.
+
+
+S6g cross-reference: the dormant iOS-only encrypted archive quarantine prerequisite
+is now locally implemented and independently accepted (ADR-0054; canonical scope
+in `MOBILE_APP_MIGRATION.md`, “S6g — protected archive quarantine”; actual verification
+in `TESTFLIGHT_READINESS.md`). Its sole private owner consumes actual S6e opening;
+normal application builds remain free of concrete quarantine code. This does not
+adopt C8–C10, publish sporting rows, supply identity/source authority or complete
+operational installation transfer. The observation-only S6f helper is unchanged.
+
+
+S6h extends the dormant transfer preparation on the same SQLite owner with exact
+reversible UTF-16 sporting rows beside the encrypted archive. Independent scoped
+DESIGN/CODE review is accepted; complete regression evidence is recorded in
+`TESTFLIGHT_READINESS.md`. The canonical contract is `MOBILE_APP_MIGRATION.md`,
+“S6h — actual native sporting preparation”. These rows are unselected and cannot
+be consumed by ordinary stores; fresh authentication, source-deny checks and
+publication remain required. This is encoding, not sporting-data encryption at rest.
+
+
+S6i's genuine SQL/protected-namespace pair, S6j's identity-only runtime and S6k's
+actual configured SDK/coordinator integration are locally independently accepted.
+S6l1 adds immutable negative-only source facts on the same owner, including all
+sporting and control-only Profiles and original guard nonces/revisions. Only the
+closed host owner selects its exact 8-object layout; old 5/7-object constructors
+retain their behavior. Source-only boxed opening and strict transaction work
+preserve cancellation, actual completion ownership and cleanup. Corrected CODE
+and full local regression are accepted. Exact contracts: MOBILE_APP_MIGRATION.md
+S6i–k/S6l1; current evidence: TESTFLIGHT_READINESS.md. S6l2 adds an independently
+accepted genuine OTP proof and same-runtime SQL pin, with synchronous mutation
+revocation and genuine completion ownership through full drain. Its exact contract
+is MOBILE_APP_MIGRATION.md S6l2. S6l3 completes the genuine OTP/onboarding
+continuation and full source-host online checks; corrected independent CODE and
+full local regression are accepted. S6l4 adds independently accepted actual
+original-guard recovery with negative revision floors, same-pair guard composition
+and exact completion ownership. S6l5 adds strict v2 immutable source cleanup
+evidence and final actual server-control provenance bound to original OTP/SDK/SQL
+ownership, with synchronous revocation and no resurrection. Old v1 targets refuse
+unchanged. Subsequent S6m1–3 independently complete genuine initial eligibility,
+protected intent, atomic sporting publication, cold published provenance and same-owner
+normal runtime/Host/explicit Tracker UI. Their canonical contracts and exact evidence
+are MOBILE_APP_MIGRATION.md S6m1–3 and TESTFLIGHT_READINESS.md. No shipped root or
+operative source grant follows; actual source transport/writer exclusion and
+physical/configuration/hosted/Apple acceptance still gate import and Beta.
+
+
+The explicit destination application workflow S6n1/N2 is independently locally accepted. Genuine public preparation/publication and limited Account recovery controls feed actual File/code/Provider UI; a new process opens published training through the actual normal Host and Tracker. Captured asynchronous metadata is refused and drained, actual issued file reads settle before closure, and factual SQL publication remains separate from access and cleanup. No shipped root/caller or native activation is selected. Canonical contracts are MOBILE_APP_MIGRATION.md S6n1–2; actual current verification is TESTFLIGHT_READINESS.md. Operative original-container/writer exclusion, protected source delivery, actual configuration/physical/hosted/Apple and Q4 gates still remain. Free Beta, Team != Personal and Q1/Q3 are unchanged.
+
+
+### Strict new-user bootstrap exception (27 October 2026; independent CODE and local baseline accepted)
+
+The separately user-authorized empty-source-v1 Q/M/I header contract distinguishes
+strict new-user origin. Only its new common-context initializer can atomically create
+missing schema plus Q after positive source/SQL/protected emptiness checks. It reuses
+the actual before/after journal and fresh source fence; the subsequent genuine D1
+hold uses Q's persisted SID. This bounded exception leaves S3b's old schema-only
+initializer and S3f's legacy held-before-Q path unchanged. Default protocol parsing
+remains legacy-only; no existing import admission is widened. Canonical exact
+design/status: BETA_COMPLETION_SPECIFICATION.md. The app remains unactivated.

@@ -42,6 +42,7 @@ const eslintConfig = defineConfig([
     // capacitor.config.ts) stays lint-visible and is covered by `npm run
     // mobile:lint` as well as the root `npm run lint`.
     "mobile/dist/**",
+    "transfer-source/dist/**",
     "ios/App/App/public/**",
   ]),
 ]);

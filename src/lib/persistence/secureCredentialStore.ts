@@ -48,15 +48,16 @@
 //     entry, and the plugin reports it identically to a genuinely absent row.
 //
 // So `SecureStorageBinding` demands item-specific evidence, and the Capacitor
-// binding reports `no_absence_evidence` because the installed plugin cannot
-// supply it. That makes every read of a not-present key a failure, the store
-// unusable, and **the native credential path closed** — honestly, and with the
-// precise upstream gap named. See `capacitorSecureStorageBinding.ts` for the
-// dependency audit. No custom cryptography and no plugin fork is introduced.
+// Android binding reports `no_absence_evidence` because the installed plugin cannot
+// supply it. The user-approved app-owned iOS reader (2026-10-24) now preserves
+// SecItemCopyMatching evidence. It does not perform migration or activation, and
+// its physical-device acceptance remains open. See `capacitorSecureStorageBinding.ts`
+// for the dependency audit. No custom cryptography or plugin fork is introduced.
 //
 // No secret, no key name and no raw plugin exception ever leaves this module.
 // Failures are fixed categories; messages are fixed strings.
 import { detectRuntimePlatform, type RuntimePlatform } from "../platform/runtimePlatform";
+import { ordinaryCredentialNamespaceAvailable, runOrdinaryCredentialOperation } from "./nativeCredentialNamespace";
 
 /**
  * The fixed, application-owned namespace every credential item lives under.
@@ -238,6 +239,8 @@ export interface SecureStorageBinding {
    * A property of the implementation, not of the call — see
    * `SecureCredentialWriteResult`.
    */
+  /** S3c private migration observation only; ordinary stores never call it. */
+  inventory?(): Promise<unknown>;
   readonly failedWriteMayLosePreviousValue: boolean;
 }
 
@@ -324,7 +327,7 @@ async function loadDefaultBinding(): Promise<SecureStorageBinding> {
  * constructible on the Web, under Next's server rendering and in tests, where it
  * simply fails closed.
  *
- * **Ownership and ordering.** Every operation goes through ONE FIFO queue whose
+ * **Ownership and ordering.** Every operation goes through ONE namespace-wide FIFO queue whose
  * tail is always fulfilled, never rejected, so a failed operation cannot strand
  * later ones, and concurrent callers observe the order they called in. A failed
  * configuration leaves the store unconfigured rather than caching the failure, so
@@ -339,15 +342,12 @@ export function createNativeSecureCredentialStore(
 
   let binding: SecureStorageBinding | null = injectedBinding ?? null;
   let configured = false;
-  let tail: Promise<void> = Promise.resolve();
 
-  function enqueue<T>(task: () => Promise<T>): Promise<T> {
-    const result = tail.then(task, task);
-    tail = result.then(
-      () => undefined,
-      () => undefined
-    );
-    return result;
+  function enqueue<T>(task: () => Promise<T>, refused: () => T): Promise<T> {
+    return runOrdinaryCredentialOperation(task, refused);
+  }
+  function requireOrdinaryOwner(): void {
+    if (!ordinaryCredentialNamespaceAvailable()) throw new Error("Protected storage is owned by migration.");
   }
 
   async function ensureConfigured(): Promise<SecureStorageBinding> {
@@ -363,9 +363,12 @@ export function createNativeSecureCredentialStore(
       throw new SecureStoreUnavailableError(UNAVAILABLE_MESSAGE);
     }
 
+    requireOrdinaryOwner();
     const resolved = binding ?? (await loadDefaultBinding());
+    requireOrdinaryOwner();
     binding = resolved;
     if (!configured) {
+      requireOrdinaryOwner();
       await resolved.configure({
         keyPrefix: SECURE_CREDENTIAL_NAMESPACE,
         synchronize: SECURE_CREDENTIAL_SYNCHRONIZE,
@@ -379,6 +382,7 @@ export function createNativeSecureCredentialStore(
   async function readTask(key: string): Promise<SecureCredentialReadResult> {
     try {
       const active = await ensureConfigured();
+      requireOrdinaryOwner();
       const evidence = await active.read(key);
       // A malformed or absent evidence object is itself a failure. It is never
       // read as absence, and the shape is validated rather than trusted.
@@ -411,6 +415,7 @@ export function createNativeSecureCredentialStore(
     try {
       const active = await ensureConfigured();
       mayLose = active.failedWriteMayLosePreviousValue === true;
+      requireOrdinaryOwner();
       await active.write(key, value);
       return { ok: true };
     } catch (error) {
@@ -421,6 +426,7 @@ export function createNativeSecureCredentialStore(
   async function removeTask(key: string): Promise<SecureCredentialRemoveResult> {
     try {
       const active = await ensureConfigured();
+      requireOrdinaryOwner();
       const evidence = await active.remove(key);
       if (evidence === null || typeof evidence !== "object") {
         return { ok: false, error: { kind: "store_inaccessible" } };
@@ -446,7 +452,7 @@ export function createNativeSecureCredentialStore(
     read(key: string): Promise<SecureCredentialReadResult> {
       // The outer catch covers the unreachable case that the queue machinery or
       // a classifier itself throws. A public method never rejects.
-      return enqueue(() => readTask(key)).catch(
+      return enqueue(() => readTask(key), (): SecureCredentialReadResult => ({ status: "read_failed", error: { kind: "store_inaccessible" } })).catch(
         (): SecureCredentialReadResult => ({
           status: "read_failed",
           error: { kind: "store_inaccessible" },
@@ -454,7 +460,7 @@ export function createNativeSecureCredentialStore(
       );
     },
     write(key: string, value: string): Promise<SecureCredentialWriteResult> {
-      return enqueue(() => writeTask(key, value)).catch(
+      return enqueue(() => writeTask(key, value), (): SecureCredentialWriteResult => ({ ok: false, error: { kind: "store_inaccessible" }, previousValueMayBeLost: false })).catch(
         (): SecureCredentialWriteResult => ({
           ok: false,
           error: { kind: "store_inaccessible" },
@@ -465,7 +471,7 @@ export function createNativeSecureCredentialStore(
       );
     },
     remove(key: string): Promise<SecureCredentialRemoveResult> {
-      return enqueue(() => removeTask(key)).catch(
+      return enqueue(() => removeTask(key), (): SecureCredentialRemoveResult => ({ ok: false, error: { kind: "store_inaccessible" } })).catch(
         (): SecureCredentialRemoveResult => ({
           ok: false,
           error: { kind: "store_inaccessible" },

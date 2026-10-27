@@ -127,6 +127,7 @@ import {
   type TrustedDeviceRecord,
 } from "./trustedDevice";
 import type { TrustedDeviceRepository } from "./trustedDeviceRepository";
+import type { AccountDeletionGuardRepository } from "./accountDeletionGuard";
 import {
   decideOAuthIntake,
   type DurableCorrelationSnapshot,
@@ -361,6 +362,65 @@ export interface IdentityTransitionCoordinator {
   classifyAuthChange(change: NormalizedAuthChange): AuthChangeAdvice;
 }
 
+/** S5b internal composition only. The actual coordinator mints each currentness
+ * closure; an application caller never supplies a native grant. The host keeps
+ * the resulting auth/data ports private. Web has no such binding. */
+export type NativeIdentityOperation = Readonly<{
+  auth: AuthProviderMechanics;
+  identity(expectedAccountScopeId: string | null, expectedProfileId: string | null): IdentityService;
+  takeAuthObservation(): SessionRestoreOutcome | null;
+}>;
+/** Private genuine coordinator admission; never returned by a public runtime. */
+export type NativeProfileAdmission = Readonly<{
+  accountScopeId: string; profileId: string; onboardingCompletedAt: string; identityGeneration: number;
+  current(): boolean;
+  invalidate(barredAccountScopeId: string): Promise<InvalidationOutcome | null>;
+}>;
+/** Private original control observation and actual own-denial receipt. Neither
+ * is returned by the application runtime or grants Profile admission. */
+export type NativeAccountDenial = Readonly<{
+  outcome: InvalidationOutcome;
+  current: (() => boolean) | null;
+  publicationCurrent(): boolean;
+}>;
+export type NativeAccountPending = NativeAccountDenial | Readonly<{ outcome: null; current: () => boolean; publicationCurrent: () => boolean }>;
+export type NativeAccountControl = Readonly<{
+  current(): boolean;
+  invalidate(barredAccountScopeId: string | null): Promise<NativeAccountDenial | null>;
+  observePending(accountScopeId: string): Promise<NativeAccountPending | null>;
+}>;
+/** Private negative correlation only; never returned by the public runtime. */
+export type NativePendingIntentReplay = Readonly<{
+  intent: Readonly<PendingIntent> | null;
+  current(): boolean;
+  discard(): Promise<IntentMutationOutcome>;
+  recover(): Promise<InvitationRecoveryOutcome | null>;
+}>;
+/** Genuine coordinator identities only. Empty handles never carry serialized grants. */
+type FreshEmailOtpFacts = Readonly<{ source: object; accountScopeId: string; profileId: string; identityGeneration: number; current(): boolean }>;
+const freshEmailOtpSources = new WeakSet<object>();
+const freshEmailOtpEvents = new WeakMap<object, FreshEmailOtpFacts>();
+export function isNativeFreshEmailOtpSource(value: unknown): value is object {
+  return value !== null && (typeof value === "object" || typeof value === "function") && freshEmailOtpSources.has(value);
+}
+export function readNativeFreshEmailOtp(value: unknown): FreshEmailOtpFacts | null {
+  return value !== null && (typeof value === "object" || typeof value === "function") ? freshEmailOtpEvents.get(value) ?? null : null;
+}
+export type NativeIdentityOwnership = Readonly<{
+  bind(current: () => boolean): NativeIdentityOperation;
+  admissionAllowed(): boolean;
+  readonly freshEmailOtpOnline?: true;
+  ownFreshEmailOtpSource?(source: object): void;
+  ownFreshEmailOtp?(event: object): void;
+  retainFreshEmailOtpWork?(value: unknown): void;
+  ownStartup(current: () => boolean): void;
+  ownAdmission?(admission: NativeProfileAdmission): void;
+  ownAccountControl?(capture: () => NativeAccountControl): void;
+  ownPendingIntentReplay?(observe: () => Promise<NativePendingIntentReplay | null>): void;
+  pendingIntentChanged?(): void;
+  ownClose(close: () => TransitionIdentity): void;
+}>;
+
 export type IdentityCoordinatorDeps = {
   auth: AuthProviderMechanics;
   identity: IdentityService;
@@ -371,6 +431,8 @@ export type IdentityCoordinatorDeps = {
   resolutions: IdentityBarrierResolutionRepository;
   trusted: TrustedDeviceRepository;
   intents: PendingIntentRepository;
+  /** Supplied by every production composition. Optional for legacy coordinator fixtures. */
+  deletionGuards?: AccountDeletionGuardRepository;
   liveGeneration: LiveGenerationCounter;
   now: () => string;
   /** Canonical UUIDs for barriers and attempts. */
@@ -379,6 +441,8 @@ export type IdentityCoordinatorDeps = {
    * document. */
   resolveRedirectTarget: () => string | null;
   onProgress?: (phase: GateProgressPhase, transition?: TransitionIdentity) => void;
+  /** Only the explicit dormant native host constructs this actual integration. */
+  nativeOwnership?: NativeIdentityOwnership;
 };
 
 // ---------------------------------------------------------------------------
@@ -1123,7 +1187,13 @@ function containTrusted(repository: TrustedDeviceRepository): TrustedDeviceRepos
   };
 }
 
-function containIntents(repository: PendingIntentRepository): PendingIntentRepository {
+function containIntents(repository: PendingIntentRepository, mutations?: { before(): void; settled(): void }): PendingIntentRepository {
+  async function mutate<T>(operation: () => Promise<T>): Promise<T> {
+    if (!mutations) return operation();
+    mutations.before();
+    try { return await operation(); }
+    finally { mutations.settled(); }
+  }
   const guardMutation = async (
     operation: () => Promise<IntentMutationOutcome>
   ): Promise<IntentMutationOutcome> => {
@@ -1142,17 +1212,17 @@ function containIntents(repository: PendingIntentRepository): PendingIntentRepos
   };
   return {
     load: () => guardLoad(() => repository.load(), validatePendingIntent),
-    save: (intent) => guardWrite(() => repository.save(intent)),
-    deleteIntent: () => guardRemove(() => repository.deleteIntent()),
+    save: (intent) => mutate(() => guardWrite(() => repository.save(intent))),
+    deleteIntent: () => mutate(() => guardRemove(() => repository.deleteIntent())),
     clearOutstandingDenialCleanup: () =>
-      guardRemove(() => repository.clearOutstandingDenialCleanup()),
-    deleteOrdinaryIntents: () => guardMutation(() => repository.deleteOrdinaryIntents()),
-    markInvitationForRecovery: (intent) => guardWrite(() => repository.markInvitationForRecovery(intent)),
-    deleteOtherOrdinaryIntents: (value) => guardMutation(() => repository.deleteOtherOrdinaryIntents(value)),
+      mutate(() => guardRemove(() => repository.clearOutstandingDenialCleanup())),
+    deleteOrdinaryIntents: () => mutate(() => guardMutation(() => repository.deleteOrdinaryIntents())),
+    markInvitationForRecovery: (intent) => mutate(() => guardWrite(() => repository.markInvitationForRecovery(intent))),
+    deleteOtherOrdinaryIntents: (value) => mutate(() => guardMutation(() => repository.deleteOtherOrdinaryIntents(value))),
     recordOutstandingDenialCleanup: (recordedAt) =>
-      guardMutation(() => repository.recordOutstandingDenialCleanup(recordedAt)),
+      mutate(() => guardMutation(() => repository.recordOutstandingDenialCleanup(recordedAt))),
     settleIntentBeforeReady: (canProceed) =>
-      guardMutation(() => repository.settleIntentBeforeReady(canProceed)),
+      mutate(() => guardMutation(() => repository.settleIntentBeforeReady(canProceed))),
   };
 }
 
@@ -1232,6 +1302,10 @@ async function guardRemove(
 export function createIdentityTransitionCoordinator(
   deps: IdentityCoordinatorDeps
 ): IdentityTransitionCoordinator {
+  const native = deps.nativeOwnership;
+  let intentRevision: object = {};
+  let intentReplay: { value: NativePendingIntentReplay; retire(): void } | null = null;
+  function retireIntentReplay() { intentReplay?.retire(); intentReplay = null; }
   // Every dependency is used through its contained wrapper, never directly. See the
   // containment section above for why each substitute value is the deny-ward one.
   const auth = containAuth(deps.auth);
@@ -1241,12 +1315,131 @@ export function createIdentityTransitionCoordinator(
   const attempts = containAttempts(deps.attempts);
   const resolutions = containResolutions(deps.resolutions);
   const trusted = containTrusted(deps.trusted);
-  const intents = containIntents(deps.intents);
+  const intents = containIntents(deps.intents, native ? {
+    before() { intentRevision = {}; retireIntentReplay(); },
+    settled() { try { native.pendingIntentChanged?.(); } catch { /* advisory notification cannot change mutation truth */ } },
+  } : undefined);
   const liveGeneration = containLiveGeneration(deps.liveGeneration);
   const now = containClock(deps.now);
   const newId = containIdSource(deps.newId);
   const resolveRedirectTarget = containRedirectResolver(deps.resolveRedirectTarget);
   const emitProgress = containProgress(deps.onProgress);
+  let nativeClosed = false;
+  let admissionGeneration = 0;
+  let freshGeneration: object = {};
+  let freshEnabled = false;
+  const freshOnlineRequired = native?.freshEmailOtpOnline === true;
+  type UnfinishedEmailOtp = Readonly<{ context: TransitionContext; generation: object; accountScopeId: string; profileId: string; previousAccountScopeId: string | null;
+    barrier: Readonly<IdentityAccessBarrier>; attempt: Readonly<InteractiveAuthAttempt>; resolution: Readonly<IdentityBarrierResolution> }>;
+  let unfinishedEmailOtp: UnfinishedEmailOtp | null = null;
+  function unfinishedCurrent(origin: UnfinishedEmailOtp): boolean {
+    return freshOnlineRequired && freshEnabled && unfinishedEmailOtp === origin && origin.generation === freshGeneration && freshCurrent(origin.context);
+  }
+  function retireUnfinished(origin: UnfinishedEmailOtp): void {
+    if (unfinishedEmailOtp === origin) unfinishedEmailOtp = null;
+  }
+  async function proveUnfinishedUnlocked(origin: UnfinishedEmailOtp): Promise<boolean> {
+    if (!unfinishedCurrent(origin)) return false;
+    const actual = evaluateDurablePreflight(await loadDurableSnapshotUnlocked());
+    const sameFields = (a: object, b: object, names: readonly string[]) => names.every(name => Reflect.get(a, name) === Reflect.get(b, name));
+    const valid = unfinishedCurrent(origin) && actual.kind === "correlated" && actual.attempt.method === "email_otp" &&
+      actual.resolution.authenticatedAccountScopeId === origin.accountScopeId && actual.resolution.identityGeneration === origin.context.epoch &&
+      sameFields(actual.barrier, origin.barrier, ["schemaVersion", "barrierId", "origin", "barredAccountScopeId", "barredGeneration", "establishedAt"]) &&
+      sameFields(actual.attempt, origin.attempt, ["schemaVersion", "attemptId", "method", "flowId", "barrierId", "capturedIdentityGeneration", "startedAt"]) &&
+      sameFields(actual.resolution, origin.resolution, ["schemaVersion", "barrierId", "attemptId", "method", "flowId", "identityGeneration", "authenticatedAccountScopeId", "resolvedAt"]);
+    if (!valid) retireUnfinished(origin);
+    return valid;
+  }
+  const proveUnfinished = (origin: UnfinishedEmailOtp) => inSection(() => proveUnfinishedUnlocked(origin));
+  let freshSource: object | null = null;
+  let freshSourceObserver: ((value: object) => void) | null = null;
+  let freshEventObserver: ((value: object) => void) | null = null;
+  let freshWorkObserver: ((value: unknown) => void) | null = null;
+  function freshObservation(observer: (value: object) => void, value: object): boolean {
+    try {
+      const returned: unknown = Reflect.apply(observer, native, [value]);
+      if (returned === undefined) return true;
+      freshEnabled = false; freshGeneration = {};
+      // Genuine host completion ownership handles malformed returns, never throws.
+      try { freshWorkObserver?.(returned); } catch { /* no thrown reason inspection */ }
+    } catch { freshEnabled = false; freshGeneration = {}; }
+    return false;
+  }
+  function freshCurrent(context: TransitionContext): boolean {
+    try { return nativeCurrent(context) && nativeAdmissionAllowed(); } catch { return false; }
+  }
+  function publishFreshEmailOtp(context: TransitionContext, accountScopeId: string, profileId: string): void {
+    if (!freshEnabled || !freshSource || !freshEventObserver || !freshCurrent(context)) return;
+    const generation = freshGeneration, source = freshSource;
+    const event = Object.freeze(Object.create(null)) as object;
+    freshEmailOtpEvents.set(event, Object.freeze({ source, accountScopeId, profileId, identityGeneration: context.epoch,
+      current: () => freshEnabled && generation === freshGeneration && freshSource === source && freshCurrent(context),
+    }));
+    freshObservation(freshEventObserver, event);
+  }
+  let nativeAdmission: NativeProfileAdmission | null = null;
+  let nativeProfile: { account: string; profile: string } | null = null;
+  type NativeDenialWitness = { context: TransitionContext; account: string | null | undefined; barrierId: string | null };
+  let nativeDenial: NativeDenialWitness | null = null;
+  let nativeBlockedControl: { account: string; sequence: number; epoch: number } | null = null;
+  let completedNativeDenial: (NativeDenialWitness & { installedEpoch: number; outcome: InvalidationOutcome }) | null = null;
+  function currentNativeDenial(subject?: string): NativeDenialWitness | null {
+    if (!native || nativeClosed) return null;
+    const witness = nativeDenial && ownsOperation(nativeDenial.context) ? nativeDenial
+      : completedNativeDenial && ownsOperation(completedNativeDenial.context) && completedNativeDenial.installedEpoch === liveGeneration.current() ? completedNativeDenial : null;
+    return witness && (subject === undefined || witness.account === subject) ? witness : null;
+  }
+  const nativeOperations = new WeakMap<object, NativeIdentityOperation>();
+  function nativeCurrent(context: TransitionContext): boolean {
+    return !nativeClosed && ownsOperation(context) && liveGeneration.current() === context.epoch;
+  }
+  function nativeOperation(context: TransitionContext): NativeIdentityOperation | null {
+    if (!native) return null;
+    let operation = nativeOperations.get(context);
+    if (!operation) {
+      operation = native.bind(() => nativeCurrent(context));
+      nativeOperations.set(context, operation);
+    }
+    return operation;
+  }
+  function operationAuth(context: TransitionContext): AuthProviderMechanics {
+    const operation = nativeOperation(context);
+    return operation ? containAuth(operation.auth) : auth;
+  }
+  function operationIdentity(context: TransitionContext | undefined, expectedAccount: string | null = null): IdentityService {
+    const operation = context ? nativeOperation(context) : null;
+    return operation ? containIdentityService(operation.identity(expectedAccount, nativeProfile?.account === expectedAccount ? nativeProfile.profile : null)) : identityService;
+  }
+  function rememberNativeProfile(context: TransitionContext, account: string, profile: string): void {
+    if (native && !nativeClosed && ownsOperation(context) && liveGeneration.current() === context.epoch) nativeProfile = { account, profile };
+  }
+  function nativeAdmissionAllowed(): boolean {
+    return !nativeClosed && (!native || native.admissionAllowed());
+  }
+  function publishNativeAdmission(context: TransitionContext, accountScopeId: string, profileId: string, onboardingCompletedAt: string): void {
+    if (!native?.ownAdmission || !nativeCurrent(context) || !nativeAdmissionAllowed()) return;
+    if (context.mode === "background") {
+      // Confirmation retains the original cell; no background path mints authority.
+      if (nativeAdmission?.current() && nativeAdmission.accountScopeId === accountScopeId &&
+        nativeAdmission.profileId === profileId && nativeAdmission.onboardingCompletedAt === onboardingCompletedAt) native.ownAdmission(nativeAdmission);
+      return;
+    }
+    const stamp = admissionGeneration, epoch = context.epoch;
+    const cell: NativeProfileAdmission = Object.freeze({ accountScopeId, profileId, onboardingCompletedAt, identityGeneration: epoch,
+      current: () => !nativeClosed && stamp === admissionGeneration && epoch === liveGeneration.current(),
+      async invalidate(barredAccount: string) {
+        // Pure original-admission proof and real claim are synchronous. Health is
+        // deliberately separate: established denial survives cleanup failure.
+        if (!cell.current()) return null;
+        const invalidation = beginTransition();
+        const run = await runInvalidation(invalidation, barredAccount);
+        return run.begun ? annotate(run.outcome, invalidation) : null;
+      },
+    });
+    nativeBlockedControl = null;
+    nativeAdmission = cell;
+    native.ownAdmission(cell);
+  }
   /**
    * Announces a phase, tagged with the announcing operation's identity and order.
    *
@@ -1348,6 +1541,56 @@ export function createIdentityTransitionCoordinator(
     }
   }
 
+  function sameIntent(a: Readonly<PendingIntent> | null, b: Readonly<PendingIntent> | null): boolean {
+    return a === b || (a !== null && b !== null && a.schemaVersion === b.schemaVersion && a.kind === b.kind &&
+      a.value === b.value && a.capturedAt === b.capturedAt && a.survival === b.survival);
+  }
+
+  native?.ownPendingIntentReplay?.(() => inSection(async () => {
+    const revision = intentRevision, foreground = admissionGeneration, epoch = liveGeneration.current();
+    const originalCurrent = () => nativeAdmissionAllowed() && revision === intentRevision && foreground === admissionGeneration && epoch === liveGeneration.current();
+    if (!originalCurrent()) { retireIntentReplay(); return null; }
+    const loaded = await intents.load();
+    if (!originalCurrent() || (loaded.status !== "value" && loaded.status !== "absent")) { retireIntentReplay(); return null; }
+    const snapshot = loaded.status === "value" ? Object.freeze(loaded.value) : null;
+    if (intentReplay?.value.current() && sameIntent(intentReplay.value.intent, snapshot)) return intentReplay.value;
+    // Observed change/absence retires an old view permanently, including external
+    // A→absence→A observations. This is not global storage CAS/ABA detection.
+    retireIntentReplay();
+    let retired = false;
+    const current = () => !retired && originalCurrent();
+    const value: NativePendingIntentReplay = Object.freeze({
+      intent: snapshot, current,
+      discard: () => inSection(async (): Promise<IntentMutationOutcome> => {
+        if (!current()) return { kind: "superseded" };
+        const fresh = await intents.load();
+        if (!current()) return { kind: "superseded" };
+        if (fresh.status === "absent") { retireIntentReplay(); return { kind: "not_required" }; }
+        if (fresh.status !== "value") { retireIntentReplay(); return { kind: "blocked" }; }
+        if (snapshot === null || !sameIntent(snapshot, fresh.value)) { retireIntentReplay(); return { kind: "superseded" }; }
+        // This invocation revokes its own observation. Its actual removal ACK
+        // remains a fact and must not be vetoed by that revision rotation/close.
+        const removed = await intents.deleteIntent();
+        return { kind: removed.ok ? "applied" : "blocked" };
+      }),
+      async recover() {
+        if (snapshot?.kind !== "invitation") return null;
+        const context = await inSection(async () => {
+          if (!current()) return null;
+          const fresh = await intents.load();
+          if (!current()) return null;
+          if (fresh.status !== "value" || !sameIntent(snapshot, fresh.value)) { retireIntentReplay(); return null; }
+          // Claim only after the queued capture/read proof. Run the shared body
+          // after releasing this lane, since it uses the very same owned lane.
+          return beginTransition();
+        });
+        return context === null ? null : runInvitationRecovery(snapshot, context, { revision, intent: snapshot });
+      },
+    });
+    intentReplay = { value, retire() { retired = true; } };
+    return value;
+  }));
+
   /**
    * A section that runs `work` only if `context` still owns the operation slot at
    * the moment the lane admits it; otherwise it resolves `superseded` having
@@ -1398,6 +1641,9 @@ export function createIdentityTransitionCoordinator(
     binding?: { barrierId: string; attemptId: string | null };
     mode?: "foreground" | "background";
   }): TransitionContext {
+    unfinishedEmailOtp = null; freshGeneration = {};
+    if (native) nativeBlockedControl = null;
+    if (native && options?.mode !== "background") { admissionGeneration++; nativeAdmission = null; }
     operationCounter += 1;
     owningOperationSequence = operationCounter;
     return {
@@ -1409,6 +1655,70 @@ export function createIdentityTransitionCoordinator(
       attemptId: options?.binding?.attemptId ?? null,
     };
   }
+
+  // A genuine coordinator transition, kept inside the native host. It produces
+  // terminal annotations without URL/storage/SDK work or invented success.
+  let terminalIdentity: TransitionIdentity | null = null;
+  native?.ownClose(() => {
+    if (terminalIdentity) return terminalIdentity;
+    const context = beginTransition();
+    nativeClosed = true;
+    nativeProfile = null;
+    terminalIdentity = Object.freeze(identityOf(context));
+    return terminalIdentity;
+  });
+
+  // Opt in only through the actual host's closed construction graph. Capture once.
+  try {
+    const sourceObserver = native?.ownFreshEmailOtpSource, eventObserver = native?.ownFreshEmailOtp;
+    const workObserver = native?.retainFreshEmailOtpWork;
+    if (typeof sourceObserver === "function" && typeof eventObserver === "function" && typeof workObserver === "function") {
+      freshSourceObserver = sourceObserver; freshEventObserver = eventObserver; freshWorkObserver = workObserver;
+      freshSource = Object.freeze(Object.create(null)) as object;
+      freshEmailOtpSources.add(freshSource); freshEnabled = !nativeClosed;
+      freshObservation(freshSourceObserver, freshSource);
+    }
+  } catch { freshEnabled = false; freshGeneration = {}; }
+
+  native?.ownAccountControl?.(() => {
+    const sequence = owningOperationSequence, epoch = liveGeneration.current();
+    const control: NativeAccountControl = Object.freeze({
+      current: () => !nativeClosed && sequence === owningOperationSequence && epoch === liveGeneration.current(),
+      async invalidate(account: string | null) {
+        if (!control.current()) return null;
+        const completed = completedNativeDenial;
+        if (completed && completed.account === account && ownsOperation(completed.context) && completed.installedEpoch === epoch) {
+          // Reconfirm actual completed denial for blocked recovery, without a
+          // fresh progress event that would replace the Provider's owner.
+          const current = () => control.current() && completed.installedEpoch === liveGeneration.current();
+          return Object.freeze({ outcome: completed.outcome, current, publicationCurrent: current });
+        }
+        const context = beginTransition();
+        const run = await runInvalidation(context, account);
+        if (!run.begun) return null;
+        const installedEpoch = run.installedEpoch;
+        // Actual begun-operation ownership can retain a current pending fact
+        // even when durable completion cannot grant another effect. The epoch
+        // is this operation's real bump return, or its original pre-write epoch
+        // when no successful bump occurred; never a later sampled generation.
+        const factualEpoch = installedEpoch ?? context.epoch;
+        const publicationCurrent = () => !nativeClosed && ownsOperation(context) && factualEpoch === liveGeneration.current();
+        const current = run.outcome.kind === "identity_invalidated" && run.outstanding.length === 0 && installedEpoch !== null ? publicationCurrent : null;
+        return Object.freeze({ outcome: Object.freeze(annotate(run.outcome, context)), current, publicationCurrent });
+      },
+      async observePending(account: string) {
+        if (!control.current() || (nativeDenial && ownsOperation(nativeDenial.context))) return null;
+        const blocked = nativeBlockedControl;
+        if (blocked && blocked.account === account && blocked.sequence === sequence && blocked.epoch === epoch && !nativeAdmission?.current()) {
+          // This witness was made only at the actual final non-admitting
+          // completion. No still-running foreground work can later grant Ready.
+          return Object.freeze({ outcome: null, current: control.current, publicationCurrent: control.current });
+        }
+        return control.invalidate(account);
+      },
+    });
+    return control;
+  });
 
   /** Annotates a result with the operation that produced it, and — for a
    * server-driven invalidation — with the denial it carries. */
@@ -1463,7 +1773,7 @@ export function createIdentityTransitionCoordinator(
    */
   async function guardStillCurrent(context: TransitionContext): Promise<GateVerdict | null> {
     const current = await inSection(() => stillCurrent(context));
-    return current ? null : { kind: "identity_unconfirmed" };
+    return current && nativeAdmissionAllowed() ? null : { kind: "identity_unconfirmed" };
   }
 
   async function loadDurableSnapshot(): Promise<DurableCorrelationSnapshot> {
@@ -1500,7 +1810,7 @@ export function createIdentityTransitionCoordinator(
    * failure changes nothing.
    */
   type BarrierEstablished =
-    | { ok: true; barrier: IdentityAccessBarrier }
+    | { ok: true; barrier: IdentityAccessBarrier; installedEpoch: number }
     | { ok: false; superseded: boolean };
 
   /**
@@ -1531,13 +1841,14 @@ export function createIdentityTransitionCoordinator(
       if (input.unconditional !== true && !ownsOperation(context)) {
         return { ok: false, superseded: true };
       }
-      return establishBarrierUnlocked(input);
+      return establishBarrierUnlocked({ ...input, nativeContext: context });
     });
   }
 
   async function establishBarrierUnlocked(input: {
     origin: IdentityBarrierOrigin | "deliberate_authentication";
     barredAccountScopeId?: string | null;
+    nativeContext?: TransitionContext;
   }): Promise<BarrierEstablished> {
     const previous = await barriers.load();
     const previousBarrier = previous.status === "value" ? previous.value : null;
@@ -1560,10 +1871,13 @@ export function createIdentityTransitionCoordinator(
       establishedAt: now(),
     });
 
+    // Own-save notifications can run before acknowledgement. This exact ID
+    // belongs to the actual still-owning denial, not an external barrier.
+    if (nativeDenial && nativeDenial.context === input.nativeContext && ownsOperation(nativeDenial.context)) nativeDenial.barrierId = barrier.barrierId;
     const written = await barriers.save(barrier);
     if (!written.ok) return { ok: false, superseded: false };
 
-    liveGeneration.bump();
+    const installedEpoch = liveGeneration.bump();
     lastKnownBarrierId = barrier.barrierId;
 
     if (previousBarrier !== null && previousBarrier.barrierId !== barrier.barrierId) {
@@ -1573,7 +1887,7 @@ export function createIdentityTransitionCoordinator(
       await resolutions.cleanUpNonCurrentResolution(previousBarrier.barrierId, barrier.barrierId);
     }
 
-    return { ok: true, barrier };
+    return { ok: true, barrier, installedEpoch };
   }
 
   /**
@@ -1821,7 +2135,9 @@ export function createIdentityTransitionCoordinator(
   ): Promise<TrustedWrite> {
     return inOwnedSection<TrustedWrite>(context, { kind: "superseded" }, async () => {
       if (!(await stillCurrent(context))) return { kind: "superseded" };
+      if (!nativeAdmissionAllowed()) return { kind: "write_failed" };
       const timestamp = now();
+      if (!nativeAdmissionAllowed()) return { kind: "write_failed" };
       const written = await trusted.save(
         createTrustedDeviceRecord({
           accountScopeId: identity.accountScopeId,
@@ -1834,7 +2150,7 @@ export function createIdentityTransitionCoordinator(
         })
       );
       if (!written.ok) return { kind: "write_failed" };
-      if (!ownsOperation(context) || liveGeneration.current() !== context.epoch) {
+      if (!ownsOperation(context) || liveGeneration.current() !== context.epoch || !nativeAdmissionAllowed()) {
         const fenced = await fenceUnconfirmedGrantUnlocked();
         if (!fenced) {
           // A failed fence must not leave the stale grant in place. This removal is
@@ -1900,22 +2216,22 @@ export function createIdentityTransitionCoordinator(
   // Legal-gated verdicts
   // -----------------------------------------------------------------------
 
-  async function legalSnapshot(): Promise<LegalSnapshot | null> {
-    const result = await identityService.getLegalSnapshot();
+  async function legalSnapshot(context?: TransitionContext): Promise<LegalSnapshot | null> {
+    const result = await operationIdentity(context).getLegalSnapshot();
     return result.ok ? result.value : null;
   }
 
   /** Sign-in is offered only when a current Privacy Notice exists. A missing one,
    * and an invalid response, both resolve `legal_unavailable` — but they are
    * different conditions and the service reports them distinctly. */
-  async function signedOutVerdict(): Promise<GateVerdict> {
-    const legal = await legalSnapshot();
+  async function signedOutVerdict(context?: TransitionContext): Promise<GateVerdict> {
+    const legal = await legalSnapshot(context);
     if (legal === null || !canOfferSignIn(legal)) return { kind: "legal_unavailable" };
     return { kind: "signed_out", legal };
   }
 
-  async function onboardingVerdict(): Promise<GateVerdict> {
-    const legal = await legalSnapshot();
+  async function onboardingVerdict(context?: TransitionContext): Promise<GateVerdict> {
+    const legal = await legalSnapshot(context);
     if (legal === null || !canOfferSignIn(legal)) return { kind: "legal_unavailable" };
     if (!canCompleteOnboarding(legal)) return { kind: "onboarding_blocked_legal", legal };
     return { kind: "onboarding_required", legal };
@@ -1948,6 +2264,7 @@ export function createIdentityTransitionCoordinator(
   type InvalidationRun =
     | {
         begun: true;
+        installedEpoch: number | null;
         outcome: InvalidationOutcome;
         verdict: GateVerdict;
         denial: DenialMarker;
@@ -1981,6 +2298,9 @@ export function createIdentityTransitionCoordinator(
     barredAccountScopeId: string | null | undefined
   ): Promise<InvalidationRun> {
     if (!ownsOperation(context)) return { begun: false };
+    unfinishedEmailOtp = null;
+    const nativeWitness: NativeDenialWitness | null = native ? { context, account: barredAccountScopeId, barrierId: null } : null;
+    if (native) { admissionGeneration++; nativeAdmission = null; nativeDenial = nativeWitness; }
 
     // Step 1: deny in memory, before any durable write is even attempted.
     progress("identity_denied_in_memory");
@@ -1997,6 +2317,7 @@ export function createIdentityTransitionCoordinator(
         trustedBefore.status === "value" ? trustedBefore.value.accountScopeId : null;
     }
 
+    if (nativeWitness) nativeWitness.account = resolvedBarredAccountScopeId;
     const denied: GateVerdict = { kind: "locked", origin: "server_identity_invalidated" };
     const outstanding: InvalidationResidue[] = [];
 
@@ -2065,9 +2386,16 @@ export function createIdentityTransitionCoordinator(
         ? "durable_denial_unavailable"
         : "server_identity_invalidated";
 
+    const outcome: InvalidationOutcome = { kind, denial, outstanding: frozen };
+    if (nativeWitness && established.ok && kind === "identity_invalidated" && ownsOperation(context) && established.installedEpoch === liveGeneration.current()) {
+      completedNativeDenial = { ...nativeWitness, installedEpoch: established.installedEpoch,
+        outcome: Object.freeze({ ...annotate(outcome, context), outstanding: Object.freeze([...frozen]) }) };
+    }
+    if (nativeDenial === nativeWitness) nativeDenial = null;
     return {
       begun: true,
-      outcome: { kind, denial, outstanding: frozen },
+      installedEpoch: established.ok ? established.installedEpoch : null,
+      outcome,
       verdict:
         kind === "durable_denial_unavailable" ? { kind: "storage_unavailable_locked" } : denied,
       denial,
@@ -2092,6 +2420,9 @@ export function createIdentityTransitionCoordinator(
   type BegunInvalidation = Extract<InvalidationRun, { begun: true }>;
 
   type PhaseBResult = {
+    /** Actual same-invocation online Profile/gate/write path, never optimism. */
+    onlineWrite?: Readonly<{ accountScopeId: string; profileId: string }>;
+    unfinishedProfile?: Readonly<{ accountScopeId: string; profileId: string; previousAccountScopeId: string | null }>;
     verdict: GateVerdict;
     invalidation: BegunInvalidation | null;
     /** The operation lost ownership before it could act on a server result. It
@@ -2104,6 +2435,18 @@ export function createIdentityTransitionCoordinator(
    * legitimate device on a bad network would be locked out (ADR-0025 §A). */
   function isDefinitiveNegative(error: IdentityError): boolean {
     return error.kind === "forbidden" || error.kind === "profile_required";
+  }
+
+  async function nativeAuthInvalidation(context: TransitionContext, expectedAccount: string) {
+    const observation = nativeOperation(context)?.takeAuthObservation();
+    if (!observation || !ownsOperation(context) || liveGeneration.current() !== context.epoch || nativeClosed) return null;
+    if (observation.kind === "invalid_session" || observation.kind === "no_session") {
+      return runInvalidation(context, expectedAccount);
+    }
+    if (observation.kind === "authenticated" && observation.identity.accountScopeId !== expectedAccount) {
+      return runInvalidation(context, observation.identity.accountScopeId);
+    }
+    return null;
   }
 
   /**
@@ -2121,16 +2464,23 @@ export function createIdentityTransitionCoordinator(
     context: TransitionContext
   ): Promise<PhaseBResult> {
     progress("ensuring_profile", context);
-    const profile = await identityService.ensureProfile();
+    const profile = await operationIdentity(context, identity.accountScopeId).ensureProfile();
+    const profileDenial = native ? await nativeAuthInvalidation(context, identity.accountScopeId) : null;
+    if (profileDenial) return invalidated(profileDenial);
+    if (native && !nativeCurrent(context)) return plain({ kind: "identity_unconfirmed" });
     if (!profile.ok) {
       if (isDefinitiveNegative(profile.error)) {
         return invalidated(await runInvalidation(context, identity.accountScopeId));
       }
       return plain({ kind: "identity_unconfirmed" });
     }
+    rememberNativeProfile(context, identity.accountScopeId, profile.value.profileId);
 
     progress("resolving_gate_facts", context);
-    const facts = await identityService.resolveGateFacts();
+    const facts = await operationIdentity(context, identity.accountScopeId).resolveGateFacts();
+    const factsDenial = native ? await nativeAuthInvalidation(context, identity.accountScopeId) : null;
+    if (factsDenial) return invalidated(factsDenial);
+    if (native && !nativeCurrent(context)) return plain({ kind: "identity_unconfirmed" });
     if (!facts.ok) {
       if (isDefinitiveNegative(facts.error)) {
         return invalidated(await runInvalidation(context, identity.accountScopeId));
@@ -2147,7 +2497,8 @@ export function createIdentityTransitionCoordinator(
     }
 
     const eligibility = deriveGateEligibility(facts.value);
-    if (eligibility.kind === "incomplete") return plain(await onboardingVerdict());
+    if (eligibility.kind === "incomplete") return { ...plain(await onboardingVerdict(context)),
+      unfinishedProfile: { accountScopeId: identity.accountScopeId, profileId: profile.value.profileId, previousAccountScopeId: options.previousAccountScopeId } };
 
     // An ORDINARY ACCOUNT SWITCH: this device was trusted for a different account
     // and is now resolving a new one. That account's ordinary intents end here
@@ -2188,14 +2539,16 @@ export function createIdentityTransitionCoordinator(
       return plain({ kind: "trusted_state_not_established" });
     }
 
-    const settled = await settleIntentStateBeforeReady(context);
+    const settled = await settleIntentStateBeforeReady(context, eligibility.profileId);
     if (settled !== null) return plain(settled);
 
     // The last proof before a ready verdict leaves this function.
     const beforeReady = await guardStillCurrent(context);
     if (beforeReady !== null) return plain(beforeReady);
 
-    return plain({ kind: "ready_online", session: sessionFor(identity, eligibility) });
+    publishNativeAdmission(context, identity.accountScopeId, eligibility.profileId, eligibility.onboardingCompletedAt);
+    return { ...plain({ kind: "ready_online", session: sessionFor(identity, eligibility) }),
+      onlineWrite: { accountScopeId: identity.accountScopeId, profileId: eligibility.profileId } };
   }
 
   /** A Phase B resolution that involved no server-driven invalidation. */
@@ -2243,8 +2596,10 @@ export function createIdentityTransitionCoordinator(
    * intent key that cannot be read at all, both fail closed.
    */
   async function settleIntentStateBeforeReady(
-    context: TransitionContext
+    context: TransitionContext,
+    profileId: string
   ): Promise<GateVerdict | null> {
+    if (!(await deletionGuardAllows(profileId))) return { kind: "identity_unconfirmed" };
     // ONE section, so the whole read → decide → write sequence inside the
     // repository is closed against every other operation's mutations. The currency
     // proof is ALSO handed down, so the repository can consult it between its own
@@ -2259,6 +2614,11 @@ export function createIdentityTransitionCoordinator(
     if (settled.kind === "blocked") return { kind: "intent_state_not_persisted" };
     if (settled.kind === "superseded") return { kind: "identity_unconfirmed" };
     return null;
+  }
+
+  async function deletionGuardAllows(profileId: string): Promise<boolean> {
+    try { return deps.deletionGuards ? await deps.deletionGuards.canAdmit(profileId) : true; }
+    catch { return false; }
   }
 
   type TrustedVerdictLoad =
@@ -2296,7 +2656,8 @@ export function createIdentityTransitionCoordinator(
   async function resolveAccessVerdict(
     preflight: PreflightResult,
     restore: SessionRestoreOutcome,
-    context: TransitionContext
+    context: TransitionContext,
+    requireOnline = false
   ): Promise<PhaseBResult> {
     if (preflight.kind === "quarantined") {
       return plain({ kind: "quarantined_locked", origin: preflight.origin });
@@ -2337,10 +2698,12 @@ export function createIdentityTransitionCoordinator(
           // different account.
           return plain({ kind: "identity_unconfirmed" });
         }
-        const offlineSettled = await settleIntentStateBeforeReady(context);
+        const offlineSettled = await settleIntentStateBeforeReady(context, trustedRecord.profileId);
         if (offlineSettled !== null) return plain(offlineSettled);
         const beforeOfflineReady = await guardStillCurrent(context);
         if (beforeOfflineReady !== null) return plain(beforeOfflineReady);
+        rememberNativeProfile(context, trustedRecord.accountScopeId, trustedRecord.profileId);
+        publishNativeAdmission(context, trustedRecord.accountScopeId, trustedRecord.profileId, trustedRecord.onboardingCompletedAt);
         return plain({ kind: "ready_offline", session: sessionForTrusted(trustedRecord, null) });
       }
 
@@ -2351,7 +2714,7 @@ export function createIdentityTransitionCoordinator(
           // removal and an explicit double-failure outcome.
           return invalidated(await runInvalidation(context, trustedRecord.accountScopeId));
         }
-        return plain(await signedOutVerdict());
+        return plain(await signedOutVerdict(context));
       }
 
       case "invalid_session": {
@@ -2359,7 +2722,7 @@ export function createIdentityTransitionCoordinator(
           // Case B — the session is definitively invalid.
           return invalidated(await runInvalidation(context, trustedRecord.accountScopeId));
         }
-        return plain(await signedOutVerdict());
+        return plain(await signedOutVerdict(context));
       }
 
       case "authenticated": {
@@ -2380,13 +2743,16 @@ export function createIdentityTransitionCoordinator(
         }
 
         if (trustedRecord.accountScopeId === identity.accountScopeId) {
+          if (requireOnline) return resolveAsFreshIdentity(identity, { previousAccountScopeId: trustedRecord.accountScopeId }, context);
+          rememberNativeProfile(context, identity.accountScopeId, trustedRecord.profileId);
           // Optimistic entry: a valid same-scope record and no unresolved barrier.
           // Revalidation runs separately, in the background, and never blocks an
           // already-trusted device.
-          const settled = await settleIntentStateBeforeReady(context);
+          const settled = await settleIntentStateBeforeReady(context, trustedRecord.profileId);
           if (settled !== null) return plain(settled);
           const beforeReady = await guardStillCurrent(context);
           if (beforeReady !== null) return plain(beforeReady);
+          publishNativeAdmission(context, trustedRecord.accountScopeId, trustedRecord.profileId, trustedRecord.onboardingCompletedAt);
           return plain({
             kind: "ready_online",
             session: sessionForTrusted(trustedRecord, identity.email),
@@ -2451,6 +2817,9 @@ export function createIdentityTransitionCoordinator(
     // it reports supersession and mutated nothing.
     if (result.superseded) return annotate({ kind: "superseded" }, context);
     const verdict = result.verdict;
+    if (native && verdict.kind === "identity_unconfirmed" && nativeCurrent(context)) {
+      nativeBlockedControl = { account: identity.accountScopeId, sequence: context.sequence, epoch: context.epoch };
+    }
     if (verdict.kind === "trusted_state_not_established") {
       return annotate({ kind: "trusted_state_not_established" }, context);
     }
@@ -2495,6 +2864,9 @@ export function createIdentityTransitionCoordinator(
       barrierId: barrier.barrierId,
       attemptId: attempt.attemptId,
     };
+    // Only this actual startup's admitted continuation may rebase its epoch.
+    // Cached facade replay never captures a newer operation or generation.
+    native?.ownStartup(() => nativeCurrent(context));
     const startupIdentity = identityOf(context);
 
     const c3 = await proveCheckpoint(context, {
@@ -2527,7 +2899,7 @@ export function createIdentityTransitionCoordinator(
       };
     }
 
-    const exchange = await auth.exchangeCorrelatedCallback(claim.claim, expectedFlowId);
+    const exchange = await operationAuth(context).exchangeCorrelatedCallback(claim.claim, expectedFlowId);
 
     // Whatever happened, this page is finished with the callback material: the
     // retained candidate is dropped and any unread code is revoked.
@@ -2607,6 +2979,102 @@ export function createIdentityTransitionCoordinator(
     };
   }
 
+  async function runInvitationRecovery(invitation: PendingIntent, initial?: TransitionContext, original?: { revision: object; intent: Readonly<PendingIntent> }): Promise<InvitationRecoveryOutcome> {
+    let context = initial ?? beginTransition();
+    progress("signing_out", context);
+
+    // SNAPSHOT THE ARGUMENT EXACTLY ONCE, before anything is decided from it. It
+    // is untrusted at runtime, and two steps below read from it: the survival
+    // mark and the "delete every OTHER ordinary intent" call. Reading it twice
+    // would let a hostile or accessor-backed value have one `value` marked for
+    // survival and a DIFFERENT one preserved from deletion.
+    const preserved = validatePendingIntent(invitation);
+    if (preserved === null) return annotate({ kind: "intent_state_not_persisted" }, context);
+
+    const trustedBefore = await trusted.load();
+    const barredAccountScopeId =
+      trustedBefore.status === "value" ? trustedBefore.value.accountScopeId : null;
+
+    // 2 — the barrier FIRST, so partial progress below is always safe.
+    const established = await establishBarrier(context, {
+      origin: "account_recovery",
+      barredAccountScopeId,
+    });
+    if (!established.ok) {
+      return annotate(
+        established.superseded
+          ? { kind: "superseded" as const }
+          : { kind: "barrier_not_established" as const },
+        context
+      );
+    }
+    const barrierId = established.barrier.barrierId;
+    context = { ...context, epoch: liveGeneration.current(), barrierId };
+
+    // 3 — persist survival for EXACTLY this invitation. An admin-request intent
+    // is refused by the repository: that link is not email-bound and has no
+    // wrong-account outcome to recover from.
+    // An intent already carrying an outstanding denial cleanup is refused by the
+    // repository: a debt owed by a definitive denial is never converted into a
+    // survival across a sign-out.
+    if (original) {
+      const settled = await inOwnedSection<IntentMutationOutcome>(context, { kind: "superseded" }, async () => {
+        if (original.revision !== intentRevision || !nativeAdmissionAllowed()) return { kind: "blocked" };
+        const fresh = await intents.load();
+        if (!ownsOperation(context)) return { kind: "superseded" };
+        if (original.revision !== intentRevision || !nativeAdmissionAllowed() || fresh.status !== "value" || !sameIntent(fresh.value, original.intent)) {
+          retireIntentReplay(); return { kind: "blocked" };
+        }
+        const marked = await intents.markInvitationForRecovery(preserved);
+        // Mark's own revision rotation is expected. Access ownership is not:
+        // a newer authentication may have begun while the ACK was pending.
+        if (!ownsOperation(context)) return { kind: "superseded" };
+        if (!marked.ok) return { kind: "blocked" };
+        return intents.deleteOtherOrdinaryIntents(preserved.value);
+      });
+      if (settled.kind === "superseded") return annotate({ kind: "superseded" }, context);
+      if (settled.kind === "blocked") return annotate({ kind: "intent_state_not_persisted" }, context);
+    } else {
+      const marked = await inOwnedSection<PersistenceWriteResult | "superseded">(
+        context,
+        "superseded",
+        () => intents.markInvitationForRecovery(preserved)
+      );
+      if (marked === "superseded") return annotate({ kind: "superseded" }, context);
+      if (!marked.ok) return annotate({ kind: "intent_state_not_persisted" }, context);
+
+      // 4 — remove every OTHER ordinary intent.
+      const others = await inOwnedSection<IntentMutationOutcome>(
+        context,
+        { kind: "superseded" },
+        () => intents.deleteOtherOrdinaryIntents(preserved.value)
+      );
+      if (others.kind === "superseded") return annotate({ kind: "superseded" }, context);
+      if (others.kind === "blocked") return annotate({ kind: "intent_state_not_persisted" }, context);
+    }
+
+    // 5 — required: invalidate trusted state.
+    const removal = await inOwnedSection<PersistenceRemoveResult | "superseded">(
+      context,
+      "superseded",
+      () => trusted.remove()
+    );
+    if (removal === "superseded") return annotate({ kind: "superseded" }, context);
+    if (!removal.ok) return annotate({ kind: "trusted_state_not_invalidated" }, context);
+
+    // 6 — revalidate the barrier.
+    const c = await proveCheckpoint(context, { barrierId, generation: liveGeneration.current() });
+    if (!c.ok) return annotate({ kind: "superseded" }, context);
+
+    // 7 — provider sign-out. Every local failure above produced ZERO calls here.
+    await operationAuth(context).signOut();
+
+    // 8 — remain locked. Normal authentication and onboarding come next, and the
+    // invitation preview is re-run server-side before anything is assumed about
+    // eligibility.
+    return annotate({ kind: "signed_out_locked" }, context);
+  }
+
   // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
@@ -2614,6 +3082,7 @@ export function createIdentityTransitionCoordinator(
   return {
     async startUp(): Promise<StartupOutcome> {
       const startup = beginTransition();
+      native?.ownStartup(() => nativeCurrent(startup));
       progress("intaking_oauth_return", startup);
 
       // SYNCHRONOUS, and before the first `await` in this function: capture,
@@ -2660,7 +3129,7 @@ export function createIdentityTransitionCoordinator(
               attemptId: preflight.attempt.attemptId,
             }
           : startup;
-      const restore = await auth.restoreSession();
+      const restore = await operationAuth(context).restoreSession();
       const result = await resolveAccessVerdict(preflight, restore, context);
       return {
         callback,
@@ -2707,7 +3176,7 @@ export function createIdentityTransitionCoordinator(
 
       // Step 3 — one provider preparation call. No navigation, no session.
       progress("preparing_google_flow", context);
-      const prepared = await auth.prepareGoogleSignIn(redirectTo);
+      const prepared = await operationAuth(context).prepareGoogleSignIn(redirectTo);
       if (prepared.kind === "temporarily_unavailable") {
         return annotate({ kind: "temporarily_unavailable" }, context);
       }
@@ -2746,7 +3215,7 @@ export function createIdentityTransitionCoordinator(
       if (!c2.ok) return annotate({ kind: "superseded" }, context);
 
       progress("navigating_to_provider", context);
-      const navigation = auth.navigateToAuthorizationUrl(prepared.prepared);
+      const navigation = operationAuth(context).navigateToAuthorizationUrl(prepared.prepared);
       if (navigation.kind !== "navigating") return annotate({ kind: "navigation_failed" }, context);
 
       // Navigation ends the start-page epoch. The callback page will begin a fresh
@@ -2790,7 +3259,7 @@ export function createIdentityTransitionCoordinator(
       context = { ...context, attemptId: attempt.attemptId };
 
       progress("requesting_otp", context);
-      const requested = await auth.requestEmailOtp(email);
+      const requested = await operationAuth(context).requestEmailOtp(email);
       if (!requested.ok) return annotate(otpRequestOutcomeFor(requested.error), context);
 
       return annotate({ kind: "otp_requested" }, context);
@@ -2835,7 +3304,7 @@ export function createIdentityTransitionCoordinator(
       if (!ownsOperation(context)) return annotate({ kind: "superseded" }, context);
 
       progress("verifying_otp", context);
-      const verified = await auth.verifyEmailOtp(email, token);
+      const verified = await operationAuth(context).verifyEmailOtp(email, token);
       if (!verified.ok) return annotate(completionFailureFor(verified.error), context);
 
       // C6 — after verification, before resolution persistence. A session already
@@ -2881,9 +3350,19 @@ export function createIdentityTransitionCoordinator(
           resolution: persisted.resolution,
         },
         { kind: "authenticated", identity: verified.value },
-        context
+        context, freshOnlineRequired
       );
-      return completionOutcomeFor(verified.value, result, context);
+      const completed = completionOutcomeFor(verified.value, result, context);
+      if (result.verdict.kind === "ready_online" && result.onlineWrite?.accountScopeId === verified.value.accountScopeId &&
+        result.onlineWrite.profileId === result.verdict.session.profileId && nativeCurrent(context)) {
+        publishFreshEmailOtp(context, verified.value.accountScopeId, result.onlineWrite.profileId);
+      }
+      if (freshOnlineRequired && freshEnabled && result.unfinishedProfile?.accountScopeId === verified.value.accountScopeId && freshCurrent(context) &&
+        ["onboarding_required", "onboarding_blocked_legal", "legal_unavailable"].includes(result.verdict.kind)) {
+        unfinishedEmailOtp = Object.freeze({ context, generation: freshGeneration, ...result.unfinishedProfile,
+          barrier: Object.freeze({ ...c6.barrier }), attempt: Object.freeze({ ...c6.attempt }), resolution: Object.freeze({ ...persisted.resolution }) });
+      }
+      return completed;
     },
 
     async submitOnboarding(input: CompleteOnboardingInput): Promise<OnboardingSubmissionOutcome> {
@@ -2900,22 +3379,44 @@ export function createIdentityTransitionCoordinator(
       // live epoch is bracketed too. No trusted record — and no other local record —
       // is written unless both still agree.
       // ---------------------------------------------------------------
-      const context = beginTransition();
-      const before = await auth.restoreSession();
+      const carried = unfinishedEmailOtp && unfinishedCurrent(unfinishedEmailOtp) ? unfinishedEmailOtp : null;
+      const context = beginTransition(carried ? { binding: { barrierId: carried.barrier.barrierId, attemptId: carried.attempt.attemptId } } : undefined);
+      const origin = carried && context.epoch === carried.context.epoch && freshCurrent(context)
+        ? Object.freeze({ ...carried, context, generation: freshGeneration }) : null;
+      if (origin) {
+        unfinishedEmailOtp = origin;
+        if (!(await proveUnfinished(origin))) return annotate({ kind: "temporarily_unavailable" }, context);
+      }
+      const before = await operationAuth(context).restoreSession();
+      if (origin && !unfinishedCurrent(origin)) { retireUnfinished(origin); return annotate({ kind: "temporarily_unavailable" }, context); }
       if (before.kind !== "authenticated") {
+        if (origin && (before.kind === "invalid_session" || before.kind === "no_session")) retireUnfinished(origin);
         return annotate({ kind: "temporarily_unavailable" }, context);
       }
       const startingAccountScopeId = before.identity.accountScopeId;
+      if (origin && startingAccountScopeId !== origin.accountScopeId) {
+        retireUnfinished(origin);
+        const invalidation = await runInvalidation(context, startingAccountScopeId);
+        return invalidation.begun ? annotate({ kind: "identity_changed", invalidation: invalidation.outcome }, context)
+          : annotate({ kind: "temporarily_unavailable" }, context);
+      }
+      if (origin && !(await proveUnfinished(origin))) return annotate({ kind: "temporarily_unavailable" }, context);
 
       progress("submitting_onboarding", context);
-      const completed = await identityService.completeOnboarding(input);
+      const completed = await operationIdentity(context, startingAccountScopeId).completeOnboarding(input);
+      const nativeDenial = native ? await nativeAuthInvalidation(context, startingAccountScopeId) : null;
+      if (nativeDenial) return nativeDenial.begun
+        ? annotate({ kind: "identity_changed", invalidation: nativeDenial.outcome }, context)
+        : annotate({ kind: "temporarily_unavailable" }, context);
+      if (native && !nativeCurrent(context)) return annotate({ kind: "temporarily_unavailable" }, context);
 
       if (!completed.ok) {
+        if (origin && !["stale_legal_version", "legal_unavailable", "invalid_input", "network_error"].includes(completed.error.kind)) retireUnfinished(origin);
         if (completed.error.kind === "stale_legal_version") {
           // Rotation between display and submission. NOTHING was written. Refetch
           // so the caller can re-display the new versions and reset its acceptance
           // controls; re-acceptance is unavoidable rather than optional.
-          const refreshed = await legalSnapshot();
+          const refreshed = await legalSnapshot(context);
           if (refreshed === null || !canCompleteOnboarding(refreshed)) {
             return annotate({ kind: "legal_unavailable" }, context);
           }
@@ -2935,6 +3436,7 @@ export function createIdentityTransitionCoordinator(
 
       const eligibility = deriveGateEligibility(completed.value);
       if (eligibility.kind === "incomplete") {
+        if (origin) retireUnfinished(origin);
         // The server reported success and the derived facts still do not add up.
         // Fail closed rather than opening on an inconsistent state.
         return annotate({ kind: "submission_failed" }, context);
@@ -2942,8 +3444,10 @@ export function createIdentityTransitionCoordinator(
 
       // Re-prove the account. A transient or absent session cannot prove continuity,
       // so no local record is written and the caller retries.
-      const after = await auth.restoreSession();
+      const after = await operationAuth(context).restoreSession();
+      if (origin && !unfinishedCurrent(origin)) { retireUnfinished(origin); return annotate({ kind: "temporarily_unavailable" }, context); }
       if (after.kind !== "authenticated") {
+        if (origin && (after.kind === "invalid_session" || after.kind === "no_session")) retireUnfinished(origin);
         return annotate({ kind: "temporarily_unavailable" }, context);
       }
 
@@ -2972,6 +3476,18 @@ export function createIdentityTransitionCoordinator(
         );
       }
 
+      if (origin) {
+        if (eligibility.profileId !== origin.profileId) { retireUnfinished(origin); return annotate({ kind: "submission_failed" }, context); }
+        if (!(await proveUnfinished(origin))) return annotate({ kind: "temporarily_unavailable" }, context);
+        if (origin.previousAccountScopeId !== null && origin.previousAccountScopeId !== startingAccountScopeId) {
+          const switched = await inOwnedSection<IntentMutationOutcome>(context, { kind: "superseded" }, async () => {
+            if (!(await proveUnfinishedUnlocked(origin)) || !(await stillCurrent(context))) return { kind: "superseded" };
+            return intents.deleteOrdinaryIntents();
+          });
+          if (switched.kind === "superseded") return annotate({ kind: "temporarily_unavailable" }, context);
+          if (switched.kind === "blocked") return annotate({ kind: "intent_state_not_persisted" }, context);
+        }
+      }
       progress("establishing_trusted_state", context);
       const written = await writeTrustedSection(context, after.identity, eligibility);
       if (written.kind === "superseded") {
@@ -2981,7 +3497,7 @@ export function createIdentityTransitionCoordinator(
         return annotate({ kind: "trusted_state_not_established" }, context);
       }
 
-      const settled = await settleIntentStateBeforeReady(context);
+      const settled = await settleIntentStateBeforeReady(context, eligibility.profileId);
       if (settled !== null) {
         return settled.kind === "identity_unconfirmed"
           ? annotate({ kind: "temporarily_unavailable" }, context)
@@ -2991,6 +3507,10 @@ export function createIdentityTransitionCoordinator(
       const beforeReady = await guardStillCurrent(context);
       if (beforeReady !== null) return annotate({ kind: "temporarily_unavailable" }, context);
 
+      if (origin && !(await proveUnfinished(origin))) return annotate({ kind: "temporarily_unavailable" }, context);
+      if (origin) retireUnfinished(origin);
+      publishNativeAdmission(context, after.identity.accountScopeId, eligibility.profileId, eligibility.onboardingCompletedAt);
+      if (origin) publishFreshEmailOtp(context, after.identity.accountScopeId, eligibility.profileId);
       return annotate(
         {
           kind: "completed",
@@ -3015,7 +3535,7 @@ export function createIdentityTransitionCoordinator(
       // and a retry overlapping a background revalidation — are ordered rather than
       // both proceeding to write trusted state.
       const context = beginTransition();
-      const restore = await auth.restoreSession();
+      const restore = await operationAuth(context).restoreSession();
       if (restore.kind !== "authenticated") {
         return annotate({ kind: "temporarily_unavailable" }, context);
       }
@@ -3102,7 +3622,7 @@ export function createIdentityTransitionCoordinator(
 
       // 6 — the provider call, last. Its failure does not weaken the denial: the
       // durable barrier, not the provider call, is the latch.
-      await auth.signOut();
+      await operationAuth(context).signOut();
 
       // 7 — C8b. A stale provider completion cannot resolve this barrier, because
       // only a correlated resolution can, and none is written here.
@@ -3115,82 +3635,7 @@ export function createIdentityTransitionCoordinator(
       return annotate({ kind: "signed_out_locked" }, context);
     },
 
-    async recoverInvitationAccount(invitation: PendingIntent): Promise<InvitationRecoveryOutcome> {
-      let context = beginTransition();
-      progress("signing_out", context);
-
-      // SNAPSHOT THE ARGUMENT EXACTLY ONCE, before anything is decided from it. It
-      // is untrusted at runtime, and two steps below read from it: the survival
-      // mark and the "delete every OTHER ordinary intent" call. Reading it twice
-      // would let a hostile or accessor-backed value have one `value` marked for
-      // survival and a DIFFERENT one preserved from deletion.
-      const preserved = validatePendingIntent(invitation);
-      if (preserved === null) return annotate({ kind: "intent_state_not_persisted" }, context);
-
-      const trustedBefore = await trusted.load();
-      const barredAccountScopeId =
-        trustedBefore.status === "value" ? trustedBefore.value.accountScopeId : null;
-
-      // 2 — the barrier FIRST, so partial progress below is always safe.
-      const established = await establishBarrier(context, {
-        origin: "account_recovery",
-        barredAccountScopeId,
-      });
-      if (!established.ok) {
-        return annotate(
-          established.superseded
-            ? { kind: "superseded" as const }
-            : { kind: "barrier_not_established" as const },
-          context
-        );
-      }
-      const barrierId = established.barrier.barrierId;
-      context = { ...context, epoch: liveGeneration.current(), barrierId };
-
-      // 3 — persist survival for EXACTLY this invitation. An admin-request intent
-      // is refused by the repository: that link is not email-bound and has no
-      // wrong-account outcome to recover from.
-      // An intent already carrying an outstanding denial cleanup is refused by the
-      // repository: a debt owed by a definitive denial is never converted into a
-      // survival across a sign-out.
-      const marked = await inOwnedSection<PersistenceWriteResult | "superseded">(
-        context,
-        "superseded",
-        () => intents.markInvitationForRecovery(preserved)
-      );
-      if (marked === "superseded") return annotate({ kind: "superseded" }, context);
-      if (!marked.ok) return annotate({ kind: "intent_state_not_persisted" }, context);
-
-      // 4 — remove every OTHER ordinary intent.
-      const others = await inOwnedSection<IntentMutationOutcome>(
-        context,
-        { kind: "superseded" },
-        () => intents.deleteOtherOrdinaryIntents(preserved.value)
-      );
-      if (others.kind === "superseded") return annotate({ kind: "superseded" }, context);
-      if (others.kind === "blocked") return annotate({ kind: "intent_state_not_persisted" }, context);
-
-      // 5 — required: invalidate trusted state.
-      const removal = await inOwnedSection<PersistenceRemoveResult | "superseded">(
-        context,
-        "superseded",
-        () => trusted.remove()
-      );
-      if (removal === "superseded") return annotate({ kind: "superseded" }, context);
-      if (!removal.ok) return annotate({ kind: "trusted_state_not_invalidated" }, context);
-
-      // 6 — revalidate the barrier.
-      const c = await proveCheckpoint(context, { barrierId, generation: liveGeneration.current() });
-      if (!c.ok) return annotate({ kind: "superseded" }, context);
-
-      // 7 — provider sign-out. Every local failure above produced ZERO calls here.
-      await auth.signOut();
-
-      // 8 — remain locked. Normal authentication and onboarding come next, and the
-      // invitation preview is re-run server-side before anything is assumed about
-      // eligibility.
-      return annotate({ kind: "signed_out_locked" }, context);
-    },
+    recoverInvitationAccount: invitation => runInvitationRecovery(invitation),
 
     async invalidateIdentity(): Promise<InvalidationOutcome> {
       const context = beginTransition();
@@ -3244,7 +3689,12 @@ export function createIdentityTransitionCoordinator(
         return run.outcome;
       };
 
-      const restore = await auth.restoreSession();
+      const guardedTrusted = await trusted.load();
+      if (guardedTrusted.status === "value" && !(await deletionGuardAllows(guardedTrusted.value.profileId))) {
+        return invalidate(guardedTrusted.value.accountScopeId);
+      }
+
+      const restore = await operationAuth(context).restoreSession();
 
       if (restore.kind === "temporarily_unavailable" || restore.kind === "restore_failed") {
         // Transient. Explicitly NOT an invalidation: conflating the two would lock
@@ -3257,8 +3707,13 @@ export function createIdentityTransitionCoordinator(
 
       const identity = restore.identity;
 
+      if (guardedTrusted.status === "value" && guardedTrusted.value.accountScopeId === identity.accountScopeId) rememberNativeProfile(context, identity.accountScopeId, guardedTrusted.value.profileId);
+
       progress("resolving_gate_facts", context);
-      const facts = await identityService.resolveGateFacts();
+      const facts = await operationIdentity(context, identity.accountScopeId).resolveGateFacts();
+      const nativeDenial = native ? await nativeAuthInvalidation(context, identity.accountScopeId) : null;
+      if (nativeDenial) return nativeDenial.begun ? nativeDenial.outcome : annotate({ kind: "superseded" }, context);
+      if (native && !nativeCurrent(context)) return annotate({ kind: "superseded" }, context);
       if (!facts.ok) {
         if (isDefinitiveNegative(facts.error)) return invalidate(identity.accountScopeId);
         return annotate({ kind: "temporarily_unavailable" }, context);
@@ -3313,9 +3768,11 @@ export function createIdentityTransitionCoordinator(
         // identity, onboarding or entitlement fact changes. The session continues.
         return annotate({ kind: "trusted_state_refresh_skipped" }, context);
       }
-      if (!(await inSection(() => stillCurrent(context)))) {
+      if (!(await inSection(() => stillCurrent(context))) || !nativeAdmissionAllowed()) {
         return annotate({ kind: "superseded" }, context);
       }
+      if (!(await deletionGuardAllows(eligibility.profileId))) return invalidate(identity.accountScopeId);
+      publishNativeAdmission(context, identity.accountScopeId, eligibility.profileId, eligibility.onboardingCompletedAt);
       return annotate(
         {
           kind: "resolved",
@@ -3343,6 +3800,11 @@ export function createIdentityTransitionCoordinator(
     },
 
     async observeNewerBarrier(): Promise<BarrierObservation> {
+      const guarded = await trusted.load();
+      if (guarded.status === "value" && !(await deletionGuardAllows(guarded.value.profileId)) && !currentNativeDenial(guarded.value.accountScopeId)) {
+        liveGeneration.bump();
+        return { kind: "newer_barrier" };
+      }
       const loaded = await barriers.load();
 
       if (loaded.status === "read_failed") {
@@ -3353,6 +3815,8 @@ export function createIdentityTransitionCoordinator(
       }
 
       const observedId = loaded.status === "value" ? loaded.value.barrierId : null;
+      const ownDenial = currentNativeDenial();
+      if (loaded.status === "value" && ownDenial?.barrierId === observedId) return { kind: "unchanged" };
       if (loaded.status !== "malformed" && observedId === lastKnownBarrierId) {
         return { kind: "unchanged" };
       }

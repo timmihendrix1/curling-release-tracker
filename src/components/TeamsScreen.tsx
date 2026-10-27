@@ -14,6 +14,8 @@ import type { InvitationProposal, TeamService, TeamSummary, TeamWorkspace } from
 import { isCanonicalUuid } from "../lib/uuid";
 import ConfirmModal from "./ConfirmModal";
 import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
+import { useNativeTrackerBinding } from "./persistence/nativeTrackerContext";
+import { useNativeApplicationComposition } from "./persistence/nativeApplicationContext";
 import {
   useSportingCloudSync,
   type SportingCloudSyncContextValue,
@@ -528,14 +530,17 @@ export default function TeamsScreen({
   exerciseSync,
 }: TeamsScreenProps) {
   const identity = useOptionalIdentity();
+  const nativeComposition = useNativeApplicationComposition(), nativeBinding = useNativeTrackerBinding();
   const contextSportingSync = useSportingCloudSync();
   const sportingSync = exerciseSync === undefined ? contextSportingSync : exerciseSync;
   const session = identitySession ?? identity?.session ?? null;
-  const resolvedConfig = useMemo<CloudConfig>(() => config ?? resolveCloudConfig(), [config]);
+  const resolvedConfig = useMemo<CloudConfig>(() => nativeComposition ? { status: "cloud_disabled" } : config ?? resolveCloudConfig(), [config, nativeComposition]);
   const teamService = useMemo<TeamService | null>(() => {
+    if (nativeComposition) return nativeBinding?.team ?? null;
     if (resolvedConfig.status !== "configured") return null;
     return (createTeamService ?? createSupabaseTeamService)(resolvedConfig);
-  }, [resolvedConfig, createTeamService]);
+  }, [resolvedConfig, createTeamService, nativeComposition, nativeBinding]);
+  const teamAvailable = nativeComposition ? teamService !== null : resolvedConfig.status === "configured";
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -633,8 +638,10 @@ export default function TeamsScreen({
     });
   }
 
+  const nativeAdminIntent = nativeComposition && identity?.pendingIntent?.kind === "admin_request" ? identity.pendingIntent : null;
   useEffect(() => {
     if (session === null || !teamService) return;
+    if (nativeAdminIntent) return; // the correlated delivery effect below owns this read
     let cancelled = false;
     (async () => {
       await refreshTeamsAndInbox();
@@ -645,6 +652,14 @@ export default function TeamsScreen({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- teamService/refreshTeamsAndInbox are stable for the life of one signed-in session
   }, [session, teamService]);
+
+  useEffect(() => {
+    if (session === null || !teamService || !nativeAdminIntent) return;
+    void (async () => { await refreshTeamsAndInbox(); })();
+    // Capture the facade belonging to this exact intent. A late inbox completion
+    // must not use a newer facade to consume a replacement link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, teamService, nativeAdminIntent]);
 
   useEffect(() => {
     if (selectedTeamId) refreshWorkspace(selectedTeamId);
@@ -967,6 +982,7 @@ export default function TeamsScreen({
 
   const visibleNotifications = notifications.filter((notification) =>
     notification.kind === "member_removed" ||
+      notification.kind === "shared_participant_unavailable" ||
       teamExerciseResultChangeNotification(notification) !== null
   );
 
@@ -991,19 +1007,19 @@ export default function TeamsScreen({
           functions, and (for admins) member email are visible to teammates.
         </p>
 
-        {resolvedConfig.status !== "configured" && (
+        {!teamAvailable && (
           <p className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">
-            Teams requires cloud sign-in, which isn&apos;t available in this build.
+            {nativeComposition ? "Team access is unavailable. Check your sign-in before opening Teams." : "Teams requires cloud sign-in, which isn't available in this build."}
           </p>
         )}
 
-        {resolvedConfig.status === "configured" && session === null && (
+        {teamAvailable && session === null && (
           <p className="mt-4 rounded-xl bg-slate-100 p-4 text-sm text-slate-600">
             Complete athlete sign-in to use Teams.
           </p>
         )}
 
-        {resolvedConfig.status === "configured" && session !== null && (
+        {teamAvailable && session !== null && (
           <div className="mt-4 space-y-4">
             {status && (
               <p
@@ -1031,6 +1047,8 @@ export default function TeamsScreen({
                         <div key={notification.id} className={`rounded-lg p-3 text-sm ${exerciseChange?.changeKind === "voided" ? "bg-red-50 text-red-900" : "bg-amber-50 text-amber-900"}`}>
                           {notification.kind === "member_removed" ? (
                             <p>You were removed from &quot;{String(notification.payload.teamName ?? "a team")}&quot;.</p>
+                          ) : notification.kind === "shared_participant_unavailable" ? (
+                            <p>A participant is no longer available in shared training. Your own results remain available.</p>
                           ) : exerciseChange ? (
                             <>
                               <p className="font-medium">{exerciseChange.actorDisplayName} {exerciseChange.changeKind === "voided" ? "voided" : "corrected"} their result from a shared Team Exercise session.</p>

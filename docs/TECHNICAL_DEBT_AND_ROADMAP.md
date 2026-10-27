@@ -763,6 +763,17 @@ not a committed schedule.
 - no benchmarking or synthetic overall score in v1 — by design, not an omission (see
   `docs/ASSESSMENT_PRODUCT_AND_DOMAIN_SPECIFICATION.md` sections 2/20)
 
+**History date-test portability — implemented and independently reviewed (2026-10-22).**
+`src/components/__tests__/AssessmentAnalyze.test.tsx` derives runtime-formatted date
+expectations from fixed fixture instants rather than a hardcoded U.S. date literal.
+The fixtures oppose creation and completion ordering, pin the saved incomplete creation
+time and cover midnight/day-end instants. Bounded native formatter contexts and
+incorrect-sort/clock/UTC-truncation controls confirm that the assertions discriminate
+incorrect behavior; fixture finding A1 is closed. This is a test-only correction, not a
+new production date-format, timezone, ordering or persistence policy. Detailed verification
+is indexed in `MOBILE_APP_MIGRATION.md`, appendix “Adopted inactive pure contracts — S1
+and S2”; it does not close native or release gates.
+
 **Known limitation carried from this pass**: `AssessmentResultScreen` is mounted as a
 top-level overlay in `TrackerApp.tsx`, conditionally unmounting `AssessScreen` while
 shown. Returning via "← Back" therefore remounts `AssessScreen` from scratch, losing an
@@ -1278,7 +1289,9 @@ disposable unscoped keys before any repository mounts. The remaining gaps are:
 - **Cloud sporting history is implemented for the domains that currently execute:** archived
   Training Sessions and terminal Assessment Runs. Exercise execution records do not yet
   exist and remain for Exercise Stage B to add to this same backbone.
-- **No account deletion, export-before-deletion, or recovery-period behaviour.**
+- **Account deletion, export-before-deletion and 30-day recovery are now locally
+  implemented** (24 October 2026, ADR-0052). Independent review and hosted
+  migration/worker activation remain release gates; see TESTFLIGHT_READINESS.md.
 
 The historical `bootstrap_profile` function remains in migration history only. The B0.2e
 forward migration revokes browser execution; Team services expose no creation method and
@@ -1296,8 +1309,7 @@ pinned `search_path` — which is precisely why this stage cannot be signed off 
 
 **Decisions deliberately left open** (do not invent them): a fixed expiry period for a
 device's trusted offline Profile state; the final commercial name of the paid personal tier;
-video/sensor/AI storage entitlements, quotas and retention; the exact shared Team-result
-anonymisation and participant-notification behaviour on deletion; minor/guardian workflows;
+video/sensor/AI storage entitlements, quotas and retention; minor/guardian workflows;
 billing provider, pricing and market.
 
 ---
@@ -1678,7 +1690,7 @@ or background-sync guarantee. Offer the existing CSV export after training.
 
 | Deferred item | Impact / current containment | Completion evidence required |
 | --- | --- | --- |
-| B-P0: live hardware acceptance of the pilot | **The pilot is implemented but unproven against the device.** Automated coverage uses a fake transport and proves application logic only. The user reports a successful two-gate training session on 2026-10-01; that is a practical use report, not a checklist pass, and no per-item outcome or observation collection was recorded. | The seven-item physical-device checklist in Brower Integration Status, on a real TCi with two gates, recorded as a new observations collection. |
+| B-P0: live hardware acceptance of the pilot | **The basic live TCi/two-light-gate/automatic-recording path has a successful user-reported training session (2026-10-01); full hardware acceptance remains open.** Automated coverage uses a fake transport and proves application logic only. The successful practical-use report in `BROWER_INTEGRATION_STATUS.md` is not a checklist pass; no per-item outcome or observation collection was recorded. | The seven-item physical-device checklist in Brower Integration Status, on a real TCi with two gates, recorded as a new observations collection. |
 | B-P5: appendix association rests on order plus a structural check | Appendix packets carry no header. Association is arrival order after a declared count, plus a check that the packet continues the record's cumulative sequence; a failed check abandons the record. A packet that can be both a selectable base and a continuing appendix is explicitly rejected. The bounded recovery in ADR-0050 retains arming while awaiting an unambiguous full same-record snapshot; it does not resolve packet identity. Persistent ambiguity can leave times unavailable, and New during recovery requires reconnect/re-arm. The 2026-09-30 Manual Start export reproduces this at splits 8/9 and 16; light-gate behaviour is still unverified. These checks do not establish packet identity: an empty-base interpretation is not distinguishable from some legitimate appendices, and other structural mis-associations remain a protocol risk. | Live multi-split captures across both appendix boundaries, including interleaved base-packet updates, confirming the ordering assumption holds on real firmware. |
 | B-P6: baseline completeness cannot be proved | Arming requires at least one complete observation and no unfinished assembly; assemblies begun before arming cannot offer candidates. The baseline still covers only what one connection observed. A record first reported after arming cannot be proved to post-date it; setup confirmation and review/Undo are the containment; freshness is still not proved, and the panel states what the baseline holds rather than implying completeness. | Understand when the timer first notifies an existing record after a connection, then decide whether any stronger rule is warranted. |
 | B-P1: automatic shot selection and broader plausibility | Back–Hog now filters by the existing sequence Shot Type: Draw 3–5 s, Takeout 2–4 s inclusive, before automatic recording after setup confirmation. This hides out-of-range returns but can save an in-range false trigger, correctable through existing Undo/deletion. No filter is invented for Hog–Hog or unclassified Variable Weight. | Verify these windows on hardware; specify configurable ranges and remaining contexts. Automatic pairing and missed/extra-trigger recovery require separate evidence. |
@@ -1687,13 +1699,137 @@ or background-sync guarantee. Offer the existing CSV export after training.
 | B-P8: Release Times / Auto Capture layout cleanup | The 2026-10-19 approved House refinement gives Release Time a compact configuration summary, a dominant measurement/capture task, factual live averages and subordinate completion/settings/recorded-stone controls. Auto Capture keeps its live status and recovery controls visible; introductory help is collapsed. Exercise detail, Solo recording, private notes and results use the same progressive disclosure. The Brower panel's existing Details disclosure remains in place. | Automated browser coverage includes 320/390px, tablet/desktop and reduced viewport reachability. A physical iOS/TCi visual and keyboard check remains required; browser coverage does not close that acceptance gate. |
 | B-P7: deletion versus capture progress | Existing Delete removes the shot but does not rewind Capture Sequence progress; Undo Last Captured Shot does rewind the last capture. Repeated packets recreate neither. | Decide and test correction of older captured shots and sequence progress without guessing historical handle/target state. |
 | B-P4: other capture contexts | Pilot is Training Capture Sequence only; no Assessment, Blind Weight or team capture integration. | Separate scoped integration through existing ownership and prediction-lock rules. |
-| S-P1: protected credential dependency | Audited candidates cannot prove missing versus failed reads. New composition stays disabled and activation unavailable. | Suitable binding with per-item absence/error evidence, tested native failure semantics and independent review. No claim that every possible dependency was exhausted. |
-| S-P2: credential-health handling | New restore path maps a latched credential fault to temporarily_unavailable; the coordinator can admit correlated trusted state as ready_offline. An authenticated session returns before that health check; the gate has no post-readiness health subscription. Native activation remains blocked. | End-to-end tests with a trusted identity and a standing fault; separate storage failure from offline eligibility; decide mid-session UX before activation. |
-| S-P3: composition exceptional paths | Credential-store construction is outside the establishment try/catch; a throw after opening the store can leave it unclosed and the ownership promise rejected. Inactive in the default build. | Inject factory throws and verify closure, contained failure and retry ownership; complete lifecycle review before activation. |
-| S-P4: verification debt | **Resolved for the suite; one production limitation stands.** The root suite exits 0 and the Playwright suite runs against the established disposable local database — neither is blocked. What remains is a real, unfixed runtime behaviour, not a test problem: `@supabase/supabase-js` subscribes via `_listenForAuthEvents()` and `@supabase/auth-js`'s `onAuthStateChange` starts an un-awaited IIFE, so a credential-storage failure produces an unhandled rejection the application holds no reference to. | Keep the fail-closed adapter as is. `credentialHealthAuthIntegration.test.ts` captures rejections for that file, judges them in `afterAll` after asynchronous work drains, requires each to be our own `CredentialStorageError`, and removes its listener in a `finally` — any unexpected or late rejection fails the run. That is test interception, not runtime handling. |
-| S-P5: lossless migration and activation | No cutover; preserve all local data. Existing M3b4 provenance/generation blockers, two-store credential transfer and interrupted commits remain open. | Close the canonical M3b4 design items, verify migration/recovery and physical-device acceptance before changing the default store. |
+| S-P1: protected credential dependency | Approved app-owned iOS Keychain read bridge locally implemented and reviewed within the beta-completion package; only the exact item-not-found status establishes absence. Android remains closed. Composition stays disabled and activation unavailable. | The read-only namespace inventory and isolated S3c immutable port are locally implemented and independently reviewed. One shared queue/lease excludes cooperating same-context ordinary calls; physical native failure semantics, external-context freshness and combined integration remain; ADR-0049's 2026-10-24 amendment records the bounded implementation. |
+| S-P2: credential-health handling | New restore path maps a latched credential fault to temporarily_unavailable; the coordinator can admit correlated trusted state as ready_offline. An authenticated session returns before that health check; the gate has no post-readiness health subscription. Dormant S5b now vetoes new native ready-online/offline outcomes on actual credential/SDK health failure; ordinary Web behavior is unchanged. Native activation remains blocked. | End-to-end tests with a trusted identity and a standing fault; separate startup storage failure from offline eligibility. The user approved option A for an already-admitted ongoing training with healthy sporting persistence (2026-10-21): keep same-Profile local recording/saving, pause cloud sync/new sign-in and show a warning. Canonical scope and exclusions: MOBILE_APP_MIGRATION.md Stage M3b0 §7, mid-session credential-failure policy. Technical scope: the inactive S1 pure contract and reducer are adopted in the document's “Adopted inactive pure contracts — S1 and S2” appendix and implemented, tested and independently reviewed as a pure inactive component without production imports. Runtime fault mapping/integration, remaining contexts and activation evidence remain open. |
+| S-P3: composition exceptional paths | Locally corrected and independently reviewed clean: factory/post-acquisition exceptions are contained; failed starts await confirmed close before retry; rejected or reported-failed close is terminal for the document; potentially retained identity claims cannot reopen a closed adapter. Concurrent disposal joins one cleanup. Default native activation remains closed. | Bounded lifecycle acceptance is complete; cross-store, physical-device and activation gates remain separate. Verification is recorded in TESTFLIGHT_READINESS.md. |
+| S-P4: verification debt | **Resolved for the suite; one production limitation stands.** The root suite exits 0 and the Playwright suite runs against the established disposable local database — neither is blocked. What remains is a real, unfixed runtime behaviour, not a test problem: `@supabase/supabase-js` subscribes via `_listenForAuthEvents()` and `@supabase/auth-js`'s `onAuthStateChange` starts an un-awaited IIFE, so a credential-storage failure produces an unhandled rejection the application holds no reference to. | Keep the current fail-closed adapter as is. An independently reviewed inert settlement factory and pinned installed-SDK experiments are now available; they have no application caller and do not close S5 runtime ownership. See BETA_COMPLETION_SPECIFICATION.md. `credentialHealthAuthIntegration.test.ts` still captures rejections for that file, judges them in `afterAll` after asynchronous work drains, requires each to be our own `CredentialStorageError`, and removes its listener in a `finally` — any unexpected or late rejection fails the run. That is test interception, not runtime handling. |
+| S-P5: lossless migration and activation | No cutover; preserve all local data. The migration design, including provenance and interrupted-commit recovery, is approved (2026-10-19); its decision core (M3b4a) and its dormant executor (M3b4b, class-M evidence) are approved (2026-10-20), with no application path invoking it; U2's first-version recovery policy and UG-1–UG-4 are decided (Stage M3b0 §6) and its interface (M3b4c) is implemented as a dormant layer awaiting independent review; two-store credential transfer, protected-store evidence and device evidence remain open. | Close the canonical M3b0 §7 inventory, implement and verify migration/recovery, and pass physical-device acceptance before changing the default store. |
+| S-P6: pure installation-transfer preparation | The separate S2 inventory/codec/refusal-only decision component is implemented, locally tested and independently accepted, without production imports/callers. Its bounded code-review gate is closed; it is not an installation-transfer or backup/import feature. | Follow the canonical “Adopted inactive pure contracts — S1 and S2” appendix in MOBILE_APP_MIGRATION.md. Keep S3 discovery/Legacy-D observation, physical S4, runtime S5, native/device/restore and activation/release gates open; no cutover or new product decision follows from pure-component acceptance. |
 | M-P1: remaining mobile delivery | Full native OAuth, background scope, production identity/distribution, Android, deferred team export and storage diagnostic removal/restriction remain in their existing stages. | Complete the respective migration acceptance gates; do not call the assisted pilot full mobile completion. |
 | C-P1: cloud coverage and refresh | Only existing synchronised domains use the current sync path. Local plans/drafts and cross-device UI refresh are not solved by BLE or SQLite. | Separate domain sync and refresh specifications, offline/reconnect and cross-device tests. |
+
+The bounded **S3a shared SQLite discovery boundary** is locally implemented and
+independently reviewed clean (2026-10-24): schema/control inventory precedes bootstrap,
+every factory shares handle exclusion, transactions and B4 recheck selection, and
+legacy D/latch/warm-loss observations retain their meaning. Real SQLite exposed a
+Unicode sorting regression during review; it is fixed and covered across reopen.
+This closes the bounded CFR-01 legacy discovery conflict. The separately reviewed
+S3b capability adds only combined-layout observations and atomic empty-target schema
+initialization, with no domain/Q progress, B4 or readiness authority. It keeps
+uncertain initialization/release closed until positive reopen. A subsequent bounded
+D-inventory extension also passed independent review: deletion guards/resolutions
+are preserved byte-exactly, malformed owned controls block every fresh preactive
+inventory before source value reads, and B4 remains source-independent. The reviewed
+S3d borrowed-domain runner now holds preparation before the actual activation step,
+retaining genuine lease/warm/fault evidence and requiring real parent recovery. Its
+records-only non-consumable hold remains separate. The independently reviewed S3e
+host now allows held-only domain preparation under one private combined SQL owner,
+with exact schema/absent Q/F gates and no active rights. It retains schema-loss,
+fault budgets and lifecycle provenance across recovery. The separately reviewed S3f
+executor now completes Q/M/I copying and atomic Dactive/Qbound under one real owner,
+with fresh authentic raw-bound proofs, truthful uncertainty/retry and source-free
+completion candidates. It exposes no runtime adapter or SDK/Identity admission.
+The separately reviewed S3g entry now hands those same resources to a private
+mutable runtime pair with separate sticky health and authentic cleanup receipts;
+it creates no application/SDK/Identity admission. Physical/external-context namespace
+freshness and production bindings remain open. Separately reviewed S4a adds explicit
+pure V2 archives for closed deletion controls, retaining V1 and granting no admission.
+Separately reviewed S3h supplies the dormant standard D-value hash helper; existing
+injections/defaults and actual production composition remain unchanged.
+The separately reviewed S3i entry implements explicit dormant Q3 credential-source
+retirement under the same owners, with cold cancellation/drain ownership, genuine
+raw-subset proofs, actual receipt counts and a fresh empty publication fence.
+The S3j correction hardens actual credential hash invocation without changing
+API/bytes/defaults. Separately reviewed S5a now owns dormant AUTH settlement,
+commands, actual sends and joined cleanup over that genuine pair. It has no app
+caller and alone grants no Identity admission. Separately reviewed S5b now binds
+that same private pair to the actual Identity coordinator, six repositories and
+four fixed Identity RPCs. Original operation/account ownership, causal Self-session
+negatives, actual health and final materialized-request checks govern every new
+bootstrap readiness result. Cached startup cannot revive an obsolete admission.
+This remains dormant and supplies no app mount or already-admitted training exception.
+Separately reviewed S5c now binds the actual sporting mapper and three fixed RPCs
+to coordinator-created, construction-bound Profile admissions on the same private
+pair and SDK FIFO. New foreground ownership, denial and close revoke those services;
+healthy background confirmation does not mint or replace admission. Synchronous
+input capture, actual Self preflight and final SEND fences preserve the original
+subject. Full genuine denial outcomes reach the narrow subscription. No app caller
+or local sporting repository composition is added. S5d additionally binds the actual account-deletion/export mapper and guard repository
+to private native control scopes, own-denial continuation and factual pending proofs.
+Actual Provider callbacks are covered; mounted Flow polling/reload still needs app
+composition and full invalidation subscription. S5e additionally binds the actual nine-method Team-exercise mapper to genuine
+original admissions and per-command retry:false public clients. Exact immutable
+wire intents, original indexed inputs and all issued siblings stay owned until
+retirement. S5f additionally binds all29 existing Team methods and the five own-API
+POST routes, with purpose-specific dependent-query hooks, exact original callback
+capture and same-command bearer ownership. Current public diagrams remain bundled
+with the existing disposable localStorage cache; the restricted resolver is dormant
+future-only under ADR-0044 and MOBILE_APP_MIGRATION.md §5.2. S5g binds the seven
+actual native base repositories, scoped outbox, retirement and personal export to
+that same private owner, with synchronous DTO capture and truthful issued ACKs.
+S5h separately closes the returned SyncManager/decorator boundary with one genuine
+manager per admission, outer argument capture and actual background-lane ownership.
+Local ACKs stay independent of cloud waits; snapshots/listeners cannot reopen stale
+Profiles. S5i now independently joins actual Tracker event/effect ownership and the
+original pre-fault Q1 training role, with fresh-ACK remounts, complete capture drains,
+actual Account/Profile denial and retained history-first completion. Its dormant actual
+Provider/Tracker composition activates no production root. S5j now separately joins
+the actual Provider/Flow/export/Team over the same genuine host, with native-only
+original-owner export retirement to the final share edge, unconditional/idempotent
+denial delivery, known/unavailable intent projection and pre-preview Team context.
+Independent corrected CODE and full local baseline passed; canonical contract/evidence
+are BETA_COMPLETION_SPECIFICATION.md §S5j and TESTFLIGHT_READINESS.md. S5k additionally
+accepts dormant exact provider-configuration preparation and its genuine same-host
+entry. Full standard SHA-256 identities, primitive-only exact tuple framing and
+complete boxed observation/drains refuse stale configuration without resetting data.
+Existing helper public shapes remain; constructor ownership lasts through nested
+work. Canonical contract/evidence: §S5k and TESTFLIGHT_READINESS.md.
+
+S5l additionally accepts native pending-intent replay correlation on the genuine
+coordinator lane, exact final-view membership and conditional dismissal/recovery.
+The actual Provider and Team UI follow replacement links without stale consumption.
+Only the new notification channel uses completion-only nested draining with exact
+already-owned disposal exclusion; default/live/hash behavior remains unchanged.
+Canonical contract/evidence: §S5l and TESTFLIGHT_READINESS.md.
+
+S5m additionally accepts dormant actual App launch/event intake on that same host,
+with explicit Team-origin opt-in, sequential exact native-context proofs, reentrant
+classification ownership and complete observed-work draining. Healthy capture
+refusal keeps ordinary startup/OTP recovery reachable; genuine faults retain their
+vetoes. Exact own-disposal exclusion is never a handle/absence/removal ACK. The new
+source-clock retainer preserves checked validation and identityFailed; legacy
+channels/defaults remain. Public CoreJS receipts are not physical unsubscribe ACKs.
+Canonical contract/evidence: §S5m and TESTFLIGHT_READINESS.md.
+
+The private V3 archive has standard SHA-256 byte binding, actual domain interpretation
+and historical catalog/registered-diagram compatibility checks (S6a–c). V1/V2 and
+named domain recoveries remain unchanged. S6d now privately observes a complete
+bounded actual WebView raw map with native receiver-bound reads, positive absences
+and fresh fences; excluded credentials/cache/foreign values are never read. This is
+source observation only, without writer exclusion, frozen-source, auth, transport
+or mount/publish/rollback authority. No default/application caller is added.
+S6e adds a private standard AES-256-GCM envelope with a separate fresh random
+recovery code, actual V3 revalidation and completion-owned temporary-byte wiping.
+It conveys no source/auth/transport/publication authority and has no app caller.
+ADR-0053 records the decision; corrected independent CODE and full local baseline
+are accepted. S6f adds a separately built observation-only helper with private
+native iOS/App routing, current foreground/data checks and terminal revocation;
+corrected independent CODE and the full local baseline are accepted. It is not
+the default/native webDir and issues no source-freeze or transfer grant. Actual
+original-container access, preservation-safe operational packaging and external
+writer exclusion remain blocked pending disposable physical evidence. Actual
+file/code delivery, target staging/readback/fresh-auth integration and
+configuration/device/release gates remain open. Native Team email links may
+continue opening Web under adopted MOBILE_APP_MIGRATION §6.5 until association/delivery
+is accepted. Canonical current contract/evidence: BETA_COMPLETION_SPECIFICATION.md
+§S6a–f and TESTFLIGHT_READINESS.md. No activation or Beta approval follows.
+
+ Physical native URL delivery,
+actual configuration assignment/supported operational change and installation
+composition remain required before native activation. Operational protected installation transfer, semantic compatibility,
+source-writer exclusion and Q3 adoption (retention decided 2026-10-24), plus Q4 remain open. The
+canonical bounded contract is in BETA_COMPLETION_SPECIFICATION.md; verification is
+recorded once in TESTFLIGHT_READINESS.md. Native activation remains unavailable.
 
 **Pilot blockers cannot be deferred:** wrong decoded values, ambiguous packet assembly,
 duplicate acceptance, attribution to another profile/session/block/sequence, hidden save
@@ -1966,8 +2102,9 @@ needs to make, not something engineering can resolve by itself:
    boundary rather than accepting `localStorage` eviction. **P6's direction is decided; its
    implementation and acceptance gate are NOT complete** — the design is Stage M3b0 and
    [ADR-0049](adr/0049-durable-native-local-storage-and-migration.md), whose **migration
-   protocol (decision 7) is still an unresolved design** while its other decisions are
-   implemented. **Stages M3b1-M3b3 are implemented (2026-09-30):** the SQLite engine is
+   protocol (decision 7) is an approved design (user, 2026-10-19) whose decision core (M3b4a)
+   is approved and whose executor (M3b4b) exists only dormant**
+   while its other decisions are implemented. **Stages M3b1-M3b3 are implemented (2026-09-30):** the SQLite engine is
    pinned, a native `RemovableStorageAdapter` exists behind the unchanged boundary, an
    off-by-default in-app diagnostic panel exercises it against a dedicated synthetic database
    (the user decided the evidence is gathered in the existing app, not a separate harness),
@@ -1991,17 +2128,23 @@ needs to make, not something engineering can resolve by itself:
    readability-marker inference is withdrawn as invalid — so the **native credential path is
    closed** and that requirement is explicitly NOT complete. The normalised verdict is consumed
    by `supabaseAuthService`, which refuses to report `no_session` or a completed sign-out while
-   a credential failure stands. **Three open engineering design
-   items block the migration stage (M3b4)**: provenance reconciliation between two differing
-   installation store ids observed before activation; a pre-activation record with a missing
-   source marker, indistinguishable from later source clearing and therefore blocked
-   conservatively; and the human-authorised resolution of a blocked source-generation
-   divergence. The suggested next step for the first two is a **proposed, unapproved**
-   design-and-review brief in `docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §7 ("P-1/P-2
-   provenance design brief"); it settles neither blocker. **Two further migration
-   requirements follow from S2** and are not additions to that count: transferring the
-   credentials already in WebView storage, and handling the interruption where one of the
-   two separate stores is written and the other is not. Cloud
+   a credential failure stands. **The migration protocol's design was approved by the user on
+   2026-10-19** after Codex's clean independent review (`docs/MOBILE_APP_MIGRATION.md` Stage
+   M3b0 §5 and its §7 approval record): the two provenance blockers are closed at the design
+   level — a missing marker continues only under approved guards, and differing store ids
+   block in every pre-activation phase. **Its decision core (M3b4a) is approved (2026-10-20);
+   its executor (M3b4b) is implemented, independently reviewed (clean) and approved (2026-10-20),
+   dormant with class-M evidence only; no application path invokes it.** **Blocked-state
+   recovery has a decided first-version policy** (U2, 2026-10-20; canonical in Stage M3b0 §6),
+   whose adoption was reviewed clean and approved, with UG-1–UG-4 approved: genuine
+   contradictions stay blocked until a
+   separately specified targeted recovery exists. **Two further migration
+   requirements follow from S2**: transferring the credentials already in WebView storage,
+   and handling the interruption where one of the two separate stores is written and the other
+   is not. M3b4a's, M3b4b's and M3b4c's status is canonical in `docs/MOBILE_APP_MIGRATION.md`
+   Stage M3b0 §7; the fingerprint binding (I-7) stays open, and M3b4c — a dormant,
+   dependency-injected recovery interface that no shipped path constructs — awaits Codex's
+   independent review and the user's approval. Cloud
    synchronisation of
    authored Training Plans and other local-only domains remains a separate, unscheduled
    feature. **Three product decisions remain genuinely open**, each blocking a named stage:
@@ -2014,3 +2157,58 @@ needs to make, not something engineering can resolve by itself:
    (e) whether email OTP satisfies Apple guideline 4.8's requirement for an equivalent
    alternative to Google Sign-In, or whether Sign in with Apple must be added. **Do not
    resolve (e) by removing Google sign-in.**
+
+S6g (ADR-0054; canonical `MOBILE_APP_MIGRATION.md` S6g) adds a dormant iOS-only encrypted archive quarantine prerequisite on the existing SQLite owner. Corrected independent DESIGN/CODE and the full local regression are accepted. It supplies no publication, identity admission or operational transfer readiness.
+
+
+S6h extends the dormant transfer preparation on the same SQLite owner with exact
+reversible UTF-16 sporting rows beside the encrypted archive. Independent scoped
+DESIGN/CODE review is accepted; complete regression evidence is recorded in
+`TESTFLIGHT_READINESS.md`. The canonical contract is `MOBILE_APP_MIGRATION.md`,
+“S6h — actual native sporting preparation”. These rows are unselected and cannot
+be consumed by ordinary stores; fresh authentication, source-deny checks and
+publication remain required. This is encoding, not sporting-data encryption at rest.
+
+
+S6i's genuine SQL/protected-namespace pair, S6j's identity-only runtime and S6k's
+actual configured SDK/coordinator integration are locally independently accepted.
+S6l1 adds immutable negative-only source facts on the same owner, including all
+sporting and control-only Profiles and original guard nonces/revisions. Only the
+closed host owner selects its exact 8-object layout; old 5/7-object constructors
+retain their behavior. Source-only boxed opening and strict transaction work
+preserve cancellation, actual completion ownership and cleanup. Corrected CODE
+and full local regression are accepted. Exact contracts: MOBILE_APP_MIGRATION.md
+S6i–k/S6l1; current evidence: TESTFLIGHT_READINESS.md. S6l2 adds an independently
+accepted genuine OTP proof and same-runtime SQL pin, with synchronous mutation
+revocation and genuine completion ownership through full drain. Its exact contract
+is MOBILE_APP_MIGRATION.md S6l2. S6l3 completes the genuine OTP/onboarding
+continuation and full source-host online checks; corrected independent CODE and
+full local regression are accepted. S6l4 adds independently accepted actual
+original-guard recovery with negative revision floors, same-pair guard composition
+and exact completion ownership. S6l5 adds strict v2 immutable source cleanup
+evidence and final actual server-control provenance bound to original OTP/SDK/SQL
+ownership, with synchronous revocation and no resurrection. Old v1 targets refuse
+unchanged. S6m1 adds independently accepted initial source eligibility/exact
+Profile membership and a durable protected publication intent bound to original
+OTP/Control, all source rows and the actual pair. Same-core draft/cold validation
+and completion-only cross-lane ownership are fully locally checked. Canonical
+contract: MOBILE_APP_MIGRATION.md S6m1; evidence: TESTFLIGHT_READINESS.md. S6m2
+adds independently accepted atomic publication on the same SQL core: exact all-Profile
+u16 copy/receipt, genuine new protected observation, consumed original stamps,
+durable content/schema pin and factual outcomes separate from auth/cleanup. Its
+actual source-owner path and full local regression are accepted. S6m3a separately
+completes independently reviewed cold artifact provenance on the same actual stores,
+without original file/code, runtime readiness or a source retention cap on future live
+data. S6m3b1/b2 complete the same-owner paired store runtime and preserved
+source-negative guards. S6m3c completes the distinct dormant configured normal host
+through the actual SDK/coordinator/account/Profile/Tracker paths. Genuine current
+admission remains required; original publication identity is historical. A real cold
+process honors the unchanged SDK root fence, and actual policy work drains before
+physical published-store closure. S6m3d independently verifies the existing explicit
+App composition over that actual Host, including real UI training and cold persistence;
+no shipped root/caller is activated. Operational source transport/writer exclusion,
+file/code delivery and physical/release acceptance still gate import and Beta. Canonical
+S6m contracts/evidence remain in the same two documents; Q4 remains unapproved.
+
+
+The explicit destination application workflow S6n1/N2 is independently locally accepted. Genuine public preparation/publication and limited Account recovery controls feed actual File/code/Provider UI; a new process opens published training through the actual normal Host and Tracker. Captured asynchronous metadata is refused and drained, actual issued file reads settle before closure, and factual SQL publication remains separate from access and cleanup. No shipped root/caller or native activation is selected. Canonical contracts are MOBILE_APP_MIGRATION.md S6n1–2; actual current verification is TESTFLIGHT_READINESS.md. Operative original-container/writer exclusion, protected source delivery, actual configuration/physical/hosted/Apple and Q4 gates still remain. Free Beta, Team != Personal and Q1/Q3 are unchanged.

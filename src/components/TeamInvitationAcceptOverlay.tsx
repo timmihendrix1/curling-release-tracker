@@ -6,6 +6,8 @@ import { createSupabaseTeamService } from "../lib/supabase/teamServiceFactory";
 import type { TeamService } from "../lib/team/teamService";
 import type { InvitationPreview } from "../lib/team/teamService";
 import { useOptionalIdentity, type GateSession } from "./identity/IdentityProvider";
+import { useNativeTrackerBinding } from "./persistence/nativeTrackerContext";
+import { useNativeApplicationComposition } from "./persistence/nativeApplicationContext";
 
 type TeamInvitationAcceptOverlayProps = {
   token: string;
@@ -61,15 +63,18 @@ export default function TeamInvitationAcceptOverlay({
   onRecoverWrongAccount,
 }: TeamInvitationAcceptOverlayProps) {
   const identity = useOptionalIdentity();
+  const nativeComposition = useNativeApplicationComposition(), nativeBinding = useNativeTrackerBinding();
   const session = identitySession ?? identity?.session ?? null;
   const recoverWrongAccount = onRecoverWrongAccount ?? (() => {
     void identity?.recoverInvitationAccount();
   });
-  const resolvedConfig = useMemo<CloudConfig>(() => config ?? resolveCloudConfig(), [config]);
+  const resolvedConfig = useMemo<CloudConfig>(() => nativeComposition ? { status: "cloud_disabled" } : config ?? resolveCloudConfig(), [config, nativeComposition]);
   const teamService = useMemo<TeamService | null>(() => {
+    if (nativeComposition) return nativeBinding?.team ?? null;
     if (resolvedConfig.status !== "configured") return null;
     return (createTeamService ?? createSupabaseTeamService)(resolvedConfig);
-  }, [resolvedConfig, createTeamService]);
+  }, [resolvedConfig, createTeamService, nativeComposition, nativeBinding]);
+  const teamAvailable = nativeComposition ? teamService !== null : resolvedConfig.status === "configured";
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -128,11 +133,11 @@ export default function TeamInvitationAcceptOverlay({
       <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <h2 className="text-xl font-semibold text-slate-900">Team Invitation</h2>
 
-        {resolvedConfig.status !== "configured" && (
-          <p className="mt-3 text-sm text-slate-600">Cloud sign-in isn&apos;t available in this build.</p>
+        {!teamAvailable && (
+          <p className="mt-3 text-sm text-slate-600">{nativeComposition ? "Team access is unavailable. Your invitation has been kept." : "Cloud sign-in isn't available in this build."}</p>
         )}
 
-        {resolvedConfig.status === "configured" && session === null && (
+        {teamAvailable && session === null && (
           <div className="mt-3">
             <p className="text-sm text-slate-600">
               Complete athlete sign-in to see and accept this invitation.
@@ -140,7 +145,7 @@ export default function TeamInvitationAcceptOverlay({
           </div>
         )}
 
-        {resolvedConfig.status === "configured" && session !== null && acceptedTeamId && (
+        {teamAvailable && session !== null && acceptedTeamId && (
           <>
             <p className="mt-3 text-sm text-emerald-700">You&apos;ve joined the team.</p>
             <button type="button" onClick={onDone} className={`${primaryButtonClassName} mt-4 w-full`}>
@@ -149,7 +154,7 @@ export default function TeamInvitationAcceptOverlay({
           </>
         )}
 
-        {resolvedConfig.status === "configured" && session !== null && !acceptedTeamId && (
+        {teamAvailable && session !== null && !acceptedTeamId && (
           <>
             {isLoadingPreview && <p className="mt-3 text-sm text-slate-500">Loading invitation…</p>}
 
@@ -210,7 +215,7 @@ export default function TeamInvitationAcceptOverlay({
             likely real-world case: a forwarded invitation opened while signed in as
             someone else) all reach this fallback rather than leaving the overlay
             permanently blocking the app with no way out. */}
-        {!(resolvedConfig.status === "configured" && session !== null && preview?.status === "ready_to_accept") && !acceptedTeamId && (
+        {!(teamAvailable && session !== null && preview?.status === "ready_to_accept") && !acceptedTeamId && (
           <button type="button" onClick={onDone} className={`${secondaryButtonClassName} mt-4 w-full`}>
             Close
           </button>

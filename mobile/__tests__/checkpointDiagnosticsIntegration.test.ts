@@ -29,6 +29,7 @@ import {
   type PluginFaithfulFaults,
 } from "../../src/lib/persistence/__tests__/pluginFaithfulSqliteEngine";
 
+let nextSyntheticDatabase = 0;
 function harness(
   platform: "ios" | "android",
   options: {
@@ -49,7 +50,7 @@ function harness(
     },
   };
   const store = createNativeSqliteStore({
-    databaseName: "curling-storage-diagnostics-synthetic",
+    databaseName: `curling-storage-diagnostics-synthetic-${++nextSyntheticDatabase}`,
     engine,
     detectPlatform: () => platform,
   });

@@ -89,10 +89,12 @@ function Harness({
   ownerKey,
   bridge,
   onOutcome,
+  retirement,
 }: {
   ownerKey?: string;
   bridge: NativeExportBridge;
   onOutcome?: (outcome: FileExportOutcome) => void;
+  retirement?: Readonly<{ isRetired(): boolean }>;
 }) {
   const { status, runExport } = useFileExport({
     ownerKey,
@@ -111,7 +113,7 @@ function Harness({
             displayFileName: "Session.csv",
             content: "a,b\n",
             mimeType: "text/csv;charset=utf-8;",
-          }).then((outcome) => onOutcome?.(outcome));
+          }, retirement).then((outcome) => onOutcome?.(outcome));
         }}
       >
         Export
@@ -122,6 +124,19 @@ function Harness({
 }
 
 describe("useFileExport", () => {
+  it.each(["retired", "throwing"])("honors synchronous %s attempt ownership without a rendered Profile switch", async mode => {
+    const pending = pendingWriteBridge(), onOutcome = vi.fn();
+    let retired = false;
+    const retirement = { isRetired() { if (retired && mode === "throwing") throw new Error("Synthetic owner unavailable"); return retired; } };
+    render(<Harness bridge={pending.bridge.bridge} ownerKey="A" retirement={retirement} onOutcome={onOutcome} />);
+    await act(async () => { screen.getByRole("button", { name: "Export" }).click(); });
+    retired = true;
+    await act(async () => { pending.bridge.releaseWrite(); });
+    expect(onOutcome).toHaveBeenCalledWith({ kind: "retired" });
+    expect(pending.shareCalls()).toBe(0);
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
   it("shows progress and then the outcome", async () => {
     const { bridge, release } = gatedBridge();
     render(<Harness bridge={bridge} />);

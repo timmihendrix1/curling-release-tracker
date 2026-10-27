@@ -29,6 +29,33 @@ const RECORDER = "50000000-0000-4000-8000-000000000005";
 const REVISION_1 = "80000000-0000-4000-8000-000000000001";
 const REVISION_2 = "80000000-0000-4000-8000-000000000002";
 
+describe("PostgREST timestamp representation", () => {
+  it("restores an unchanged raw result when timestamptz columns use UTC offsets and trimmed zeros", async () => {
+    const record = await cloudRecord();
+    const rawSession = record.session.coordinationPayload;
+    const rawResult = record.bundle.resultPayload;
+    for (const value of [record.session, record.bundle]) {
+      for (const key of ["startedAt", "completedAt", "recordedAt"] as const) {
+        if (key in value) {
+          const object = value as unknown as Record<string, string>;
+          object[key] = object[key].replace(".000Z", "+00:00").replace("Z", "+00:00");
+        }
+      }
+    }
+    expect(await deserializeOwnedTeamExerciseResult(record, ATHLETE_A)).not.toBeNull();
+    expect(record.session.coordinationPayload).toBe(rawSession);
+    expect(record.bundle.resultPayload).toBe(rawResult);
+  });
+
+  it("rejects an actual mismatched instant, including nonzero submillisecond precision", async () => {
+    for (const suffix of [".001+00:00", ".000001+00:00"]) {
+      const record = await cloudRecord();
+      record.session.completedAt = record.session.completedAt.replace(".000Z", suffix);
+      expect(await deserializeOwnedTeamExerciseResult(record, ATHLETE_A)).toBeNull();
+    }
+  });
+});
+
 function completedExecution(correction?: "move" | "annul") {
   let id = 10;
   let minute = 0;

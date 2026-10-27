@@ -190,7 +190,7 @@ describe("the blocking surface is honest and never resets anything", () => {
   const CASES: Array<{ failure: StorageCompositionFailure; contains: string }> = [
     {
       failure: { kind: "migration_authority_unavailable" },
-      contains: "not implemented",
+      contains: "not switched on in this build",
     },
     { failure: { kind: "migration_blocked" }, contains: "will not act on automatically" },
     { failure: { kind: "platform_unsupported" }, contains: "not available here" },
@@ -198,6 +198,7 @@ describe("the blocking surface is honest and never resets anything", () => {
     { failure: { kind: "credential_store_unavailable" }, contains: "not been signed out" },
     { failure: { kind: "ownership_conflict" }, contains: "already in use" },
     { failure: { kind: "composition_disposed" }, contains: "Reopen the app" },
+    { failure: { kind: "storage_release_unconfirmed" }, contains: "could not confirm" },
   ];
 
   it.each(CASES)("explains $failure.kind without technical detail", async ({ failure, contains }) => {
@@ -219,8 +220,19 @@ describe("the blocking surface is honest and never resets anything", () => {
     expect(alert.textContent ?? "").not.toContain("SQLite");
     expect(alert.textContent ?? "").not.toContain("Keychain");
     expect(alert.textContent ?? "").not.toContain("curling.");
-    // And it offers the next action rather than a dead end.
-    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    // It offers a retry where retrying can change the outcome. The stage
+    // barrier is a fact about this build: a "Try again" there would suggest a
+    // recheck could activate the transfer (Stage M3b4c, Stage M3b0 §6), so it
+    // says plainly that checking again will not change it instead.
+    if (failure.kind === "migration_authority_unavailable") {
+      expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+      expect(alert).toHaveTextContent("Checking again will not change this.");
+    } else if (["composition_disposed", "storage_release_unconfirmed"].includes(failure.kind)) {
+      expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+      expect(alert).toHaveTextContent("Reopen the app");
+    } else {
+      expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    }
   });
 
   it("says the TRAINING DATA was not changed, without claiming nothing at all happened", async () => {

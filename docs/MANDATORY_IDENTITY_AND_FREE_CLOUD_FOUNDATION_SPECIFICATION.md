@@ -303,8 +303,13 @@ Section 11.
 7. After the recovery period, the authentication account and personal cloud data are
    **deleted**, or **narrowly anonymized** where shared Team or audit relationships
    legally and operationally require retention.
-8. **Exact shared Team-result anonymization and participant-notification behaviour
-   remains a Stage C / privacy design.** It is not settled here.
+8. **Team deletion policy confirmed by the user on 2026-10-24:** after the recovery
+   period, delete the account's own raw results and private notes, preserve other
+   participants' own results with anonymized references, and neutrally notify all
+   affected participants without a deletion reason or performance content. The
+   lifecycle is locally implemented under ADR-0052. Independent review, hosted
+   activation and device acceptance remain required; see
+   `BETA_COMPLETION_SPECIFICATION.md` for the separately gated completion stages.
 9. **Profile-scoped local data on the current device must be deleted or made
    inaccessible.**
 10. **There is no usable local-only athlete after account deletion.** The pre-existing
@@ -353,7 +358,6 @@ None of the following is authorised by this document:
 - the final commercial name of the paid personal tier;
 - video, high-frequency sensor and AI storage entitlements, quotas and retention;
 - production payment collection, billing provider selection and pricing;
-- the exact shared Team-result anonymization and notification behaviour on deletion;
 - any generic ACL or policy-builder model.
 
 ## 11. Required implementation stages and review gates

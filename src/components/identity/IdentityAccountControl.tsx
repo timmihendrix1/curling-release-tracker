@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { useNativeTrackerBinding } from "../persistence/nativeTrackerContext";
 import { useOptionalIdentity } from "./IdentityProvider";
 import { useSportingCloudSync } from "../ProfileScopedSportingPersistence";
 import SportingSyncStatusControl from "./SportingSyncStatusControl";
+
+const normalTraining = Object.freeze({ mode: "normal" as const, credentialPaused: false });
+const normalSnapshot = () => normalTraining;
+const noSubscription = () => () => {};
 
 const secondaryButtonClassName =
   "min-h-11 rounded-lg bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 disabled:cursor-not-allowed disabled:opacity-60";
 
 export default function IdentityAccountControl({ onOpenTeams, compact = false, showSync = true, showTeams = true }: { onOpenTeams: () => void; compact?: boolean; showSync?: boolean; showTeams?: boolean }) {
+  const native = useNativeTrackerBinding()?.tracker;
+  const training = useSyncExternalStore(native?.subscribe ?? noSubscription, native?.getSnapshot ?? normalSnapshot, normalSnapshot);
   const identity = useOptionalIdentity();
   const cloudSync = useSportingCloudSync();
   const [signingOut, setSigningOut] = useState(false);
@@ -27,9 +34,10 @@ export default function IdentityAccountControl({ onOpenTeams, compact = false, s
           Offline
         </span>
       )}
-      {showSync && cloudSync && <SportingSyncStatusControl cloudSync={cloudSync} />}
+      {showSync && cloudSync && (training.mode !== "normal" ? <span role="status" className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">Cloud sync paused</span> : <SportingSyncStatusControl cloudSync={cloudSync} />)}
       {!compact && <>
       {showTeams && <button type="button" onClick={onOpenTeams} className={secondaryButtonClassName}>Teams</button>}
+      {identity.accountDeletion && <button type="button" onClick={() => identity.beginAccountDeletion?.()} className={secondaryButtonClassName}>Delete account</button>}
       <button
         type="button"
         disabled={signingOut}

@@ -138,6 +138,7 @@ describe("identity-repository ownership slot", () => {
     expect(Object.keys(DEFAULT_IDENTITY_REPOSITORY_SET).sort()).toEqual([
       "attempts",
       "barriers",
+      "deletionGuards",
       "intents",
       "resolutions",
       "trusted",

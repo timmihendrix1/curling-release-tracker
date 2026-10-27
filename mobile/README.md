@@ -1,10 +1,61 @@
 # Mobile client (Capacitor / Vite)
 
+## Current new-user beta build (27 October 2026)
+
+`npm run mobile:build:new-user-beta` explicitly selects the new-user iOS entry
+from the actual MobileApp root. This is a separate local artifact; the default
+build and historical `mobile:build:native-storage` barrier retain their behavior.
+Earlier statements below that no build starts a migration refer to those earlier
+builds, not this new explicitly selected empty-source initialization lane.
+Combining the new selection with diagnostics or legacy storage fails build.
+
+The beta requires the three existing public configuration values from
+`.env.example`: HTTPS Supabase URL/publishable key and the HTTPS native API origin.
+Values are read through existing configuration boundaries and are never logged.
+Missing/invalid configuration or a non-iOS platform blocks before native stores.
+One real configured host uses the fixed `curling-sporting-v1` database and actual
+SQLite/protected bridges. It positively proves strict empty origin, resumes only
+tagged initialization, and cold-opens genuine native authority. Populated legacy
+or ambiguous retained state is refused without import, reset or deletion.
+The actual shared identity gate requires email OTP and completed Profile before
+training; the shared native Tracker supplies existing Account/export/Team behavior.
+
+React replay keeps the same owner. Final unmount drains genuine work; uncertain
+cleanup remains blocked. Module-load errors show a fixed blocked message.
+The installed SDK has an existing module-time browser diagnostic: transient
+`lswt-*` write/removal and `supabase.gotrue-js.locks.debug` read. These are counted
+separately, never used as identity/storage authority, and are not source fallback.
+A diagnostic leftover is unsupported on fresh initialization. No SDK patch is used.
+
+This stage does not assign real configuration, run Capacitor sync/install, alter
+signing/entitlements, touch the original iPhone, upload to Apple or publish Beta.
+Native OS Team links may continue opening Web under the existing specification.
+Physical Keychain/WKWebView, actual hosted setup, legal/worker and Apple acceptance
+remain separate. Q4 is unapproved. Canonical contract and current evidence:
+`docs/BETA_COMPLETION_SPECIFICATION.md` and `docs/TESTFLIGHT_READINESS.md`.
+
+
 The **same application** the Web build runs, bundled locally for a native shell.
 `mobile/src/MobileApp.tsx` composes the identical provider tree as
 `src/app/page.tsx` — `IdentityProvider → AuthenticatedSportingPersistence →
 TrackerApp` — importing `src/components/` and `src/lib/` directly. **Nothing is
 copied.** A change to the shared modules reaches Web and mobile at once.
+
+## Confirmed iOS identity and installation hold
+
+The user confirmed **Evolane Curling / `me.evolane.curling`**, team **`J98U2J78B3`**,
+for TestFlight and the App Store on 2026-10-21. Hermes reports the registered Explicit
+App ID and App Store Connect record **`6825376799`**, SKU **`evolane-curling-ios`**,
+primary language **English (U.S.)**; German is deferred. Native development region remains
+`en`. The local configuration now targets that identity in both Debug and Release.
+
+**Do not press Run / Cmd-R on the owner's iPhone from this project.** The old test app
+uses `local.dev.curlingperformance`; the user reported it running before this local
+identity change. That report does not establish complete data preservation. The new
+identity has a separate container and does not inherit old data or credentials. No
+installation, profile/certificate change, storage activation or upload is authorized by
+the local identity/build work. The complete transfer/restore path and device gates remain
+open (P4/P6 and `docs/TESTFLIGHT_READINESS.md` §2). Preserve the old installation.
 
 **Where this stands** (`docs/MOBILE_APP_MIGRATION.md`):
 
@@ -49,7 +100,8 @@ copied.** A change to the shared modules reaches Web and mobile at once.
   identity-repository injection, the protected credential store and a readiness gate
   (`npm run mobile:build:native-storage`, and the warning below).
 
-  **What does not exist:** any **migration**, any **cutover**, any transfer of the
+  **What does not exist:** any **migration run by the application** (a dormant executor,
+  Stage M3b4b, exists in the source tree but no build invokes it), any **cutover**, any transfer of the
   credentials already in WebView storage, any change to cloud synchronisation, and any
   **background-sync guarantee** — nothing here makes an upload happen while iOS has
   suspended or closed the app. **A default build contains no composition code at all** and
@@ -79,18 +131,23 @@ copied.** A change to the shared modules reaches Web and mobile at once.
   the engine is settled for the **adapter** while **source retirement stays unjustified**.
 
   The design is Stage M3b0 in `docs/MOBILE_APP_MIGRATION.md` and ADR-0049, whose **migration
-  protocol is still an unresolved design**. **Production cutover is Stage M3b5**; every
-  earlier stage is inert in production. Three open design items block M3b4: reconciling two
-  differing installation store ids seen before activation; a pre-activation record whose
-  source marker is missing, which cannot be told apart from later source clearing and is
-  therefore blocked; and the human-authorised resolution of a blocked source-generation
-  divergence. A **proposed, unapproved** design brief for the first two is in Stage M3b0 §7;
-  it settles neither. **Two further migration requirements follow from the credential decision:**
+  protocol is an approved design (user, 2026-10-19) whose decision core (M3b4a) is approved and
+  whose executor (M3b4b) is dormant — no build runs a migration, the flag-enabled one included**.
+  **Production
+  cutover is Stage M3b5**; every earlier stage is inert in production, and the production
+  activation authority still reports `unavailable`. The provenance blockers are closed at the
+  design level, and blocked-state recovery has a **decided first-version policy** (U2 and
+  UG-1–UG-4, canonical in Stage M3b0 §6). Its interface (M3b4c) exists only as a dormant,
+  dependency-injected layer that no build constructs or renders, and it awaits independent
+  review (canonical inventory: Stage M3b0 §7). **Two further migration requirements
+  follow from the credential decision:**
   transferring the existing session out of WebView storage, and handling the interruption
   where one of the two separate stores is written and the other is not. Migration of
   existing on-device data between storage engines is a **separate, still-required**
   operation from the deferred browser import.
-- **Not implemented:** native Google sign-in (the rest of M2), the rest of M3
+- **Not implemented:** native Google sign-in (the rest of M2; deliberately not offered on
+  iOS in the first club beta — the user approved email code only on 2026-10-21,
+  `docs/MOBILE_APP_MIGRATION.md` §6.1; Web keeps its existing choices), the rest of M3
   (storage migration, production cutover and a recorded operating envelope — the
   composition exists only behind its off-by-default flag, above), Brower capture (M4),
   Android (M5).
@@ -155,6 +212,10 @@ gate and reports that sign-in is unavailable. It never fabricates a Profile.
 
 ## Running on a physical iPhone
 
+**Procedure only, not current authorization.** The commands below prepare local files;
+the later device Run step is blocked for the owner's data-bearing installation. A new
+device/simulator rehearsal requires its own explicit approval and disposable data.
+
 ```bash
 npm run mobile:build
 npm run ios:sync
@@ -164,24 +225,31 @@ npm run ios:open
 Then, in Xcode:
 
 1. Select the **App** target → **Signing & Capabilities**.
-2. Choose your **Team** (a free personal Apple ID is enough for development).
-   Nothing in this repository selects an account or stores a signing identity.
+2. Verify the configured **Team `J98U2J78B3`**, **Automatic** signing and bundle ID
+   **`me.evolane.curling`**. The team is project configuration, not a stored private key.
+   Do not switch the identifier back to the data-bearing source or create new profiles
+   as an incidental workaround.
 3. Select the connected iPhone as the run destination.
 4. Build and run. On first install, trust the developer certificate on the
    device (**Settings → General → VPN & Device Management**) and enable
    **Developer Mode** if iOS asks.
 
-Expect the app to launch, dismiss the splash, and show the identity gate.
+These are expected outcomes for a separately authorized disposable installation, not
+permission to perform one now: launch, dismiss the splash, and show the identity gate.
 
-**Email sign-in is now expected to be reachable** (Stage M2a shipped the typed-code
-path and the configured API origin), but it has **not been exercised on a device**
-and depends on the two prerequisites named in the next section. **Google sign-in is
-still not expected to work natively** — that remains the unfinished part of M2.
+**Email sign-in is expected to be reachable** (Stage M2a shipped the typed-code path and
+the configured API origin). The user reported email login on the **old iPhone installation**
+on 2026-09-29; that is not complete OTP/API acceptance on the **new target identity**.
+The acceptance prerequisites below remain to be verified for that target. **Native Google
+sign-in remains unfinished and is deliberately not offered in the first iOS club beta**
+(migration §6.1); Web's Google and email choices are preserved.
 
 ## Manual iPhone acceptance — email OTP and API access (Stage M2a)
 
-**Nobody has run this yet.** It is the user's to perform; nothing in this repository claims
-a device result. Build, sync and open as above, then install on the device.
+**The complete new-target acceptance matrix has not been run.** The 2026-09-29 user reports
+above concern the old installation, not an agent-executed run or a pass for every case below.
+This procedure remains the user's to perform **only after separate disposable-device
+installation approval**; it does not authorize installing on the owner's data-bearing iPhone.
 
 **Before starting, two things must be true, and neither is done by this repository:**
 
@@ -222,8 +290,8 @@ automated run to perform hosted mutations or send email.
 **What a pass does and does not establish.** Passing 1–11 makes Stage M2 **M2-partial**:
 email OTP and authorized API access work on device. It does **not** make native Google
 sign-in work (not implemented — see ADR-0047 and migration §6), and it establishes nothing
-about offline persistence durability, which remains Stage M3b — designed only, not
-implemented (ADR-0049).
+about offline persistence durability. Stage M3b has an adapter, opt-in diagnostics/composition
+and a dormant executor, but **no application migration or production cutover** (ADR-0049).
 
 ## Manual iPhone acceptance — export and public links (Stage M3a)
 
@@ -279,12 +347,16 @@ opt your real training data into a different store, so the two are deliberately 
 
 **Read this before installing it: the app does not open.** The composition asks a
 migration/activation authority for a verdict before it constructs anything, and the only
-authority that ships reports that the migration is **not implemented** (Stage M3b4) and that
-cutover is a separate stage (M3b5). So the build shows a short blocking message —
-"Training data is unavailable", with a *Try again* button — and **the sporting application
-never mounts**. That is the intended behaviour, not a fault. A second barrier stands behind
-it: the protected credential store cannot establish absence with the available dependency, so
-even a ready activation verdict would block.
+authority that ships reports `migration_not_implemented` — no build runs the migration
+(Stage M3b4b's executor is dormant and not integrated) — and cutover is a separate stage
+(M3b5). So the build shows a short blocking message —
+"Training data is unavailable", stating that the transfer is not switched on in this build
+and that checking again will not change it, with **no** *Try again* button (a retry cannot
+activate it; Stage M3b4c) — and **the sporting application
+never mounts**. That is the intended behaviour. The approved app-owned iOS Keychain
+reader now distinguishes missing from failed reads locally (ADR-0049 amendment,
+2026-10-24); device acceptance, credential transfer and activation remain open.
+Android's credential reader still cannot establish absence and fails closed.
 
 Why it is built that way: mounting an existing installation against a fresh, empty SQLite
 database and an empty Keychain would have every domain read "absent", write its documented
@@ -305,9 +377,12 @@ ordinary sequence:
 npm run mobile:build && npm run ios:sync
 ```
 
-then Run again in Xcode. **Use the default build for training.** This one exists so the
-composition can be reviewed and exercised, and there is deliberately no switch — no URL
-parameter, no stored preference, no developer toggle — that can make it mount.
+Only **after separate installation approval on a disposable target** may you Run again in
+Xcode. **Do not Run/install on the owner's data-bearing iPhone; preserve its old installation.**
+The default bundle, not this blocked composition build, is the training build; generating
+it is **not** authorization to install it or evidence that old data/credentials transfer.
+The composition build exists so it can be reviewed and exercised, and there is deliberately
+no switch — no URL parameter, no stored preference, no developer toggle — that can make it mount.
 
 ## Manual iPhone procedure — native storage diagnostics (Stage M3b1)
 
@@ -346,11 +421,13 @@ npm run ios:sync
 npm run ios:open
 ```
 
-Then in Xcode: select the **App** target, choose your **Team** under *Signing &
-Capabilities*, select the connected iPhone, and Run. This **replaces the app already on the
-device** with the same bundle identifier (`local.dev.curlingperformance`) — it is the same
-app, not a second one. To go back to an ordinary build afterwards, run
-`npm run mobile:build && npm run ios:sync` and Run again.
+For a separately authorized disposable rehearsal only, select **App**, verify team
+`J98U2J78B3` and current bundle ID `me.evolane.curling`, then choose the disposable target.
+It updates an installation of that same current identity; it does **not** update or
+transfer the old `local.dev.curlingperformance` container. Historical evidence below
+belongs to the old identity and does not prove the new one. Returning to an ordinary
+bundle uses `npm run mobile:build && npm run ios:sync`; another device Run still needs
+its own authorization. Do not use the owner's iPhone for this procedure.
 
 > **Do not install this build over a data-bearing installation.** The synthetic database
 > keeps the panel away from application data, but it does not make replacing the
@@ -397,7 +474,8 @@ A pass establishes that the engine round-trips these payloads on this device, an
 values written before a force-quit are still there after relaunch. It establishes
 **nothing** about power loss, nothing about OS-initiated eviction over weeks, nothing about
 Android, and **no safe capacity** — the fixture sizes are measurement points, not a limit.
-It also says nothing about the migration protocol, which is unimplemented.
+It also says nothing about the migration protocol, which no build executes (its executor,
+M3b4b, exists only dormant and has never run on a device).
 
 ## Manual procedure — checkpoints and transactions
 
@@ -414,8 +492,8 @@ a batch of payload rows **and** the progress record describing them, so an inter
 either a whole checkpoint or the previous one — never half of either
 (`docs/MOBILE_APP_MIGRATION.md` Stage M3b0 §5.1). That design rests on engine behaviour: what
 a failed commit reports, and what a store looks like when it is reopened after an interrupted
-one. These actions gather that evidence **before** the migration is written. So far they have
-been observed on a disposable simulator only, with the process stopped **before** a commit; a
+one. These actions gather engine evidence, **not a run of the dormant migration executor**.
+So far they have been observed on a disposable simulator only, with the process stopped **before** a commit; a
 naturally occurring commit failure and termination **during** a commit have not been
 observed on any device.
 
@@ -476,7 +554,9 @@ The panel shows one of two banners while the store owns a transaction:
 **Unresolved is a real outcome, not a test failure.** It is exactly the state a migration must
 be able to handle, and the panel never promotes it to either of the others. Nothing is
 replayed in response: deciding what to do about an unresolved checkpoint is the migration's
-job, and that is an open design item (Stage M3b0 §7).
+job. The approved migration design — implemented only as a dormant executor that no build
+invokes — decides it from durable state and
+treats a mismatch a running process detects as a fault (Stage M3b0 §5.1, I-11 and I-13).
 
 ### The interruption rehearsal — DISPOSABLE TEST INSTALLATION ONLY
 
@@ -519,28 +599,28 @@ setup record written to the database could itself be mistaken for a committed ch
 - **Nothing about a naturally occurring commit failure.** Every failure here is either a
   deliberate constraint violation or an injected lost acknowledgement.
 - **Nothing about backup and restore**, no capacity limit, and **nothing about Android**.
-- **Nothing about migration readiness.** No migration runner, source enumerator or activation
-  record exists, and none is added by this tooling.
+- **Nothing about migration readiness.** A dormant runner with source/target enumeration
+  and activation-record handling exists in M3b4b, but **no application path invokes it**.
+  This tooling does not run a migration, publish activation or establish transfer/restore readiness.
 
-## Development placeholders
+## Identity configuration and remaining decisions
 
-`capacitor.config.ts` uses `local.dev.curlingperformance` /
-"Curling Performance (Dev)". These are **placeholders**: production application
-identity (bundle identifier and app name), the **Google callback domain** and
-distribution commitments remain open decision **P4**
-(`docs/MOBILE_APP_MIGRATION.md` §4) and must be resolved before M6. No app is
-registered under these values, no URL scheme or domain is claimed, and no
-provider redirect is configured.
+`capacitor.config.ts` uses **`me.evolane.curling` / Evolane Curling**, matching both
+native target configurations. Name, identifier, Apple team and primary English language
+are confirmed; this does not close the remaining callback, distribution-acceptance or
+data-preservation parts of **P4**. `local.dev.curlingperformance` / Curling Performance
+(Dev) identify the earlier installed source and historical diagnostic evidence, not the
+current build target. No provider redirect, URL scheme or Associated Domain is added.
 
 **The API origin is no longer among them.** It is confirmed as
 `https://curling.evolane.me` and is configured through
 `NEXT_PUBLIC_NATIVE_API_ORIGIN` (ADR-0047). Confirming it settles the API
-destination only — it decides nothing about the callback domain, the bundle
-identifier or distribution.
+destination only — the bundle identifier has its own confirmed decision, while the
+callback domain and distribution acceptance remain separate.
 
-`Info.plist` declares **no** `UIBackgroundModes` and **no** Bluetooth permission.
-Background measurement is open decision **P3**; declaring a capability this build
-does not exercise would be an unjustified claim.
+`Info.plist` keeps the existing `NSBluetoothAlwaysUsageDescription` for Brower capture,
+and declares **no** `UIBackgroundModes`. Background measurement remains **P3**; this
+identity change adds no permission or capability.
 
 ## Android
 

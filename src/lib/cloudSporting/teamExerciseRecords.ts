@@ -90,6 +90,18 @@ function validTimestamp(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && Number.isFinite(Date.parse(value));
 }
 
+// PostgREST returns timestamptz columns with an offset and trimmed fractional
+// zeros. The exact raw payload remains untouched; compare column correlation by
+// instant, retaining fractional precision beyond JavaScript's milliseconds.
+function sameTimestampInstant(left: unknown, right: unknown): boolean {
+  if (!validTimestamp(left) || !validTimestamp(right)) return false;
+  const format = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:Z|[+-]\d{2}:\d{2})$/;
+  const a = format.exec(left);
+  const b = format.exec(right);
+  return a !== null && b !== null && Date.parse(left) === Date.parse(right)
+    && (a[1] ?? "").padEnd(9, "0").slice(3) === (b[1] ?? "").padEnd(9, "0").slice(3);
+}
+
 function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
@@ -511,10 +523,10 @@ export async function deserializeOwnedTeamExerciseResult(
     execution.trainingSessionId !== record.session.sessionId ||
     execution.id !== resultValue.exerciseExecutionId ||
     context.teamId !== record.session.teamId ||
-    execution.startedAt !== record.session.startedAt ||
-    execution.completedAt !== record.session.completedAt ||
+    !sameTimestampInstant(execution.startedAt, record.session.startedAt) ||
+    !sameTimestampInstant(execution.completedAt, record.session.completedAt) ||
     result.athleteProfileId !== record.bundle.athleteProfileId ||
-    result.updatedAt !== record.bundle.recordedAt ||
+    !sameTimestampInstant(result.updatedAt, record.bundle.recordedAt) ||
     !sameSet(record.session.executionIds, [execution.id]) ||
     !sameSet(record.bundle.executionIds, [execution.id]) ||
     !sameSet(record.bundle.resultIds, [result.id]) ||

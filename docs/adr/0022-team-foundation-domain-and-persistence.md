@@ -1,5 +1,13 @@
 # ADR-0022: Team Foundation Domain and Persistence
 
+**2026-10-24 implementation amendment:** the real local OTP/SMTP/PostgREST Team
+workflow is now exercised end to end, including invitation, acceptance, recording,
+restore, private-note isolation and personal export. See TESTFLIGHT_READINESS.md for
+current evidence. ADR-0052 adds the pending/finalized account-deletion lifecycle and
+the entry into restricted recovery when the final usable Admin becomes unavailable.
+It supersedes the original absence-of-deletion/recovery-entry findings below;
+independent review and hosted activation of that addition remain open.
+
 **Narrowly constrained (2026-08-24) by `docs/adr/0024-mandatory-identity-and-free-structured-cloud-foundation.md`
 (Accepted; B0.2 identity gate now implemented and mounted).** Decision 1 — `Profile.id` as its own application-owned UUID,
 linked 1:1 to an auth account, never equal to the auth user id — is **retained and is now
@@ -18,8 +26,8 @@ Supabase-backed production implementation are Implemented. The database migratio
 concurrency Procedures A–E documented at the end of that file have been run with
 genuinely concurrent sessions (see `supabase/tests/README.md` for the recorded
 outcomes). Route Handlers and UI remain Implemented against the fake/in-memory backend
-and unit/component tests; **they have not been exercised end to end against the real
-database**, which is the remaining follow-up — see
+and unit/component tests; **real-database end-to-end evidence was added on
+2026-10-24**, as described in the amendment above — see
 `docs/TECHNICAL_DEBT_AND_ROADMAP.md`'s Team Foundation section.
 
 Executing the SQL for the first time exposed two defects that no amount of TypeScript
@@ -392,7 +400,7 @@ resolves the acting identity exclusively from `auth.uid()` (via `private.require
 a single overlooked `p_profile_id`-shaped parameter would otherwise be an impersonation
 vulnerability that ordinary functional testing might never exercise.
 
-## Decision 9 — Restricted `recovery` status: exit implemented, entry deliberately not built
+## Decision 9 — Restricted `recovery` status
 
 `TeamStatus` includes `"recovery"`, and `resolveTeamStatusAfterAdminRequestAccepted`
 (`recovery.ts`) plus `accept_admin_request`'s handling of it fully implement the **exit**
@@ -402,13 +410,12 @@ restore. `operational_recover_team_admin` — granted to `service_role` only, ne
 `authenticated`/`anon` — nominates a recovery successor using the ordinary Admin Request
 mechanism, so the same accept flow closes recovery.
 
-**No code path in this beta ever transitions a team into `"recovery"`.** Doing so would
-require detecting "this team's last Team Admin's account was deleted" — an account-deletion
-flow this beta does not build. Modeling the exit path now, ahead of the entry trigger, is
-deliberate: it keeps the schema and RPC surface ready (rather than needing a second,
-disruptive migration later) without guessing at account-deletion semantics that haven't
-been designed yet. This is a **Prepared**, not *Implemented*, capability — see
-`docs/TECHNICAL_DEBT_AND_ROADMAP.md`.
+The original Team Foundation stage prepared only this exit. ADR-0052 now adds
+entry through account deletion: pending accounts have no application authority;
+loss of the final usable Admin enters restricted recovery. Reauthenticated
+cancellation restores only recovery introduced by this lifecycle when a usable
+Admin returns. Finalization ends the deleted participant's functions/membership.
+The operational nomination/ordinary acceptance exit remains unchanged.
 
 ## Decision 10 — Pilot-gated team creation; Athlete is a lazily-created capability
 
@@ -681,10 +688,9 @@ on an archived Team). Corrected per the specification's §11 model:
 
 - **`recovery`**: every admin-only action, `restore_team`, and `relinquish_own_admin` are
   suspended outright; only `view_team`/`view_roster`/`leave_team` remain available to an
-  existing active member. (An ordinary caller who is *also* `isActiveAdmin` for a Team
-  genuinely in recovery cannot occur in practice — recovery is only reachable once every
-  active admin is already gone — but the function's own logic does not rely on that
-  incidental fact; it suspends admin actions unconditionally under this status.)
+  existing active member. Pending Admins may retain nominal membership/function
+  rows during recovery but have no application authority (ADR-0052); the matrix
+  suspends admin actions unconditionally under this status.
 - **`archived`**: a fixed `REQUIRES_ACTIVE_TEAM` set (`rename_team`, `manage_invitations`,
   `change_participation`, `assign_direct_function`, `remove_direct_function`,
   `request_admin_promotion`, `remove_admin_function`, `remove_member`, `archive_team`) is
@@ -1229,7 +1235,8 @@ that call's own totality was missing.
   Seats, and workspace pricing remain product hypotheses (see that same document's Team
   Workspace billing sections) with no code in this schema reading or writing them.
 - No club/federation/organisation layer above one Team Workspace.
-- No account-deletion flow, and therefore no reachable path into `"recovery"` (Decision 9).
+- The original Team Foundation stage excluded account deletion; ADR-0052 now adds
+  the locally implemented lifecycle and recovery entry (Decision 9).
 - No training/performance data of any kind is shared, aggregated, or made visible across
   team members by this feature — `TeamRosterEntry`/`TeamWorkspace` carry identity,
   function, and (admin-only) email only.
