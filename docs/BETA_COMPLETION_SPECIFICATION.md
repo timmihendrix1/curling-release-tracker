@@ -6565,3 +6565,17 @@ S6n1 starts the actual application control connection to the existing genuine so
 
 
 S6n1 and corrected S6n2 are now independently CODE accepted: actual public import controls, native File intake, genuine Provider/recovery and subsequent new-process normal training form one tested explicit destination workflow. This replaces the earlier presentation-blueprint status, not the unselected shipped-root or unfinished operative-source status. Canonical current contract and boundaries are MOBILE_APP_MIGRATION.md S6n1–2; exact current full verification is TESTFLIGHT_READINESS.md. No source file/code is fabricated from the existing training-only backup, no original installation is changed, and no Beta/device/Q4 approval follows.
+
+
+## Legal contact correction — 27 October 2026
+
+The owner corrected the operator contact: `info@evolane.swiss` does not exist;
+`notifications@evolane.me` is the only existing Evolane email address. Use it for
+all contact and data-rights links in the new current Privacy Notice and Terms.
+Publish immutable `privacy-2026-10-27` and `terms-2026-10-27` versions; the only
+content correction is that address, alongside version/effective-date metadata.
+Preserve the August and 24 October accepted texts byte-for-byte. Point `/privacy`
+and `/terms` to the new versions. Deploy and verify both new routes before the
+separate guarded database rotation from the exact 24 October pair. Do not rewrite
+past acceptances or introduce mandatory reacceptance for existing users. This
+correction does not change processing, product rules, or the existing beta scope.

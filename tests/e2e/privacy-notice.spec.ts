@@ -4,19 +4,20 @@ test.describe("public Privacy Notice", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test("is readable before sign-in at both current and immutable routes", async ({ page }) => {
-    for (const [path, version] of [
-      ["/privacy", "privacy-2026-10-24"],
-      ["/legal/privacy/2026-10-24", "privacy-2026-10-24"],
-      ["/legal/privacy/2026-08-28", "privacy-2026-08-28"],
+    for (const [path, version, contact] of [
+      ["/privacy", "privacy-2026-10-27", "notifications@evolane.me"],
+      ["/legal/privacy/2026-10-27", "privacy-2026-10-27", "notifications@evolane.me"],
+      ["/legal/privacy/2026-10-24", "privacy-2026-10-24", "info@evolane.swiss"],
+      ["/legal/privacy/2026-08-28", "privacy-2026-08-28", "info@evolane.swiss"],
     ]) {
       await page.goto(path);
 
       await expect(page.getByRole("heading", { level: 1, name: "Privacy Notice" })).toBeVisible();
       await expect(page.getByText(version, { exact: true })).toBeVisible();
       await expect(page.getByText("Evolane Curling", { exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: "info@evolane.swiss" }).first()).toHaveAttribute(
+      await expect(page.getByRole("link", { name: contact }).first()).toHaveAttribute(
         "href",
-        "mailto:info@evolane.swiss"
+        `mailto:${contact}`
       );
       await expect(page.getByRole("heading", { name: "Athlete access" })).toHaveCount(0);
 

@@ -3244,3 +3244,35 @@ Next bounded acceptance is actual secure hosted configuration/current legal and
 worker readiness, a preservation-safe physical candidate procedure and real iOS
 OTP/Profile/training/Keychain/WKWebView evidence, then Apple/TestFlight approval.
 This report does not authorize those external/device operations or claim Beta live.
+
+
+### Legal contact correction — 27 October 2026 (local, publication pending)
+
+The owner confirms `info@evolane.swiss` does not exist; the sole existing Evolane
+mailbox is `notifications@evolane.me`. New immutable Privacy Notice and Terms dated
+27 October correct only contact address plus version/effective-date metadata.
+Default routes select these versions; August and24 October source bytes remain
+unchanged. Existing acceptances are not rewritten and no reacceptance flow added.
+
+Executed verification: legal components3 files/9 tests PASS; complete root384
+files/9450 cases with9449 PASS and one unchanged N2 import-recovery case timing out
+at5019ms (422.81s total). That exact case PASS separately with its unchanged5000ms
+limit (4.65s runner;1 PASS/554 unselected). No wholly green combined root run is
+claimed. Full browser139 PASS(3.1min), including new/default/historical legal routes;
+initial browser invocation failed before tests because the default browser path
+was absent, corrected using the existing /tmp/curling-beta-playwright installation.
+Web build, final types, full root lint and diff/explicit new-file whitespace checks
+PASS. E2E server confirmed stopped before production build. All E2E database resets
+were local disposable fixtures only.
+
+Actual new publication SQL passed rollback-only local controls: exact predecessor
+rotation/archive preservation and retry; unknown/partial predecessor and retired/
+partial replacement rejection; original fixture metadata unchanged afterward.
+The script requires both new routes to be publicly verified before separate use.
+No hosted mutation, deployment, Git staging/commit/push or device change occurred
+in this correction. Branch codex/beta-new-users/HEAD a508afa, main/origin-main382ee40.
+Nine tracked paths modified and five new files; no unrelated source edits.
+Logs:/tmp/curling-legal-contact-{root,timeout-recheck,e2e-corrected,build,types,lint}.log.
+Next: expressly authorize commit/push and production publication, verify both
+27 October routes and defaults, then run the guarded27 October pair rotation and
+verify the anon Legal RPC. Prior native iPhone/Apple/TestFlight gates remain open.

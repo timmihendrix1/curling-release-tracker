@@ -64,3 +64,11 @@ remain unchanged.
   Privacy owner-operated publication steps must succeed before first onboarding.
 - This working closed-beta document is not a substitute for professional legal review
   before a broader audience, paid service or materially expanded data processing.
+
+
+### Contact correction — 2026-10-27
+
+The owner's 27 October correction supersedes this ADR's historical contact claim:
+`info@evolane.swiss` does not exist. The current contact is
+`notifications@evolane.me`. Issue new 27 October legal versions; preserve accepted
+historical text unchanged. See BETA_COMPLETION_SPECIFICATION.md, Legal contact correction.

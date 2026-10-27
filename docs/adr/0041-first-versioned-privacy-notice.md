@@ -61,3 +61,11 @@ unchanged.
 - Legal review before a broader or public release remains necessary, especially for
   exact retention periods, subprocessors and hosting regions, account deletion, minors,
   billing, sensors, video, AI and public/community content.
+
+
+### Contact correction — 2026-10-27
+
+The owner's 27 October correction supersedes this ADR's historical contact claim:
+`info@evolane.swiss` does not exist. The current contact is
+`notifications@evolane.me`. Issue new 27 October legal versions; preserve accepted
+historical text unchanged. See BETA_COMPLETION_SPECIFICATION.md, Legal contact correction.
