@@ -3,10 +3,11 @@
 ## Optional product usage analytics — 27 October 2026
 
 The shared identity-owned application now includes a separately consented PostHog
-EU boundary. It is disabled without explicit public build configuration and is
+EU boundary, with explicit opt-in by default and a separately enabled Swiss-beta
+notice/objection entry approved on 28 October. It is disabled without explicit public build configuration and is
 independent of sporting analysis, storage and cloud synchronization. Explicit user
 transitions emit allowlisted events; completion requires a local persistence ACK.
-No SDK initialization occurs before consent. Account changes revoke observation
+No SDK initialization occurs before the applicable analytics choice. Account changes revoke observation
 ownership; callbacks cannot reuse another Profile's consent. See
 [the event, consent and activation contract](POSTHOG_BETA_ANALYTICS.md).
 This local implementation is not a live-collection or release approval.

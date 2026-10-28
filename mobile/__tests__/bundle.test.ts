@@ -174,6 +174,7 @@ describe("mobile production bundle", () => {
       "NEXT_PUBLIC_POSTHOG_ENABLED",
       "NEXT_PUBLIC_POSTHOG_TOKEN",
       "NEXT_PUBLIC_POSTHOG_HOST",
+      "NEXT_PUBLIC_POSTHOG_CH_BETA",
     ]);
   });
 

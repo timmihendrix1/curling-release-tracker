@@ -61,6 +61,11 @@ export default async function globalSetup(config: FullConfig) {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    if (process.env.NEXT_PUBLIC_POSTHOG_CH_BETA === "1") {
+      // Authentication provisioning is not the analytics scenario. Persist a
+      // refusal; dedicated CH tests explicitly remove it in their own context.
+      await page.addInitScript(() => localStorage.setItem("curling.product-analytics-consent.v1", "null"));
+    }
     await page.goto(baseURL);
     const email = page.getByLabel("Email address");
     await email.waitFor();

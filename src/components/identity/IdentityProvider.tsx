@@ -24,7 +24,7 @@ import {
   type AccountDeletionResult,
 } from "../../lib/identity/identityRuntime";
 import IdentityGateScreen from "./IdentityGateScreen";
-import { createBrowserProductAnalytics, ProductAnalyticsScope } from "../ProductAnalytics";
+import { createBrowserProductAnalytics, ProductAnalyticsEntry, ProductAnalyticsScope } from "../ProductAnalytics";
 import AccountDeletionFlow from "./AccountDeletionFlow";
 import { useSportingStorageSeams } from "../persistence/storageCompositionContext";
 import { readProfileSportingExport } from "../../lib/persistence/profileScopedSportingPersistence";
@@ -573,10 +573,12 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
   return (
     <IdentityContext.Provider value={value}>
       <ProductAnalyticsScope analytics={productAnalytics}>
+      <ProductAnalyticsEntry>
       <AccountDeletionFlow owner={nativeComposition && deletionOwner !== session ? null : deletionOwner} onClose={() => setDeletionOwner(null)}>
         {session === null ? <IdentityGateScreen /> : children}
       </AccountDeletionFlow>
       {accessRecovery}
+      </ProductAnalyticsEntry>
       </ProductAnalyticsScope>
     </IdentityContext.Provider>
   );

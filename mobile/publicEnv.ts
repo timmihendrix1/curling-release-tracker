@@ -15,10 +15,10 @@
  * is used exactly as before. A missing or malformed value fails closed: Team
  * requests and the restricted-asset resolver deny before any token is read.
  *
- * Optional PostHog uses three additional PUBLIC configuration values. Its
+ * Optional PostHog uses four additional PUBLIC configuration values. Its
  * token is the project write-only token, never a personal API key.
  * COUNT, for anyone reconciling this against older text: the build inlines
- * these SIX public configuration values, plus `NODE_ENV`. Stage M1 shipped
+ * these SEVEN public configuration values, plus `NODE_ENV`. Stage M1 shipped
  * two public values plus `NODE_ENV`, so any surviving "three inlined literals"
  * wording describes that historical M1 state. This list is the current
  * authority for the public ones.
@@ -46,4 +46,5 @@ export const MOBILE_INLINED_PUBLIC_ENV_NAMES = [
   "NEXT_PUBLIC_POSTHOG_ENABLED",
   "NEXT_PUBLIC_POSTHOG_TOKEN",
   "NEXT_PUBLIC_POSTHOG_HOST",
+  "NEXT_PUBLIC_POSTHOG_CH_BETA",
 ] as const;

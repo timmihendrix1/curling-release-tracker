@@ -5,7 +5,8 @@ test.describe("public Terms of Service", () => {
 
   test("is readable before sign-in at both current and immutable routes", async ({ page }) => {
     for (const [path, version, contact] of [
-      ["/terms", "terms-2026-10-27-posthog", "notifications@evolane.me"],
+      ["/terms", "terms-2026-10-28-ch-beta", "notifications@evolane.me"],
+      ["/legal/terms/2026-10-28-ch-beta", "terms-2026-10-28-ch-beta", "notifications@evolane.me"],
       ["/legal/terms/2026-10-27-posthog", "terms-2026-10-27-posthog", "notifications@evolane.me"],
       ["/legal/terms/2026-10-27", "terms-2026-10-27", "notifications@evolane.me"],
       ["/legal/terms/2026-10-24", "terms-2026-10-24", "info@evolane.swiss"],

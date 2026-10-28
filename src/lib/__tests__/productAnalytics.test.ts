@@ -21,6 +21,58 @@ function fixture(overrides: Partial<AnalyticsDependencies> = {}) {
 async function flush() { for (let i = 0; i < 8; i++) await Promise.resolve(); }
 
 describe("optional product analytics boundary", () => {
+  it("requires the exact separate Swiss beta flag; normal builds retain opt-in", () => {
+    expect(resolveAnalyticsConfig("1", "phc_test", "https://eu.i.posthog.com", "1")?.chBetaOptOut).toBe(true);
+    expect(resolveAnalyticsConfig("1", "phc_test", "https://eu.i.posthog.com", "true")?.chBetaOptOut).toBeUndefined();
+  });
+  it("does not load the SDK until a new Swiss tester continues after the notice", async () => {
+    const f = fixture({ config: { token: "phc_syntheticTestToken0001", host: "https://eu.i.posthog.com", chBetaOptOut: true } });
+    f.analytics.syncIdentity(null, true);
+    expect(f.analytics.getEntryState()).toBe("loading");
+    await flush();
+    expect(f.analytics.getEntryState()).toBe("notice");
+    expect(f.deps.loadSdk).not.toHaveBeenCalled(); expect(f.data.size).toBe(0);
+    await f.analytics.continueAfterNotice(); await flush();
+    expect(f.analytics.getEntryState()).toBe("ready");
+    expect(f.sdk.capture).toHaveBeenCalledWith("onboarding_started", { app_platform: "web" });
+    expect(JSON.parse(f.data.get(ANALYTICS_CONSENT_KEY)!)).toMatchObject({ version: 2, basis: "ch_notice" });
+  });
+  it("lets Swiss testers decline and reload without a repeated prompt or SDK request", async () => {
+    const f = fixture({ config: { token: "phc_syntheticTestToken0001", host: "https://eu.i.posthog.com", chBetaOptOut: true } });
+    f.analytics.syncIdentity("one", false); await flush();
+    await f.analytics.choose(false);
+    expect(f.analytics.getEntryState()).toBe("ready");
+    f.analytics.detach(); f.analytics.attach(); f.analytics.syncIdentity("one", false); await flush();
+    expect(f.analytics.getEntryState()).toBe("ready"); expect(f.analytics.getEnabled()).toBe(false);
+    expect(f.deps.loadSdk).not.toHaveBeenCalled();
+  });
+  it("preserves legacy refusal and malformed choices instead of adopting the Swiss default", async () => {
+    for (const value of ["null", "broken-json", '{"version":22,"enabled":true}']) {
+      const f = fixture({ config: { token: "phc_syntheticTestToken0001", host: "https://eu.i.posthog.com", chBetaOptOut: true } });
+      f.analytics.detach(); f.data.set(ANALYTICS_CONSENT_KEY, value);
+      f.analytics.attach(); f.analytics.syncIdentity("one", false); await flush();
+      expect(f.analytics.getEntryState()).toBe("ready"); expect(f.analytics.getEnabled()).toBe(false);
+      expect(f.deps.loadSdk).not.toHaveBeenCalled();
+    }
+  });
+  it("does not reinterpret Swiss notice acknowledgement as opt-in outside the Swiss mode", async () => {
+    const f = fixture(); f.analytics.detach();
+    f.data.set(ANALYTICS_CONSENT_KEY, JSON.stringify({ version: 2, enabled: true, basis: "ch_notice", anonymousId: "anonymous_identifier_123456", profileId: "one" }));
+    f.analytics.attach(); f.analytics.syncIdentity("one", false); await flush();
+    expect(f.analytics.getEnabled()).toBe(false); expect(f.deps.loadSdk).not.toHaveBeenCalled();
+    await f.analytics.choose(true); await flush();
+    expect(JSON.parse(f.data.get(ANALYTICS_CONSENT_KEY)!)).toMatchObject({ basis: "explicit_opt_in" });
+    expect(f.sdk.identify).toHaveBeenCalledWith("profile_one");
+  });
+  it("keeps valid legacy opt-in and never prompts or auto-enables on replacement ownership", async () => {
+    const f = fixture({ config: { token: "phc_syntheticTestToken0001", host: "https://eu.i.posthog.com", chBetaOptOut: true } });
+    f.analytics.detach();
+    f.data.set(ANALYTICS_CONSENT_KEY, JSON.stringify({ version: 1, enabled: true, anonymousId: "anonymous_identifier_123456", profileId: "one" }));
+    f.analytics.attach(); f.analytics.syncIdentity("one", false); await flush();
+    expect(f.analytics.getEnabled()).toBe(true); expect(f.analytics.getEntryState()).toBe("ready");
+    f.analytics.syncIdentity("two", false); await flush();
+    expect(f.analytics.getEnabled()).toBe(false); expect(f.analytics.getEntryState()).toBe("ready");
+  });
   it("requires explicit activation, a public project token and the exact EU ingestion host", () => {
     expect(resolveAnalyticsConfig("1", "phc_test", "https://eu.i.posthog.com")).not.toBeNull();
     for (const [enabled, token, host] of [["0", "phc_test", "https://eu.i.posthog.com"], ["1", "secret", "https://eu.i.posthog.com"], ["1", "phc_test", "https://us.i.posthog.com"], ["1", "phc_test", "https://eu.i.posthog.com/"], ["1", "", "https://eu.i.posthog.com"]]) expect(resolveAnalyticsConfig(enabled, token, host)).toBeNull();

@@ -8,12 +8,12 @@ export const PRODUCT_EVENTS = [
 ] as const;
 export type ProductEvent = typeof PRODUCT_EVENTS[number];
 export const ANALYTICS_CONSENT_KEY = "curling.product-analytics-consent.v1";
-export const ANALYTICS_PRIVACY_PATH = "/legal/privacy/2026-10-27-posthog";
-export type AnalyticsConfig = { token: string; host: string };
+export const ANALYTICS_PRIVACY_PATH = "/legal/privacy/2026-10-28-ch-beta";
+export type AnalyticsConfig = { token: string; host: string; chBetaOptOut?: boolean };
 
-export function resolveAnalyticsConfig(enabled?: string, token?: string, host?: string): AnalyticsConfig | null {
+export function resolveAnalyticsConfig(enabled?: string, token?: string, host?: string, chBeta?: string): AnalyticsConfig | null {
   if (enabled !== "1" || !token || !/^phc_[A-Za-z0-9]+$/.test(token) || host !== "https://eu.i.posthog.com") return null;
-  return { token, host };
+  return { token, host, ...(chBeta === "1" ? { chBetaOptOut: true } : {}) };
 }
 
 export interface AnalyticsSdk {
@@ -21,7 +21,8 @@ export interface AnalyticsSdk {
   identify(id: string): void;
   opt_out_capturing(): void;
 }
-type Consent = { version: 1; enabled: true; anonymousId: string; profileId: string | null };
+type Consent = { version: 1 | 2; enabled: true; anonymousId: string; profileId: string | null; basis?: "explicit_opt_in" | "ch_notice" };
+export type AnalyticsEntryState = "loading" | "notice" | "ready";
 export type AnalyticsStatus = "off" | "on" | "unavailable";
 export type AnalyticsDependencies = {
   config: AnalyticsConfig | null;
@@ -58,6 +59,8 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
   let onboarding = false;
   let mounted = false;
   let consent: Consent | null = null;
+  let preferenceLoaded = false;
+  let noticePending = false;
   let status: AnalyticsStatus = deps.config ? "off" : "unavailable";
   let generation = 0;
   let sdk: AnalyticsSdk | null = null;
@@ -79,18 +82,32 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
     sdk = null;
     analyticsId = null;
   }
-  function allowed() { return mounted && consent !== null && !!deps.config && (owner !== null || onboarding); }
-  async function readConsent(): Promise<Consent | null> {
+  function allowed() { return mounted && preferenceLoaded && consent !== null && !!deps.config && (owner !== null || onboarding); }
+  function getEntryState(): AnalyticsEntryState {
+    if (!deps.config?.chBetaOptOut || (!owner && !onboarding)) return "ready";
+    if (!preferenceLoaded) return "loading";
+    return noticePending ? "notice" : "ready";
+  }
+  async function readConsent(): Promise<{ consent: Consent | null; missing: boolean }> {
     try {
       await storageQueue;
       const result = await deps.storage().get(ANALYTICS_CONSENT_KEY);
-      if (result.status !== "value") return null;
-      const raw: unknown = JSON.parse(result.value ?? "null");
-      if (!raw || typeof raw !== "object") return null;
+      if (result.status !== "value") throw new Error("analytics_choice_unavailable");
+      if (result.value === null) return { consent: null, missing: true };
+      const raw: unknown = JSON.parse(result.value);
+      // The old null tombstone is a refusal/revocation, never a missing choice.
+      if (raw === null) return { consent: null, missing: false };
+      if (typeof raw !== "object") throw new Error("analytics_choice_invalid");
       const c = raw as Partial<Consent>;
-      return c.version === 1 && c.enabled === true && typeof c.anonymousId === "string" && /^[A-Za-z0-9_-]{16,100}$/.test(c.anonymousId)
-        && (c.profileId === null || typeof c.profileId === "string") ? c as Consent : null;
-    } catch { return null; }
+      const valid = (c.version === 1 || (c.version === 2 && (c.basis === "explicit_opt_in" || c.basis === "ch_notice")))
+        && c.enabled === true && typeof c.anonymousId === "string" && /^[A-Za-z0-9_-]{16,100}$/.test(c.anonymousId)
+        && (c.profileId === null || typeof c.profileId === "string");
+      if (!valid) throw new Error("analytics_choice_invalid");
+      // A Swiss notice acknowledgement must never become EU/other opt-in.
+      return { consent: c.basis === "ch_notice" && !deps.config?.chBetaOptOut ? null : c as Consent, missing: false };
+    } catch {
+      return { consent: null, missing: false };
+    }
   }
   function writeConsent(value: Consent | null) {
     const write = storageQueue.then(async () => {
@@ -103,6 +120,8 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
   function revoke() {
     choiceRevision++;
     consent = null;
+    preferenceLoaded = true;
+    noticePending = false;
     stop();
     seen.clear();
     problem = null;
@@ -189,10 +208,33 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
       const currentConsent = consent;
       void writeConsent(currentConsent).catch(() => { if (consent === currentConsent) revoke(); });
     }
-    start();
+    publish(); start();
+  }
+  async function choose(enabled: boolean, afterNotice = false) {
+    if (!enabled) { revoke(); return; }
+    if (!deps.config || (!owner && !onboarding)) return;
+    if (afterNotice && getEntryState() !== "notice") return;
+    choiceRevision++;
+    stop();
+    const epoch = generation, initialOwner = owner;
+    try {
+      const c: Consent = { version: 2, enabled: true, anonymousId: deps.newId(), profileId: owner,
+        basis: afterNotice ? "ch_notice" : "explicit_opt_in" };
+      await writeConsent(c);
+      if (!mounted || epoch !== generation || owner !== initialOwner) return;
+      consent = c;
+      preferenceLoaded = true;
+      noticePending = false;
+      problem = null;
+      status = "on";
+      start(); publish();
+      if (onboarding) prepare("onboarding_started", null, "onboarding")();
+    } catch { revoke(); status = "unavailable"; publish(); }
   }
   return {
     configured: deps.config !== null,
+    chBetaOptOut: deps.config?.chBetaOptOut === true,
+    getEntryState,
     getStatus: () => status,
     getEnabled: () => consent !== null,
     getId: () => analyticsId,
@@ -200,10 +242,13 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     attach() {
       mounted = true; const revision = ++mountRevision, choice = choiceRevision;
+      preferenceLoaded = false;
       if (!deps.config) return;
       void readConsent().then(saved => {
         if (!mounted || revision !== mountRevision || choice !== choiceRevision) return;
-        consent = saved;
+        consent = saved.consent;
+        preferenceLoaded = true;
+        noticePending = saved.missing && deps.config?.chBetaOptOut === true;
         if (consent?.profileId && ((owner && consent.profileId !== owner) || onboarding)) { revoke(); return; }
         status = consent ? "on" : "off";
         publish(); start();
@@ -212,24 +257,8 @@ export function createProductAnalytics(deps: AnalyticsDependencies) {
     detach() { mounted = false; mountRevision++; stop(); },
     syncIdentity,
     revoke,
-    async choose(enabled: boolean) {
-      if (!enabled) { revoke(); return; }
-      if (!deps.config || (!owner && !onboarding)) return;
-      choiceRevision++;
-      stop();
-      const epoch = generation, initialOwner = owner;
-      try {
-        const c: Consent = { version: 1, enabled: true, anonymousId: deps.newId(), profileId: owner };
-        await writeConsent(c);
-        if (!mounted || epoch !== generation || owner !== initialOwner) return;
-        consent = c;
-        problem = null;
-        status = "on";
-        start();
-        publish();
-        if (onboarding) prepare("onboarding_started", null, "onboarding")();
-      } catch { revoke(); status = "unavailable"; publish(); }
-    },
+    choose,
+    continueAfterNotice() { return choose(true, true); },
     prepare,
     capture(event: ProductEvent, expectedOwner: string | null, dedupe?: string) { prepare(event, expectedOwner, dedupe)(); },
   };

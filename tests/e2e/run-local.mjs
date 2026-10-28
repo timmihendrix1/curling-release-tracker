@@ -64,6 +64,7 @@ const run = spawnSync(playwright, ["test", ...process.argv.slice(2)], {
     NEXT_PUBLIC_POSTHOG_ENABLED: "1",
     NEXT_PUBLIC_POSTHOG_TOKEN: "phc_syntheticE2EOnly0001",
     NEXT_PUBLIC_POSTHOG_HOST: "https://eu.i.posthog.com",
+    NEXT_PUBLIC_POSTHOG_CH_BETA: process.env.CURLING_E2E_CH_BETA === "1" ? "1" : "0",
     // Explicit local-only email configuration prevents Next.js from inheriting
     // SMTP settings from a developer's private configuration file. Mailpit never
     // forwards the fixture messages to an external recipient.

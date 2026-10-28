@@ -221,6 +221,8 @@ test("Compare: Custom reveals threshold fields, validates, re-classifies shots, 
   // Reload: the applied Custom comparison survives (History filters persist,
   // even though the active navigation tab itself resets to Home — see docs/adr/0009).
   await page.reload();
+  // Wait for the authenticated client entry before clicking navigation after reload.
+  await page.getByTestId("house-home").waitFor();
   await goToAnalyze(page);
   await expect(page.getByLabel("Threshold Comparison Mode")).toHaveValue("custom");
   await expect(onTargetInput).toHaveValue("0.2");

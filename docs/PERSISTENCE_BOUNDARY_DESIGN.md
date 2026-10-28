@@ -1,11 +1,11 @@
 # Persistence Boundary Design
 
 **Optional analytics preference (27 October 2026):**
-`curling.product-analytics-consent.v1` is a non-sporting, installation-local opt-in
-choice, accessed through the existing StorageAdapter. Missing/corrupt/unreadable
+`curling.product-analytics-consent.v1` is a non-sporting, installation-local analytics
+choice (v1 opt-in/v2 explicit-opt-in or Swiss-notice basis; null refusal preserved), accessed through the existing StorageAdapter. Missing/corrupt/unreadable
 preferences fail closed; writes are serialized and a revocation stops in-memory
 observation immediately. It is not sporting cloud data, an identity grant, an
-analytics outbox or a migration requirement. A lost choice defaults to off. SDK
+analytics outbox or a migration requirement. A genuinely absent choice stays off until the Swiss entry or explicit opt-in; malformed data stays off. SDK
 event/identity state stays in memory; the SDK may also keep a local consent marker.
 See [POSTHOG_BETA_ANALYTICS.md](POSTHOG_BETA_ANALYTICS.md). Existing sporting and
 protected credential persistence contracts are unchanged.
