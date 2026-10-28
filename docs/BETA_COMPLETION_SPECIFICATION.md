@@ -252,6 +252,102 @@ This accepts only the local new-user beta integration. No device installation,
 actual hosted configuration, legal publication, Apple approval or distribution
 has occurred. Default/legacy selection remains unchanged; Q4 remains undecided.
 
+### Physical first-launch diagnosis — 28 October 2026
+
+On the clean codex/beta-new-users/b20c668 baseline the separately installed iOS
+candidate blocks before OTP with the generic waiting notice and Retry. File/WAL
+metadata proves creation only; it does not prove schema, empty origin or pairing.
+The exact native failure is NOT known. Tim authorizes bounded diagnosis/correction,
+independent review loops and synthetic regression, without device/container/Keychain
+access, installation/reset, signing or external configuration changes in this task.
+
+First diagnostic step: show a fixed NU1 support code only on blocked beta startup,
+combining the actual host wait code with the most recent common-owner stage and
+existing report outcome/code/boundary. It is ephemeral presentation metadata, never
+a grant or protocol input. No SQL text/rows, keys, identifiers, bytes, URLs, secrets,
+error text/objects, logs, analytics or inspectable release WebView. Stage observation
+adds no I/O/callback and does not alter control flow, ownership, retry or cleanup.
+Clear stale presentation codes on retry/ready/close. Default/legacy selection stays
+unchanged; no durable schema/Q/M/I/D revision, reset or Q4 acceptance.
+
+Installed-wrapper source audit and a six-group actual JavaScript-wrapper probe
+with synthetic Swift-shaped responses confirm ios_columns normalization, numeric
+schema versions/nulls and transaction acknowledgements. They do NOT establish a
+physical root cause or justify stripping unexpected rows. Keychain evidence,
+WebView source proof, SQL discovery and later protocol preparation remain distinct
+hypotheses. If local relevant-edge evidence cannot prove the actual cause, deliver
+the reviewed diagnostic artifact and a preservation-safe coordinator retest; do not
+label the first-launch defect fixed or the device/Beta accepted.
+
+Final local diagnostic candidate has a clean fresh independent CODE review and
+passes the corrected full baseline (390 root files/9488 tests,286 mobile tests,
+140 general plus3 separately enabled CH browser cases,builds/types/lint). The first
+full run exposed two legacy exact-host-surface regressions; conditional diagnostic
+exposure corrected them and the independent161-test host check passes. No native
+root cause or physical fix is claimed. Exact evidence and safe next retest remain
+in TESTFLIGHT_READINESS.md and mobile/README.md.
+
+The coordinator's subsequent preserving physical update reported
+`NU1/recovery_required/protected_inventory/recovery_required/protected`; the final
+component was confirmed separately, with no Retry result yet. This narrows the
+last boundary but does not prove OS/bridge/configuration/validation cause. The next
+bounded diagnostic refinement adds only fixed failure metadata to the read-only
+native inventory's failure envelope; exact success envelopes, query, namespace,
+strict scope/shape checks and all refusal/recovery authority remain unchanged.
+Transport accepts only exact whitelisted kind/diagnostic pairs, normalizes them to
+the original failure kind, and privately associates a fixed presentation label.
+The genuine port distinguishes binding/configuration/call/validation and native/
+transport refusal categories through ephemeral metadata; existing owner-stage
+presentation reads it without changing migration reports or host surfaces.
+No numeric OSStatus, attributes, keys/counts, account/service values or raw thrown
+properties appear. Legacy failure envelopes remain valid failures; malformed or
+unknown metadata never becomes success. Native diagnostics require the updated
+reader binary; they cannot be supplied by a web-only refresh to an older binary.
+Current physical cause remains unproven; no guard relaxation or speculative fix.
+
+The refinement's fresh independent CODE and documentation audits are clean. Final
+unchanged-code baseline:390 root files/9495 tests,286 mobile tests,140 general plus3
+separate CH browser cases,builds/types/lint PASS; injected native reader546
+assertions PASS. These are local contract/synthetic evidence, not a physical OS
+diagnosis or iPhone acceptance. Detailed evidence and current retest procedure
+remain in TESTFLIGHT_READINESS.md and mobile/README.md.
+
+### Physical sync-shape correction — 28 October 2026
+
+The next coordinator preserving native+web retest emitted
+`NU1/recovery_required/protected_inventory_sync_shape/recovery_required/protected`.
+This proves that native shape refusal reached the real bridge; it does not prove
+missing versus numeric versus another representation, or two separate start/Retry
+observations. The user authorizes exact source-supported normalization, preserving
+enabled/unknown/poisoned scope refusals and all other storage/data restrictions.
+
+Apple's [public attribute contract](https://developer.apple.com/documentation/security/ksecattrsynchronizable)
+and installed SDK describe CFBoolean; its query/add defaults do not establish
+missing=false in returned metadata. Apple's own [Sync attribute conversion and
+column reader](https://github.com/apple-oss-distributions/Security/blob/main/keychain/securityd/SecDbItem.c)
+produce integer CFNumber; its [result builder](https://github.com/apple-oss-distributions/Security/blob/main/keychain/securityd/SecItemDb.c#L217)
+copies returned attributes directly. [Schema flags](https://github.com/apple-oss-distributions/Security/blob/main/keychain/securityd/SecItemSchema.c#L82)
+identify Sync as a returned attribute. Inspected 28 October; this does not identify
+the physical device's exact Security source revision or actual attribute value.
+
+Confirmed adapter gap: CFBoolean-only validation rejects this legitimate numeric
+representation. Correct only that representation: permit Boolean false or integer
+CFNumber exactly zero; deny Boolean true or integer one as sync_enabled. Reject
+floating, fractional, out-of-range/other numeric, missing/null/string/other values.
+[CFNumberGetValue](https://developer.apple.com/documentation/corefoundation/cfnumbergetvalue(_:_:_:))
+must succeed losslessly after the exact CF type/non-floating check. No coercive
+boolValue on numbers, rounded conversion or missing-value default. Inventory query,
+success/failure envelopes, per-item reads and all remaining validation stay intact.
+No new diagnostics or physical operations are needed for this local correction.
+Native regression and fresh independent review must precede final baseline;
+the actual first-launch fix and device/Beta acceptance still require retest.
+
+Final local correction has clean fresh independent CODE and documentation/hash
+reviews. Native882 assertions and190 extra independent counterprobes pass; full
+unchanged-code baseline390 files/9495 tests,mobile286,general browser140 plus3
+separate CH cases,builds/types/lint pass. Exact logs,hashes,Git state and remaining
+physical boundaries are recorded in TESTFLIGHT_READINESS.md.
+
 ## Account deletion — decisions confirmed 24 October 2026
 
 The user confirmed the following previously unresolved Team/privacy policy:
@@ -323,9 +419,17 @@ on a device, or activates composition. No custom crypto or plugin fork is involv
   entries blocks the entire inventory. Never skip/truncate unknown owned material.
   Absent service attribute or an exact empty String represents the writer's
   unqualified service; NSNull/numeric/coerced service values fail. Sync=false
-  must be explicitly established by `CFGetTypeID(value) == CFBooleanGetTypeID()`;
-  NSNumber(0/1), strings, missing and null are not native Booleans. This finite metadata
-  envelope is not a data-retention limit or a measured native capacity.
+  must be explicitly established as genuine CFBoolean false or genuine integer
+  CFNumber exactly zero. Genuine Boolean true/integer one is unsupported scope.
+  On 28 October, the authorized actual-contract correction supersedes the original
+  CFBoolean-only assumption: Apple's Security implementation converts Sync to
+  integer CFNumber and returns that attribute directly. This is representation
+  normalization, not a new permitted sync state. Require exact CF type, reject
+  floating representations and require lossless SInt64 conversion restricted to
+  zero/one. Other numbers, strings, missing and null remain unreadable; never use
+  boolValue/truncation or missing=false. See the source evidence in the physical
+  sync-shape correction section. This finite metadata envelope is not a
+  data-retention limit or a measured native capacity.
 - Only `errSecItemNotFound` establishes an empty matching query. Native success
   requires a nonempty correctly typed array of attributes; nil, an empty success
   array or malformed rows do not establish absence. A valid nonempty result with

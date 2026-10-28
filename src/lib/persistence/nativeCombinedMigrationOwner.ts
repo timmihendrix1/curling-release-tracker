@@ -1,6 +1,6 @@
 // Dormant common executor. Source retirement requires the explicit S3i owner.
 import { createNativeCombinedWebViewSource, createNativeNewUserWebViewSource, acquireNativeCredentialRetirementSource, type NativeCredentialRetirementSource, type NativeRetirementSourceProof, type NativeCombinedSourceCapture, type NativeCombinedSourceProof } from "./localStorageAdapter";
-import { createNativeCommonCredentialMigrationPort, type NativeCredentialMigrationPort, type CredentialSlotObservation, prepareNativeCredentialRuntime } from "./nativeCredentialMigrationPort";
+import { createNativeCommonCredentialMigrationPort, nativeCredentialInventoryStartupStage, type ProtectedInventoryStartupStage, type NativeCredentialMigrationPort, type CredentialSlotObservation, prepareNativeCredentialRuntime } from "./nativeCredentialMigrationPort";
 import type { CredentialNamespaceLease } from "./nativeCredentialNamespace";
 import type { NativeCommonSqliteContext, NativeCommonSqlSnapshot, NativeMigrationLease, NativeMigrationTransactionResult, NativeSqliteStoreOptions } from "./nativeSqliteAdapter";
 import { createNativeCommonHeldDomainMigrationRunner, type NativeHeldDomainMigrationRunner, type NativeMigrationLimits } from "./nativeMigrationRunner";
@@ -23,7 +23,13 @@ export type NativeCommonMigrationReport =
   | { readonly outcome: "fault"; readonly code: F["code"]; readonly faultWriteAttempts: number }
   | { readonly outcome: "recovery_required"; readonly boundary: "sql" | "protected" }
   | { readonly outcome: "incomplete" | "disposed" | "recovered" };
+/** Last attempted boundary only. Presentation evidence, never storage authority. */
+export type NativeCommonStartupStage = ProtectedInventoryStartupStage | "idle" | "platform" | "sql_acquire" | "protected_acquire" |
+  "sql_journal" | "sql_observe" | "sql_validate" | "protected_inventory" | "protected_read" |
+  "source_capture" | "strict_initialize" | "domain_prepare" | "manifest_write" |
+  "credential_copy" | "sql_advance" | "finalize" | "recovery_sql" | "recovery_protected";
 export interface NativeCommonMigrationOwner {
+  startupStage(): NativeCommonStartupStage;
   run(): Promise<NativeCommonMigrationReport>;
   recover(): Promise<NativeCommonMigrationReport>;
   dispose(): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: "evidence_held" | "cleanup_unconfirmed" }>;
@@ -118,6 +124,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
   let fault: F | null = null, faultAttempts = 0;
   let pendingIntent: string | null = null, finalMetadata: { migrationId: string; activatedAt: string } | null = null;
   let frozenSource: NativeCombinedSourceProof | null = null, plannedManifest: { raw: string; source: NativeCombinedSourceProof } | null = null;
+  let startupStage: NativeCommonStartupStage = "idle";
   const knownProtected = new Map<string, string>();
   let candidate: { token: NativeCommonCompletionCandidate; lifecycle: object } | null = null;
   let retirementBusy = false, retirementToken: unknown = null;
@@ -223,16 +230,19 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
     return { outcome: "recovery_required", boundary: "sql" };
   }
   async function inventory(stamp: object): Promise<readonly string[] | null> {
+    startupStage = "protected_inventory";
     const result = await port.inspectNamespace(protectedLease as CredentialNamespaceLease, control(stamp));
     if (result.status !== "complete") { if (port.leaseState() === "faulted") needsProtectedRecovery = true; return null; }
     return permitted(stamp) ? result.keys : null;
   }
   async function read(stamp: object, slot: string): Promise<CredentialSlotObservation> {
+    startupStage = "protected_read";
     const result = await port.readSlot(protectedLease as CredentialNamespaceLease, slot, control(stamp));
     if (result.status === "read_failed" || (result.status === "refused" && result.reason === "faulted")) needsProtectedRecovery = true;
     return result;
   }
   function capture(all: boolean): Capture | null {
+    startupStage = "source_capture";
     if (frozenSource) {
       const fenced = source.fence(frozenSource);
       if (fenced === "changed") { setFault("source_changed"); return null; }
@@ -365,27 +375,33 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
     if (fault) return faultReport(stamp);
     if (needsSqlRecovery) return { outcome: "recovery_required", boundary: "sql" };
     if (needsProtectedRecovery) return { outcome: "recovery_required", boundary: "protected" };
+    startupStage = "platform";
     try { if (platform() !== "ios") return blocked("unsupported_platform"); } catch { return blocked("unsupported_platform"); }
     if (!alive(stamp)) return { outcome: "disposed" };
     if (!sql) {
       const adapterModule = await import("./nativeSqliteAdapter"); if (!alive(stamp)) return { outcome: "disposed" };
       sql = adapterModule.createNativeCommonMigrationSqliteContext(options.sqlite, { source, providerConfigIdentity: config, sessionStorageKey: root, isWellFormedFingerprint: options.domainFingerprintFormat, credentialContract: sdkVersion });
     }
+    startupStage = "sql_acquire";
     if (!sqlLease) { const acquired = await sql.host.acquire(); if (!acquired.ok) return blocked(); sqlLease = acquired.lease; }
     if (!alive(stamp)) return { outcome: "disposed" };
+    startupStage = "protected_acquire";
     if (!protectedLease) { const acquired = await port.acquire(); if (!acquired.ok) return blocked(); protectedLease = acquired.lease; }
     if (!alive(stamp)) return { outcome: "disposed" };
+    startupStage = "sql_journal";
     const resolution = await sql.resolveJournal(sqlLease, control(stamp));
     if (resolution === "mismatch") setFault("sql_evidence_mismatch");
     if (fault || sql.failed(sqlLease)) { if (!fault) setFault("sql_evidence_mismatch"); return faultReport(stamp); }
     if (resolution === "unavailable" || resolution === "reopen_required") { needsSqlRecovery = true; return { outcome: "recovery_required", boundary: "sql" }; }
     for (let step = 0; step < options.limits.protocolStepLimit; step++) {
       if (!alive(stamp)) return { outcome: "disposed" };
+      startupStage = "sql_observe";
       const observed = await sql.observe(sqlLease, control(stamp));
       if (sql.failed(sqlLease)) setFault("sql_evidence_mismatch");
       if (fault) return faultReport(stamp);
       if (!observed.ok || !alive(stamp)) return alive(stamp) ? blocked() : { outcome: "disposed" };
       const snapshot = observed;
+      startupStage = "sql_validate";
       if ([snapshot.record, snapshot.latch, snapshot.q, snapshot.f, snapshot.schema].some(value => value.status === "read_failed") || snapshot.rows.status !== "listed") return blocked();
       if (snapshot.latch.status === "present" || snapshot.f.status === "present") { setFault("sql_evidence_mismatch"); return faultReport(stamp); }
       if (snapshot.q.status === "present") {
@@ -433,6 +449,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
         if (absentManifest.status !== "absent" || !permitted(stamp)) return blocked();
         const endKeys = await inventory(stamp); if (fault) return faultReport(stamp);
         if (!endKeys || endKeys.length || !permitted(stamp)) return blocked();
+        startupStage = "strict_initialize";
         const initialized = await sql.initializeNewUser(sqlLease, pendingIntent, captured.proof, control(stamp));
         const halted = transaction(initialized); if (fault) return faultReport(stamp); if (halted) return halted; continue;
       }
@@ -447,6 +464,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
       if (!sql.select(sqlLease, snapshot)) return blocked();
       if (!currentQ) {
         if (!await ensureChild()) return blocked("domain_not_prepared");
+        startupStage = "domain_prepare";
         const prepared = await child!.run(control(stamp));
         if (!alive(stamp)) return { outcome: "disposed" };
         if (prepared.outcome === "fault") { setFault("sql_evidence_mismatch"); return faultReport(stamp); }
@@ -480,6 +498,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
           initialEntryKeys: [...q.initialEntryKeys], fixedSlots: captured.credentialInventory.fixedSlots.map(slot => ({ ...slot })), items };
         const raw = serializeM(m, credentialFormat); if (!raw.ok || !permitted(stamp)) return blocked();
         plannedManifest = { raw: raw.value, source: captured.proof };
+        startupStage = "manifest_write";
         const inserted = await port.insert(protectedLease!, manifestSlot, raw.value, control(stamp));
         if (fault) return faultReport(stamp);
         if (inserted.status === "unverified") { retained = true; needsProtectedRecovery = true; return { outcome: "recovery_required", boundary: "protected" }; }
@@ -500,6 +519,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
         const absences = await protectedCopy(stamp, q, manifest, captured, false);
         if (fault) return faultReport(stamp);
         if (!absences) return needsProtectedRecovery ? { outcome: "recovery_required", boundary: "protected" } : blocked();
+        startupStage = "sql_advance";
         const result = await sql.advanceQ(sqlLease, snapshot.q.status === "present" ? snapshot.q.bytes : "", { kind: q.phase === "intent" ? "confirm_manifest" : "begin_copying" }, captured.proof, control(stamp));
         const halted = transaction(result); if (fault) return faultReport(stamp); if (halted) return halted; continue;
       }
@@ -512,11 +532,13 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
             providerConfigIdentity: config, sdkContractVersion: sdkVersion, key: item.key, value: captured.credentialInventory.items[rank].raw }, root);
           if (!raw.ok || !permitted(stamp)) return blocked();
           const fenced = source.fence(captured.proof); if (fenced === "changed") setFault("source_changed"); if (fenced !== "unchanged") return fault ? faultReport(stamp) : blocked();
+          startupStage = "credential_copy";
           const inserted = await port.insert(protectedLease!, itemSlot(q, item.key), raw.value, control(stamp)); if (fault) return faultReport(stamp);
           if (inserted.status === "unverified") { retained = true; needsProtectedRecovery = true; return { outcome: "recovery_required", boundary: "protected" }; }
           if (inserted.status !== "verified" && inserted.status !== "already_present") return blocked();
           retained = true; continue;
         }
+        startupStage = "sql_advance";
         const result = await sql.advanceQ(sqlLease, snapshot.q.status === "present" ? snapshot.q.bytes : "", { kind: "confirm_next_item", itemId: item.itemId }, captured.proof, control(stamp));
         const halted = transaction(result); if (fault) return faultReport(stamp); if (halted) return halted; continue;
       }
@@ -525,11 +547,13 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
       if (credentialFormatUnavailable) return blocked();
       if (!verified.ok) { if (verified.issue.code === "evidence_unavailable") return blocked(); setFault("pairing_mismatch"); return faultReport(stamp); }
       if (q.phase === "copying") {
+        startupStage = "sql_advance";
         const result = await sql.advanceQ(sqlLease, snapshot.q.status === "present" ? snapshot.q.bytes : "", { kind: "verify_all" }, captured.proof, control(stamp));
         const halted = transaction(result); if (fault) return faultReport(stamp); if (halted) return halted; continue;
       }
       if (!finalMetadata) { const migrationId = uuid(stamp), activatedAt = clock(stamp); if (!alive(stamp) || typeof activatedAt !== "string") return blocked(); finalMetadata = { migrationId, activatedAt }; }
       if (!await ensureChild()) return blocked("domain_not_prepared");
+      startupStage = "domain_prepare";
       const prepared = await child!.run(control(stamp));
       if (!alive(stamp)) return { outcome: "disposed" };
       if (prepared.outcome === "fault") { setFault("sql_evidence_mismatch"); return faultReport(stamp); }
@@ -540,6 +564,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
       if (!permitted(stamp)) return fault ? faultReport(stamp) : { outcome: "disposed" };
       if (credentialFormatUnavailable) return blocked();
       if (!finalVerified.ok) { if (finalVerified.issue.code === "evidence_unavailable") return blocked(); setFault("pairing_mismatch"); return faultReport(stamp); }
+      startupStage = "finalize";
       const finished = await sql.finalize(sqlLease, prepared.hold, full.proof, finalMetadata.migrationId, finalMetadata.activatedAt, control(stamp));
       const halted = transaction(finished); if (fault) return faultReport(stamp); if (halted) return halted;
       completed = true; frozenSource = null;
@@ -705,6 +730,7 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
     handoffFlight = attempt; return attempt;
   }
   const owner: NativeCommonMigrationOwner = {
+    startupStage: () => startupStage === "protected_inventory" ? nativeCredentialInventoryStartupStage(port) ?? startupStage : startupStage,
     ...(enableRuntime ? { handoff } : {}),
     ...(enableRetirement ? { retire } : {}),
     run() {
@@ -733,9 +759,10 @@ function buildNativeCombinedOwner(input: NativeCommonMigrationOptions, enableRun
         if (prior) await prior; if (priorHandoff) await priorHandoff; if (priorRetirement) await priorRetirement;
         if (priorSource) { await priorSource.release(); if (retirementSource === priorSource) retirementSource = null; }
         if (!alive(stamp)) return { outcome: "disposed" };
-        if (sql && sqlLease) { const reopened = await sql.host.reopen(sqlLease, { proceed: () => alive(stamp) }); if (!reopened.ok) { needsSqlRecovery = true; return { outcome: "recovery_required", boundary: "sql" }; } }
+        if (sql && sqlLease) { startupStage = "recovery_sql"; const reopened = await sql.host.reopen(sqlLease, { proceed: () => alive(stamp) }); if (!reopened.ok) { needsSqlRecovery = true; return { outcome: "recovery_required", boundary: "sql" }; } }
         if (!alive(stamp)) return { outcome: "disposed" };
         if (protectedLease && (needsProtectedRecovery || port.leaseState() !== "owned")) {
+          startupStage = "recovery_protected";
           const released = await port.release(protectedLease); if (!released.ok) return { outcome: "recovery_required", boundary: "protected" };
           protectedLease = null;
         }

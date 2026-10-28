@@ -52,3 +52,25 @@ it("actual beta root survives StrictMode, requires OTP/onboarding and saves genu
     cleanup();
   }
 }, 20000);
+
+it("actual blocked beta root exposes only a fixed support code before OTP", async () => {
+  const { h, app: unused } = await mobileFixture(); await finishApplication(unused);
+  h.source.map.set("unknown.synthetic", "SYNTHETIC_PRIVATE_SOURCE");
+  const owner = await import("../../src/lib/supabase/newUserMobileApplication"), create = owner.createNewUserMobileApplication;
+  let application: ReturnType<typeof create> | null = null;
+  vi.spyOn(owner, "createNewUserMobileApplication").mockImplementation(() => { application = create(); return application; });
+  const { default: NewUserBetaRoot } = await import("../src/storage/NewUserBetaRoot");
+  const rendered = render(<NewUserBetaRoot />);
+  try {
+    await waitFor(() => screen.getByText("Support code:"));
+    expect(rendered.container.textContent).toContain("NU1/migration_blocked/source_capture/blocked/unsupported_source");
+    expect(rendered.container.textContent).not.toContain("unknown.synthetic");
+    expect(rendered.container.textContent).not.toContain("SYNTHETIC_PRIVATE_SOURCE");
+    expect(screen.queryByLabelText("Email address")).toBeNull();
+    expect(h.fetch).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => { rendered.unmount(); await Promise.resolve(); });
+    if (application) await finishApplication(application as ReturnType<typeof create>);
+    cleanup();
+  }
+});

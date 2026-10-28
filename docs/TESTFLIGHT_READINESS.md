@@ -3276,3 +3276,285 @@ Logs:/tmp/curling-legal-contact-{root,timeout-recheck,e2e-corrected,build,types,
 Next: expressly authorize commit/push and production publication, verify both
 27 October routes and defaults, then run the guarded27 October pair rotation and
 verify the anon Legal RPC. Prior native iPhone/Apple/TestFlight gates remain open.
+
+
+### 28 October physical first-launch incident — bounded diagnostic correction
+
+Incident22 in the owner's TestFlight28October folder records the actual separate
+iPhone candidate(b20c668, me.evolane.curling1.0/1) blocking before OTP with Retry.
+Both original/new app IDs remained installed. New DB/WAL/SHM and WebKit filenames
+were observed only as metadata; they establish no successful initialization. The
+exact SQL/protected/source failure is NOT proven. Hosted/legal readiness and Apple
+build absence in report21 are separate; no external/device action is in this task.
+
+A read-only independent contract audit found no confirmed SQLite mismatch. It
+executed six groups against the actual installed JavaScript wrapper with synthetic
+Swift-shaped replies: ios_columns removal, numeric schema version, empty result,
+SQL-null schema fields and transaction acknowledgements agree with strict discovery.
+Do not strip extra headers or admit unknown schemas as a speculative correction.
+
+The diagnostic-only code changes expose fixed last-owner-stage/report metadata
+through the genuine host to blocked beta presentation. NU1 support text contains
+only internal enum values; no raw errors, SQL/keys/payload, IDs/emails/tokens, native
+logging, analytics or inspectable WebView. It is never protocol input or authority.
+Existing admission/transactions/ownership, default/legacy paths, Q1/Q3 and undecided
+Q4 remain unchanged. Retry/ready/Close clear stale presentation. No code claims the
+physical first-launch defect fixed. Canonical contract: BETA_COMPLETION_SPECIFICATION
+“Physical first-launch diagnosis”; safe coordinator retest: mobile/README.md.
+
+Initial checks: owner/strict host/architecture3 files/174 tests PASS(37.85s); added
+actual-owner synthetic-edge diagnostics6 tests PASS(1.77s), including private-value
+non-disclosure, refusal, retry and cleanup. Actual beta/default UI2 files/16 tests
+PASS(3.93s). Root types and diff PASS. Existing Swift injected-Security contract
+first failed under sandbox at LAContext.interactionNotAllowed; the permitted
+outside-sandbox repeat compiled/executed491 assertions PASS, with no real Keychain
+read. This is environment-scoped contract evidence, not a device cause or pass.
+Independent initial CODE review accepted the local diagnostic candidate; its
+78 owner/host/diagnostic tests, 16 UI/default tests and three additional synthetic
+counterprobes passed. The first full root run then exposed two genuine exact-host-
+surface regressions (388 files/9486 tests passed, two tests failed): diagnostic
+access was unintentionally visible on legacy identity/sporting hosts. Corrected
+exposure to the explicit new-user host only, retaining the existing exact surfaces.
+The original reviewer independently reran both existing host suites plus the new
+diagnostic suite: 3 files/161 tests PASS(9.89s). A fresh second CODE reviewer audited
+the complete corrected executable state and found no confirmed actionable defect;
+it independently checked the diff and inspected the 161-test result. Neither review
+claims a physical cause, fix, successful first launch or Beta acceptance.
+
+Final corrected-code baseline completed serially on unchanged executable code:
+root390 files/9488 tests PASS(390.92s; two workers). Mobile verification:
+12 files/286 tests PASS(7.08s), including its typecheck/default production bundle.
+General browser suite:140 PASS(3.3min), three intentionally excluded CH cases;
+the separately enabled CH suite:3 PASS(6.9s), zero skips. Web production build,
+root TypeScript, root/mobile lint and explicit beta bundle PASS. Local browser
+server subsequently refused loopback connection(ECONNREFUSED); the first sandboxed
+socket check returned EPERM and did not establish server state. No native/device,
+production or Git publication action is included.
+
+The final unsigned web-only beta artifact is
+`/tmp/curling-iphone-startup-diagnostic`, built with the public API origin supplied
+command-scoped and `NEXT_PUBLIC_POSTHOG_ENABLED=0`. Aggregate artifact checks confirm
+the support label, NU1 prefix and public API origin, and no valid-shaped phc token;
+no configuration values were printed or copied. Evidence JSON:
+`/tmp/curling-iphone-startup-diagnostic-evidence.json`; index.html SHA256:
+`8baabec8ea369faca85eafa72e1f64fab9aa57fbef71d7fdc973bbd9c67e5ae4`.
+`mobile/dist` remains the verified DEFAULT artifact; a coordinator must rebuild
+the explicit beta before its separately authorized sync/sign/update. This task
+performed none of those actions and did not touch the existing signed App.app.
+
+Exact change manifest (all unstaged; new diagnostics test untracked):
+
+- docs/BETA_COMPLETION_SPECIFICATION.md
+- docs/TESTFLIGHT_READINESS.md
+- mobile/README.md
+- mobile/__tests__/newUserBetaRoot.test.tsx
+- mobile/src/storage/NewUserBetaRoot.tsx
+- src/lib/persistence/nativeCombinedMigrationOwner.ts
+- src/lib/supabase/newUserMobileApplication.ts
+- src/lib/supabase/supabaseAuthService.ts
+- src/lib/supabase/__tests__/nativeStartupDiagnostics.test.ts
+
+Baseline was clean on codex/beta-new-users at
+b20c668a0d21c768a1631593ed3a842b4a12614a; main/origin-main remain
+382ee40d37605b302c11b6390305857c7e2c3fde. No staging, commit, push, reset,
+branch mutation, deployment, signing, sync, device access or real credential/data
+inspection. Final status:0 staged,8 tracked modified,1 untracked;diff check PASS.
+The corrected code has a clean fresh independent review; this accepts only the
+local diagnostic candidate. Device root cause remains unproven. A coordinator's
+separately authorized preserving update/retest must capture the complete NU1 code
+and Retry result; actual OTP/Profile/training/cold-reopen, native data continuity,
+native analytics verification and Apple/distribution gates remain open. Q4 is not
+decided or bypassed by this work.
+
+Local verification logs: `/tmp/curling-iphone-startup-final-{root,mobile,e2e,ch,
+build,types,lint,mobile-lint,beta}.log`; initial failed full root:
+`/tmp/curling-iphone-startup-baseline-root.log`; independent corrected161 tests:
+`/tmp/curling-independent-startup-corrected.log`. Existing injected Swift contract:
+`/tmp/curling-iphone-startup-swift.log`(sandbox failure),
+`/tmp/curling-iphone-startup-swift-allowed.log`(491 assertions PASS). These local
+logs/artifacts are temporary verification evidence, not signed deliverables or
+proof of an iPhone result. Production source remains uncommitted/unstaged.
+
+### 28 October preserving retest — protected inventory diagnostic refinement
+
+Coordinator report24 records a preserving development-signed update/launch of only
+me.evolane.curling from the preceding diagnostic candidate. The subsequent complete
+user-confirmed code is
+`NU1/recovery_required/protected_inventory/recovery_required/protected`.
+The last component was confirmed separately; it is not a Retry observation. No
+Retry result has been supplied. Tim also confirms he personally removed the old
+app; the metadata discrepancy is resolved, without proof of container contents or
+data loss and without permission to reinstall/access original data. Report24's
+earlier pending-code/removal questions are superseded by these direct confirmations.
+
+Independent read-only installed-source audit confirms that the old stage covers
+binding import/capture, JS prefix/access setup, native synchronization setup,
+native inventory, transport/metadata validation and observer delivery. The installed
+secure-storage/KeychainSwift contract matches the intended prefix, generic-password
+class, no service/access group, non-synchronizable scope and configured access.
+Whether the physical OS supplies missing/Boolean/integer synchronizable metadata
+is UNPROVEN. No query/guard change is justified. Runtime plugin availability,
+native OS status and actual inventory shape remain unknown; no physical cause or
+behavioral fix has been established.
+
+The bounded refinement adds fixed native inventory failure labels only. Queries,
+success envelopes, per-item reads, prefix/Unicode/synchronizable/service guards
+and refusal/recovery authority are unchanged. OS failures use seven closed labels
+including interaction-not-allowed, entitlement and other; row/account/key/scope
+validation uses closed shape/limit labels. No OSStatus number, native error text,
+keys/counts/accounts/service values or payload enters support metadata. Transport
+accepts only exact whitelisted failure kind/diagnostic pairs, normalizes to the
+existing failure kind and associates metadata privately with the exact normalized
+object. Unknown/malformed data remains failure, never an empty list. Old failure
+envelopes still fail with a fixed native-kind label. Genuine-port ephemeral stages
+distinguish binding load/capture, configure, call, validation and observer; the
+existing owner-stage getter reads them for presentation only. No extra outward
+port/host method, protocol report field, callback or storage operation was added.
+The registry is pure and imports no native module; default paths retain lazy
+native loading. Support text now wraps to keep the full code readable.
+
+Initial refinement verification:3 focused files/88 tests PASS(2.67s), existing
+architecture/identity/sporting3 files/257 tests PASS(16.59s), root types and diff PASS.
+Injected Swift reader546 assertions PASS, compiled/executed outside the known
+sandbox LAContext limitation; no real Security/Keychain call. The first synthetic
+end-to-end tests used a stale transport module after fixture reset (four diagnostic
+expectations failed); using the actual current owner's module graph corrected the
+test setup. This was not an OS cause or a guard change. A fresh independent CODE
+review of the complete15-path state is clean; it independently reran the same
+3 focused files/88 tests PASS(2.65s), injected Swift546 assertions PASS and diff
+check. It verified fixed-only metadata, genuine result identity through the binding/
+port, no eager native import and unchanged authority. Logs:
+`/tmp/curling-independent-protected-refinement.log`,
+`/tmp/curling-independent-protected-swift.log`. Final refined-code baseline is
+complete below; preceding390/9488 baseline applies to the prior candidate only.
+
+This refinement adds six paths to the preceding nine-path manifest:
+
+- ios/App/App/CredentialKeychainReader.swift
+- tests/native/CredentialKeychainReaderTests.swift
+- src/lib/persistence/iosKeychainReadEvidence.ts
+- src/lib/persistence/__tests__/iosKeychainReadEvidence.test.ts
+- src/lib/persistence/nativeCredentialMigrationPort.ts
+- src/lib/persistence/credentialInventoryDiagnostics.ts (new)
+
+Current total:13 tracked modified,2 untracked,0 staged; branch/HEAD/main refs
+unchanged. New-user owner/UI/diagnostic tests and the same three documentation
+files are further refined within the preceding manifest. No device, signing,
+sync, original-data access, configuration, publication or Git mutation by this
+implementation task. Retest requires a separately rebuilt native binary including
+the updated reader, not only a web refresh. Coordinator owns the preserving update
+and exact full-code/authorized Retry observation; no install/reset is requested
+by this implementation. Physical root cause and all device/Beta gates stay open.
+
+Final unchanged refined-code checks:root390 files/9495 tests PASS(393.15s,two
+workers),mobile12 files/286 tests
+PASS(6.23s), general browser140 PASS(3.2min) with3 intentionally omitted CH cases,
+separate enabled CH3 PASS(6.6s), Web/default mobile/explicit beta builds, root types,
+root/mobile lint PASS. Local browser server confirmed stopped(ECONNREFUSED) before
+the isolated root run. No executable changes during or after this baseline.
+
+New web-only unsigned artifact:`/tmp/curling-protected-inventory-diagnostic`;
+evidence:`/tmp/curling-protected-inventory-diagnostic-evidence.json`. The artifact
+contains the NU1 label, configure stage, fixed native failure labels and expected
+public API origin; analytics is explicitly disabled and no valid-shaped phc token
+is present. index.html SHA256:
+`72dca1519ec32ace13f52a457a4d35ffd1a8e93138df9437ce2a48761b0da0ee`.
+Native reader source SHA256:
+`ff8ca5489df3a661ba94833984866c2f32240eff6ecfd34257ab957adca9a724`.
+The source compiled in the injected contract harness only. This task did not build
+or sign an iOS App binary, sync/install a candidate or touch the coordinator's
+existing signed App.app. The old signed candidate lacks these new native labels;
+the coordinator must rebuild both explicit beta web and native code under its
+separate physical authorization. These hashes establish local artifact/source
+identity only, not native runtime execution or successful admission.
+
+Final evidence logs:`/tmp/curling-protected-final-{root,mobile,e2e,ch,build,types,
+lint,mobile-lint,beta,server}.log`; initial failed synthetic fixture setup:
+`/tmp/curling-protected-refinement-focus.log`, corrected88 tests:
+`/tmp/curling-protected-refinement-focus-corrected.log`, boundary257 tests:
+`/tmp/curling-protected-refinement-boundaries.log`. Fresh independent CODE review
+and separate documentation/hash audit are clean. Final diff check PASS;0 staged,
+13 modified tracked,2 untracked;unchanged b20c668/main refs. Accepted solely as a
+local diagnostic refinement. The physical cause is still unknown and the next
+separately coordinated native+web rebuild/retest must capture the full refined
+code and separately observed Retry result, preserving candidate data. No Beta,
+device, native analytics, Q4 or release acceptance follows from these checks.
+
+### 28 October sync-shape retest — exact native representation correction
+
+Coordinator report25 records a preserving update/launch of the freshly rebuilt
+and signed native+web refinement, verified to contain the new labels. The later
+user-confirmed exact code supersedes its pending-code status:
+`NU1/recovery_required/protected_inventory_sync_shape/recovery_required/protected`.
+It proves the native sync shape guard emitted its refusal through the real bridge.
+It does NOT distinguish missing, a non-Boolean number or another representation;
+one response to paired start/Retry questions is not two separate observations.
+
+Primary-source investigation and independent read-only contract audit establish
+a narrower confirmed adapter defect: Apple's Security implementation returns Sync
+attributes as integer CFNumber, so rejecting every non-CFBoolean number is too
+strict. The SDK/public CFBoolean wording and the installed writer's omitted false
+input do not establish missing=false in returned metadata. No actual device value
+was read or inferred. Canonical source chain and exact amendment are in
+BETA_COMPLETION_SPECIFICATION.md, “Physical sync-shape correction”.
+
+Authorized correction:retain genuine Boolean handling; normalize only exact
+non-floating CFNumber zero/one through a successful lossless SInt64 conversion.
+Zero permits the existing disabled-sync check,one is rejected as sync_enabled.
+Other integer/floating/fractional/out-of-range/NaN/infinity,missing/null/string or
+unknown shapes remain refused. Query,per-item read,success/failure envelopes,
+scope/service/account/Unicode/duplicate/limit checks and recovery ownership stay
+unchanged. No new diagnostic fields,storage action,protocol/schema or native method.
+Physical fix and actual representation remain unproven pending preserving retest.
+
+This stage further changes only the existing Swift reader,native injected tests,
+and the three documentation files within the same15-path manifest. Native whole-
+inventory counterprobes cover numeric zero/type evidence,enabled one,poisoned and
+mixed rows,missing/null/string/other types,extreme integers,floating zero/one,
+fractional values,NaN/infinity,duplicates and service rejection. Initial882 injected
+Security assertions PASS;no real Keychain access. Fresh independent CODE review
+of the complete15-path state is clean. It independently passed882 native assertions
+and a1072-assertion whole-inventory harness(190 additional counterprobes),including
+NSDecimalNumber zero/one/NaN/tiny/huge/fractional values,signed/unsigned integer
+zeros/ones and late poisoned scope/service rows. Independently passed2transport/
+startup files/28tests(2.81s),2owner/architecture files/244tests(11.42s),2strict host/
+application files/72tests(28.20s),diff check. Logs:
+`/tmp/curling-independent-sync-{swift,counterprobes,focus,boundary,host}.log`.
+Final unchanged-code baseline is complete below. The preceding9495/546 baseline belongs
+to the prior representation guard and is not reused as new proof.
+
+Git remains codex/beta-new-users/b20c668,main/origin-main382ee40,13 tracked modified,
+2 untracked,0 staged. No .env inspection,no original-data or physical-device access,
+no sync/sign/install/production/Apple configuration or Git publication by this
+implementation. Coordinator owns the next preserving native+web rebuild/retest.
+
+Final corrected-code checks:root390 files/9495 tests PASS(392.89s,two workers),
+mobile12 files/286 tests PASS(6.35s), general
+browser140 PASS(3.2min) with3 intentionally omitted CH cases, separately enabled
+CH3 PASS(6.7s); Web/default mobile/explicit beta builds,root types,root/mobile lint
+PASS. Browser server confirmed stopped(ECONNREFUSED) before the isolated full root
+run. No executable changes during or after this baseline.
+
+New unsigned web-only candidate:`/tmp/curling-sync-normalization-candidate`;
+evidence:`/tmp/curling-sync-normalization-evidence.json`. Its index.html SHA256 is
+`72dca1519ec32ace13f52a457a4d35ffd1a8e93138df9437ce2a48761b0da0ee`, unchanged
+from the prior web bundle because this correction changes the native reader only.
+The explicit command-scoped API origin is present,analytics is disabled,no valid-
+shaped phc token is present. This task compiled the Swift source in the injected
+harness only; no native App binary build/signing,sync,device update or real Keychain
+operation. The coordinator must rebuild the native source; unchanged web hash alone
+does not prove the numeric correction is included in its eventual signed package.
+Corrected reader source SHA256:
+`4deb883526708879774238f485198635141094c396ea91eb509778f21cbad5d7`.
+
+Final independent documentation/hash audit is clean and confirms both hashes and
+the preceding completed logs. Evidence logs:
+`/tmp/curling-sync-final-{root,mobile,e2e,ch,build,types,lint,mobile-lint,beta,server}.log`,
+parent native882:`/tmp/curling-sync-normalization-swift.log`,independent882+190:
+`/tmp/curling-independent-sync-{swift,counterprobes}.log`. Final diff check PASS;
+branch/refs and15-path state unchanged(13 modified tracked,2 untracked,0 staged).
+The local adapter representation correction is accepted; actual physical value,
+successful first launch,distinct Retry result,OTP/Profile/training/cold-reopen,
+native analytics and Apple/Beta acceptance remain unproven. No Q4 or release
+decision. Next:separately authorized preserving native+explicit-web rebuild/retest,
+observe next full code or reached screen and separately label authorized Retry.

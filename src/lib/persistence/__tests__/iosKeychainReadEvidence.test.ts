@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { inventoryIosCredentialNamespace, readIosKeychainEvidence } from "../iosKeychainReadEvidence";
+import { iosCredentialInventoryDiagnostic, nativeInventoryDiagnostics } from "../credentialInventoryDiagnostics";
 
 describe("iOS item-specific Keychain evidence transport", () => {
   it("returns exact value including empty strings and escaped content", async () => {
@@ -28,6 +29,47 @@ describe("iOS item-specific Keychain evidence transport", () => {
 });
 
 describe("iOS credential namespace inventory transport — private observations only", () => {
+  it("accepts only fixed native failure pairs and keeps diagnostics off the normalized evidence envelope", async () => {
+    for (const [kind, diagnostics] of Object.entries(nativeInventoryDiagnostics)) for (const diagnostic of diagnostics) {
+      const result = await inventoryIosCredentialNamespace(async () => ({ kind, diagnostic }));
+      expect(result).toEqual({ kind }); expect(Object.keys(result)).toEqual(["kind"]);
+      expect(Object.isFrozen(result)).toBe(true);
+      expect(iosCredentialInventoryDiagnostic(result)).toBe(diagnostic);
+      expect(iosCredentialInventoryDiagnostic({ ...result })).toBeNull();
+    }
+    for (const raw of [
+      { kind: "inaccessible", diagnostic: "sync_shape" },
+      { kind: "unreadable", diagnostic: "os_other" },
+      { kind: "inaccessible", diagnostic: "PRIVATE_SENTINEL" },
+      { kind: "inaccessible", diagnostic: "os_other", keys: [] },
+      { kind: "complete", keys: [], diagnostic: "os_other" },
+    ]) {
+      const result = await inventoryIosCredentialNamespace(async () => raw);
+      expect(result).toEqual({ kind: "unreadable" });
+      expect(iosCredentialInventoryDiagnostic(result)).toBe("transport_shape");
+    }
+    let inspected = false;
+    const diagnostic = { toString() { inspected = true; throw null; } };
+    const accessor = Object.defineProperty({ kind: "inaccessible" }, "diagnostic", { get() { inspected = true; throw null; } });
+    for (const raw of [accessor, { kind: "inaccessible", diagnostic }]) {
+      expect(await inventoryIosCredentialNamespace(async () => raw)).toEqual({ kind: "unreadable" });
+    }
+    expect(inspected).toBe(false);
+  });
+
+  it("distinguishes bridge rejection, reflection failure, native refusal and success without inspecting errors", async () => {
+    const rejected = await inventoryIosCredentialNamespace(async () => { throw new Proxy({}, { get() { throw null; } }); });
+    expect(rejected).toEqual({ kind: "inaccessible" });
+    expect(iosCredentialInventoryDiagnostic(rejected)).toBe("transport_rejected");
+    const malformed = await inventoryIosCredentialNamespace(async () => new Proxy({}, { ownKeys() { throw null; } }));
+    expect(malformed).toEqual({ kind: "inaccessible" });
+    expect(iosCredentialInventoryDiagnostic(malformed)).toBe("transport_reflection");
+    const legacy = await inventoryIosCredentialNamespace(async () => ({ kind: "inaccessible" }));
+    expect(iosCredentialInventoryDiagnostic(legacy)).toBe("native_inaccessible");
+    const complete = await inventoryIosCredentialNamespace(async () => ({ kind: "complete", keys: [] }));
+    expect(complete).toEqual({ kind: "complete", keys: [] });
+    expect(iosCredentialInventoryDiagnostic(complete)).toBeNull();
+  });
   it("returns an owned immutable exact list including orphan/unindexed/normalization-distinct names", async () => {
     const keys = ["\u0301after-delimiter", "e\u0301", "i1.unknown-epoch.orphan", "m1.fixture", "sb-fixture-auth-token-flow-unindexed1-code-verifier", "é", "🥌", "\ue000"].sort();
     const native = vi.fn(async () => ({ kind: "complete", keys }));

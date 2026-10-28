@@ -64,21 +64,28 @@ enum CredentialKeychainReaderTests {
             [kSecAttrAccount as String: CredentialKeychainReader.namespace + suffix,
              kSecAttrSynchronizable as String: sync]
         }
-        func failed(_ status: OSStatus, _ data: CFTypeRef?, _ kind: String) {
+        func failed(_ status: OSStatus, _ data: CFTypeRef?, _ kind: String, _ diagnostic: String) {
             let result = inventory(status, data)
             check(result["kind"] as? String == kind)
-            check(result.count == 1 && result["keys"] == nil)
+            check(result.count == 2 && result["keys"] == nil)
+            check(result["diagnostic"] as? String == diagnostic)
         }
         let empty = inventory(errSecItemNotFound)
         check(empty["kind"] as? String == "complete")
         check((empty["keys"] as? [String])?.isEmpty == true)
-        for status in [errSecInteractionNotAllowed, errSecAuthFailed, errSecDecode, errSecNotAvailable, OSStatus(-1)] {
-            failed(status, [row("retained")] as NSArray, "inaccessible")
+        check(empty.count == 2 && empty["diagnostic"] == nil)
+        for (status, diagnostic) in [(errSecInteractionNotAllowed, "os_interaction_not_allowed"),
+                                     (errSecAuthFailed, "os_auth_failed"), (errSecDecode, "os_decode"),
+                                     (errSecNotAvailable, "os_not_available"), (errSecMissingEntitlement, "os_missing_entitlement"),
+                                     (errSecParam, "os_parameter"), (OSStatus(-1), "os_other")] {
+            failed(status, [row("retained")] as NSArray, "inaccessible", diagnostic)
         }
-        for malformed: CFTypeRef? in [nil, NSArray(), NSDictionary(), [NSNull()] as NSArray,
-                                      [["wrong": "shape"]] as NSArray,
-                                      [[kSecAttrAccount as String: NSNumber(value: 0)]] as NSArray] {
-            failed(errSecSuccess, malformed, "unreadable")
+        for malformed: CFTypeRef? in [nil, NSArray(), NSDictionary()] {
+            failed(errSecSuccess, malformed, "unreadable", "rows_shape")
+        }
+        failed(errSecSuccess, [NSNull()] as NSArray, "unreadable", "row_shape")
+        for malformed in [[["wrong": "shape"]] as NSArray, [[kSecAttrAccount as String: NSNumber(value: 0)]] as NSArray] {
+            failed(errSecSuccess, malformed, "unreadable", "account_shape")
         }
         let foreign = [[kSecAttrAccount as String: "unrelated-private-account"]] as NSArray
         let excluded = inventory(errSecSuccess, foreign)
@@ -90,34 +97,63 @@ enum CredentialKeychainReaderTests {
         check(observed["kind"] as? String == "complete")
         check((observed["keys"] as? [String])?.map { Array($0.utf16) } == suffixes.map { Array($0.utf16) }.sorted { $0.lexicographicallyPrecedes($1) })
         check((observed["keys"] as? [String])?.count == suffixes.count)
-        failed(errSecSuccess, [row("same"), row("same")] as NSArray, "unreadable")
+        failed(errSecSuccess, [row("same"), row("same")] as NSArray, "unreadable", "key_shape")
         for suffix in ["", "bad\nkey", "bad\u{200e}key"] {
-            failed(errSecSuccess, [row(suffix)] as NSArray, "unreadable")
+            failed(errSecSuccess, [row(suffix)] as NSArray, "unreadable", "key_shape")
         }
-        failed(errSecSuccess, [row(String(repeating: "x", count: 193))] as NSArray, "limit_exceeded")
-        for sync: Any in [NSNull(), "false", NSNumber(value: 0), NSNumber(value: 1)] {
-            failed(errSecSuccess, [row("scope", sync: sync)] as NSArray, "unreadable")
+        failed(errSecSuccess, [row(String(repeating: "x", count: 193))] as NSArray, "limit_exceeded", "key_limit")
+        // Actual returned-attribute shape in Apple's Security source: integer
+        // CFNumber. Exercise the whole inventory, not a standalone coercion.
+        var zero32: Int32 = 0, zero64: Int64 = 0
+        let numericZeros: [Any] = [NSNumber(value: 0), CFNumberCreate(nil, .sInt32Type, &zero32)!, CFNumberCreate(nil, .sInt64Type, &zero64)!]
+        for sync in numericZeros {
+            check(CFGetTypeID(sync as! NSNumber) == CFNumberGetTypeID())
+            let result = inventory(errSecSuccess, [row("numeric-zero", sync: sync)] as NSArray)
+            check(result["kind"] as? String == "complete")
+            check((result["keys"] as? [String]) == ["numeric-zero"])
+            check(result.count == 2 && result["diagnostic"] == nil)
         }
-        failed(errSecSuccess, [[kSecAttrAccount as String: CredentialKeychainReader.namespace + "missing-sync"]] as NSArray, "unreadable")
-        failed(errSecSuccess, [row("sync", sync: NSNumber(value: true))] as NSArray, "unsupported_scope")
+        var one32: Int32 = 1
+        for sync: Any in [NSNumber(value: 1), CFNumberCreate(nil, .sInt32Type, &one32)!] {
+            failed(errSecSuccess, [row("numeric-enabled", sync: sync)] as NSArray, "unsupported_scope", "sync_enabled")
+        }
+        for sync: Any in [NSNull(), "false", "0", "1", Data(), NSArray(), NSDictionary(),
+                          NSNumber(value: -1), NSNumber(value: 2), NSNumber(value: Int64.min),
+                          NSNumber(value: Int64.max), NSNumber(value: UInt64.max)] {
+            failed(errSecSuccess, [row("scope", sync: sync)] as NSArray, "unreadable", "sync_shape")
+        }
+        for raw in [0.0, -0.0, 1.0, 0.5, -0.5, Double.nan, Double.infinity, -Double.infinity] {
+            var value = raw
+            let sync = CFNumberCreate(nil, .doubleType, &value)!
+            check(CFNumberIsFloatType(sync))
+            failed(errSecSuccess, [row("floating", sync: sync)] as NSArray, "unreadable", "sync_shape")
+        }
+        // A valid numeric row cannot hide a later poisoned/enabled/duplicate row.
+        failed(errSecSuccess, [row("valid", sync: NSNumber(value: 0)), row("poisoned", sync: "0")] as NSArray, "unreadable", "sync_shape")
+        failed(errSecSuccess, [row("valid", sync: NSNumber(value: 0)), row("enabled", sync: NSNumber(value: 1))] as NSArray, "unsupported_scope", "sync_enabled")
+        failed(errSecSuccess, [row("duplicate", sync: NSNumber(value: 0)), row("duplicate")] as NSArray, "unreadable", "key_shape")
+        var numericService = row("numeric-service", sync: NSNumber(value: 0)); numericService[kSecAttrService as String] = "other"
+        failed(errSecSuccess, [numericService] as NSArray, "unsupported_scope", "service_present")
+        failed(errSecSuccess, [[kSecAttrAccount as String: CredentialKeychainReader.namespace + "missing-sync"]] as NSArray, "unreadable", "sync_shape")
+        failed(errSecSuccess, [row("sync", sync: NSNumber(value: true))] as NSArray, "unsupported_scope", "sync_enabled")
         for service: Any in [NSNull(), NSNumber(value: 0)] {
             var attributes = row("service"); attributes[kSecAttrService as String] = service
-            failed(errSecSuccess, [attributes] as NSArray, "unreadable")
+            failed(errSecSuccess, [attributes] as NSArray, "unreadable", "service_shape")
         }
         var service = row("service"); service[kSecAttrService as String] = "other"
-        failed(errSecSuccess, [service] as NSArray, "unsupported_scope")
+        failed(errSecSuccess, [service] as NSArray, "unsupported_scope", "service_present")
         service[kSecAttrService as String] = ""
         check(inventory(errSecSuccess, [service] as NSArray)["kind"] as? String == "complete")
         var leakedData = row("payload"); leakedData[kSecValueData as String] = Data([1, 2, 3])
-        failed(errSecSuccess, [leakedData] as NSArray, "unreadable")
+        failed(errSecSuccess, [leakedData] as NSArray, "unreadable", "value_reference")
         var invalidUnits = Array(CredentialKeychainReader.namespace.utf16); invalidUnits.append(0xd800)
         let invalidAccount = invalidUnits.withUnsafeBufferPointer { NSString(characters: $0.baseAddress!, length: $0.count) }
-        failed(errSecSuccess, [[kSecAttrAccount as String: invalidAccount, kSecAttrSynchronizable as String: false]] as NSArray, "unreadable")
+        failed(errSecSuccess, [[kSecAttrAccount as String: invalidAccount, kSecAttrSynchronizable as String: false]] as NSArray, "unreadable", "account_encoding")
         let many = (0..<4_096).map { row("item-\($0)") }
         let limit = inventory(errSecSuccess, many as NSArray)
         check(limit["kind"] as? String == "complete")
         check((limit["keys"] as? [String])?.count == 4_096)
-        failed(errSecSuccess, (many + [row("overflow")]) as NSArray, "limit_exceeded")
+        failed(errSecSuccess, (many + [row("overflow")]) as NSArray, "limit_exceeded", "key_limit")
         print("Keychain reader: \(count) contract assertions passed (injected Security API; no device claim).")
     }
 }

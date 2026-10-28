@@ -51,7 +51,7 @@ import { resolveNativeProviderConfiguration } from "./nativeProviderConfiguratio
 import { drainObservedPlatformWork } from "../persistence/platformSha256";
 import { createNativeTeamLinkDelivery, isCanonicalNativeTeamLinkOrigin, type NativeTeamLinkDelivery, type NativeTeamLinkPort } from "./nativeTeamLinkDelivery";
 import { createProviderCredentialStorage, providerSessionStorageKey } from "./providerCredentialStorage";
-import { createNativeCombinedRetirementOwner, createNativeNewUserRuntimeOwner, type NativeCommonMigrationOptions, type NativeCommonRetirementOwner, type NativeCommonRuntimeOwner } from "../persistence/nativeCombinedMigrationOwner";
+import { createNativeCombinedRetirementOwner, createNativeNewUserRuntimeOwner, type NativeCommonMigrationOptions, type NativeCommonMigrationReport, type NativeCommonRetirementOwner, type NativeCommonRuntimeOwner } from "../persistence/nativeCombinedMigrationOwner";
 import { createNativeTrackerOwner } from "../persistence/nativeTrackerOwner";
 import { registerNativeTrackerRuntime } from "../persistence/nativeTrackerRegistry";
 import type { NativeTrackerBinding } from "../persistence/nativeTrackerTypes";
@@ -997,6 +997,8 @@ export type NativeIdentityBootstrapStart = Readonly<
   { outcome: "waiting"; code: NativeAuthWaitCode | "identity_failed" | "team_link_unavailable" } | { outcome: "closed" }
 >;
 export interface NativeIdentityBootstrapHost {
+  /** Fixed ephemeral support metadata only; never an admission result. */
+  startupDiagnostic?(): string | null;
   start(): Promise<NativeIdentityBootstrapStart>;
   health(): Omit<ReturnType<NativeSupabaseAuthHost["health"]>, "code"> & Readonly<{ code: NativeAuthWaitCode | "identity_failed" | "team_link_unavailable" | null; identityFailed: boolean }>;
   dispose(): Promise<NativeAuthCleanup>;
@@ -1850,6 +1852,13 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
     },
     });
   }
+  let startupDiagnostic: string | null = null;
+  function recordStartupReport(report: NativeCommonMigrationReport) {
+    // Only closed, internally produced enum fields. Never stringify a report,
+    // candidate, exception, SQL/protected value or dependency.
+    startupDiagnostic = newUser && report.outcome !== "candidate" && report.outcome !== "recovered"
+      ? `${owner!.startupStage()}/${report.outcome}${"code" in report ? `/${report.code}` : "boundary" in report ? `/${report.boundary}` : ""}` : null;
+  }
   const auth = makeAuth();
   const host: NativeSupabaseAuthHost = Object.freeze({
     auth,
@@ -1860,7 +1869,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
       if (phase === "ready") return Promise.resolve(storageHealthy() && !sdkFailed ? Object.freeze({ outcome: "ready" as const }) : wait(storageFaultRecorded() ? "credential_failed" : "sdk_failed"));
       if (code === "restart_required") return Promise.resolve(wait("restart_required"));
       if (sdk || sdkFailed) return Promise.resolve(wait(storageFaultRecorded() ? "credential_failed" : "sdk_failed"));
-      phase = "preparing"; code = null;
+      phase = "preparing"; code = null; startupDiagnostic = null;
       startFlight = Promise.resolve().then(async (): Promise<NativeAuthStart> => {
         if (preparation) {
           const prepared = await preparation.prepare();
@@ -1871,11 +1880,13 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
         } else {
           if (needsRecovery) {
             const recovered = await owner!.recover();
+            recordStartupReport(recovered);
             if (terminal) return Object.freeze({ outcome: "closed" });
             if (recovered.outcome !== "recovered") return wait("recovery_required");
             needsRecovery = false;
           }
           const report = await owner!.run();
+          recordStartupReport(report);
           if (terminal) return Object.freeze({ outcome: "closed" });
           if (report.outcome !== "candidate") {
             if (report.outcome === "recovery_required") { needsRecovery = true; return wait("recovery_required"); }
@@ -3398,6 +3409,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
     return finalRuntime;
   }
   const identityHost: NativeIdentityBootstrapHost = Object.freeze({
+    ...(newUser ? { startupDiagnostic: () => startupDiagnostic } : {}),
     start() {
       if (terminal) return Promise.resolve(Object.freeze({ outcome: "closed" as const }));
       if (bootstrapStartFlight) return bootstrapStartFlight;

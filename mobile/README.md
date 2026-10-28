@@ -41,6 +41,88 @@ The **same application** the Web build runs, bundled locally for a native shell.
 TrackerApp` — importing `src/components/` and `src/lib/` directly. **Nothing is
 copied.** A change to the shared modules reaches Web and mobile at once.
 
+
+### Physical first-launch diagnostic candidate — 28 October
+
+The development-signed separate candidate on b20c668 blocked before OTP on the
+actual iPhone. The exact device-specific cause remains unproven. The initial
+correction added a fixed `NU1/...` support code below the blocked notice. Subsequent
+diagnosis identified an adapter representation gap and added the narrow native
+normalization described below; no successful device first launch is established.
+
+The code combines host wait result, last attempted owner boundary and existing
+closed report outcome/code/boundary. For example, `sql_observe` narrows failure to
+SQL observation/open/discovery, `protected_inventory` to protected configuration/
+inventory, `source_capture` to strict WebView proof, and `manifest_write` to manifest
+insertion/readback. A stage is NOT the cause or proof that earlier writes committed.
+No values, keys, accounts, native errors or raw database/Keychain inspector appear.
+The codes clear on retry, readiness and Close. No extra logging, analytics, native
+bridge or release WebView inspection is enabled.
+
+Coordinator-only retest, after separate physical authorization:
+
+1. Preserve the candidate, any remaining original installation and all existing
+   containers/Keychain contents. Tim subsequently confirmed that he personally
+   removed the old app; do not reinstall it or infer container/backup contents.
+   Do not uninstall, clear, reset, import or relabel existing SQL residue as fresh.
+2. Build the explicit variant with the public API origin supplied command-scoped:
+   `NEXT_PUBLIC_POSTHOG_ENABLED=0 NEXT_PUBLIC_NATIVE_API_ORIGIN=https://curling.evolane.me npm run mobile:build:new-user-beta`.
+   Existing Supabase configuration is loaded internally; do not print/copy it or
+   inspect environment files. Native analytics stays disabled for this candidate;
+   no analytics configuration is obtained or activated by this diagnosis.
+3. Follow the already approved coordinator build/sync/signing procedure for ONLY
+   `me.evolane.curling`. Never select the original `local.dev.curlingperformance`.
+   Updating the separate candidate must preserve its current failed-start evidence.
+   Additional signing/provisioning changes require their own applicable approval.
+4. Launch and report the complete fixed NU1 code and whether Retry is present.
+   If authorized to press Retry, note its resulting code separately. A screen
+   photo must show only the startup notice/code, no account or stored data.
+5. If OTP appears, do not call the bug fixed yet: independently record actual
+   OTP/Profile/training save and genuine process-kill/cold reopen on this candidate.
+   If still blocked, use the code to choose the next bounded read-only diagnostic;
+   do not bypass the guard or infer an empty store from the existence of a DB file.
+
+An unsigned local web artifact alone cannot update or test the iPhone. This task
+performs no sync, signing, installation or device access. Exact local evidence and
+remaining physical gates are in `docs/TESTFLIGHT_READINESS.md`.
+
+The first coordinator retest reported the complete code
+`NU1/recovery_required/protected_inventory/recovery_required/protected`.
+The last component was confirmed separately; no Retry observation was supplied.
+This does not identify an OS cause. The refined candidate replaces the broad
+`protected_inventory` stage with a fixed, longer stage identifying binding load/
+capture, configuration, inventory call/validation, bridge transport rejection,
+native OS failure category or strict metadata shape/scope rejection. Examples:
+`protected_inventory_configure`, `protected_inventory_transport_rejected`,
+`protected_inventory_os_missing_entitlement`, `protected_inventory_sync_shape`.
+No OS numbers, item metadata or raw error text are included. A native category is
+the reader's last refusal, not a complete root-cause diagnosis; configuration and
+call/validation stages alone establish no OS result. Unknown failures stay closed.
+The full code wraps on narrow screens; report every component and, only after
+coordinator authorization, the separately observed Retry code. This task performs
+no additional installation or device operation.
+
+The subsequent signed native+web retest reported
+`NU1/recovery_required/protected_inventory_sync_shape/recovery_required/protected`.
+This confirms the native sync-attribute shape refusal, without identifying its
+actual value/type. One supplied code does not establish separate start/Retry
+observations. Apple's Security source supports integer CFNumber returned Sync
+attributes; the former CFBoolean-only guard rejected that legitimate shape.
+The corrected reader accepts genuine Boolean false or integer CFNumber exactly
+zero, with exact type, non-floating storage and lossless conversion checks.
+True/integer one remains unsupported scope; other/floating numbers, missing,
+null, strings and unknown metadata remain unreadable. It never defaults unknown
+to disabled, changes the query or skips an owned row. No new diagnostic labels or
+credential writes are introduced. Source evidence is in the canonical beta spec.
+
+For the next coordinator preserving retest, rebuild the native reader together
+with the explicit beta web candidate using the command above; replacing web assets
+alone cannot apply this correction. Record the actual next full code or reached
+screen and separately label any authorized Retry result. A successful next boundary
+is not yet OTP/Profile/training/cold-reopen or Beta acceptance. Do not reset or
+reinstall to manufacture a fresh namespace. This implementation task has no device
+access or signing/install action.
+
 ## Confirmed iOS identity and installation hold
 
 The user confirmed **Evolane Curling / `me.evolane.curling`**, team **`J98U2J78B3`**,

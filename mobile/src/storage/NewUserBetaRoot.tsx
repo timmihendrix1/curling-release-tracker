@@ -12,6 +12,7 @@ export default function NewUserBetaRoot() {
   return <section aria-label="Athlete access preparation" className="rounded-2xl border border-slate-200 bg-white p-6">
     <h1 className="text-xl font-semibold">Athlete access</h1>
     <p role={snapshot.phase === "blocked" ? "alert" : "status"}>{snapshot.notice}</p>
+    {snapshot.supportCode && <p className="mt-3 text-sm text-slate-600">Support code: <code className="break-all">{snapshot.supportCode}</code></p>}
     {snapshot.retry && <button type="button" onClick={application.start}>Try again</button>}
   </section>;
 }

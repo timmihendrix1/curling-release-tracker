@@ -12,6 +12,14 @@ import { createCredentialNamespaceOwner, type CredentialNamespaceLease, type Cre
 
 import { MAX_PUBLICATION_ASCII, parsePublicationAnchor, publicationAnchorMatchesPair, publicationAnchorSlot, recordPublicationAnchorObservation, readPublicationAnchorObservation } from "./installationTransferPublicationProtocol";
 import { observePlatformWork, drainObservedPlatformWork } from "./platformSha256";
+import { iosCredentialInventoryDiagnostic, type IosCredentialInventoryDiagnostic } from "./credentialInventoryDiagnostics";
+
+export type ProtectedInventoryStartupStage = `protected_inventory_${"lease" | "binding_load" | "binding_capture" | "configure" | "call" | "validate" | "observer" | "complete" | IosCredentialInventoryDiagnostic}`;
+const inventoryStartupStages = new WeakMap<object, () => ProtectedInventoryStartupStage | null>();
+/** Genuine-port presentation metadata only; never used by admission or recovery. */
+export function nativeCredentialInventoryStartupStage(port: NativeCredentialMigrationPort): ProtectedInventoryStartupStage | null {
+  return inventoryStartupStages.get(port)?.() ?? null;
+}
 
 export type CredentialMigrationControl = { readonly proceed?: () => boolean };
 type Refusal = CredentialNamespaceRefusal | "cancelled" | "invalid_slot" | "platform_unsupported";
@@ -317,6 +325,7 @@ function buildCredentialMigrationPort(options: unknown, observer: NativeCommonCr
   if (strict) binding = strict.captured;
   const owner = createCredentialNamespaceOwner();
   let configured = false;
+  let inventoryStartupStage: ProtectedInventoryStartupStage | null = null;
   let ownedLease: CredentialNamespaceLease | null = null;
   let role: "migration" | "prepared" | "runtime" | "closed" = "migration";
   const publicationCompletions = new WeakSet<object>();
@@ -329,16 +338,19 @@ function buildCredentialMigrationPort(options: unknown, observer: NativeCommonCr
   const evidence = (work: ReturnType<typeof protectedWork> | null, lease: CredentialNamespaceLease) => work
     ? transferEvidence(work, () => { owner.fault(lease); strict!.policy.failed(); })
     : { read: readEvidence, inventory: inventoryEvidence };
-  async function ready(live: () => boolean, work: ReturnType<typeof protectedWork> | null): Promise<Binding> {
+  async function ready(live: () => boolean, work: ReturnType<typeof protectedWork> | null, inventoryAttempt = false): Promise<Binding> {
     if (!live()) throw cancelled;
     if (binding === null) {
+      if (inventoryAttempt) inventoryStartupStage = "protected_inventory_binding_load";
       const loaded = await import("./capacitorSecureStorageBinding");
       if (!live()) throw cancelled;
+      if (inventoryAttempt) inventoryStartupStage = "protected_inventory_binding_capture";
       binding = strict && work ? await captureTransferBinding(loaded.createCapacitorSecureStorageBinding(), work, { ...strict.policy, current: live }, strict.publication) : captureBinding(loaded.createCapacitorSecureStorageBinding());
     }
     const active = binding;
     if (!configured) {
       if (!live()) throw cancelled;
+      if (inventoryAttempt) inventoryStartupStage = "protected_inventory_configure";
       const ack = unpack(work, await observe(work, apply(active.configure, active.receiver, [{ keyPrefix: SECURE_CREDENTIAL_NAMESPACE,
         synchronize: SECURE_CREDENTIAL_SYNCHRONIZE, iosAccess: SECURE_CREDENTIAL_IOS_ACCESS }])));
       if (ack !== undefined) { if (work) { strict!.policy.failed(); work.malformed(ack); } throw broken; }
@@ -376,16 +388,24 @@ function buildCredentialMigrationPort(options: unknown, observer: NativeCommonCr
       return result.ok ? { ok: true as const, lease: result.value } : result;
     },
     async inspectNamespace(lease: CredentialNamespaceLease, control?: CredentialMigrationControl): Promise<CredentialNamespaceObservation> {
+      inventoryStartupStage = "protected_inventory_lease";
       if (role !== "migration") return refused("ownership_unavailable");
       const result = await owner.run(lease, async current => {
         const live = permission(current, control);
         const work = operationWork(lease);
         try {
-          const active = await ready(live, work);
+          const active = await ready(live, work, true);
           if (!live()) throw cancelled;
-          const keys = evidence(work, lease).inventory(unpack(work, await observe(work, apply(active.inventory, active.receiver, []))));
+          inventoryStartupStage = "protected_inventory_call";
+          const raw = unpack(work, await observe(work, apply(active.inventory, active.receiver, [])));
+          inventoryStartupStage = "protected_inventory_validate";
+          const detail = iosCredentialInventoryDiagnostic(raw);
+          if (detail) inventoryStartupStage = `protected_inventory_${detail}`;
+          const keys = evidence(work, lease).inventory(raw);
+          inventoryStartupStage = "protected_inventory_observer";
           observer?.inventory(keys);
           if (!live()) throw cancelled;
+          inventoryStartupStage = "protected_inventory_complete";
           return Object.freeze({ status: "complete" as const, keys });
         } catch (error) {
           if (error === cancelled) return refused("cancelled");
@@ -496,6 +516,7 @@ function buildCredentialMigrationPort(options: unknown, observer: NativeCommonCr
     release: (lease: CredentialNamespaceLease) => migrationCompletion(() => migrationOperations.release(lease)),
     leaseState: migrationOperations.leaseState,
   }) : migrationOperations;
+  inventoryStartupStages.set(port, () => inventoryStartupStage);
   migrationCleanups.set(port, lease => {
     if (role !== "migration" || lease !== ownedLease) return null;
     role = "closed"; // Revoke synchronously, before joining namespace work.

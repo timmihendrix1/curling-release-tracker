@@ -15,6 +15,7 @@ type Snapshot = Readonly<{
   cleanupPending: boolean;
   cleanup: NativeAuthCleanup | null;
   notice: string;
+  supportCode: string | null;
 }>;
 const unavailable = "Athlete access could not be prepared. Existing data has been preserved.";
 const reopen = "Close and reopen the app to check athlete access again.";
@@ -22,13 +23,13 @@ const reopen = "Close and reopen the app to check athlete access again.";
 /** No dependency/Ready injection. Tests substitute only actual platform edges. */
 export function createNewUserMobileApplication() {
   let snapshot: Snapshot = Object.freeze({ phase: "idle", runtime: null, retry: false,
-    cleanupPending: false, cleanup: null, notice: "Preparing athlete access…" });
+    cleanupPending: false, cleanup: null, supportCode: null, notice: "Preparing athlete access…" });
   const listeners = new Set<() => void>();
   let host: NativeSportingIdentityHost | null = null;
   let flight = false, terminal = false, references = 0, releaseGeneration = 0;
   let closing: Promise<NativeAuthCleanup> | null = null;
   function update(fields: Partial<Snapshot>) {
-    snapshot = Object.freeze({ ...snapshot, ...fields });
+    snapshot = Object.freeze({ ...snapshot, supportCode: null, ...fields });
     for (const listener of [...listeners]) { try { listener(); } catch { /* Presentation cannot authorize work. */ } }
   }
   function observeClose(actual: Promise<NativeAuthCleanup>) {
@@ -82,8 +83,12 @@ export function createNewUserMobileApplication() {
       const result = await host.start();
       if (terminal) return;
       if (result.outcome === "ready") update({ phase: "ready", runtime: result.runtime, notice: "", retry: false });
-      else update({ phase: "blocked", runtime: null, notice: unavailable,
-        retry: result.outcome === "waiting" && result.code !== "restart_required" });
+      else {
+        const detail = host.startupDiagnostic?.();
+        update({ phase: "blocked", runtime: null, notice: unavailable,
+          supportCode: result.outcome === "waiting" ? `NU1/${result.code}${detail ? `/${detail}` : ""}` : "NU1/closed",
+          retry: result.outcome === "waiting" && result.code !== "restart_required" });
+      }
     } catch {
       if (!terminal) update({ phase: "blocked", runtime: null, retry: false, notice: unavailable });
     } finally {
