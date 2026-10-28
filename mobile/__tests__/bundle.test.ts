@@ -171,6 +171,9 @@ describe("mobile production bundle", () => {
       "NEXT_PUBLIC_SUPABASE_URL",
       "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
       "NEXT_PUBLIC_NATIVE_API_ORIGIN",
+      "NEXT_PUBLIC_POSTHOG_ENABLED",
+      "NEXT_PUBLIC_POSTHOG_TOKEN",
+      "NEXT_PUBLIC_POSTHOG_HOST",
     ]);
   });
 

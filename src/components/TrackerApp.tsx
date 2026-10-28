@@ -19,6 +19,8 @@ import IdentityPendingTeamIntent from "./identity/IdentityPendingTeamIntent";
 import AccuracyToleranceProfilesScreen from "./AccuracyToleranceProfilesScreen";
 import AssessScreen from "./AssessScreen";
 import AssessmentAnalyze from "./AssessmentAnalyze";
+import { useProductAnalytics } from "./ProductAnalytics";
+import { createProductTransitionObserver } from "../lib/productAnalyticsTransitions";
 import AssessmentResultScreen from "./AssessmentResultScreen";
 import AutoCapture, { type AutoCaptureStartConfig } from "./AutoCapture";
 import BlindShotEntry from "./BlindShotEntry";
@@ -497,6 +499,9 @@ export default function TrackerApp() {
     void preloadPublicExerciseDiagrams(exerciseAssetResolver);
   }, [exerciseAssetResolver]);
   const athleteProfileId = useSportingProfileId();
+  const productAnalytics = useProductAnalytics();
+  const productTransitions = useMemo(() => createProductTransitionObserver((event, key) =>
+    productAnalytics?.prepare(event, athleteProfileId, key) ?? (() => {})), [productAnalytics, athleteProfileId]);
 
   // Stage M3a: file delivery goes through the shared platform boundary. Keyed
   // to the mounted Profile, so a late export completion after an account switch
@@ -1038,6 +1043,7 @@ export default function TrackerApp() {
     // so a persistence acknowledgement can tell which commit a write speaks for.
     const sequence = stampSessionSequence(nextSession);
     if (nativeTracker && !nativeTracker.commit(trackerIncarnation.current, nextSession, sequence)) return false;
+    productTransitions.sessionCommit(sessionRef.current, nextSession);
     sessionRef.current = nextSession;
     setCurrentSessionState(nextSession);
     return true;
@@ -1056,6 +1062,7 @@ export default function TrackerApp() {
 
   /** The Assessment-domain counterpart to commitSession — see the comment on assessmentStateRef above. */
   function commitAssessmentState(next: AssessmentPersistedState) {
+    if (assessmentStateRef.current) productTransitions.assessmentCommit(assessmentStateRef.current, next);
     assessmentStateRef.current = next;
     setAssessmentState(next);
   }
@@ -1631,6 +1638,7 @@ export default function TrackerApp() {
     saved: Session,
     result: PersistenceWriteResult
   ): void {
+    if (result.ok) productTransitions.sessionSaved(saved);
     // Session-level acknowledgements first. Inlined rather than extracted so this
     // function provably touches only refs and setState, which is what keeps it out of
     // the save effect's dependencies.
@@ -1780,7 +1788,7 @@ export default function TrackerApp() {
       );
     }
     sessionSaveWaitersRef.current = remaining;
-  }, [commitManualSubmissions, commitPendingCompletions]);
+  }, [commitManualSubmissions, commitPendingCompletions, productTransitions]);
 
   const prepareSessionWrite = useCallback((value: Session): (() => Promise<PersistenceWriteResult>) => {
     if (!nativeTracker) return () => sessionRepository.saveCurrent(value);
@@ -2188,8 +2196,10 @@ export default function TrackerApp() {
     if (!assessmentState) return;
     if (assessmentHydration !== "ready") return;
 
-    assessmentRepository.saveState(assessmentState);
-  }, [assessmentState, assessmentHydration, assessmentRepository]);
+    void assessmentRepository.saveState(assessmentState).then(result => {
+      if (result.ok) productTransitions.assessmentSaved(assessmentState);
+    }).catch(() => { /* existing UI retains the state; analytics has no ACK */ });
+  }, [assessmentState, assessmentHydration, assessmentRepository, productTransitions]);
 
   useEffect(() => {
     if (trainingPlansHydration !== "ready") return;
@@ -4231,6 +4241,11 @@ export default function TrackerApp() {
       return;
     }
     const previousSession = prepared.value;
+    const alreadyArchived = sessionHistoryRef.current.some(item => item.id === previousSession.id);
+    const reportCompletedTraining = !alreadyArchived ? productAnalytics?.prepare("training_completed", athleteProfileId, previousSession.id) : undefined;
+    const reportTimingExercise = !alreadyArchived && previousSession.releaseTimingExerciseVersionSnapshot && previousSession.shots.length > 0
+      ? productAnalytics?.prepare("exercise_completed", athleteProfileId, `${previousSession.id}:timing`) : undefined;
+    productTransitions.sessionCommit(currentSnapshot, previousSession);
 
     // Coordinated archive-and-replace: history is durably written before the
     // replacement session is even attempted — never merely "issued first" — so this
@@ -4265,6 +4280,9 @@ export default function TrackerApp() {
     // redundantly (and, in doing so, riskily) re-persist this same transition in their
     // own declaration order.
     lastArchivedHistoryRef.current = persistedHistory;
+    reportCompletedTraining?.();
+    reportTimingExercise?.();
+    productTransitions.sessionSaved(previousSession);
     sessionHistoryRef.current = persistedHistory;
     setSessionHistory(persistedHistory);
 
@@ -4463,6 +4481,7 @@ export default function TrackerApp() {
    * `guardLeavingActiveWork`: it is only ever reached once a guard has allowed the move.
    */
   function commitNavigation(view: ActiveView) {
+    if (view === "analyze" && activeView !== "analyze") productAnalytics?.capture("analysis_viewed", athleteProfileId);
     if (view !== "train") browerController.reconcileContext(null);
     if (view !== "settings") setShowBleDiagnostic(false);
     // The finished-training summary describes one just-archived Session; leaving Train
@@ -4861,10 +4880,16 @@ export default function TrackerApp() {
               onSave={async (execution) =>
                 sportingCloudSync?.saveActiveTeamExerciseDraft(execution) ?? false}
               onComplete={async (execution) => {
+                const reportTraining = productAnalytics?.prepare("training_completed", athleteProfileId, execution.trainingSessionId);
+                const reportExercise = productAnalytics?.prepare("exercise_completed", athleteProfileId, execution.id);
                 const completed = await (
                   sportingCloudSync?.finalizeActiveTeamExerciseDraft(execution) ?? false
                 );
-                if (completed) setLastCompletedTeamSessionId(execution.trainingSessionId);
+                if (completed) {
+                  reportTraining?.();
+                  reportExercise?.();
+                  setLastCompletedTeamSessionId(execution.trainingSessionId);
+                }
                 return completed;
               }}
               onDiscard={async (executionId) =>
@@ -4877,10 +4902,16 @@ export default function TrackerApp() {
               recorderProfileId={athleteProfileId}
               eligibilitySnapshots={sportingCloudSync?.teamEligibilitySnapshots ?? []}
               onStart={async (execution) => {
+                const reportTraining = productAnalytics?.prepare("training_started", athleteProfileId, execution.trainingSessionId);
+                const reportExercise = productAnalytics?.prepare("exercise_started", athleteProfileId, execution.id);
                 const saved = await (
                   sportingCloudSync?.saveActiveTeamExerciseDraft(execution) ?? false
                 );
-                if (saved) setPendingTeamExerciseVersion(null);
+                if (saved) {
+                  reportTraining?.();
+                  reportExercise?.();
+                  setPendingTeamExerciseVersion(null);
+                }
                 return saved;
               }}
               onCancel={() => setPendingTeamExerciseVersion(null)}
@@ -5622,7 +5653,7 @@ export default function TrackerApp() {
             onConsumedReloadRecovery={() => setPendingReloadRecoveryRunId(null)}
             quarantineNotice={assessmentQuarantineNotice}
             onDismissQuarantineNotice={() => setAssessmentQuarantineNotice(null)}
-            onViewFullResults={(runId) => setViewingAssessmentResultRunId(runId)}
+            onViewFullResults={(runId) => { productAnalytics?.capture("analysis_viewed", athleteProfileId); setViewingAssessmentResultRunId(runId); }}
           />
 
           {IS_DEV &&
@@ -5730,7 +5761,7 @@ export default function TrackerApp() {
           {analyzeTab === "assessments" && assessmentState && (
             <AssessmentAnalyze
               assessmentState={assessmentState}
-              onViewResult={(runId) => setViewingAssessmentResultRunId(runId)}
+              onViewResult={(runId) => { productAnalytics?.capture("analysis_viewed", athleteProfileId); setViewingAssessmentResultRunId(runId); }}
               onResumeCurrent={() => handleNavigate("assess")}
               onGoToAssess={() => handleNavigate("assess")}
               onDeleteRun={handleDeleteAssessmentRun}

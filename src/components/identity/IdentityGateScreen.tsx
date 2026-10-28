@@ -1,4 +1,5 @@
 "use client";
+import { ProductAnalyticsChoice } from "../ProductAnalytics";
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useIdentity } from "./IdentityProvider";
@@ -329,6 +330,7 @@ function OnboardingSubmissionForm({
         </div>
       </fieldset>
 
+      <ProductAnalyticsChoice />
       {error && <p id={errorId} role="alert" className="text-sm text-red-700">{error.message}</p>}
       <button type="submit" className={primaryButtonClassName}>Create athlete profile</button>
     </form>

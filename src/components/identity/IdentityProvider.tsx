@@ -24,6 +24,7 @@ import {
   type AccountDeletionResult,
 } from "../../lib/identity/identityRuntime";
 import IdentityGateScreen from "./IdentityGateScreen";
+import { createBrowserProductAnalytics, ProductAnalyticsScope } from "../ProductAnalytics";
 import AccountDeletionFlow from "./AccountDeletionFlow";
 import { useSportingStorageSeams } from "../persistence/storageCompositionContext";
 import { readProfileSportingExport } from "../../lib/persistence/profileScopedSportingPersistence";
@@ -112,6 +113,7 @@ function outcomeProvesIntentRemoval(outcome: {
  * state renders the gate, so sporting repositories cannot hydrate behind it.
  */
 export default function IdentityProvider({ children, runtime: injectedRuntime, accessRecovery }: IdentityProviderProps) {
+  const [productAnalytics] = useState(createBrowserProductAnalytics);
   const nativeComposition = useNativeApplicationComposition();
   const [runtime] = useState<IdentityRuntime>(() => injectedRuntime ?? getIdentityRuntime());
   const [state, setState] = useState<GateState>(() =>
@@ -152,11 +154,25 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
     // Retire observation/action ownership synchronously with the event, even
     // while React batches rendering. No queued callback may still see the
     // previous ready owner after a newer authentication transition has begun.
-    const next = reduceGateState(stateRef.current, event);
+    const previous = stateRef.current;
+    const next = reduceGateState(previous, event);
+    productAnalytics.syncIdentity(readySession(next)?.profileId ?? null,
+      next.kind === "onboarding_required" || next.kind === "submitting_onboarding" || next.kind === "refreshing_legal_snapshot");
+    if (next !== previous && event.type === "onboarding_settled" && event.outcome.kind === "completed") {
+      const completed = readySession(next);
+      if (completed) productAnalytics.capture("onboarding_completed", completed.profileId, completed.profileId);
+    }
     stateRef.current = next;
     setState(next);
     return true;
-  }, [nativeComposition]);
+  }, [nativeComposition, productAnalytics]);
+
+  useEffect(() => {
+    productAnalytics.attach();
+    const current = stateRef.current;
+    productAnalytics.syncIdentity(readySession(current)?.profileId ?? null, current.kind === "onboarding_required");
+    return () => productAnalytics.detach();
+  }, [productAnalytics]);
 
   useEffect(() => {
     if (!nativeComposition) return;
@@ -513,6 +529,7 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
       },
       async signOut() {
         if (coordinator === null) return;
+        productAnalytics.revoke();
         deliberateSignOutRef.current = true;
         try {
           const outcome = await coordinator.signOut();
@@ -551,14 +568,16 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
         return true;
       },
     };
-  }, [commit, emailForOtp, pendingIntent, runtime, session, state, sportingStorage, nativeComposition, nativeExportBinding, refreshNativeIntent]);
+  }, [commit, emailForOtp, pendingIntent, runtime, session, state, sportingStorage, nativeComposition, nativeExportBinding, refreshNativeIntent, productAnalytics]);
 
   return (
     <IdentityContext.Provider value={value}>
+      <ProductAnalyticsScope analytics={productAnalytics}>
       <AccountDeletionFlow owner={nativeComposition && deletionOwner !== session ? null : deletionOwner} onClose={() => setDeletionOwner(null)}>
         {session === null ? <IdentityGateScreen /> : children}
       </AccountDeletionFlow>
       {accessRecovery}
+      </ProductAnalyticsScope>
     </IdentityContext.Provider>
   );
 }

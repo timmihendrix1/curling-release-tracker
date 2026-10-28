@@ -1,5 +1,16 @@
 # System Architecture
 
+## Optional product usage analytics — 27 October 2026
+
+The shared identity-owned application now includes a separately consented PostHog
+EU boundary. It is disabled without explicit public build configuration and is
+independent of sporting analysis, storage and cloud synchronization. Explicit user
+transitions emit allowlisted events; completion requires a local persistence ACK.
+No SDK initialization occurs before consent. Account changes revoke observation
+ownership; callbacks cannot reuse another Profile's consent. See
+[the event, consent and activation contract](POSTHOG_BETA_ANALYTICS.md).
+This local implementation is not a live-collection or release approval.
+
 ## Purpose
 
 This document defines the architectural direction of the Curling Performance Platform.

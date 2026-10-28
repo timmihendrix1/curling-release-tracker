@@ -1,6 +1,8 @@
 "use client";
 
 import TrainingHeader from "./TrainingHeader";
+import { useProductAnalytics } from "./ProductAnalytics";
+import { useSportingProfileId } from "./ProfileScopedSportingPersistence";
 
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
@@ -134,6 +136,9 @@ export default function TrainLanding({
   teamExerciseStartDisabled = false,
   exerciseAssetResolver,
 }: TrainLandingProps) {
+  const productAnalytics = useProductAnalytics();
+  const analyticsProfileId = useSportingProfileId();
+  function reportExerciseView() { productAnalytics?.capture("exercise_viewed", analyticsProfileId); }
   const reactId = useId();
   const tabId = (path: TrainEntryPath) => `${reactId}-tab-${path}`;
   /**
@@ -302,9 +307,10 @@ export default function TrainLanding({
             versions={currentExerciseVersions}
             filters={exerciseFilters}
             onFiltersChange={setExerciseFilters}
-            onOpenExercise={(versionId) =>
-              setExercisesSubView({ screen: "detail", versionId })
-            }
+            onOpenExercise={(versionId) => {
+              reportExerciseView();
+              setExercisesSubView({ screen: "detail", versionId });
+            }}
           />
         )}
 

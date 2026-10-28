@@ -15,8 +15,10 @@
 	  into its OWN cache container and hands it to the share sheet. It never
 	  reads timestamps of files outside the container.
 
-	  Nothing else is declared. This app collects no data through these APIs, has
-	  no tracking domains, and adds no broad file-access permission.
+	  Optional PostHog analytics additionally declares product interactions and
+	  pseudonymous user identifiers for Analytics, linked but not advertising
+	  tracking. Collection requires explicit configuration and separate consent.
+	  No tracking domains or broad file-access permission are added.
 	-->
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
@@ -30,7 +32,24 @@
 		</dict>
 	</array>
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
+		</dict>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeUserID</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key><true/>
+			<key>NSPrivacyCollectedDataTypeTracking</key><false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array><string>NSPrivacyCollectedDataTypePurposeAnalytics</string></array>
+		</dict>
+	</array>
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>

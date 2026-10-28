@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ProductAnalyticsChoice } from "./ProductAnalytics";
 import type { AccuracyToleranceProfile } from "../lib/accuracyToleranceProfiles/persistence";
 import type { SmartRandomProfile } from "../lib/smartRandomProfiles/persistence";
 import TrainingHeader from "./TrainingHeader";
@@ -102,6 +103,7 @@ export default function SettingsScreen({
           repeats that title in its own card (DESIGN_SYSTEM.md §32 Priority 2). */}
       <details className="house-support">
         <summary>Data and privacy</summary>
+        <ProductAnalyticsChoice showIdentifier />
         <h2 className="text-lg font-semibold text-slate-900">
           Data Management
         </h2>

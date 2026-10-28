@@ -58,6 +58,12 @@ const run = spawnSync(playwright, ["test", ...process.argv.slice(2)], {
     ...childEnvironment,
     NEXT_PUBLIC_SUPABASE_URL: apiUrl,
     NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: publishableKey,
+    // Synthetic analytics configuration. Only the optional-analytics test opts
+    // in, and it intercepts every PostHog request before it leaves the browser.
+    // Never inherit a developer's real analytics project configuration.
+    NEXT_PUBLIC_POSTHOG_ENABLED: "1",
+    NEXT_PUBLIC_POSTHOG_TOKEN: "phc_syntheticE2EOnly0001",
+    NEXT_PUBLIC_POSTHOG_HOST: "https://eu.i.posthog.com",
     // Explicit local-only email configuration prevents Next.js from inheriting
     // SMTP settings from a developer's private configuration file. Mailpit never
     // forwards the fixture messages to an external recipient.
