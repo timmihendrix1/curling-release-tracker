@@ -27,6 +27,17 @@ mandatory-gate and account-switching experience **must not be enabled for real u
 the new product behaviour until B0.3's Profile isolation and one-time disposal are implemented and
 independently reviewed.** **B0.2 is never independently release-ready.**
 
+**Bounded Apple review addition (2026-10-30).** The owner-approved exception in
+`../APPLE_REVIEW_ACCESS.md` adds the native iPhone/TestFlight-only `review_password`
+method to the same
+barrier/attempt/resolution protocol. It is a single same-page deliberate operation
+with no callback selector, no durable credential and no authority from a provider
+sign-in event alone. Existing Profile/legal/account/onboarding/admission rules apply.
+Its native password grant runs only through the original bound SDK/credential
+owner; the Web path rejects it before SDK invocation or a review transition. It grants no installation transfer or fresh-email-OTP proof. General user
+password support remains deferred; UI, hosted activation and release are separate
+gates. The detailed original Google and email-OTP protocols below remain unchanged.
+
 ## Context
 
 ### Implementation reality when this decision was written (historical)

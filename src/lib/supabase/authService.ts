@@ -29,6 +29,7 @@ export type NormalizedAuthErrorKind =
   | "invalid_input"
   | "request_failed"
   | "verification_failed"
+  | "review_sign_in_failed"
   | "session_restore_failed"
   | "sign_out_failed"
   | "invalid_configuration"
@@ -63,6 +64,7 @@ const FRIENDLY_MESSAGE: Record<NormalizedAuthErrorKind, string> = {
   invalid_input: "That doesn't look right — check the value and try again.",
   request_failed: "We couldn't send the code. Please try again.",
   verification_failed: "That code didn't work. Check it and try again.",
+  review_sign_in_failed: "Review sign-in could not be completed. Check the credentials and try again.",
   session_restore_failed: "We couldn't restore your sign-in. Please sign in again.",
   sign_out_failed: "Sign-out didn't complete. Please try again.",
   invalid_configuration: "Cloud sign-in isn't configured correctly.",
@@ -208,6 +210,8 @@ export interface AuthService {
   onAuthChange(listener: (change: NormalizedAuthChange) => void): () => void;
   requestEmailOtp(email: string): Promise<AuthServiceResult<void>>;
   verifyEmailOtp(email: string, token: string): Promise<AuthServiceResult<AccountIdentity>>;
+  /** Native iPhone review-only operation. Server policy authorizes the account. */
+  signInForReview(email: string, password: string): Promise<AuthServiceResult<AccountIdentity>>;
   signOut(): Promise<AuthServiceResult<void>>;
 }
 
@@ -218,6 +222,8 @@ export interface AuthService {
  * (supabaseAuthService.ts) and exactly one classification path behind it.
  */
 export interface AuthProviderMechanics extends AuthService {
+  /** Availability derived by the provider owner, never a caller-supplied enable flag. */
+  canSignInForReview(): boolean;
   /**
    * Obtains the provider authorization URL and its non-secret flow selector
    * **without navigating** and **without establishing any application

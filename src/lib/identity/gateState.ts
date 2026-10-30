@@ -380,6 +380,7 @@ export type GateProgressPhase =
   | "navigating_to_provider"
   | "requesting_otp"
   | "verifying_otp"
+  | "signing_in_for_review"
   | "refreshing_legal_snapshot"
   | "submitting_onboarding"
   | "signing_out"
@@ -545,6 +546,7 @@ const DELIBERATE_TRANSITION_PHASES: ReadonlySet<GateProgressPhase> = new Set<Gat
   "navigating_to_provider",
   "requesting_otp",
   "verifying_otp",
+  "signing_in_for_review",
   "signing_out",
 ]);
 
@@ -726,6 +728,8 @@ function stateForPhase(phase: GateProgressPhase): GateStateView {
       return { kind: "requesting_otp" };
     case "verifying_otp":
       return { kind: "verifying_otp" };
+    case "signing_in_for_review":
+      return { kind: "finalizing_identity" };
     case "refreshing_legal_snapshot":
       return { kind: "refreshing_legal_snapshot" };
     case "submitting_onboarding":

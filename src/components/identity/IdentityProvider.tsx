@@ -48,6 +48,9 @@ export type IdentityContextValue = {
   startGoogleSignIn(): Promise<void>;
   requestEmailOtp(email: string): Promise<void>;
   verifyEmailOtp(token: string): Promise<void>;
+  /** Optional for isolated leaves; absence always hides the review entry. */
+  canSignInForReview?(): boolean;
+  signInForReview(email: string, password: string): Promise<void>;
   submitOnboarding(input: {
     displayName: string;
     termsAccepted: boolean;
@@ -389,6 +392,10 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
       session,
       pendingIntent,
       emailForOtp,
+      canSignInForReview() {
+        if (!coordinator || !nativeFacadeCurrent()) return false;
+        try { return coordinator.canSignInForReview() === true; } catch { return false; }
+      },
       beginAccountDeletion() {
         if (!nativeFacadeCurrent()) return;
         const current = readySession(stateRef.current);
@@ -502,6 +509,12 @@ export default function IdentityProvider({ children, runtime: injectedRuntime, a
       async verifyEmailOtp(token: string) {
         if (coordinator === null || emailForOtp.length === 0) return;
         const outcome = await coordinator.verifyEmailOtp(emailForOtp, token);
+        commit({ type: "transition_settled", outcome });
+      },
+      async signInForReview(email: string, password: string) {
+        if (coordinator === null) return;
+        const outcome = await coordinator.signInForReview(email, password);
+        if (outcome.kind === "review_unavailable") return;
         commit({ type: "transition_settled", outcome });
       },
       async submitOnboarding(input) {

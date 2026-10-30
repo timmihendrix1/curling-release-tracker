@@ -1,10 +1,11 @@
+import { isolatedEnvironment } from "./isolated-environment";
 import { chromium, type FullConfig } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export const E2E_AUTH_STATE_PATH = join(process.cwd(), "test-results", ".auth", "athlete.json");
 export const E2E_TEST_EMAIL = "playwright-athlete@example.invalid";
-const MAILPIT_API = "http://127.0.0.1:54324/api/v1";
+const MAILPIT_API = `${isolatedEnvironment().mailOrigin}/api/v1`;
 
 type MailpitMessage = {
   ID?: unknown;
@@ -58,7 +59,7 @@ export default async function globalSetup(config: FullConfig) {
   const baseURL = config.projects[0]?.use.baseURL;
   if (typeof baseURL !== "string") throw new Error("Playwright baseURL is required for identity setup.");
 
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.CURLING_E2E_BROWSER });
   try {
     const page = await browser.newPage();
     if (process.env.NEXT_PUBLIC_POSTHOG_CH_BETA === "1") {
@@ -77,8 +78,8 @@ export default async function globalSetup(config: FullConfig) {
     await page.getByLabel("6-digit code").fill(otp);
     await page.getByRole("button", { name: "Verify code" }).click();
 
-    // A fresh local reset reaches onboarding; a focused rerun against the same
-    // local database may find the already-completed fixture Profile. Both paths
+    // A fresh disposable stack reaches onboarding; a repeated setup within the
+    // same owned run may find the already-completed fixture Profile. Both paths
     // use the real gate and produce the same authenticated storage state.
     const destination = await Promise.race([
       page.getByLabel("Display Name").waitFor().then(() => "onboarding" as const),

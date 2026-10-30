@@ -117,7 +117,7 @@ export function createIdentityBarrierResolution(input: {
  * throws, for any input. No prior-schema branch, alias or repair exists.
  *
  * The `method`/`flowId` pairing is enforced here exactly as it is on the attempt:
- * a `google` resolution must carry a well-formed selector, and an `email_otp`
+ * a `google` resolution must carry a well-formed selector, and an `email_otp` or `review_password`
  * resolution must carry `null`.
  */
 export function validateIdentityBarrierResolution(raw: unknown): IdentityBarrierResolution | null {
@@ -139,10 +139,10 @@ export function validateIdentityBarrierResolution(raw: unknown): IdentityBarrier
     const validated = readUntrustedOpaqueId(raw, "flowId", MAX_FLOW_ID_LENGTH);
     if (validated === null) return null;
     flowId = validated;
-  } else {
+  } else if (method === "email_otp" || method === "review_password") {
     if (rawFlowId !== null) return null;
     flowId = null;
-  }
+  } else { return null; }
 
   const identityGeneration = readUntrustedNonNegativeInteger(raw, "identityGeneration");
   if (identityGeneration === null) return null;

@@ -8,11 +8,11 @@
 //
 // TWO INVARIANTS ARE STRUCTURAL, NOT CONVENTIONAL:
 //
-//  1. **`barrierId` is never null.** The type declares `string`, the two
+//  1. **`barrierId` is never null.** The type declares `string`, the method-specific
 //     constructors both require it, and the validator rejects a record without a
 //     canonical UUID there. An attempt that is not bound to an exact barrier
 //     could resolve the wrong one.
-//  2. **`flowId` is required for `google` and null for `email_otp`.** Rather than
+//  2. **`flowId` is required for `google` and null for `email_otp` and `review_password`.** Rather than
 //     relying on a caller to remember that, there is one constructor per method:
 //     `createGoogleAttempt` cannot be called without a `flowId`, and
 //     `createEmailOtpAttempt` has no `flowId` parameter at all. The validator
@@ -48,9 +48,9 @@ export const INTERACTIVE_ATTEMPT_SCHEMA_VERSION = 1 as const;
 
 export const INTERACTIVE_ATTEMPT_STORAGE_KEY = "curling.identity.interactiveAttempt.v1";
 
-export type InteractiveAuthMethod = "google" | "email_otp";
+export type InteractiveAuthMethod = "google" | "email_otp" | "review_password";
 
-export const INTERACTIVE_AUTH_METHODS: readonly InteractiveAuthMethod[] = ["google", "email_otp"];
+export const INTERACTIVE_AUTH_METHODS: readonly InteractiveAuthMethod[] = ["google", "email_otp", "review_password"];
 
 /** The SDK's flow selector is an opaque token; this bound only rejects absurd
  * values. Matches the selector length ceiling the callback classifier already
@@ -62,7 +62,7 @@ export type InteractiveAuthAttempt = {
   /** A canonical UUID. */
   attemptId: string;
   method: InteractiveAuthMethod;
-  /** Non-null for `google`, null for `email_otp` — enforced by the constructors
+  /** Non-null for `google`, null for `email_otp` and `review_password` — enforced by the constructors
    * below and re-enforced by the validator. */
   flowId: string | null;
   /** **Never null.** The exact barrier this attempt may resolve. */
@@ -119,6 +119,15 @@ export function createEmailOtpAttempt(input: {
   };
 }
 
+/** Password review is a distinct, same-page operation; credentials never enter this record. */
+export function createReviewPasswordAttempt(input: {
+  attemptId: string; barrierId: string; capturedIdentityGeneration: number; startedAt: string;
+}): InteractiveAuthAttempt {
+  return { schemaVersion: INTERACTIVE_ATTEMPT_SCHEMA_VERSION, attemptId: input.attemptId,
+    barrierId: input.barrierId, capturedIdentityGeneration: input.capturedIdentityGeneration,
+    startedAt: input.startedAt, method: "review_password", flowId: null };
+}
+
 /**
  * Validates an untrusted stored value into an attempt, or returns `null`. Never
  * throws, for any input, including a hostile `Proxy` or a throwing getter.
@@ -126,7 +135,7 @@ export function createEmailOtpAttempt(input: {
  * Rejects — with no repair and no prior-schema branch — a wrong
  * `schemaVersion`, a non-UUID `attemptId` or `barrierId`, a **missing or null
  * `barrierId`**, an unknown `method`, a `google` record whose `flowId` is null or
- * malformed, an `email_otp` record whose `flowId` is anything but `null`, a
+ * malformed, an `email_otp` or `review_password` record whose `flowId` is anything but `null`, a
  * non-integer generation, and an unparseable `startedAt`.
  */
 export function validateInteractiveAuthAttempt(raw: unknown): InteractiveAuthAttempt | null {
@@ -150,10 +159,10 @@ export function validateInteractiveAuthAttempt(raw: unknown): InteractiveAuthAtt
     const validated = readUntrustedOpaqueId(raw, "flowId", MAX_FLOW_ID_LENGTH);
     if (validated === null) return null;
     flowId = validated;
-  } else {
+  } else if (method === "email_otp" || method === "review_password") {
     if (rawFlowId !== null) return null;
     flowId = null;
-  }
+  } else { return null; }
 
   const capturedIdentityGeneration = readUntrustedNonNegativeInteger(
     raw,

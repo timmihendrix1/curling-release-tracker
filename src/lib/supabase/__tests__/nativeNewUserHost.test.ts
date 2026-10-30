@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, it, vi } from "vitest";
-import { fixture, onboard, profileId, server, deferred, facts } from "./nativeTrackerFixture";
+import { fixture, onboard, profileId, server, deferred, facts, response } from "./nativeTrackerFixture";
 import { createNewSession } from "../../sessionMigration";
 import { NEW_USER_CREDENTIAL_CONTRACT, parseQ, parseM } from "../../persistence/credentialProtocol";
 import { isPlatformCredentialFingerprint } from "../../persistence/platformCredentialFingerprint";
@@ -268,4 +268,146 @@ it("the existing installation-transfer parser rejects the new tag with its defau
     const raw = await h.raw({ kind: "query", sql: "SELECT value FROM curling_credential_meta WHERE slot='q'" }) as { values: { value: string }[] };
     const transfer = await import("../../persistence/installationTransferPairProtocol"); expect(transfer.transferIntentQ(raw.values[0].value)).toBeNull();
   } finally { await host.dispose(); }
+});
+
+it("uses the real new-user host, installed password SDK and normal Profile admission without import",async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  try {
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    const runtime=opened.runtime;expect((await runtime.startUpOnce()).verdict.kind).toBe("signed_out");
+    const before=h.fetch.mock.calls.length;
+    const result=await runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");
+    expect(result).toMatchObject({kind:"resolved",gate:{kind:"ready_online"}});
+    const calls=h.fetch.mock.calls.slice(before).map(([input])=>new URL((input as Request).url));
+    expect(calls.filter(url=>url.pathname.endsWith("/token")&&url.searchParams.get("grant_type")==="password")).toHaveLength(1);
+    const scope=runtime.createLocalSportingScope(profileId);expect(scope).not.toBeNull();
+    const training=createNewSession();expect(await scope!.repositories.session.saveCurrent(training)).toEqual({ok:true});
+    expect(h.source.writes).toEqual([]);expect(h.source.map.size).toBe(0);
+    expect([...h.values.values()].join()).not.toContain("SYNTHETIC_REVIEW_INPUT");
+  }finally{await host.dispose();}
+});
+
+it("keeps review-password onboarding ordinary and restores only the existing tagged session",async()=>{
+  const h=await fixture(),host=await make(h);server(h,false);
+  try {
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    const runtime=opened.runtime;await runtime.startUpOnce();
+    const signed=await runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");
+    expect(signed).toMatchObject({kind:"resolved",gate:{kind:"onboarding_required"}});
+    expect(runtime.createLocalSportingScope(profileId)).toBeNull();
+    if(signed.kind!=="resolved"||signed.gate.kind!=="onboarding_required"||!signed.gate.legal.terms||!signed.gate.legal.privacy)throw Error("Synthetic legal snapshot unavailable");
+    expect(await runtime.coordinator.submitOnboarding({displayName:"Synthetic reviewer",terms:signed.gate.legal.terms,privacy:signed.gate.legal.privacy})).toMatchObject({kind:"completed",gate:{kind:"ready_online"}});
+    expect(runtime.createLocalSportingScope(profileId)).not.toBeNull();
+  }finally{await host.dispose();}
+  vi.resetModules();h.module=await import("../supabaseAuthService");server(h,true);h.fetch.mockClear();
+  const next=await make(h);
+  try{
+    const opened=await next.start();if(opened.outcome!=="ready")throw Error("Synthetic native restart unavailable");
+    expect((await opened.runtime.startUpOnce()).verdict.kind).toBe("ready_online");
+    expect(h.fetch.mock.calls.map(([input])=>new URL((input as Request).url)).some(url=>url.searchParams.get("grant_type")==="password")).toBe(false);
+  }finally{await next.dispose();}
+});
+it("native bound password command cannot admit after a newer sign-out",async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    const runtime=opened.runtime;await runtime.startUpOnce();const actual=h.fetch.getMockImplementation()!,entered=deferred<void>(),released=deferred<void>();
+    h.fetch.mockImplementation(async(...args)=>{const url=new URL((args[0]as Request).url);if(url.searchParams.get("grant_type")==="password"){entered.resolve();await released.promise;}return actual(...args);});
+    const old=runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");await entered.promise;
+    const newer=runtime.coordinator.signOut();released.resolve();
+    expect((await old).kind).not.toBe("resolved");expect((await newer).kind).toBe("signed_out_locked");expect(runtime.createLocalSportingScope(profileId)).toBeNull();
+  }finally{await host.dispose();}
+});
+for(const mode of ["denied","rpc_failure","pending_deletion"]as const)it(`native password result cannot bypass ${mode}`,async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  const actual=h.fetch.getMockImplementation()!;
+  h.fetch.mockImplementation(async(...args)=>{
+    const path=new URL((args[0]as Request).url).pathname;
+    if(path.endsWith("/get_my_gate_state")){
+      if(mode==="denied")return new Response(JSON.stringify({message:"forbidden: Synthetic denied"}),{status:403,headers:{"Content-Type":"application/json"}});
+      if(mode==="rpc_failure")throw Error("Synthetic unavailable");
+      return new Response(JSON.stringify({...facts(false),profile_id:null,display_name:null}),{headers:{"Content-Type":"application/json"}});
+    }
+    return actual(...args);
+  });
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    await opened.runtime.startUpOnce();const result=await opened.runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");
+    expect(result).not.toMatchObject({gate:{kind:"ready_online"}});expect(opened.runtime.createLocalSportingScope(profileId)).toBeNull();
+  }finally{await host.dispose();}
+});
+
+for(const mode of ["no_session","malformed_user","hook_denial","rate_limit","network"]as const)it(`original new-user SDK contains password failure: ${mode}`,async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    const runtime=opened.runtime;await runtime.startUpOnce();const actual=h.fetch.getMockImplementation()!;
+    let issued=false;
+    h.fetch.mockImplementation(async(...args)=>{
+      const url=new URL((args[0]as Request).url);
+      if(url.searchParams.get("grant_type")!=="password")return actual(...args);
+      issued=true;
+      if(mode==="network")throw Error("SYNTHETIC_PRIVATE");
+      if(mode==="hook_denial"||mode==="rate_limit")return response({code:"invalid_credentials",message:"SYNTHETIC_PRIVATE"},mode==="rate_limit"?429:403);
+      if(mode==="no_session")return response({});
+      const normal=await actual(...args);return response({...await normal.json(),user:{}});
+    });
+    const result=await runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");
+    expect(issued).toBe(true);expect(result.kind).not.toBe("resolved");expect(runtime.createLocalSportingScope(profileId)).toBeNull();
+    expect(JSON.stringify(result)).not.toMatch(/SYNTHETIC|invalid_credentials/);
+  }finally{await host.dispose();}
+});
+it("actual new-user credential-write failure prevents signed-in publication and admission",async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    const runtime=opened.runtime;await runtime.startUpOnce();const observed=vi.fn();runtime.subscribeToAuthChanges(observed);
+    let refused=false;
+    h.faults.hook=async(event,next)=>{if(event.kind==="write"){refused=true;throw null;}return next();};
+    expect((await runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT")).kind).not.toBe("resolved");
+    expect(refused).toBe(true);expect(host.health().storageFailed).toBe(true);expect(observed.mock.calls.some(([event])=>event.reason==="signed_in")).toBe(false);
+    expect(runtime.createLocalSportingScope(profileId)).toBeNull();
+  }finally{await host.dispose();}
+});
+it("actual new-user password command remains owned through disposal and late completion",async()=>{
+  const h=await fixture(),host=await make(h);server(h,true);
+  const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+  const runtime=opened.runtime;await runtime.startUpOnce();const actual=h.fetch.getMockImplementation()!,entered=deferred<void>(),released=deferred<void>(),observed=vi.fn();runtime.subscribeToAuthChanges(observed);
+  h.fetch.mockImplementation(async(...args)=>{if(new URL((args[0]as Request).url).searchParams.get("grant_type")==="password"){entered.resolve();await released.promise;}return actual(...args);});
+  const pending=runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT");await entered.promise;
+  const disposing=host.dispose();let closed=false;void disposing.then(()=>{closed=true;});await Promise.resolve();expect(closed).toBe(false);
+  released.resolve();expect((await pending).kind).not.toBe("resolved");await disposing;
+  expect(observed.mock.calls.some(([event])=>event.reason==="signed_in")).toBe(false);
+});
+it("denied actual new-user password request preserves existing OTP credentials",async()=>{
+  const h=await fixture(),host=await make(h);
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");
+    await onboard(h,opened.runtime);const previous=h.rawRoot(),actual=h.fetch.getMockImplementation()!;
+    h.fetch.mockImplementation(async(...args)=>new URL((args[0]as Request).url).searchParams.get("grant_type")==="password"?response({code:"invalid_credentials",message:"SYNTHETIC_PRIVATE"},403):actual(...args));
+    expect((await opened.runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT")).kind).not.toBe("resolved");
+    expect(h.rawRoot()).toBe(previous);expect(host.health().storageFailed).toBe(false);
+  }finally{await host.dispose();}
+});
+for(const rewrite of ["origin","grant","extra_query","route","other_command"]as const)it(`actual new-user password transport denies ${rewrite} before SEND`,async()=>{
+  const h=await fixture(),RealRequest=globalThis.Request;
+  vi.stubGlobal("Request",class extends RealRequest{constructor(input:RequestInfo|URL,init?:RequestInit){
+    const url=new URL(typeof input==="string"?input:input instanceof URL?input.href:input.url);
+    if(url.pathname.endsWith("/token")){
+      if(rewrite==="origin")url.hostname="other.example.invalid";
+      if(rewrite==="grant")url.searchParams.set("grant_type","client_credentials");
+      if(rewrite==="extra_query")url.searchParams.set("other","1");
+      if(rewrite==="route")url.pathname="/other/token";
+    }
+    if(rewrite==="other_command"&&url.pathname.endsWith("/otp")){url.pathname="/auth/v1/token";url.search="?grant_type=password";}
+    super(url,init);
+  }});
+  const host=await make(h);server(h,true);
+  try{
+    const opened=await host.start();if(opened.outcome!=="ready")throw Error("Synthetic native startup unavailable");await opened.runtime.startUpOnce();
+    const before=h.fetch.mock.calls.length;
+    if(rewrite==="other_command")expect((await opened.runtime.coordinator.requestEmailOtp("synthetic@example.invalid")).kind).not.toBe("otp_requested");
+    else expect((await opened.runtime.coordinator.signInForReview("synthetic@example.invalid","SYNTHETIC_REVIEW_INPUT")).kind).not.toBe("resolved");
+    expect(h.fetch).toHaveBeenCalledTimes(before);
+  }finally{await host.dispose();}
 });

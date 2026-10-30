@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import { isolatedEnvironment } from "./tests/e2e/isolated-environment";
 import { E2E_AUTH_STATE_PATH } from "./tests/e2e/global-setup";
+
+const isolated = isolatedEnvironment();
+const browserPath = process.env.CURLING_E2E_BROWSER;
+if (browserPath !== "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser") throw new Error("Expected installed isolated browser.");
 
 // Formal Playwright config, replacing the ad hoc chromium.launch() scripts used for
 // verification in earlier feature passes (see docs/TECHNICAL_DEBT_AND_ROADMAP.md).
@@ -24,8 +29,11 @@ export default defineConfig({
   reporter: "list",
   globalSetup: "./tests/e2e/global-setup.ts",
   use: {
-    baseURL: "http://localhost:3100",
-    trace: "retain-on-failure",
+    baseURL: isolated.appOrigin,
+    trace: "off",
+    video: "off",
+    screenshot: "off",
+    launchOptions: { executablePath: browserPath },
     storageState: E2E_AUTH_STATE_PATH,
   },
   projects: [
@@ -35,12 +43,12 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev -- -p 3100",
-    url: "http://localhost:3100",
+    command: `npm run dev -- --webpack --hostname 127.0.0.1 --port ${new URL(isolated.appOrigin).port}`,
+    url: isolated.appOrigin,
     // The E2E runner injects the local browser-public Supabase values into this
     // process. Reusing an older dev server could silently retain another build's
     // environment and make the gate test something else.
     reuseExistingServer: false,
-    timeout: 60_000,
+    timeout: 180_000,
   },
 });

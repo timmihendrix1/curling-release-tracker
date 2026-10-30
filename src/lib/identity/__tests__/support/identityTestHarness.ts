@@ -306,6 +306,7 @@ export type FakeAuthState = {
   exchange: ExchangeOutcome;
   otpRequest: AuthServiceResult<void>;
   otpVerify: AuthServiceResult<AccountIdentity>;
+  reviewSignIn: AuthServiceResult<AccountIdentity>;
   signOut: AuthServiceResult<void>;
 };
 
@@ -316,6 +317,7 @@ export type FakeAuthCounts = {
   exchange: number;
   otpRequest: number;
   otpVerify: number;
+  reviewSignIn: number;
   signOut: number;
 };
 
@@ -342,6 +344,7 @@ export function createFakeAuth(log?: string[], flowId: string = FLOW_X): FakeAut
     exchange: { kind: "exchanged", identity: IDENTITY_A },
     otpRequest: authOk(undefined),
     otpVerify: authOk(IDENTITY_A),
+    reviewSignIn: authFailed(normalizedAuthError("review_sign_in_failed")),
     signOut: authOk(undefined),
   };
   const counts: FakeAuthCounts = {
@@ -351,6 +354,7 @@ export function createFakeAuth(log?: string[], flowId: string = FLOW_X): FakeAut
     exchange: 0,
     otpRequest: 0,
     otpVerify: 0,
+    reviewSignIn: 0,
     signOut: 0,
   };
   const exchangeSelectors: string[] = [];
@@ -361,6 +365,7 @@ export function createFakeAuth(log?: string[], flowId: string = FLOW_X): FakeAut
   }
 
   const auth: AuthProviderMechanics = {
+    canSignInForReview: () => false,
     async restoreSession(): Promise<SessionRestoreOutcome> {
       counts.restore += 1;
       record("restoreSession");
@@ -382,6 +387,11 @@ export function createFakeAuth(log?: string[], flowId: string = FLOW_X): FakeAut
       counts.otpVerify += 1;
       record("verifyEmailOtp");
       return state.otpVerify;
+    },
+    async signInForReview(): Promise<AuthServiceResult<AccountIdentity>> {
+      counts.reviewSignIn += 1;
+      record("signInForReview");
+      return state.reviewSignIn;
     },
     async signOut(): Promise<AuthServiceResult<void>> {
       counts.signOut += 1;

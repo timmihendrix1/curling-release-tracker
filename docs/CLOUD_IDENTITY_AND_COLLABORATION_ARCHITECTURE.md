@@ -459,8 +459,11 @@ device and is refreshed automatically. A new code or re-authentication is normal
 required only after explicit logout, on a new device or browser profile, after local
 browser data has been cleared, or when the session can no longer be refreshed securely.
 
-Magic links, passwords, Apple sign-in and additional providers remain deferred unless a
-later platform requirement changes that decision. The authentication method must not
+Magic links, general user passwords, Apple sign-in and additional providers remain deferred.
+The owner-approved native iPhone/TestFlight-only Apple review exception permits password sessions for exactly one
+administratively selected Auth UUID; see `APPLE_REVIEW_ACCESS.md` for its server policy,
+staged implementation and separate activation gates. Normal iOS OTP and Web OTP/Google
+remain unchanged. The authentication method must not
 require the athlete to sign in whenever the app is opened.
 
 **Current user-visible implementation:** the mandatory application-level gate exposes
@@ -1285,7 +1288,8 @@ needed to interpret assignments.
   placeholder may never access the app, be selected as a Session participant, or own newly
   recorded performance results.
 - Minor accounts and guardian workflows before a specific policy is accepted.
-- Magic links, passwords, Apple sign-in and additional identity providers.
+- Magic links, general user passwords, Apple sign-in and additional identity providers.
+  The native iPhone/TestFlight-only single-account Apple review exception is scoped in `APPLE_REVIEW_ACCESS.md`.
 - Continuing an in-progress Session on a second device, concurrent multi-device editing of
   one record, and transferring an unsynced Session to another recorder device.
 - A fixed expiry period for a device's trusted offline Profile state.
@@ -1308,8 +1312,10 @@ Accepted decisions:
 
 1. **Initial login methods (corrected 2026-08-24):** the closed-test sign-in methods are
    a six-digit email one-time code **and Google sign-in**, with the authenticated session
-   persisted on the device. Magic links, passwords, Apple sign-in and additional providers
-   are deferred. **Signing in is required, not optional** — see §5.3.
+   persisted on the device. Magic links, general user passwords, Apple sign-in and
+   additional providers are deferred. The separately approved native iPhone/TestFlight-only single-account Apple
+   review password exception is governed by `APPLE_REVIEW_ACCESS.md` and does not
+   replace either existing provider. **Signing in is required, not optional** — see §5.3.
 2. **Legacy local data (replaces the former "local import confirmation" decision,
    2026-08-24):** the existing unscoped local data is disposable early-test data. There is
    **no import, claim, adoption or merge flow**; Stage B0.3 discards it once, explicitly.

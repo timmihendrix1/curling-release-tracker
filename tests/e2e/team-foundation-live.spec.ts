@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
+import { isolatedEnvironment, ownedDatabaseSql } from "./isolated-environment";
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { readLatestOtp } from "./global-setup";
 import { primaryNav } from "./utils";
 
-// All accounts, grants and mail are confined to the resettable CLI test stack.
+// All accounts, grants and mail are confined to the positively owned disposable test stack.
 // This exercises the mounted UI, PostgREST, Route Handler and real SMTP together.
 async function signIn(page: Page, email: string, name: string, path = "/") {
   await page.goto(path);
@@ -29,29 +29,26 @@ async function openTeams(page: Page) {
 
 function grantLocalPilotCreation(email: string) {
   if (!/^[a-z0-9-]+@example\.invalid$/.test(email)) throw new Error("Invalid local test account.");
-  execFileSync("docker", ["exec", "-i", "supabase_db_curling-release-mvp",
-    "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q"], {
-    input: `insert into public.pilot_team_creation_grants (profile_id)
+  ownedDatabaseSql(`insert into public.pilot_team_creation_grants (profile_id)
       select l.profile_id from public.account_profile_links l
       join auth.users u on u.id = l.account_id where u.email = '${email}'
-      on conflict do nothing;`,
-    stdio: ["pipe", "pipe", "pipe"],
-  });
+      on conflict do nothing;`);
 }
 
 async function invitationPath(email: string): Promise<string> {
   let path: string | null = null;
   await expect.poll(async () => {
-    const response = await fetch("http://127.0.0.1:54324/api/v1/messages");
+    const response = await fetch(`${isolatedEnvironment().mailOrigin}/api/v1/messages`);
     const data = await response.json();
     for (const message of data.messages ?? []) {
       if (!message.To?.some((recipient: { Address: string }) => recipient.Address === email)
         || !message.Subject?.startsWith("Invitation to join ")) continue;
-      const detail = await fetch(`http://127.0.0.1:54324/api/v1/message/${encodeURIComponent(message.ID)}`);
+      const detail = await fetch(`${isolatedEnvironment().mailOrigin}/api/v1/message/${encodeURIComponent(message.ID)}`);
       const mail = await detail.json();
-      const match = typeof mail.Text === "string" ? mail.Text.match(/http:\/\/localhost:3100\/\?inviteToken=[^\s<>"']+/) : null;
+      const match = typeof mail.Text === "string" ? mail.Text.match(/http:\/\/127\.0\.0\.1:[0-9]+\/\?inviteToken=[^\s<>"']+/) : null;
       if (match) {
         const url = new URL(match[0]);
+        if (url.origin !== isolatedEnvironment().appOrigin) throw new Error("Unexpected invitation origin.");
         path = `${url.pathname}${url.search}`;
       }
     }

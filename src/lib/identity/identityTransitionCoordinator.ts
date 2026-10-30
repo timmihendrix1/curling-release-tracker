@@ -100,6 +100,7 @@ import {
 } from "./identityService";
 import {
   createEmailOtpAttempt,
+  createReviewPasswordAttempt,
   createGoogleAttempt,
   validateInteractiveAuthAttempt,
   type InteractiveAuthAttempt,
@@ -245,6 +246,8 @@ export type InteractiveCompletionOutcome = Extract<
 > &
   TransitionAnnotation;
 
+export type ReviewSignInOutcome = InteractiveCompletionOutcome | Extract<GoogleStartOutcome, { kind: "barrier_not_established" | "attempt_not_persisted" }> | { kind: "review_unavailable" };
+
 export type SignOutOutcome = Extract<
   Outcome,
   {
@@ -330,6 +333,9 @@ export interface IdentityTransitionCoordinator {
   startGoogleSignIn(): Promise<GoogleStartOutcome>;
   requestEmailOtp(email: string): Promise<OtpRequestOutcome>;
   verifyEmailOtp(email: string, token: string): Promise<InteractiveCompletionOutcome>;
+  /** Presentation observation only; the action rechecks private host authority. */
+  canSignInForReview(): boolean;
+  signInForReview(email: string, password: string): Promise<ReviewSignInOutcome>;
   submitOnboarding(input: CompleteOnboardingInput): Promise<OnboardingSubmissionOutcome>;
   refreshLegalSnapshot(): Promise<LegalRefreshOutcome>;
   /** ADR-0025 §15's retry: revalidates the server-authoritative gate facts BEFORE
@@ -746,6 +752,9 @@ function containAuth(auth: AuthProviderMechanics): AuthProviderMechanics {
     authFailed<T>(normalizedAuthError("unexpected_error"));
 
   return {
+    canSignInForReview() {
+      try { return auth.canSignInForReview() === true; } catch { return false; }
+    },
     async restoreSession(): Promise<SessionRestoreOutcome> {
       try {
         const outcome = await auth.restoreSession();
@@ -798,6 +807,16 @@ function containAuth(auth: AuthProviderMechanics): AuthProviderMechanics {
       } catch {
         return failedResult<AccountIdentity>();
       }
+    },
+    async signInForReview(email: string, password: string): Promise<AuthServiceResult<AccountIdentity>> {
+      try {
+        const result = await auth.signInForReview(email, password);
+        if (readUntrustedProperty(result, "ok") === true) {
+          const identity = snapshotAccountIdentity(readUntrustedProperty(result, "value"));
+          return identity === null ? failedResult<AccountIdentity>() : { ok: true, value: identity };
+        }
+        return snapshotAuthFailure<AccountIdentity>(result);
+      } catch { return failedResult<AccountIdentity>(); }
     },
     async signOut(): Promise<AuthServiceResult<void>> {
       try {
@@ -865,6 +884,7 @@ const NORMALIZED_AUTH_ERROR_KINDS = new Set<NormalizedAuthErrorKind>([
   "invalid_input",
   "request_failed",
   "verification_failed",
+  "review_sign_in_failed",
   "session_restore_failed",
   "sign_out_failed",
   "invalid_configuration",
@@ -3080,6 +3100,7 @@ export function createIdentityTransitionCoordinator(
   // -----------------------------------------------------------------------
 
   return {
+    canSignInForReview() { return !!native && !freshOnlineRequired && auth.canSignInForReview(); },
     async startUp(): Promise<StartupOutcome> {
       const startup = beginTransition();
       native?.ownStartup(() => nativeCurrent(startup));
@@ -3363,6 +3384,45 @@ export function createIdentityTransitionCoordinator(
           barrier: Object.freeze({ ...c6.barrier }), attempt: Object.freeze({ ...c6.attempt }), resolution: Object.freeze({ ...persisted.resolution }) });
       }
       return completed;
+    },
+
+    async signInForReview(email: string, password: string): Promise<ReviewSignInOutcome> {
+      // Unsupported review access must not supersede legitimate Web OTP/Google,
+      // change its gate, or establish a durable review attempt. Only the existing
+      // native owner's derived availability can enter this transition.
+      if (!native || freshOnlineRequired || !auth.canSignInForReview()) return { kind: "review_unavailable" };
+      let context = beginTransition();
+      progress("establishing_identity_barrier", context);
+      const established = await establishBarrier(context, { origin: "deliberate_authentication" });
+      if (!established.ok) return annotate({ kind: established.superseded ? "superseded" : "barrier_not_established" }, context);
+      const barrierId = established.barrier.barrierId;
+      const epoch = liveGeneration.current();
+      context = { ...context, epoch, barrierId };
+      const attempt = createReviewPasswordAttempt({ attemptId: newId(), barrierId,
+        capturedIdentityGeneration: epoch, startedAt: now() });
+      const written = await persistAttemptSection(context, attempt);
+      if (written !== "written") return annotate({ kind: written === "superseded" ? "superseded" : "attempt_not_persisted" }, context);
+      context = { ...context, attemptId: attempt.attemptId };
+      const before = await proveCheckpoint(context, { barrierId, attemptId: attempt.attemptId, generation: epoch });
+      if (!before.ok) return annotate({ kind: "superseded" }, context);
+      progress("signing_in_for_review", context);
+      const verified = await operationAuth(context).signInForReview(email, password);
+      if (!verified.ok) return annotate(completionFailureFor(verified.error), context);
+      // The SDK may already have persisted a session and emitted SIGNED_IN.
+      // Only this exact operation's post-provider durable proof can admit it.
+      const after = await proveCheckpoint(context, { barrierId, attemptId: attempt.attemptId, generation: epoch });
+      if (!after.ok) return annotate({ kind: after.reason === "superseded" ? "superseded" : "correlation_changed" }, context);
+      if (after.attempt === null) return annotate({ kind: "correlation_changed" }, context);
+      progress("finalizing_identity", context);
+      const persisted = await persistResolutionAndCheck(context, { barrier: after.barrier,
+        attempt: after.attempt, identity: verified.value, generation: epoch });
+      if (persisted.kind !== "resolved") return annotate({ kind: persisted.kind }, context);
+      if (!ownsOperation(context)) return annotate({ kind: "superseded" }, context);
+      const result = await resolveAccessVerdict({ kind: "correlated", barrier: after.barrier,
+        attempt: after.attempt, resolution: persisted.resolution },
+        { kind: "authenticated", identity: verified.value }, context);
+      // No FreshEmailOtp event, transfer evidence or special Profile admission.
+      return completionOutcomeFor(verified.value, result, context);
     },
 
     async submitOnboarding(input: CompleteOnboardingInput): Promise<OnboardingSubmissionOutcome> {

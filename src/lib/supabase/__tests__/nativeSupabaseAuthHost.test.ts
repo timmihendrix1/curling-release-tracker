@@ -494,3 +494,64 @@ for (const command of ["verify", "exchange"] as const) it(`isolates immutable ${
   }
   expect(frozen).toBe(true); expect(seen).toEqual([user.id]);
 });
+
+describe("legacy native owner has no review password capability", () => {
+  const reviewInput = "SYNTHETIC_REVIEW_INPUT";
+  it("refuses review access before SDK while retaining its original owner", async () => {
+    const h=await fixture(), host=await h.made(); await host.start();
+    const observed=vi.fn();host.auth.onAuthChange(observed);
+    expect(host.auth.canSignInForReview()).toBe(false);
+    expect((await host.auth.signInForReview(user.email,reviewInput)).ok).toBe(false);
+    expect(h.fetch).not.toHaveBeenCalled();expect(h.rawRoot()).toBeNull();expect(observed).not.toHaveBeenCalled();
+    expect(await host.auth.restoreSession()).toMatchObject({kind:"no_session"});
+    expect((await h.make()).ok).toBe(false);
+  });
+  for(const mode of ["no_session","malformed_user","hook_denial","rate_limit","network"] as const)it(`refuses legacy review irrespective of configured transport: ${mode}`,async()=>{
+    const h=await fixture(),host=await h.made();await host.start();
+    h.fetch.mockImplementation(async()=>{
+      if(mode==="network")throw new Error("SYNTHETIC_PRIVATE");
+      if(mode==="hook_denial"||mode==="rate_limit")return response({code:"invalid_credentials",message:"SYNTHETIC_PRIVATE"},mode==="rate_limit"?429:403);
+      return response(mode==="no_session"?{user}: {...session(),user:{}});
+    });
+    const result=await host.auth.signInForReview(user.email,reviewInput);expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toMatch(/SYNTHETIC|invalid_credentials|password/);expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it("password rejection preserves an independent existing session",async()=>{
+    const h=await fixture("valid"),host=await h.made();await host.start();const previous=h.rawRoot();h.fetch.mockResolvedValue(denied("invalid_credentials"));
+    expect((await host.auth.signInForReview(user.email,reviewInput)).ok).toBe(false);
+    expect(h.rawRoot()).toBe(previous);expect(await host.auth.restoreSession()).toMatchObject({kind:"authenticated"});
+  });
+  it("unavailable legacy review never reaches a credential write",async()=>{
+    const h=await fixture(),host=await h.made();await host.start();const observed=vi.fn();host.auth.onAuthChange(observed);
+    h.fetch.mockImplementation(async()=>{h.faults.hook=async(event,next)=>{if(event.kind==="write"&&h.item(event)===h.root)throw null;return next();};return response(session());});
+    expect((await host.auth.signInForReview(user.email,reviewInput)).ok).toBe(false);expect(host.health().storageFailed).toBe(false);expect(observed).not.toHaveBeenCalled();expect(h.fetch).not.toHaveBeenCalled();
+  });
+  it("does not create an in-flight password command that could survive disposal",async()=>{
+    const h=await fixture(),host=await h.made();await host.start();const observed=vi.fn();host.auth.onAuthChange(observed);
+    const pending=host.auth.signInForReview(user.email,reviewInput),disposing=host.dispose();
+    expect((await pending).ok).toBe(false);expect(await disposing).toEqual({ok:true});
+    expect(observed).not.toHaveBeenCalled();expect(h.fetch).not.toHaveBeenCalled();
+  });
+  for(const rewrite of ["origin","grant","extra_query","route"] as const)it(`password transport refuses ${rewrite} without SEND`,async()=>{
+    const h=await fixture(),RealRequest=globalThis.Request;
+    vi.stubGlobal("Request",class extends RealRequest {constructor(input:RequestInfo|URL,init?:RequestInit){
+      const url=new URL(typeof input==="string"?input:input instanceof URL?input.href:input.url);
+      if(url.pathname.endsWith("/token")){
+        if(rewrite==="origin")url.hostname="other.example.invalid";
+        if(rewrite==="grant")url.searchParams.set("grant_type","client_credentials");
+        if(rewrite==="extra_query")url.searchParams.set("other","1");
+        if(rewrite==="route")url.pathname="/other/token";
+      }super(url,init);
+    }});
+    const host=await h.made();await host.start();expect((await host.auth.signInForReview(user.email,reviewInput)).ok).toBe(false);expect(h.fetch).not.toHaveBeenCalled();
+  });
+});
+
+it("does not permit a password grant from a different owned command",async()=>{
+  const h=await fixture(),RealRequest=globalThis.Request;
+  vi.stubGlobal("Request",class extends RealRequest{constructor(input:RequestInfo|URL,init?:RequestInit){
+    const url=new URL(typeof input==="string"?input:input instanceof URL?input.href:input.url);
+    if(url.pathname.endsWith("/otp")){url.pathname="/auth/v1/token";url.search="?grant_type=password";}super(url,init);
+  }});
+  const host=await h.made();await host.start();expect((await host.auth.requestEmailOtp(user.email)).ok).toBe(false);expect(h.fetch).not.toHaveBeenCalled();
+});

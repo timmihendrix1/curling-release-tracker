@@ -461,10 +461,12 @@ function coordinatorWithClaim(claim: unknown): {
 
   const coordinator = createIdentityTransitionCoordinator({
     auth: {
+      canSignInForReview: () => false,
       restoreSession: async () => ({ kind: "authenticated", identity: IDENTITY_A }),
       onAuthChange: () => () => {},
       requestEmailOtp: async () => ({ ok: true, value: undefined }),
       verifyEmailOtp: async () => ({ ok: true, value: IDENTITY_A }),
+      signInForReview: async () => ({ ok: false, error: { kind: "review_sign_in_failed", message: "Review sign-in unavailable." } }),
       signOut: async () => ({ ok: true, value: undefined }),
       prepareGoogleSignIn: async () => ({ kind: "preparation_failed" }),
       navigateToAuthorizationUrl: () => ({ kind: "navigation_failed" }),

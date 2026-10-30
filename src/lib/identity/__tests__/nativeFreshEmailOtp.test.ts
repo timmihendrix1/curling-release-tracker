@@ -253,3 +253,21 @@ it("stale transient restore leaves the newer unfinished lineage intact",async()=
  expect(await h.coordinator.submitOnboarding(input)).toMatchObject({kind:"temporarily_unavailable"});release();await old;
  expect(await h.coordinator.submitOnboarding(input)).toMatchObject({kind:"completed"});expect(h.events).toHaveLength(1);
 });
+
+it("review password never produces fresh-email proof even after normal ready admission",async()=>{
+  const h=fixture();h.fakeAuth.auth.canSignInForReview=()=>true;h.fakeAuth.state.reviewSignIn={ok:true,value:IDENTITY_A};
+  expect(await h.coordinator.signInForReview(email,"SYNTHETIC_REVIEW_INPUT")).toMatchObject({kind:"resolved",gate:{kind:"ready_online"}});
+  expect(h.events).toEqual([]);
+});
+it("transfer online-only ownership refuses review password before provider or durable writes",async()=>{
+  const h=fixture({online:true});h.fakeAuth.auth.canSignInForReview=()=>true;h.fakeAuth.state.reviewSignIn={ok:true,value:IDENTITY_A};
+  expect((await h.coordinator.signInForReview(email,"SYNTHETIC_REVIEW_INPUT")).kind).toBe("review_unavailable");
+  expect(h.fakeAuth.counts.reviewSignIn).toBe(0);expect(h.storage.store.size).toBe(0);expect(h.events).toEqual([]);
+});
+it("native close supersedes a held password result and prevents trusted admission",async()=>{
+  const h=fixture(), entered=Promise.withResolvers<void>(), result=Promise.withResolvers<{ok:true;value:typeof IDENTITY_A}>();
+  h.fakeAuth.auth.canSignInForReview=()=>true;
+  h.fakeAuth.auth.signInForReview=async()=>{entered.resolve();return result.promise;};
+  const pending=h.coordinator.signInForReview(email,"SYNTHETIC_REVIEW_INPUT");await entered.promise;h.close();result.resolve({ok:true,value:IDENTITY_A});
+  expect((await pending).kind).not.toBe("resolved");expect(h.storage.store.has(STORAGE_KEYS.trusted)).toBe(false);expect(h.events).toEqual([]);
+});

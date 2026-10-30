@@ -148,6 +148,12 @@ const CONTENT_TYPES: Record<string, string> = {
 function serve(directory: string): Promise<{ origin: string; server: Server }> {
   const server = createServer((request, response) => {
     const requested = decodeURIComponent((request.url ?? "/").split("?")[0]);
+    // Desktop browsers may request this implicitly. The native shell has no
+    // favicon, so this is not a missing bundled application resource.
+    if (requested === "/favicon.ico") {
+      response.writeHead(204).end();
+      return;
+    }
     const relative = requested === "/" ? "/index.html" : requested;
     const file = path.join(directory, path.normalize(relative));
     if (!file.startsWith(directory)) {

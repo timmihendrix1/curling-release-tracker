@@ -108,6 +108,7 @@ function runtimeHarness(
       startGoogleSignIn: vi.fn(),
       requestEmailOtp: vi.fn(),
       verifyEmailOtp: vi.fn(),
+      signInForReview: vi.fn(async () => ({ kind: "provider_error", transition: { ...TRANSITION, sequence: 2 } })),
       refreshLegalSnapshot: vi.fn(),
       retryTrustedStateEstablishment: vi.fn(),
       signOut: vi.fn(),
@@ -296,4 +297,28 @@ describe("IdentityProvider", () => {
     expect(await screen.findByText(/team link could not be kept safely/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /google/i })).not.toBeInTheDocument();
   });
+});
+
+
+it("forwards review credentials as arguments without putting them in Identity context state",async()=>{
+  const harness=runtimeHarness({kind:"ready_online",session:SESSION}), observed=vi.fn();
+  const input="SYNTHETIC_REVIEW_INPUT";
+  function Probe(){const identity=useIdentity();return <button onClick={async()=>{
+    await identity.signInForReview("review@example.invalid",input);
+    observed(JSON.stringify(identity));
+  }}>Review mechanics probe</button>;}
+  render(<IdentityProvider runtime={harness.runtime}><Probe/></IdentityProvider>);
+  await userEvent.click(await screen.findByRole("button",{name:"Review mechanics probe"}));
+  await waitFor(()=>expect(observed).toHaveBeenCalledOnce());
+  expect(harness.runtime.coordinator.signInForReview).toHaveBeenCalledWith("review@example.invalid",input);
+  expect(observed.mock.calls[0][0]).not.toContain(input);
+});
+
+it("an unavailable review action preserves the current legitimate Web presentation",async()=>{
+  const harness=runtimeHarness({kind:"ready_online",session:SESSION});
+  vi.mocked(harness.runtime.coordinator.signInForReview).mockResolvedValue({kind:"review_unavailable"});
+  function Probe(){const identity=useIdentity();return <button onClick={()=>void identity.signInForReview("review@example.invalid","SYNTHETIC_REVIEW_INPUT")}>Unavailable review probe</button>;}
+  render(<IdentityProvider runtime={harness.runtime}><Probe/><p>Existing sporting presentation</p></IdentityProvider>);
+  await userEvent.click(await screen.findByRole("button",{name:"Unavailable review probe"}));
+  expect(screen.getByText("Existing sporting presentation")).toBeInTheDocument();
 });

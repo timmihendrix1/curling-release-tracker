@@ -22,6 +22,7 @@ const PROGRESS_COPY: Partial<Record<string, string>> = {
   navigating_to_provider: "Opening Google sign-in…",
   requesting_otp: "Sending your code…",
   verifying_otp: "Checking your code…",
+  signing_in_for_review: "Signing in…",
   consuming_oauth_return: "Completing sign-in…",
   finalizing_identity: "Completing sign-in…",
   ensuring_profile: "Preparing your profile…",
@@ -95,6 +96,25 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
   const showGoogle = detectRuntimePlatform() !== "ios";
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const reviewLink = useRef<HTMLButtonElement>(null);
+  const restoreReviewFocus = useRef(false);
+  const [presentationOwner, setPresentationOwner] = useState(identity.state);
+  if (presentationOwner !== identity.state) {
+    setPresentationOwner(identity.state);
+    setReviewOpen(false);
+    setEmail("");
+    setError(null);
+  }
+  let reviewAvailable = false;
+  try { reviewAvailable = identity.canSignInForReview?.() === true; } catch { /* unavailable */ }
+  if (reviewOpen && !reviewAvailable) setReviewOpen(false);
+  useEffect(() => {
+    if (!reviewOpen && restoreReviewFocus.current) {
+      restoreReviewFocus.current = false;
+      reviewLink.current?.focus();
+    }
+  }, [reviewOpen]);
 
   function submitEmail(event: React.FormEvent) {
     event.preventDefault();
@@ -106,6 +126,8 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
     setError(null);
     void identity.requestEmailOtp(normalized);
   }
+
+  if (reviewOpen && reviewAvailable) return <ReviewSignInForm onBack={() => { restoreReviewFocus.current = true; setReviewOpen(false); }} />;
 
   return (
     <div className="mt-5 space-y-4">
@@ -144,6 +166,7 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
         </div>
         <button type="submit" className={showGoogle ? secondaryButtonClassName : primaryButtonClassName}>Send sign-in code</button>
       </form>
+      {reviewAvailable && <button ref={reviewLink} type="button" className={secondaryButtonClassName} onClick={() => { setEmail(""); setError(null); setReviewOpen(true); }}>Access for app review</button>}
       {privacyHref && privacyVersion && (
         <p className="text-sm text-slate-600">
           Review the current{" "}
@@ -158,6 +181,55 @@ function SignInChoices({ privacyHref, privacyVersion }: { privacyHref?: string; 
       )}
     </div>
   );
+}
+
+/** Credentials belong only to this mounted form. Progress replaces the form;
+ * Back never pretends to cancel an already submitted provider operation. */
+function ReviewSignInForm({ onBack }: { onBack(): void }) {
+  const identity = useIdentity();
+  const id = useId();
+  const emailInput = useRef<HTMLInputElement>(null);
+  const submitted = useRef(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { emailInput.current?.focus(); }, []);
+
+  const [invalidFields, setInvalidFields] = useState({ email: false, password: false });
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (submitted.current) return;
+    let available = false;
+    try { available = identity.canSignInForReview?.() === true; } catch { /* unavailable */ }
+    if (!available) { setEmail(""); setPassword(""); onBack(); return; }
+    const invalid = { email: !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()), password: !password };
+    setInvalidFields(invalid);
+    if (invalid.email || invalid.password) {
+      setError("Enter your review email address and password.");
+      return;
+    }
+    submitted.current = true;
+    setBusy(true);
+    setError(null);
+    const credential = password;
+    setPassword("");
+    setEmail("");
+    try { await identity.signInForReview(email.trim(), credential); }
+    catch { setError("Sign-in could not be completed. Please try again."); }
+    finally { submitted.current = false; setBusy(false); }
+  }
+
+  return <form noValidate onSubmit={submit} className="mt-5 space-y-3">
+    <h2 className="text-lg font-semibold">App review access</h2>
+    <p className="text-sm text-slate-600">For Apple reviewers using the review account provided with this build.</p>
+    <div><label htmlFor={`${id}-email`}>Email address</label><input ref={emailInput} id={`${id}-email`} type="email" inputMode="email" autoComplete="username" value={email} disabled={busy} onChange={(event) => { setEmail(event.target.value); setError(null); setInvalidFields({ email: false, password: false }); }} aria-describedby={invalidFields.email && error ? `${id}-error` : undefined} aria-invalid={invalidFields.email} className={fieldClassName} /></div>
+    <div><label htmlFor={`${id}-password`}>Password</label><input id={`${id}-password`} type="password" autoComplete="current-password" value={password} disabled={busy} onChange={(event) => { setPassword(event.target.value); setError(null); setInvalidFields({ email: false, password: false }); }} aria-describedby={invalidFields.password && error ? `${id}-error` : undefined} aria-invalid={invalidFields.password} className={fieldClassName} /></div>
+    {error && <p id={`${id}-error`} role="alert" className="text-sm text-red-700">{error}</p>}
+    <button type="submit" disabled={busy} className={primaryButtonClassName}>{busy ? "Signing in…" : "Sign in for app review"}</button>
+    <button type="button" disabled={busy} className={secondaryButtonClassName} onClick={() => { setEmail(""); setPassword(""); onBack(); }}>Back</button>
+  </form>;
 }
 
 function OtpForm() {

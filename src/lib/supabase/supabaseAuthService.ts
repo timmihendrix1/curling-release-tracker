@@ -419,13 +419,18 @@ export function createSupabaseAuthService(
 }
 
 type ActualAuthClient = InstanceType<typeof AuthClient>;
-type AuthMechanicsClient = { auth: Pick<ActualAuthClient, "getSession" | "onAuthStateChange" | "signInWithOtp" | "verifyOtp" | "signOut" | "signInWithOAuth" | "exchangeCodeForSession"> };
+type AuthMechanicsClient = { auth: Pick<ActualAuthClient, "getSession" | "onAuthStateChange" | "signInWithOtp" | "signInWithPassword" | "verifyOtp" | "signOut" | "signInWithOAuth" | "exchangeCodeForSession"> };
+
+// Module-private identity capability. The public Web factory never receives it;
+// neither overrides, metadata nor platform/URL claims can enable password calls.
+const nativeReviewPasswordCapability = Object.freeze({});
 
 /** The single provider normalization path, shared privately by Web and S5a. */
 function buildSupabaseAuthMechanics(
   config: ConfiguredCloudConfig,
   client: AuthMechanicsClient,
-  overrides: SupabaseAuthServiceOverrides
+  overrides: SupabaseAuthServiceOverrides,
+  reviewCapability?: object
 ): AuthProviderMechanics {
   const resolveAppOrigin = overrides.resolveAppOrigin ?? defaultAppOrigin;
   const navigate = overrides.navigate ?? defaultNavigate;
@@ -707,6 +712,22 @@ function buildSupabaseAuthMechanics(
       } catch {
         return authFailed(normalizedAuthError("temporarily_unavailable"));
       }
+    },
+
+    canSignInForReview() { return reviewCapability === nativeReviewPasswordCapability; },
+    async signInForReview(email: string, password: string): Promise<AuthServiceResult<AccountIdentity>> {
+      // Identical neutral failure for unknown/non-review accounts, wrong passwords,
+      // policy rejection and malformed responses. Never expose provider details.
+      const failed = () => authFailed<AccountIdentity>(normalizedAuthError("review_sign_in_failed"));
+      if (reviewCapability !== nativeReviewPasswordCapability) return failed();
+      try {
+        if (typeof email !== "string" || !email.length || typeof password !== "string" || !password.length) return failed();
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        const identity = error ? null : identityOrNull(data.session);
+        if (!identity || credentialStorageFailed()) return failed();
+        invalidSessionLatched = false;
+        return authOk(identity);
+      } catch { return failed(); }
     },
 
     async signOut(): Promise<AuthServiceResult<void>> {
@@ -1433,7 +1454,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
   let tail: Promise<void> = Promise.resolve();
   const listeners = new Set<(change: NormalizedAuthChange) => void>();
   let publicationContext: (() => boolean) | null = null, navigationContext: (() => boolean) | null = null;
-  type Command = { originalAdmission: NativeProfileAdmission | null; kind: "init" | "restore" | "otp" | "verify" | "signout" | "prepare" | "exchange";
+  type Command = { originalAdmission: NativeProfileAdmission | null; kind: "init" | "restore" | "otp" | "verify" | "review_password" | "signout" | "prepare" | "exchange";
     intent: number; active: boolean; generation: number; sourceToken: object | null;
     rootRaw: string | null; expiry: number | null; refreshRejected: boolean; denial: boolean;
     userIssued: boolean; userResponse: boolean; userGeneration: number; userUncertain: boolean; supersededCredential: boolean; invalidInput: boolean; malformed: Promise<unknown>[];
@@ -1533,7 +1554,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
       !(c.expiry && c.expiry * 1000 > authNow());
   }
   function closedError(): AuthRetryableFetchError { return new AuthRetryableFetchError("Authentication operation unavailable", 503); }
-  function allowedRequest(requestUrl: string, requestMethod: string): boolean {
+  function allowedRequest(requestUrl: string, requestMethod: string, kind: Command["kind"]): boolean {
     const url = new URL(requestUrl), base = authBase;
     if (url.origin !== base.origin || url.username || url.password || url.hash) return false;
     const route = url.pathname.slice(base.pathname.length);
@@ -1542,7 +1563,9 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
     if (requestMethod === "GET") return route === "/user" && entries.length === 0;
     if (requestMethod !== "POST") return false;
     if (route === "/otp" || route === "/verify") return entries.length === 0;
-    if (route === "/token") return entries.length === 1 && entries[0][0] === "grant_type" && ["pkce", "refresh_token"].includes(entries[0][1]);
+    if (route === "/token") return entries.length === 1 && entries[0][0] === "grant_type" &&
+      (["pkce", "refresh_token"].includes(entries[0][1]) ||
+        (entries[0][1] === "password" && kind === "review_password" && newUser && !preparation));
     return route === "/logout" && entries.length === 1 && entries[0][0] === "scope" && entries[0][1] === "local";
   }
   type TeamWireIntent = Readonly<{ url: string; method: "GET" | "POST"; body: string; purpose?: "own_api" }>;
@@ -1659,7 +1682,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
         if (headerRejected) throw null;
         malformedRequest = undefined;
         if (actualHeaders.length !== expectedHeaders.size || actualHeaders.some(([key, value]) => expectedHeaders.get(key) !== value)) throw null;
-      } else if ((c.data && c.dataStage !== "session") || !allowedRequest(requestUrl, requestMethod)) throw null;
+      } else if ((c.data && c.dataStage !== "session") || !allowedRequest(requestUrl, requestMethod, c.kind)) throw null;
     } catch {
       sdkFailed = true; // revoke before observing an invalid dependency
       await observeDependency(malformedRequest).then(() => {}, () => {});
@@ -1795,6 +1818,18 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
     verifyEmailOtp(email: string, token: string) {
       return enqueueBound("verify", async () => { if (typeof email !== "string") { malformedArgument(email); return unavailableAuth(); } if (typeof token !== "string") { malformedArgument(token); return unavailableAuth(); } return mechanics!.verifyEmailOtp(email, token); }, unavailableAuth,
         (value: AuthServiceResult<AccountIdentity>, stamp: number) => { if (value.ok) emit({ reason: "signed_in", identity: value.value }, stamp); });
+    },
+    canSignInForReview() { return newUser && !preparation && !terminal && !identityFault && reservation!.current() && phase === "ready" && storageHealthy() && !sdkFailed; },
+    signInForReview(email: string, password: string) {
+      // Dormant installation-import hosts acquire no review-password authority
+      // through this shared mechanics contract. Normal beta startup has no preparation.
+      if (!newUser || preparation) return Promise.resolve(unavailableAuth());
+      return enqueueBound("review_password", async () => {
+        if (typeof email !== "string") { malformedArgument(email); return unavailableAuth(); }
+        if (typeof password !== "string") { malformedArgument(password); return unavailableAuth(); }
+        return mechanics!.signInForReview(email, password);
+      }, unavailableAuth,
+      (value: AuthServiceResult<AccountIdentity>, stamp: number) => { if (value.ok) emit({ reason: "signed_in", identity: value.value }, stamp); });
     },
     signOut() {
       nativeTracker?.owner.retire();
@@ -1972,7 +2007,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
               if (current?.data && commandCurrent(current)) current.sessionResult = result;
               return result;
             } : guard(actual.getSession),
-            signInWithOtp: guard(actual.signInWithOtp), verifyOtp: guard(actual.verifyOtp), signOut: guard(actual.signOut),
+            signInWithOtp: guard(actual.signInWithOtp), signInWithPassword: guard(actual.signInWithPassword), verifyOtp: guard(actual.verifyOtp), signOut: guard(actual.signOut),
             signInWithOAuth: guard(actual.signInWithOAuth), exchangeCodeForSession: guard(actual.exchangeCodeForSession),
             // The native public observer path never calls the shared SDK path.
             onAuthStateChange: () => { throw new Error("Native SDK subscriptions are unavailable."); },
@@ -1996,7 +2031,7 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
               const result = authApply(navigate, dependencyReceiver, [value]);
               if (result !== undefined) { retainAuxiliary(result); throw null; }
             },
-          });
+          }, newUser && !preparation ? nativeReviewPasswordCapability : undefined);
           phase = "ready"; code = null;
           return Object.freeze({ outcome: "ready" });
         } catch { sdkFailed = true; if (constructionIssued && !sdk) cleanupUnconfirmed = true; return terminal ? Object.freeze({ outcome: "closed" }) : wait("sdk_failed"); }
@@ -3358,10 +3393,12 @@ async function createNativeHost(input: NativeSupabaseAuthHostOptions, bootstrap:
     const startup = () => ({ callback: { kind: "temporarily_unavailable" as const }, verdict: { kind: "identity_unconfirmed" as const }, finalization: null, transition: terminalIdentity() });
     const startOnce = () => trackRuntime(() => createdRuntime.startUpOnce(), startup, () => startupCurrent !== null && startupCurrent());
     const coordinator = Object.freeze<IdentityTransitionCoordinator>({
+      canSignInForReview: () => identityAvailable() && actual.canSignInForReview(),
       startUp: startOnce,
       startGoogleSignIn: () => trackRuntime(() => actual.startGoogleSignIn(), unavailable),
       requestEmailOtp: email => trackRuntime(() => actual.requestEmailOtp(email), unavailable),
       verifyEmailOtp: (email, token) => trackRuntime(() => actual.verifyEmailOtp(email, token), unavailable),
+      signInForReview: (email, password) => trackRuntime(() => actual.signInForReview(email, password), unavailable),
       submitOnboarding: value => trackRuntime(() => actual.submitOnboarding(value), unavailable),
       refreshLegalSnapshot: () => trackRuntime(() => actual.refreshLegalSnapshot(), () => ({ kind: "legal_unavailable" as const })),
       retryTrustedStateEstablishment: () => trackRuntime(() => actual.retryTrustedStateEstablishment(), unavailable),

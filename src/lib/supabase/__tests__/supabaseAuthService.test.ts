@@ -31,6 +31,7 @@ const { fakeClient, getSupabaseBrowserClientMock } = vi.hoisted(() => {
       getSession: vi.fn(),
       onAuthStateChange: vi.fn(),
       signInWithOtp: vi.fn(),
+      signInWithPassword: vi.fn(),
       verifyOtp: vi.fn(),
       signOut: vi.fn(),
       signInWithOAuth: vi.fn(),
@@ -1744,5 +1745,43 @@ describe("createSupabaseAuthService — nothing sensitive is ever logged", () =>
         }
       }
     }
+  });
+});
+
+describe("public Web review password mechanics — always denied before SDK", () => {
+  const email = "review@example.invalid";
+  // Purely synthetic input, never a deployed review credential.
+  const password = "SYNTHETIC_REVIEW_INPUT";
+  it("does not invoke even a successful existing client password method", async () => {
+    fakeClient.auth.signInWithPassword.mockResolvedValue({ data: { session: fakeSession() }, error: null });
+    const service = createSupabaseAuthService(CONFIG);
+    expect(service.canSignInForReview()).toBe(false);
+    expect((await service.signInForReview(email, password)).ok).toBe(false);
+    expect(fakeClient.auth.signInWithPassword).not.toHaveBeenCalled();
+    expect(getSupabaseBrowserClientMock).toHaveBeenCalledTimes(1);
+  });
+  for (const [label, result] of [
+    ["absent session", { data: { session: null }, error: null }],
+    ["malformed session", { data: { session: { user: {} } }, error: null }],
+    ["hook denial", { data: { session: fakeSession() }, error: new AuthApiError("SYNTHETIC_PRIVATE", 403, "hook_error") }],
+    ["rate limit", { data: { session: null }, error: new AuthApiError("SYNTHETIC_PRIVATE", 429, "over_request_rate_limit") }],
+    ["wrong credentials", { data: { session: null }, error: new AuthApiError("SYNTHETIC_PRIVATE", 400, "invalid_credentials") }],
+  ] as const) it(`fails closed with identical neutral copy: ${label}`, async () => {
+    fakeClient.auth.signInWithPassword.mockResolvedValue(result);
+    const outcome = await createSupabaseAuthService(CONFIG).signInForReview(email, password);
+    expect(outcome).toEqual({ ok: false, error: { kind: "review_sign_in_failed", message: "Review sign-in could not be completed. Check the credentials and try again." } });
+    expect(JSON.stringify(outcome)).not.toMatch(/SYNTHETIC|token|hook_error|invalid_credentials/);
+    expect(fakeClient.auth.signInWithPassword).not.toHaveBeenCalled();
+  });
+  for (const value of [null, undefined, new Error("SYNTHETIC_PRIVATE"), { then: "malformed" }]) it("contains arbitrary provider throws", async () => {
+    fakeClient.auth.signInWithPassword.mockRejectedValue(value);
+    expect(await createSupabaseAuthService(CONFIG).signInForReview(email, password)).toMatchObject({ ok: false, error: { kind: "review_sign_in_failed" } });
+    expect(fakeClient.auth.signInWithPassword).not.toHaveBeenCalled();
+  });
+  it("does not issue a provider request for empty input", async () => {
+    const service = createSupabaseAuthService(CONFIG);
+    expect((await service.signInForReview(email, "")).ok).toBe(false);
+    expect((await service.signInForReview("", password)).ok).toBe(false);
+    expect(fakeClient.auth.signInWithPassword).not.toHaveBeenCalled();
   });
 });

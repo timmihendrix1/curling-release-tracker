@@ -11,6 +11,18 @@ record, or install anything over the owner's existing installation. It resolves 
 product decision and grants no exception to an existing gate. Every runbook step is marked
 **UNEXECUTED** unless the dated status amendment or a step explicitly records otherwise.
 
+## Native review-access scope amendment — 2026-10-30
+
+Normal iOS sign-in remains email-code only; normal Web choices remain email code
+and Google. The approved narrow exception is an email/password review account
+for Apple in the original native new-user beta, governed by
+[Apple review access](APPLE_REVIEW_ACCESS.md). It grants no import, transfer or
+fresh-email proof. Older “email-only” findings below describe ordinary sign-in and
+their dated implementation evidence; they do not authorize general passwords.
+Hosted configuration/provisioning, legal-policy clarification, physical-device
+acceptance and Apple submission remain separate release gates. No legal version
+or active legal-document pair is changed by this amendment.
+
 ## Beta-completion amendment — 2026-10-24
 
 The local completion package implements in-app personal export and account deletion

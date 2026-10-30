@@ -96,9 +96,11 @@ Section 11.
 1. The closed-test sign-in methods are:
    - **six-digit email one-time code (OTP)**;
    - **Google sign-in**.
-2. Magic links, passwords, Apple sign-in and additional providers remain **deferred**,
-   unless a later platform requirement (for example an app-store rule) changes that
-   decision.
+2. Magic links, general user passwords, Apple sign-in and additional providers remain
+   **deferred**. The owner's 2026-10-30 native iPhone/TestFlight-only Apple review exception permits password sessions
+   for exactly one administratively selected Auth UUID, governed by
+   `APPLE_REVIEW_ACCESS.md`. It does not replace normal iOS OTP or Web OTP/Google,
+   authorize Web or general password login, or bypass the application identity gate.
 3. The authentication method must not require the athlete to sign in every time the app
    is opened. A session persists and refreshes on the device.
 
@@ -348,7 +350,8 @@ Section 11.
 
 None of the following is authorised by this document:
 
-- magic links, passwords, Apple sign-in, and additional identity providers;
+- magic links, general user passwords, Apple sign-in, and additional identity providers
+  (the narrow Apple review exception is governed by `APPLE_REVIEW_ACCESS.md`);
 - unclaimed participant Profiles;
 - minor accounts and guardian workflows;
 - continuing an in-progress Session on a second device;
